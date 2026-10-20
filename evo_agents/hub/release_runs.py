@@ -17,10 +17,12 @@ Windows and fixes them; commits on the run's branch; and writes the version, the
 ``gitops.check_push``), and tells the hub.
 
 Once the run is done the hub lands it with its own GitHub App: it refuses (``land_problem``) a version that is not
-X.Y.Z, changes the major version, is not greater than the version VERSION_FILE names on the default branch, whose tag
-exists already, or that VERSION_FILE on the branch does not name; else it opens the pull request of the branch into
-the default branch, merges it with a merge commit and tags that commit ``<prefix><version>``. A refusal, or GitHub
-failing LAND_TRIES passes in a row, stops the cycle with the reason (LAND_STATES).
+X.Y.Z, changes the major version, is not greater than the version VERSION_FILE names on the default branch or is
+neither its next patch nor its next minor, whose tag exists already, or that VERSION_FILE on the branch does not name;
+else it opens the pull request of the branch into the default branch, its body naming the agent's Decision line with
+nothing GitHub acts on (``inert``: no keyword that closes an issue, no mention), merges it with a merge commit and tags
+that commit ``<prefix><version>``. A refusal, or GitHub failing LAND_TRIES passes in a row, stops the cycle with the
+reason (LAND_STATES).
 """
 
 from __future__ import annotations
@@ -52,11 +54,19 @@ MAX_URL_CHARS = 500
 
 MERGE_PULL = re.compile(r"^Merge pull request #([1-9][0-9]{0,9}) from [^/\s]+/(\S+)$")
 SQUASHED_PULL = re.compile(r"\(#([1-9][0-9]{0,9})\)$")
+# What GitHub acts on in the text of a pull request, and of the merge commit that may take that text: a keyword that
+# closes the issue or pull request a reference right after it names (#N, owner/repo#N, GH-N or a link), and a mention
+# of an account or a team, which notifies them.
+CLOSING = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?\s*(?=(?:[\w.-]+/[\w.-]+)?#[0-9]|GH-[0-9]|https?://)",
+    re.IGNORECASE,
+)
+MENTION = re.compile(r"(?<!\w)@(?=[A-Za-z0-9])")
 
 
 def parse_version(text: str | None) -> tuple[int, int, int] | None:
     """(0, 25, 0) of ``0.25.0``; None for a text that is not X.Y.Z."""
-    found = VERSION.match(text or "")
+    found = VERSION.fullmatch(text or "")
     return None if found is None else (int(found.group(1)), int(found.group(2)), int(found.group(3)))
 
 
@@ -89,6 +99,12 @@ def file_version(text: str | None) -> str | None:
 def one_line(text: object, limit: int = MAX_LINE_CHARS) -> str:
     """``text`` as one line of at most ``limit`` characters, control characters made spaces."""
     return " ".join(CONTROL.sub(" ", str(text or "")).split())[:limit]
+
+
+def inert(text: str) -> str:
+    """``text`` with nothing GitHub acts on once it is in a pull request or a commit: each keyword that would close
+    what the reference after it names is left out, and so is the @ of each mention."""
+    return MENTION.sub("", CLOSING.sub("", text))
 
 
 def new_migrations(base: dict[str, str], head: dict[str, str]) -> list[str]:
@@ -180,6 +196,12 @@ def land_problem(
         return f"{version} changes the major version of {main_version}, the default branch's: a release never does"
     if found <= main:
         return f"{version} is not greater than {main_version}, the version {VERSION_FILE} names on the default branch"
+    patch, minor = bumped(main, "patch"), bumped(main, "minor")
+    if found not in (patch, minor):
+        return (
+            f"{version} is neither the next patch {version_text(patch)} nor the next minor {version_text(minor)} of "
+            f"{main_version}, the default branch's version: a release moves one step"
+        )
     if tag_exists:
         return f"the tag {tag} exists already: a release tag is never made twice"
     if head_version != version:

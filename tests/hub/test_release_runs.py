@@ -12,6 +12,14 @@ It refuses, and the cycle stops saying why, a version that is not greater than t
 major, whose tag exists, or that the branch does not name; a run that fails or ends without its branch stops the cycle
 too; GitHub failing is tried again on the next pass, from the pull request already opened. GitHub is the fake of
 ``tests.hub.fake_github``, with the workers' App installed on evo-agents with contents and pull_requests write.
+
+What the review of step 2 asked on top of that: a release run is leased its runtime's login and a token of the
+workers' App alone, with contents write and metadata read and no workflows, never a git secret or another env secret
+of its owner; the hub accepts only the next patch or the next minor of the default branch's version, and a version
+X.Y.Z with nothing after it; a pull request the hub did not merge itself is tagged only when its head is the run's
+commit and its base the default branch, and one into another base is never reused; the owner must still be an admin
+when the hub lands; the Decision line reaches the pull request without a keyword that closes an issue or a mention;
+and one pass of the release job runs at a time.
 """
 
 from __future__ import annotations
@@ -30,12 +38,25 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-from evo_agents.hub import release_runs, runs, tables
+from evo_agents.hub import jobs, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.release_check import release_pass
 from evo_agents.hub.server.release_land import land_releases
+from evo_agents.hub.worker import queue
+from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
-from tests.hub.test_credentials_api import MINE, OWNER, app_key, install  # noqa: F401 (app_key is a fixture)
+from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)
+    MINE,
+    OWNER,
+    app_key,
+    by_name,
+    env_secret,
+    git_secret,
+    install,
+    leased,
+    missing,
+    sample,
+)
 from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
@@ -204,6 +225,27 @@ def test_the_rule_of_the_version_the_branch_and_the_refusals_of_the_model():
     assert "exists already" in release_runs.land_problem(
         "0.25.0", "0.24.2", "0.25.0", branch="release/0.25.0", tag="v0.25.0", tag_exists=True
     )
+    # the next patch or the next minor of the default branch's version, nothing further
+    assert problem("0.24.3", "0.24.2", "0.24.3") is None
+    for far in ("0.24.4", "0.26.0", "0.999999999.0"):
+        assert "is neither the next patch 0.24.3 nor the next minor 0.25.0 of 0.24.2" in problem(far, "0.24.2", far)
+    # X.Y.Z and nothing after it, a final newline included
+    for text in ("0.26.0\n", "0.26.0\r\n", " 0.26.0"):
+        assert release_runs.parse_version(text) is None, repr(text)
+        assert not release_runs.is_release_branch(f"release/{text}")
+        assert releases.tag_version(f"v{text}", "v*") is None
+    assert "is not a version X.Y.Z" in problem("0.25.0\n", "0.24.2", "0.25.0")
+    # what GitHub acts on is left out of a Decision line: a keyword that closes what a reference names, a mention
+    said = (
+        "Decision: 0.25.0, a minor: Closes #3, fixes: maycuatroi1/evo-agents#4, resolved GH-5, fix "
+        "https://github.com/maycuatroi1/evo-agents/issues/6; thanks @alice and @heron-team/release, mail me@example.org"
+    )
+    assert release_runs.inert(said) == (
+        "Decision: 0.25.0, a minor: #3, maycuatroi1/evo-agents#4, GH-5, https://github.com/maycuatroi1/evo-agents/issues/6"
+        "; thanks alice and heron-team/release, mail me@example.org"
+    )
+    assert release_runs.inert(DECISION) == DECISION, "a plain line is kept as it is"
+    assert release_runs.inert("the prefixes #1 and the fix of #2") == "the prefixes #1 and the fix of #2"
 
 
 # The claim
@@ -266,6 +308,25 @@ def test_a_range_github_does_not_list_still_opens_the_cycle_and_the_prompt_says_
     prompt = claim(world.client, world.worker)["prompt"]
     assert "The hub could not list the commits (GitHub answered 404" in prompt
     assert "a patch: no migration is new, and the hub could not list the pull requests" in prompt
+
+
+def test_a_release_run_is_leased_its_runtimes_login_and_a_token_of_the_workers_app_alone(world):
+    (installed,) = [item for item in world.github.installations.values() if REPO in item.repos]
+    installed.permissions["workflows"] = "write"  # the App may write workflows: a release run's token still never does
+    owner = world.headers["owner"]
+    oauth = sample("oauth-")
+    env_secret(world.client, owner, "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
+    env_secret(world.client, owner, "gh-cli", "GH_TOKEN", sample("cli-"))
+    git_secret(world.client, owner, "github-pat", f"https://github.com/{MINE}", sample("pat-"))
+    spec = opened(world)
+    answer = leased(world.client, world.worker, spec["id"])
+    leases = by_name(answer)
+    assert set(leases) == {"claude-oauth", f"github-app:{MINE}"}, "no git secret, no other env secret of the owner"
+    assert leases["claude-oauth"]["value"] == oauth and missing(answer) == {}
+    app = leases[f"github-app:{MINE}"]
+    assert world.github.covers(app["value"], MINE, REPO)
+    made = world.github.app_tokens[app["value"]]
+    assert (made.repositories, made.permissions) == ((REPO,), {"contents": "write", "metadata": "read"})
 
 
 # The branch the worker pushed
@@ -357,6 +418,7 @@ def test_the_pull_request_names_its_cycle_and_run_and_no_member(world):
     [
         ("0.25.0", "0.25.0", None, False, "0.25.0 is not greater than 0.25.0"),
         ("0.24.0", "1.0.0", None, False, "1.0.0 changes the major version of 0.24.0"),
+        ("0.24.0", "0.26.0", None, False, "0.26.0 is neither the next patch 0.24.1 nor the next minor 0.25.0"),
         ("0.24.0", "0.25.0", None, True, "the tag v0.25.0 exists already"),
         ("0.24.0", "0.25.0", "0.24.0", False, "names '0.24.0', not 0.25.0"),
     ],
@@ -415,6 +477,74 @@ def test_a_pull_request_merged_by_an_earlier_pass_gives_its_merge_commit_and_a_t
     row = landed_row(world.db, run_id)
     assert (row["merge_commit"], row["tagged"]) == ("9" * 40, "v0.25.0")
     assert world.github.made_refs == [], "the tag was there already, on the merge commit"
+
+
+def test_a_pull_request_merged_by_hand_from_a_head_the_run_did_not_push_is_not_tagged(world):
+    run_id = cut(world)
+    world.github.merge_refusals.append((502, {"message": "Bad Gateway"}))
+    assert land(world) == {"waiting": 1}
+    world.github.push(MINE, REPO, "release/0.25.0", ELSEWHERE)  # someone pushed onto the release branch
+    world.github.merge_by_hand(MINE, REPO, "release/0.25.0", "someone-else", "9" * 40)
+    assert land(world) == {"refused": 1}
+    assert tag_of(world.github, "v0.25.0") is None and world.github.made_refs == []
+    row = landed_row(world.db, run_id)
+    assert row["land_state"] == "refused" and row["tagged"] is None
+    assert f"is {ELSEWHERE[:12]}, not {PUSHED[:12]}, the commit release run #{run_id} pushed" in row["land_reason"]
+    assert cycle_of(world.db)[0] == "stopped"
+
+
+def test_a_pull_request_whose_base_moved_off_the_default_branch_is_neither_merged_nor_tagged(world):
+    run_id = cut(world)
+    world.github.merge_refusals.append((502, {"message": "Bad Gateway"}))
+    assert land(world) == {"waiting": 1}
+    world.github.pull_of(MINE, REPO, "release/0.25.0").base = "develop"  # someone edited the pull request
+    assert land(world) == {"refused": 1}
+    assert world.github.merges == [] and world.github.made_refs == []
+    assert "is into 'develop', not into main, the default branch" in landed_row(world.db, run_id)["land_reason"]
+
+
+def test_an_open_pull_request_of_the_branch_into_another_base_is_never_the_one_merged(world):
+    run_id = cut(world)
+    pulls = world.github.pulls
+    for number, base in ((1, "develop"), (2, "main")):  # the one into develop is listed first
+        pulls[(MINE.lower(), REPO.lower(), number)] = FakePull(number, MINE, REPO, "release/0.25.0", PUSHED, base)
+    assert land(world) == {"tagged": 1}
+    assert world.github.merges == [(MINE, REPO, 2, PUSHED, "workers")], "the pull request into main alone"
+    develop = pulls[(MINE.lower(), REPO.lower(), 1)]
+    assert develop.state == "open" and not develop.merged
+    looked = [item.query for item in world.github.calls(f"/repos/{MINE}/{REPO}/pulls") if item.method == "GET"]
+    assert looked and all(query.get("base") == "main" for query in looked)
+    assert landed_row(world.db, run_id)["pull_number"] == 2
+
+
+def test_an_owner_no_longer_admin_has_nothing_landed_in_their_name(world):
+    run_id = cut(world)
+    grant(world.client, world.headers, OWNER, "writer")
+    assert land(world) == {"refused": 1}
+    assert world.github.pulls == {} and world.github.merges == [] and world.github.made_refs == []
+    row = landed_row(world.db, run_id)
+    assert (
+        row["land_state"] == "refused"
+        and f"{OWNER}, the owner of the schedule, holds no admin role" in (row["land_reason"])
+    )
+    assert cycle_of(world.db)[0] == "stopped"
+
+
+def test_the_decision_line_reaches_the_pull_request_without_closing_an_issue_or_mentioning_anyone(world):
+    decision = "Decision: 0.25.0, a minor: the range merges #7 from feat/release-runs; closes #3, thanks @alice."
+    run_id = cut(world, decision=decision)
+    assert land(world) == {"tagged": 1}
+    (asked,) = [
+        json.loads(item.body) for item in world.github.calls(f"/repos/{MINE}/{REPO}/pulls") if item.method == "POST"
+    ]
+    assert "Decision: 0.25.0, a minor: the range merges #7 from feat/release-runs; #3, thanks alice." in asked["body"]
+    assert "closes" not in asked["body"].lower() and "@" not in asked["body"]
+    assert landed_row(world.db, run_id)["decision"] == decision, "the hub keeps the line as the agent wrote it"
+
+
+def test_one_pass_of_the_release_job_runs_at_a_time():
+    task = queue.tasks[jobs.RELEASE_SCHEDULES]
+    assert (task.lock, task.queueing_lock) == (jobs.RELEASE_SCHEDULES, jobs.RELEASE_SCHEDULES)
 
 
 def test_the_release_job_checks_then_lands(world):

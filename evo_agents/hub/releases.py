@@ -71,6 +71,8 @@ TIME_ZONE = re.compile(r"^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$")  # check
 TAG_PATTERN = re.compile(r"^[A-Za-z0-9._/-]{0,50}\*$")  # a literal prefix, then *
 REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 WORKFLOW = re.compile(r"^[A-Za-z0-9._-]{1,100}\.ya?ml$")
+# X.Y.Z; matched with fullmatch, since $ also matches before a final newline. The pattern keeps ^ and $ for the API
+# and the database, whose engines do not take \Z.
 VERSION = re.compile(r"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$")
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 OBJECT_NAME = re.compile(r"^([0-9a-f]{40}|[0-9a-f]{64})$")  # a commit, as git names it
@@ -124,7 +126,7 @@ def tag_version(name: str, pattern: str) -> tuple[int, int, int] | None:
     """The version of tag ``name`` under ``pattern``: (0, 24, 1) of ``v0.24.1`` under ``v*``; None for a tag the pattern
     does not match or whose rest is not X.Y.Z (a pre-release, a word)."""
     prefix = tag_prefix(pattern)
-    found = VERSION.match(name[len(prefix) :]) if name.startswith(prefix) else None
+    found = VERSION.fullmatch(name[len(prefix) :]) if name.startswith(prefix) else None
     return None if found is None else (int(found.group(1)), int(found.group(2)), int(found.group(3)))
 
 

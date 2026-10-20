@@ -15,9 +15,10 @@ The leases stay in the daemon's memory (``credentials.RunCredentials``): the run
 ``credentials.ticketed``, its agent through ``Agent.env``, each event goes through ``credentials.scrub`` before the
 spool, and they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the
 daemon that fails to authenticate on a leased origin takes the leases again once and pushes once more
-(``RunCredentials.with_renewal``). The agent of a run of the Curator never holds a push credential
-(``credentials.RunCredentials.guarded``): only the daemon's own git gets the run's leases, through a ticket of one
-command.
+(``RunCredentials.with_renewal``). The agent of a run of the Curator, or of a release run, never holds a push
+credential (``credentials.RunCredentials.guarded``): only the daemon's own git gets the run's leases, through a ticket
+of one command, and it pushes such a run's repo only with a lease that covers it, never with this machine's own
+credentials.
 """
 
 from __future__ import annotations
@@ -140,10 +141,11 @@ async def reach(run: Run, name: str, *, push: bool) -> preflight.Problem | None:
     if checkout is None or not urls or all(preflight.is_local(url) for url in urls):
         return None
     covered = run.credentials.covers(name)
-    if push and run.curator is not None and not covered:
+    if push and run.credentials.guarded and not covered:
+        who = "a run of the Curator" if run.curator is not None else f"a {run.spec.get('kind') or 'guarded'} run"
         return preflight.Problem(
             "credentials",
-            f"{name}: a run of the Curator pushes only with the credential the hub leased it, and no lease covers "
+            f"{name}: {who} pushes only with the credential the hub leased it, and no lease covers "
             f"{urls[0]}: this machine's own credentials are not used",
         )
     with run.credentials.ticketed(run.daemon.env) as env:

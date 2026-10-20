@@ -31,24 +31,20 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from fastapi import HTTPException
 from sqlalchemy import and_, exists, func, insert, literal, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, releases, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.release_cycles import DISPATCH, queue_run
 from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
-from evo_agents.hub.server.release_land import land_releases
+from evo_agents.hub.server.release_land import land_releases, owner_is_admin
 from evo_agents.hub.server.release_watch import Read, red_tag, watch_releases
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
@@ -94,16 +90,6 @@ async def unfinished(conn: AsyncConnection, schedule_id: int):
     return (await conn.execute(query)).one_or_none()
 
 
-async def _owner_is_admin(conn: AsyncConnection, row) -> bool:
-    """Whether the schedule's owner holds the admin role on its project, as a request of theirs would find."""
-    member = Principal(user_id=row.owner_id, login=row.owner, admin=False, token_id=0, kind=MACHINE, token_hash="")
-    try:
-        access = await project_access(conn, member, row.project)
-    except HTTPException:
-        return False
-    return has_role(access.role, "admin")
-
-
 async def _gate(conn: AsyncConnection, row) -> tuple[str, str] | None:
     """(outcome, reason) of a check of ``row`` that reads nothing, or None when it may read GitHub."""
     if row.paused_at is not None:
@@ -111,7 +97,7 @@ async def _gate(conn: AsyncConnection, row) -> tuple[str, str] | None:
     cycle = await unfinished(conn, row.id)
     if cycle is not None:
         return "busy", f"cycle #{cycle.id} is {cycle.state}: no other cycle opens until it ends"
-    if not await _owner_is_admin(conn, row):
+    if not await owner_is_admin(conn, row.owner_id, row.owner, row.project):
         return "owner", (
             f"{row.owner}, the owner of the schedule, holds no admin role on {row.project} any more: an admin sets the "
             "schedule again to own it"
