@@ -95,7 +95,7 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.account_choice import choose_accounts
+from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
@@ -648,8 +648,10 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     engine = state.engine
     async with engine.begin() as conn:
         _, survey = await survey_run(conn, user, run_id, lock=False, refreshable=True)
+    ended = {secret.id: secret for secret in survey.secrets}  # with the OAuth accounts whose token has ended
+    rejected: set[int] = set()
     if sealer is not None:  # before the leases are recorded: an access token near its end is traded for a new one
-        await refresh_due(engine, sealer, survey.run.owner_id, survey.secrets)
+        rejected = await refresh_due(engine, sealer, survey.run.owner_id, survey.secrets)
     curator = survey.run.curator is not None
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
@@ -679,6 +681,12 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                 leases: list[Lease] = []
                 survey.missing = {repo: NO_KEY.format(missing=missing_key) for repo in survey.origins}
             else:
+                if rejected:  # a refresh token the endpoint refused: the run leaves that account, as for a usage limit
+                    seen = {secret.id for secret in survey.secrets}
+                    left = [
+                        ended[i] for i in sorted(rejected) if i in ended and i not in seen
+                    ]  # not in the survey: ended
+                    await fail_over_relogin(conn, survey.run, [*survey.secrets, *left], rejected)
                 leases = await _lease_secrets(conn, survey, worker_id, sealer)
                 leases += await _lease_tokens(conn, survey, worker_id, sealer, made)
                 for repo in survey.github:

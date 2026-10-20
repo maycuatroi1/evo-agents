@@ -27,12 +27,16 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
+from evo_agents.hub.server import account_refresh
+from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from evo_agents.hub.server.account_oauth import open_tokens
 from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (fixtures of this module)
+    PLAN,
     app_key,
     ask,
+    by_name,
     client,
     config,
     hub,
@@ -41,7 +45,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (fixtures of this mod
     step_run,
     worker_of,
 )
-from tests.hub.test_runs import PROJECT
+from tests.hub.test_runs import PROJECT, claim
 
 VAR = "CLAUDE_CODE_OAUTH_TOKEN"
 LIFETIME = 28800
@@ -232,3 +236,98 @@ def test_an_endpoint_that_is_down_is_no_reason_to_lose_the_set(client, hub, hub_
     worker, run_id = run_of(client, hub)
     lease = {item["name"]: item for item in leased(client, worker, run_id)["leases"]}["claude-oauth"]
     assert lease["value"] == access and stored(hub_db, client)[0]["refresh_token"] == refresh
+
+
+# A refresh token the endpoint refuses: the account needs a new sign-in and the run moves to another one
+
+
+def cooling(hub_db, name: str) -> tuple[bool, str | None]:
+    """(whether the account cools down now, its reason)."""
+    s, a = tables.secrets, tables.accounts
+    ((until, reason),) = sql(
+        hub_db,
+        select(a.c.cooldown_until > func.now(), a.c.cooldown_reason)
+        .join(s, s.c.id == a.c.secret_id)
+        .where(s.c.name == name, s.c.deleted_at.is_(None)),
+    )
+    return bool(until), reason
+
+
+def taken_by(hub_db, run_id: int) -> list[tuple[str, int]]:
+    """(the name of the account the run took for the variable, its failovers)."""
+    s, ra = tables.secrets, tables.run_accounts
+    return [
+        tuple(row)
+        for row in sql(
+            hub_db,
+            select(s.c.name, ra.c.failovers).join(ra, ra.c.secret_id == s.c.id).where(ra.c.run_id == run_id),
+        )
+    ]
+
+
+def expire(monkeypatch) -> None:
+    """Every access token with less than an hour left is due, as the ten minutes the accounts here have are."""
+    monkeypatch.setattr(account_refresh, "REFRESH_WINDOW", timedelta(hours=1))
+
+
+def test_a_revoked_refresh_token_marks_the_account_relogin_and_the_run_fails_over_to_another(
+    client, hub, hub_db, anthropic, caplog, monkeypatch
+):
+    first, dead = add_account(client, hub, anthropic, timedelta(minutes=10), "oauth-a")
+    anthropic.valid.clear()  # the refresh token of oauth-a was revoked
+    worker, run_id = run_of(client, hub)
+    assert by_name(leased(client, worker, run_id)).keys() == {"oauth-a"}  # the only account: the run holds it
+    second, _ = add_account(client, hub, anthropic, timedelta(hours=2), "oauth-b")
+    assert cooling(hub_db, "oauth-a") == (False, None)
+    expire(monkeypatch)
+
+    answer = by_name(leased(client, worker, run_id))
+    assert answer.keys() == {"oauth-b"} and answer["oauth-b"]["value"] == second
+    assert cooling(hub_db, "oauth-a") == (True, RELOGIN_REASON)
+    assert taken_by(hub_db, run_id) == [("oauth-b", 1)]
+    assert first not in caplog.text and dead not in caplog.text
+    # the lease of the account it left is revoked
+    cl = tables.credential_leases
+    assert (
+        sql(
+            hub_db,
+            select(cl.c.revoked_at)
+            .join(tables.secrets, tables.secrets.c.id == cl.c.secret_id)
+            .where(cl.c.run_id == run_id, tables.secrets.c.name == "oauth-a"),
+        )[0][0]
+        is not None
+    )
+
+    # another run does not take oauth-a either, and asking again changes nothing
+    again = by_name(leased(client, worker, run_id))
+    assert again.keys() == {"oauth-b"} and len(anthropic.asked) == 2
+
+
+def test_a_new_oauth_login_ends_the_relogin_cooldown_and_keeps_the_account(client, hub, hub_db, anthropic, monkeypatch):
+    add_account(client, hub, anthropic, timedelta(minutes=10), "oauth-a")
+    anthropic.valid.clear()
+    worker, run_id = run_of(client, hub)
+    expire(monkeypatch)
+    leased(client, worker, run_id)
+    assert cooling(hub_db, "oauth-a") == (True, RELOGIN_REASON)
+
+    access, _ = add_account(client, hub, anthropic, timedelta(hours=2), "oauth-a")  # oauth-login again, same name
+    assert cooling(hub_db, "oauth-a") == (False, None)
+    assert by_name(leased(client, worker, run_id))["oauth-a"]["value"] == access
+
+
+def test_an_account_picked_by_hand_whose_refresh_token_is_refused_is_marked_and_the_run_keeps_it(
+    client, hub, hub_db, anthropic, monkeypatch
+):
+    access, _ = add_account(client, hub, anthropic, timedelta(minutes=10), "oauth-a")
+    add_account(client, hub, anthropic, timedelta(hours=2), "oauth-b")
+    anthropic.valid.clear()
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
+    body = {"plan_id": PLAN, "worker_id": worker["id"], "account": "oauth-a"}
+    assert client.post(f"/v1/projects/{PROJECT}/plan-runs", json=body, headers=hub["owner"]).status_code == 201
+    run_id = claim(client, worker)["id"]
+    expire(monkeypatch)
+    answer = by_name(leased(client, worker, run_id))  # picked by hand: it stays, on the token that has time left
+    assert answer.keys() == {"oauth-a"} and answer["oauth-a"]["value"] == access
+    assert taken_by(hub_db, run_id) == [("oauth-a", 0)]
+    assert cooling(hub_db, "oauth-a") == (True, RELOGIN_REASON)

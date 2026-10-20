@@ -57,6 +57,7 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_choice import clear_relogin
 from evo_agents.hub.server.account_oauth import (
     OAUTH_ENV_VAR,
     OAuthTokens,
@@ -417,6 +418,7 @@ async def put_secret(
         await _bind(conn, secret_id, project_ids, worker_ids)
         if oauth is not None:
             await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, value, oauth))
+            await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
         else:  # written whole: a set of OAuth tokens the secret had before does not outlive its value
             await drop_tokens(conn, secret_id)
         target = audit_target(secret_id)

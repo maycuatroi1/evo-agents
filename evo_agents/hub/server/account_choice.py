@@ -24,6 +24,11 @@ until the reset its runtime gave, else for the policy's ``cooldown_seconds``; th
 hand, the policy turns failover off or the run failed over ``max_failovers`` times already, the run takes the next
 ready account by the same tiers and strategy, its run_accounts row moves to it and counts one more failover. With no
 account ready it stays and stops, and the answer says when the first one is ready again.
+
+An OAuth account whose refresh the token endpoint refused (``account_refresh``: the refresh token was revoked or has
+ended) needs a new sign-in: ``mark_relogin`` puts it in a cooldown that lasts ``RELOGIN_SPAN``, with the reason
+``RELOGIN_REASON``, and ``fail_over_relogin`` moves the runs that held it to another account as ``fail_over`` does.
+The member ends the cooldown by running ``evo-agents hub account oauth-login`` again (``clear_relogin``).
 """
 
 from __future__ import annotations
@@ -310,3 +315,49 @@ async def fail_over(
         why = f"no other account for {env_var} is ready"
     cooling = [states[s.id].cooling_until for s in others if not states[s.id].paused and states[s.id].cooling_until]
     return Failover(None, failovers, until, why, min([until, *cooling]))
+
+
+# An OAuth account whose refresh token is dead
+
+
+RELOGIN_REASON = "needs-relogin: the OAuth refresh token was refused; run evo-agents hub account oauth-login again"
+RELOGIN_SPAN = timedelta(days=3650)  # a cooldown only a new sign-in ends
+
+
+async def mark_relogin(conn: AsyncConnection, secret_id: int) -> None:
+    """Account ``secret_id`` needs a new sign-in: no run is given it until the member logs in again."""
+    await _cool(conn, secret_id, datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
+
+
+async def clear_relogin(conn: AsyncConnection, secret_id: int) -> None:
+    """A new sign-in of account ``secret_id`` ends the cooldown ``mark_relogin`` set; a cooldown of a usage limit stays."""
+    a = tables.accounts
+    await conn.execute(
+        update(a)
+        .where(a.c.secret_id == secret_id, a.c.cooldown_reason == RELOGIN_REASON)
+        .values(cooldown_until=None, cooldown_reason=None, updated_at=func.now())
+    )
+
+
+async def fail_over_relogin(conn: AsyncConnection, run: Run, secrets: list[Secret], rejected: set[int]) -> None:
+    """Move run ``run`` off each account in ``rejected`` that it holds, as ``fail_over`` does for a usage limit; its
+    lease of that account is revoked. A run that cannot move (picked by hand, failover off, no other account ready)
+    keeps the account, whose token the lease leaves out once it has ended."""
+    cl = tables.credential_leases
+    for secret in sorted((s for s in secrets if s.id in rejected and s.kind == "env"), key=lambda s: s.name):
+        taken, _, _ = await _taken(conn, run.id, secret.env_var)
+        if taken != secret.id:
+            continue
+        limit = (datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
+        moved = await fail_over(conn, run, secrets, secret.env_var, secret.id, limit)
+        if moved.secret is not None:
+            await conn.execute(
+                update(cl)
+                .where(
+                    cl.c.run_id == run.id,
+                    cl.c.secret_id == secret.id,
+                    cl.c.provider == "secret",
+                    cl.c.revoked_at.is_(None),
+                )
+                .values(revoked_at=func.now())
+            )
