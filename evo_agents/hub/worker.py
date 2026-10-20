@@ -47,6 +47,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.prune_signals``, daily: the signals measured more than EVO_HUB_SIGNAL_DAYS days ago, 400 by default
+  (``evo_agents.hub.signals``).
 - ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came, and of each run that ended, made once and again when its content or the facet's version changed
   (``evo_agents.hub.facet_job``).
@@ -332,6 +334,15 @@ async def prune_transcripts(context: JobContext, timestamp: int | None = None) -
 
     found = hub(context)
     return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="3 5 * * *")
+@queue.task(name=jobs.PRUNE_SIGNALS, pass_context=True, queueing_lock=jobs.PRUNE_SIGNALS)
+async def prune_signals(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.signals import prune_signals as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.config.signal_days)
 
 
 @queue.periodic(cron="41 * * * *")

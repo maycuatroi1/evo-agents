@@ -8257,6 +8257,515 @@
         "schema": "TranscriptUsage"
       }
     },
+    "hub signal ingest create": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--max-level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "max_level",
+          "created_by",
+          "created_at",
+          "last_used_at",
+          "revoked_at",
+          "revoked_by",
+          "token"
+        ],
+        "schema": "SignalIngestKeyIssued"
+      }
+    },
+    "hub signal ingest list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--revoked"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "name",
+          "max_level",
+          "created_by",
+          "created_at",
+          "last_used_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "SignalIngestKey"
+      }
+    },
+    "hub signal ingest revoke": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "max_level",
+          "created_by",
+          "created_at",
+          "last_used_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "SignalIngestKey"
+      }
+    },
+    "hub signal keys add": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "KEY",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "number",
+            "feedback"
+          ]
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "kind",
+          "unit",
+          "description",
+          "source",
+          "level",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SignalKey"
+      }
+    },
+    "hub signal keys archive": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "KEY",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "kind",
+          "unit",
+          "description",
+          "source",
+          "level",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SignalKey"
+      }
+    },
+    "hub signal keys list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--archived"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "kind",
+          "unit",
+          "description",
+          "source",
+          "level",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SignalKey"
+      }
+    },
+    "hub signal list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--key"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--until"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tenant"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "key",
+          "kind",
+          "value",
+          "text",
+          "source",
+          "measured_at",
+          "tenant",
+          "synthetic",
+          "external_id",
+          "label",
+          "via",
+          "ingest_key",
+          "login",
+          "run_id",
+          "batch_id",
+          "received_at"
+        ],
+        "schema": "Signal"
+      }
+    },
+    "hub signal push": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--key"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--value"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tenant"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--synthetic"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--external-id"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "batch_id",
+          "accepted",
+          "duplicates",
+          "rejected"
+        ],
+        "schema": "SignalBatchResult"
+      }
+    },
     "hub skills list": {
       "positionals": [],
       "options": [
@@ -29065,6 +29574,866 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/PlaybookEntry"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/signals/{project}": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Push Signals",
+          "description": "Store a batch of signals of the project, sent with one of its ingest keys or by a writer: each item checked on\nits own, the refused ones answered with why.",
+          "operationId": "push_signals_v1_signals__project__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalBatchIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalBatchResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signals": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Signals",
+          "description": "The project's signals the member may read, newest first.",
+          "operationId": "list_signals_v1_projects__project__signals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "key",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one key; all when left out",
+                "title": "Key"
+              },
+              "description": "one key; all when left out"
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "measured at or after",
+                "title": "Since"
+              },
+              "description": "measured at or after"
+            },
+            {
+              "name": "until",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "measured before",
+                "title": "Until"
+              },
+              "description": "measured before"
+            },
+            {
+              "name": "tenant",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tenant"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 100,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Signal"
+                    },
+                    "title": "Response List Signals V1 Projects  Project  Signals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-keys": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Keys",
+          "description": "The keys of the project's registry, by name.",
+          "operationId": "list_keys_v1_projects__project__signal_keys_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "archived",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "archived keys too",
+                "default": false,
+                "title": "Archived"
+              },
+              "description": "archived keys too"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SignalKey"
+                    },
+                    "title": "Response List Keys V1 Projects  Project  Signal Keys Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Add Key",
+          "description": "Add a key to the project's registry: from now on the hub takes signals of it.",
+          "operationId": "add_key_v1_projects__project__signal_keys_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalKeyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalKey"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-keys/{name}/archive": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Archive Key",
+          "description": "Archive a key: it takes no new signal, and its signals stay. Archiving it again changes nothing.",
+          "operationId": "archive_key_v1_projects__project__signal_keys__name__archive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
+                "description": "the key, as kb.search.hits",
+                "title": "Name"
+              },
+              "description": "the key, as kb.search.hits"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalKey"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-ingest-keys": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Ingest Keys",
+          "description": "The project's ingest keys, oldest first; never a token.",
+          "operationId": "list_ingest_keys_v1_projects__project__signal_ingest_keys_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "revoked",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "revoked keys too",
+                "default": false,
+                "title": "Revoked"
+              },
+              "description": "revoked keys too"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SignalIngestKey"
+                    },
+                    "title": "Response List Ingest Keys V1 Projects  Project  Signal Ingest Keys Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Create Ingest Key",
+          "description": "A new ingest key for a service; its token is in this answer and nowhere else.",
+          "operationId": "create_ingest_key_v1_projects__project__signal_ingest_keys_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalIngestKeyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalIngestKeyIssued"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-ingest-keys/{key_id}/revoke": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Revoke Ingest Key",
+          "description": "Revoke an ingest key: the next batch sent with it gets 401. Revoking it again changes nothing.",
+          "operationId": "revoke_ingest_key_v1_projects__project__signal_ingest_keys__key_id__revoke_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "key_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Key Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalIngestKey"
                   }
                 }
               }
@@ -68387,6 +69756,680 @@
             "path"
           ],
           "title": "Sign"
+        },
+        "Signal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "number",
+                "feedback"
+              ],
+              "title": "Kind"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value"
+            },
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Text"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "measured_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Measured At"
+            },
+            "tenant": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            },
+            "synthetic": {
+              "type": "boolean",
+              "title": "Synthetic"
+            },
+            "external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Id"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "ingest",
+                "member",
+                "run"
+              ],
+              "title": "Via",
+              "description": "who pushed it: an ingest key, a member, a run"
+            },
+            "ingest_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ingest Key",
+              "description": "the ingest key's name, when one pushed it"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the member who pushed it, or for whom a run did"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "batch_id": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Batch Id"
+            },
+            "received_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Received At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "key",
+            "kind",
+            "value",
+            "text",
+            "source",
+            "measured_at",
+            "tenant",
+            "synthetic",
+            "external_id",
+            "label",
+            "via",
+            "ingest_key",
+            "login",
+            "run_id",
+            "batch_id",
+            "received_at"
+          ],
+          "title": "Signal"
+        },
+        "SignalBatchIn": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/SignalIn"
+              },
+              "type": "array",
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "title": "SignalBatchIn"
+        },
+        "SignalBatchResult": {
+          "properties": {
+            "batch_id": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Batch Id"
+            },
+            "accepted": {
+              "type": "integer",
+              "title": "Accepted",
+              "description": "signals stored"
+            },
+            "duplicates": {
+              "type": "integer",
+              "title": "Duplicates",
+              "description": "items whose external_id this key or member had sent before"
+            },
+            "rejected": {
+              "items": {
+                "$ref": "#/components/schemas/SignalRejection"
+              },
+              "type": "array",
+              "title": "Rejected"
+            }
+          },
+          "type": "object",
+          "required": [
+            "batch_id",
+            "accepted",
+            "duplicates",
+            "rejected"
+          ],
+          "title": "SignalBatchResult"
+        },
+        "SignalIn": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Key",
+              "description": "a key of the project's registry"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "the number, for a key of kind number"
+            },
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Text",
+              "description": "the feedback, for a key of kind feedback: at most 4 KiB in UTF-8"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "who measured it; the key's source when left out"
+            },
+            "measured_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured At",
+              "description": "when it was measured; now when left out"
+            },
+            "tenant": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant",
+              "description": "who it is about, such as a customer; free text"
+            },
+            "synthetic": {
+              "type": "boolean",
+              "title": "Synthetic",
+              "description": "it comes from simulated people, not real ones",
+              "default": false
+            },
+            "external_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Id",
+              "description": "the sender's id of it: sent again with the same key, it is stored once"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level",
+              "description": "its sensitivity, a level of the project's ladder; the key's, else the project's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "title": "SignalIn"
+        },
+        "SignalIngestKey": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "max_level": {
+              "type": "string",
+              "title": "Max Level"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "revoked_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "max_level",
+            "created_by",
+            "created_at",
+            "last_used_at",
+            "revoked_at",
+            "revoked_by"
+          ],
+          "title": "SignalIngestKey"
+        },
+        "SignalIngestKeyIn": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+              "title": "Name",
+              "description": "the service it is for, unique among live keys"
+            },
+            "max_level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Level",
+              "description": "the highest level it writes; the project's default level when left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "SignalIngestKeyIn"
+        },
+        "SignalIngestKeyIssued": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "max_level": {
+              "type": "string",
+              "title": "Max Level"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "revoked_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked By"
+            },
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "evi_...: shown this once, the hub keeps only its SHA-256"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "max_level",
+            "created_by",
+            "created_at",
+            "last_used_at",
+            "revoked_at",
+            "revoked_by",
+            "token"
+          ],
+          "title": "SignalIngestKeyIssued"
+        },
+        "SignalKey": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "number",
+                "feedback"
+              ],
+              "title": "Kind"
+            },
+            "unit": {
+              "type": "string",
+              "title": "Unit"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "kind",
+            "unit",
+            "description",
+            "source",
+            "level",
+            "created_by",
+            "created_at",
+            "archived_at"
+          ],
+          "title": "SignalKey"
+        },
+        "SignalKeyIn": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
+              "title": "Name",
+              "description": "two to six dotted parts"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "number",
+                "feedback"
+              ],
+              "title": "Kind"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 50,
+              "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+              "title": "Unit",
+              "default": ""
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Description",
+              "default": ""
+            },
+            "source": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+              "title": "Source",
+              "default": ""
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level",
+              "description": "the level its signals get when they name none; the project's default level when left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "kind"
+          ],
+          "title": "SignalKeyIn"
+        },
+        "SignalRejection": {
+          "properties": {
+            "index": {
+              "type": "integer",
+              "title": "Index",
+              "description": "the item's place in the batch, 0 first"
+            },
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Id"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "index",
+            "key",
+            "external_id",
+            "reason"
+          ],
+          "title": "SignalRejection"
         },
         "SignedIn": {
           "properties": {

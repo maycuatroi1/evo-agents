@@ -22,6 +22,11 @@ with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the ses
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
 Every comparison of a secret value is constant-time.
 
+An ingest key of a project's signals, ``evi_...`` (``evo_agents.hub.signals``), arrives as ``Authorization: Bearer``
+and passes only to the one route it writes through, ``POST /v1/signals/{project}`` (INGEST_ROUTE), which checks the key
+itself; anywhere else it gets 403 before the database is asked, the routes that read signals included. That route also
+takes a member's machine token or web session, checked here as anywhere.
+
 A worker token arrives as ``Authorization: Bearer`` too, and works only under WORKER_PREFIX, the routes of the
 worker daemon, where machine tokens and web sessions get 403: neither side can stand in for the other, and the
 check happens before the database is asked. Every request under WORKER_PREFIX, the public /v1/worker/join included,
@@ -105,6 +110,8 @@ SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/worker/runs/[^/]+/terminal"),  # the worker's end: its evw_ token and the protocol header
 )
 WEBSOCKET_REFUSED = 4403  # the close code of a websocket under /v1 that no route checks a credential of
+INGEST_PREFIX = "evi_"  # an ingest key of a project's signals (evo_agents.hub.signals)
+INGEST_ROUTE = re.compile(r"/v1/signals/[^/]+")  # where an ingest key writes, with POST, and nowhere else
 LOGIN_HINT = "run `evo-agents hub login`"
 JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
@@ -363,6 +370,8 @@ class Authenticate:
             if scheme.lower() != "bearer" or not token.strip():
                 return unauthorized(request, f"the Authorization header must be `Bearer <token>`: {hint}")
             token = token.strip()
+            if token.startswith(INGEST_PREFIX):
+                return self._ingest_refusal(request, token, worker_route)
             kind = WORKER if token.startswith(PREFIXES[WORKER]) else MACHINE
         else:
             token = request.cookies.get(SESSION_COOKIE)
@@ -391,6 +400,17 @@ class Authenticate:
             what = {MACHINE: "token", WEB: "web session", WORKER: "worker token"}[kind]
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
+        return None
+
+    @staticmethod
+    def _ingest_refusal(request: Request, token: str, worker_route: bool) -> Response | None:
+        # An ingest key writes signals and does nothing else: decided by the path and the method alone, before the
+        # database. The route it may reach checks the key, its project and its rate (evo_agents.hub.signals).
+        if worker_route or request.method != "POST" or not INGEST_ROUTE.fullmatch(request.url.path):
+            return error_response(
+                request, 403, "an ingest key (evi_...) only writes signals, with POST /v1/signals/{project}"
+            )
+        request.state.ingest_token = token
         return None
 
     @staticmethod
