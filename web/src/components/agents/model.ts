@@ -1,5 +1,5 @@
 import { type Agent, type AgentCreate, type AgentEdit, type AgentPermissions, AXES, type Axis, axisRule } from "@/lib/agents";
-import { AVATAR_MAX_BYTES, AVATAR_TYPES, COLOR, HANDLE, MAX_ALLOW, MAX_DESCRIPTION_CHARS, MAX_HANDLE_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS, MAX_PACKS, normalizedItem, validItem } from "@/lib/agent-rules";
+import { COLOR, HANDLE, MAX_ALLOW, MAX_DESCRIPTION_CHARS, MAX_HANDLE_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS, MAX_PACKS, normalizedItem, validItem } from "@/lib/agent-rules";
 
 /**
  * The agent form's state and the checks it repeats from the API (`agent_profiles.AgentCreate` and `AgentEdit`), so
@@ -175,24 +175,6 @@ export function editBody(draft: AgentDraft, agent: Agent): AgentEdit | null {
     if (!samePacks(draft.packs, before.packs)) body.packs = draft.packs.map((pin) => ({ ...pin }));
   }
   return Object.keys(body).length ? { ...body, if_version: agent.version } : null;
-}
-
-/** Why an image cannot be an avatar before it is sent: its type, or its size. */
-export function avatarProblem(file: Pick<File, "type" | "size">): "type" | "size" | null {
-  if (!(AVATAR_TYPES as readonly string[]).includes(file.type)) return "type";
-  if (file.size > AVATAR_MAX_BYTES) return "size";
-  return null;
-}
-
-/** The bytes of `file` in base64, as PUT .../avatar takes them. */
-export async function fileBase64(file: Blob): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let start = 0; start < bytes.length; start += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(start, start + CHUNK));
-  }
-  return btoa(binary);
 }
 
 /** What a version changed against the one before it, by the snapshot the hub keeps of each (`AgentVersion.body`). */

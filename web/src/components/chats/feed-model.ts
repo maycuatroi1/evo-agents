@@ -1,4 +1,4 @@
-import type { ChatAuthor, ChatEvent, ChatPage, ChatProgress, ChatReaction, GroupMessage } from "@/lib/chats";
+import type { ChatAuthor, ChatEvent, ChatImageChange, ChatPage, ChatProgress, ChatReaction, GroupMessage } from "@/lib/chats";
 
 /**
  * A chat's messages as the page holds them: what the first page, older pages and threads read, kept current by the
@@ -138,13 +138,14 @@ export function withProgress(feed: Feed, progress: readonly ChatProgress[]): Fee
   return entries ? { ...feed, entries } : feed;
 }
 
-/** What applying events changed beyond the messages: whether a member was added or removed. */
-export type Applied = { feed: Feed; members: boolean };
+/** What applying events changed beyond the messages: whether a member was added or removed, and the chat's image now. */
+export type Applied = { feed: Feed; members: boolean; image: ChatImageChange | null };
 
 /** `feed` with the chat's events after its last one; an event at or before it is a repeat and changes nothing. */
 export function applyEvents(feed: Feed, events: readonly ChatEvent[], me: string | null): Applied {
   let next = feed;
   let members = false;
+  let image: ChatImageChange | null = null;
   for (const event of events) {
     if (event.seq <= next.lastSeq) continue;
     next = { ...next, lastSeq: event.seq };
@@ -159,9 +160,11 @@ export function applyEvents(feed: Feed, events: readonly ChatEvent[], me: string
       next = { ...next, entries };
     } else if (event.kind === "member_added" || event.kind === "member_removed") {
       members = true;
+    } else if (event.kind === "image_changed" && event.image) {
+      image = event.image; // the latest of the batch is the image now
     }
   }
-  return { feed: next, members };
+  return { feed: next, members, image };
 }
 
 const bySeq = (a: GroupMessage, b: GroupMessage) => a.seq - b.seq;

@@ -14,12 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type Agent, AXES } from "@/lib/agents";
 import { MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS } from "@/lib/agent-rules";
+import { fileBase64 } from "@/lib/avatars";
 import { browserApi } from "@/lib/api/browser";
 
 import { AxisField } from "./axis-field";
 import { AvatarPicker, ColourField, Field } from "./form-parts";
 import { useAgentFailure, useAvatarWrite, useCreateAgent, useEditAgent } from "./hooks";
-import { type AgentDraft, createBody, draftOf, draftProblems, editBody, emptyDraft, fileBase64, type FieldProblem, hasProblems } from "./model";
+import { type AgentDraft, createBody, draftOf, draftProblems, editBody, emptyDraft, type FieldProblem, hasProblems } from "./model";
 import { agentOptionsQuery, agentPacksQuery } from "./options";
 import { PacksField } from "./packs-field";
 

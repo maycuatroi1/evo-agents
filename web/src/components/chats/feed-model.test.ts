@@ -106,6 +106,27 @@ describe("a chat's feed", () => {
     expect(feed.entries.get(1)?.message.reactions).toEqual([{ emoji: "\u{1F389}", count: 2, mine: true, people: ["octo", "mai"], agents: [] }]);
   });
 
+  it("says the chat's image a batch of events leaves, the latest one, and none for a batch without an image event", () => {
+    const start = feedOf(page([message(1, 1)], 1));
+    const changed = applyEvents(
+      start,
+      [
+        event(2, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=aaaa", by: "mai" } }),
+        event(3, { kind: "image_changed", image: { image_url: null, by: "octo" } }),
+        event(4, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=bbbb", by: "mai" } }),
+      ],
+      "octo",
+    );
+    expect(changed.image).toEqual({ image_url: "/v1/chats/1/image?v=bbbb", by: "mai" });
+    expect([changed.members, changed.feed.lastSeq]).toEqual([false, 4]);
+    expect(changed.feed.entries).toBe(start.entries);
+    const removed = applyEvents(changed.feed, [event(5, { kind: "image_changed", image: { image_url: null, by: "octo" } })], "octo");
+    expect(removed.image).toEqual({ image_url: null, by: "octo" });
+    // A repeat of an event already applied changes nothing, the image included.
+    expect(applyEvents(removed.feed, [event(4, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=bbbb", by: "mai" } })], "octo").image).toBeNull();
+    expect(applyEvents(start, [event(2, { message: message(2, 2) })], "octo").image).toBeNull();
+  });
+
   it("keeps a reaction's others when the visitor takes theirs off, and its count from the event", () => {
     const reactions = [{ emoji: "\u{1F44D}", count: 2, mine: true, people: ["octo", "mai"], agents: [] }];
     expect(reacted(reactions, { emoji: "\u{1F44D}", by: OCTO, count: 1 }, false, "octo")).toEqual([

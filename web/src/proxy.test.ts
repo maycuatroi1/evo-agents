@@ -43,6 +43,8 @@ describe("proxy", () => {
     expect(first.headers.get("x-middleware-request-content-security-policy")).toBe(csp);
     expect(second.headers.get("content-security-policy")).not.toBe(csp);
     expect(first.headers.get("strict-transport-security")).toMatch(/^max-age=/);
+    // Images: the web's own, and the GitHub avatars of a chat's people, nothing else.
+    expect(/(?:^|; )img-src ([^;]*)/.exec(csp)?.[1]).toBe("'self' data: blob: https://avatars.githubusercontent.com");
   });
 
   it("asks for https upgrades only behind https", () => {
