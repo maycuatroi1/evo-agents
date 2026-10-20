@@ -14,15 +14,21 @@ above a definition (``kg.build.search_texts``). A body longer than ``MAX_TEXT_CH
 counts the cut texts in its coverage (``search.cut``), so nothing is lost without a trace. URIs are not indexed: every
 one of them shares its host and repo words.
 
-A query is read three ways, each filling what the one before left: every word as a whole word (AND), every word as a
-prefix (AND), then any word (OR), each ranked by BM25 times a light prior by kind (PRIOR). Words that only ask
-(``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words. ``kg_search`` then follows each
-step, section or document it found to what it mentions (``with_mentions``).
+A query is read three ways, each read while the ones before found fewer nodes than asked: every word as a whole word
+(AND), every word as a prefix (AND), then any word (OR). A node scores BM25 times a light prior by kind (PRIOR) times
+the weight of the way (STAGE_WEIGHTS), at its best way, and the nodes of all ways are ranked together: a node holding
+every word comes first at a like score, not whatever its score, since a long page or reply that holds every word once
+is often not what a question asks about. Words that only ask
+(``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words. The any-word query also
+leaves out a word the index cannot tell from one of them once it folds accents: "án" of "Phương án" would match every
+English "an". ``kg_search`` then follows each step, section or document it found to what it mentions
+(``with_mentions``).
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Callable, Iterable, Iterator
 
 MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the build's coverage
@@ -40,25 +46,41 @@ PRIOR = {
     "Section": 0.7,
     "Requirement": 0.7,
     "Chat": 0.5,  # a group chat of the hub, named by its title
-    "ChatMessage": 0.5,  # a message says what was said about the work, as a commit does
-    "ChatThread": 0.3,  # each thread of a chat is named by the chat's title: they would all match it
+    # A message is often the only record of what was decided there, and only a reader in its chat finds it: at half,
+    # any symbol or section sharing a word or two with a question about it came first.
+    "ChatMessage": 1.0,
+    "ChatThread": 0.9,  # named by its chat's title, which every thread of the chat shares: after a message as good
 }
 RERANK_POOL = 300
+STAGE_WEIGHTS = (2.0, 1.5, 1.0)  # a match of all words whole, of all words as prefixes, of any word
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")
-_STOP = (
+_STOP_EN = (
     "a an and are as at be been by can could do does did for from has have how i in into is it its of on or our "
-    "should that the their there these this those to was we were what when where which who why will with would you "
+    "should that the their there these this those to was we were what when where which who why will with would you"
+)
+_STOP_VI = (
     "của cho các những một trong được không với khi này thì để từ theo nào bằng lên vào và là có ở ra đã sẽ đang "
     "cũng mà nên gì đâu sao thế"
 )
-STOP_WORDS = frozenset(_STOP.translate(_FOLD).split())
+STOP_WORDS = frozenset(f"{_STOP_EN} {_STOP_VI}".translate(_FOLD).split())
 
 
 def fold(text: str) -> str:
     """``text`` with đ read as d; the tokenizer folds every other accent itself."""
     return text.translate(_FOLD)
+
+
+def bare(word: str) -> str:
+    """``word`` as the tokenizer indexes it: lower case, folded, without accents ("Án" reads "an")."""
+    decomposed = unicodedata.normalize("NFD", fold(word).lower())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+# The stop words as the index holds them, accents folded: a query word that reads as one there ("án" is "an",
+# "cua" is "của") matches every one of them, so the any-word query leaves it out; the all-words ones keep it.
+BARE_STOP_WORDS = frozenset(bare(word) for word in STOP_WORDS)
 
 
 def camel_parts(word: str) -> list[str]:
@@ -115,14 +137,23 @@ def _word_match(word: str, prefix: bool) -> str:
 
 def fts_queries(words: list[str]) -> Iterator[str]:
     """The FTS5 queries of ``words``, strictest first: all words whole, all words as prefixes, then any word or
-    camelCase part of two letters or more."""
+    camelCase part of two letters or more that the index does not read as a stop word (BARE_STOP_WORDS)."""
     if not words:
         return
     yield " AND ".join(_word_match(w, False) for w in words)
     yield " AND ".join(_word_match(w, True) for w in words)
-    loose = dict.fromkeys(t for w in words for t in [w.lower(), *camel_parts(w)] if len(t) >= 2 or t.isdigit())
+    terms = (t for w in words for t in [w.lower(), *camel_parts(w)] if len(t) >= 2 or t.isdigit())
+    loose = dict.fromkeys(t for t in terms if bare(t) not in BARE_STOP_WORDS)
     if len(loose) > 1 or (loose and len(words) > 1):
         yield " OR ".join(_quote(t) for t in loose)
+
+
+_PHRASE = re.compile(r'"(?:[^"]|"")*"\*?')
+
+
+def phrases(fts_query: str) -> list[str]:
+    """The phrases of an FTS5 query of ``fts_queries``, once each: the quoted words, a prefix's star kept."""
+    return list(dict.fromkeys(_PHRASE.findall(fts_query)))
 
 
 # -- what a hit mentions -----------------------------------------------------------------------------------------
