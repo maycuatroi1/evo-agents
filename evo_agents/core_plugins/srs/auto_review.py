@@ -6,6 +6,8 @@ When a version of a document goes to review for the first time (its first round,
 (``task_dispatch.hand_own_task``): read the version, check it against the template, find where its use cases
 contradict each other, the glossary or the non-functional requirements, and write each finding as a comment on its
 item with ``srs__comment``. The comments are advice: approving the version waits for nobody's comment and reads none.
+The run is kept as the review of the version's round (srs_versions.review_run_id): approving the version waits until
+it ends (``findings.approval_hold``).
 
 A version sent back and submitted again is the same content, so it is not reviewed again. When the type is not
 enabled, is turned off, its run_as no longer holds writer, or its runs spent the type's cap of the last 24 hours, the
@@ -16,10 +18,12 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.srs import BA
 from evo_agents.core_plugins.srs.store import PLUGIN, DocumentRow, VersionRow
+from evo_agents.hub import tables
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.task_dispatch import hand_own_task
 
@@ -72,6 +76,8 @@ async def review_entered(conn: AsyncConnection, access: ProjectAccess, doc: Docu
     if run_id is None:
         log.info("no review by @ba", extra={"project": access.name, "document": doc.slug, "why": why})
         return None
+    v = tables.srs.versions
+    await conn.execute(update(v).where(v.c.id == version.id).values(review_run_id=run_id))
     log.info("review by @ba queued", extra={"project": access.name, "document": doc.slug, "run_id": run_id})
     return run_id
 

@@ -163,7 +163,9 @@ class CoreContext:
     """What a core plugin's Python gets beside the params: the plugin, the hub's engine (for its own tables) and
     config, the project the call is for (None for a job, which names its projects in the params), and for a tool the
     agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller). A tool also gets the sink of
-    the caller's session on /mcp (``X-Evo-Sink``), which its reads go through, and the hub's job queue."""
+    the caller's session on /mcp (``X-Evo-Sink``), which its reads go through, the hub's job queue, and
+    ``graph_refs(ids, paths)``, which awaits which of some node ids and paths the project's knowledge graph on the hub
+    lacks as the caller reads it through that sink (``evo_agents.hub.server.kg.unknown_refs``; None elsewhere)."""
 
     plugin: str
     engine: AsyncEngine | None
@@ -173,6 +175,7 @@ class CoreContext:
     run_id: int | None = None
     sink: str | None = None
     jobs: object | None = None
+    graph_refs: object | None = None
 
 
 # Plugins in projects

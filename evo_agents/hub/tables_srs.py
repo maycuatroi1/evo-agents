@@ -1,4 +1,4 @@
-"""The tables of the core plugin srs (0046, 0064), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.srs``:
+"""The tables of the core plugin srs (0046, 0064, 0066), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.srs``:
 queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
@@ -6,7 +6,8 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
   title, the version approved last, and the label every row of the document carries (the project's by default).
 - srs_versions: each save of a document, never changed after: its number (1 and up within the document), the number
   it was built on, its state (draft, in_review, approved, superseded, withdrawn), the review round, its author, the run
-  that drafted it when an agent did, its summary, the text before the first heading and the SHA-256 of its content.
+  that drafted it when an agent did, its summary, the text before the first heading and the SHA-256 of its content,
+  and the task run of @ba's review of its current round, when one was handed (0066).
 - srs_texts: the Markdown bodies, kept once by SHA-256, so a version that leaves an item as it was adds no text.
 - srs_items: an item's identity across versions: its key (the hub's, fixed), its kind, its code (null for a plain
   section), the version it appeared in and the one it was dropped in.
@@ -16,6 +17,10 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_refs: links between the items of a version (uses_screen, refines, relates).
 - srs_reviews: an approval or a request for changes of a version in a review round, with the role it counts for.
 - srs_comments: threads of comments on a document, a version or an item.
+- srs_findings (0066): each conflict @ba found in a document, with the version it was found on, the item it is about
+  (null for the whole document), its kind and level, the sources that show it (at least one), a summary, its status
+  (open, resolved, waived) and how it was settled: the resolution, who settled it (null when settled from the graph),
+  when, the sources that settled it and the link of the chat message; the run that wrote it, and the document's label.
 """
 
 from __future__ import annotations
@@ -64,6 +69,15 @@ MAX_SUMMARY_CHARS = 500  # of a version
 MAX_CODE_CHARS = 100
 MAX_REVIEW_CHARS = 10_000
 MAX_COMMENT_CHARS = 20_000
+FINDING_KINDS = ("duplicate", "contradiction", "kg_conflict", "overlap")  # srs_findings.kind
+FINDING_LEVELS = ("info", "advisory", "decide")  # srs_findings.level; an open decide finding holds approval
+FINDING_STATUSES = ("open", "resolved", "waived")  # srs_findings.status
+SOURCE_KINDS = ("node", "code", "path", "version")  # of a source; a version only settles a finding
+MAX_SOURCES = 20  # of a finding, and of what settled it
+MAX_SOURCE_CHARS = 300  # of a source's ref
+MAX_FINDING_SUMMARY_CHARS = 2_000
+MAX_RESOLUTION_CHARS = 10_000
+MAX_CHAT_LINK_CHARS = 500
 
 
 # The node of the knowledge graph each kind of coded item is: the plugin srs declares them, the plugin tasks links
@@ -98,6 +112,7 @@ class SrsTables:
     refs: Table
     reviews: Table
     comments: Table
+    findings: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
@@ -156,12 +171,15 @@ def _versions(metadata: MetaData) -> Table:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("submitted_at", DateTime(timezone=True)),
         Column("decided_at", DateTime(timezone=True)),
+        Column("review_run_id", BigInteger),
         _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
         _key(name, "author_id", "users", ondelete="RESTRICT"),
         _key(name, "drafted_by_run", "runs", ondelete="SET NULL"),
         _key(name, "preamble_sha256", "srs_texts", ondelete="RESTRICT", field="sha256"),
+        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_versions_pkey"),
         UniqueConstraint("document_id", "number", name="srs_versions_number_key"),
+        Index("srs_versions_review_run_idx", "review_run_id"),
     )
 
 
@@ -290,6 +308,38 @@ def _comments(metadata: MetaData) -> Table:
     )
 
 
+def _findings(metadata: MetaData) -> Table:
+    name = "srs_findings"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("document_id", BigInteger, nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("item_id", BigInteger),
+        Column("kind", Text, nullable=False),
+        Column("level", Text, nullable=False),
+        Column("sources", JSONB, nullable=False),
+        Column("summary", Text, nullable=False),
+        Column("status", Text, nullable=False, server_default="open"),
+        Column("resolution", Text),
+        Column("resolution_sources", JSONB, nullable=False, server_default="[]"),
+        Column("settled_by", BigInteger),
+        Column("settled_at", DateTime(timezone=True)),
+        Column("chat_link", Text),
+        Column("run_id", BigInteger),
+        Column("label", JSONB, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
+        _key(name, "settled_by", "users", ondelete="RESTRICT"),
+        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="srs_findings_pkey"),
+        Index("srs_findings_document_idx", "document_id", "id"),
+    )
+
+
 def srs_tables(metadata: MetaData) -> SrsTables:
     """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users and runs already)."""
     return SrsTables(
@@ -302,4 +352,5 @@ def srs_tables(metadata: MetaData) -> SrsTables:
         refs=_refs(metadata),
         reviews=_reviews(metadata),
         comments=_comments(metadata),
+        findings=_findings(metadata),
     )

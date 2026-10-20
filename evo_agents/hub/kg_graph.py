@@ -24,6 +24,11 @@ it says only how many of them the caller sees; and it leaves out what the build 
 issues and errors of its coverage, its size and its audiences. The web's graph pages count the same way
 (``evo_agents.hub.kg_web``).
 
+``unknown`` looks node ids and paths up in the same graph, as a session of the caller reads it, for a check that only
+needs to know which of them it lacks: the sources of a finding of the core plugin srs
+(``evo_agents.hub.server.kg.unknown_refs``). An id names a node as kg_node finds it; a path, ``repo:path`` or a path
+alone, names one when a visible File or Document node carries exactly that path.
+
 The api runs one process: the in-use counts and the fetch locks are per process.
 """
 
@@ -307,6 +312,23 @@ class HubSession(Session):
         }
         return "\n".join(lines), status
 
+    def unknown(self, ids: list[str], paths: list[str]) -> tuple[list[str], list[str]]:
+        """Of node ``ids`` and ``paths``, those no node visible to the session has (see the module); ToolError when
+        nothing of the project is visible to it, or the graph holds no ready build."""
+        if self.error:
+            raise ToolError(self.error)
+        store, b = self._store()
+        lacking = [node_id for node_id in ids if self._lookup(store, node_id, b) is None]
+        files = [found for found in store.path_nodes(b) if self.visible(found["label"])] if paths else []
+        held = {(found["props"].get("repo"), found["props"]["path"]) for found in files}
+        bare = {path for _, path in held}
+        missing = []
+        for path in paths:
+            repo, sep, rest = path.partition(":")
+            if not ((sep and rest and (repo, rest) in held) or path in bare):
+                missing.append(path)
+        return lacking, missing
+
 
 class Handles:
     """The kg_more handles of every user and project, shared by the calls of this process."""
@@ -364,3 +386,41 @@ def answer(
             opened.close()
     finally:
         cache.release(path)
+
+
+@dataclass(frozen=True)
+class UnknownRefs:
+    """Of the node ids and paths looked up in a project's graph, those it lacks; ``why`` when they could not be looked
+    up at all (no graph, none readable now, nothing of the project visible), and then each counts as lacking."""
+
+    ids: tuple[str, ...]
+    paths: tuple[str, ...]
+    why: str | None = None
+
+
+def unknown(
+    cache: GraphCache,
+    store: BlobStore | None,
+    project: str,
+    policy: Policy,
+    ceiling: Label | None,
+    sink: str,
+    graphs: list[BuiltGraph],
+    ids: list[str],
+    paths: list[str],
+) -> UnknownRefs:
+    """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
+    under ``ceiling``. Blocking, as ``answer``. Raises GraphUnavailable, ArtifactMismatch."""
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
+            lacking, missing = session.unknown(ids, paths)
+        except ToolError as exc:
+            return UnknownRefs(tuple(ids), tuple(paths), str(exc))
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
+    return UnknownRefs(tuple(lacking), tuple(missing))

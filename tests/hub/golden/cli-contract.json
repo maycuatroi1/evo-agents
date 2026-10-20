@@ -7851,6 +7851,70 @@
       ],
       "json": null
     },
+    "hub srs findings": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "resolved",
+            "waived"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "kind",
+          "level",
+          "sources",
+          "summary",
+          "status",
+          "resolution",
+          "resolution_sources",
+          "settled_by",
+          "settled_at",
+          "chat_link",
+          "run_id",
+          "created_at"
+        ],
+        "schema": "SrsFinding"
+      }
+    },
     "hub srs import": {
       "positionals": [
         {
@@ -8235,6 +8299,72 @@
           "archived_at"
         ],
         "schema": "SrsDocumentSummary"
+      }
+    },
+    "hub srs waive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "finding",
+          "metavar": "FINDING",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "kind",
+          "level",
+          "sources",
+          "summary",
+          "status",
+          "resolution",
+          "resolution_sources",
+          "settled_by",
+          "settled_at",
+          "chat_link",
+          "run_id",
+          "created_at"
+        ],
+        "schema": "SrsFinding"
       }
     },
     "hub srs withdraw": {
@@ -30338,7 +30468,7 @@
             "plugins"
           ],
           "summary": "Review Version",
-          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does.",
+          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running.",
           "operationId": "review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post",
           "parameters": [
             {
@@ -31174,6 +31304,293 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/findings": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Findings",
+          "description": "The conflicts @ba found in a document, oldest first, each with its sources and how it was settled.",
+          "operationId": "list_findings_v1_x_srs__project__documents__slug__findings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "resolved",
+                      "waived"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the findings in this status",
+                "title": "Status"
+              },
+              "description": "only the findings in this status"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsFinding"
+                    },
+                    "title": "Response List Findings V1 X Srs  Project  Documents  Slug  Findings Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Waive Finding",
+          "description": "Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and\n``reason`` is kept as its resolution. 409 when it is not open, or the document is archived.",
+          "operationId": "waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "finding_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Finding Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsWaiveIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsFinding"
                   }
                 }
               }
@@ -64738,6 +65155,213 @@
           ],
           "title": "SrsExport"
         },
+        "SrsFinding": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version it was found on"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item",
+              "description": "the key of the item it is about; null for the whole document"
+            },
+            "item_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Code"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "duplicate",
+                "contradiction",
+                "kg_conflict",
+                "overlap"
+              ],
+              "title": "Kind"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "info",
+                "advisory",
+                "decide"
+              ],
+              "title": "Level",
+              "description": "an open finding of level decide holds approval"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/SrsFindingSource"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "what shows the conflict, at least one"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "resolved",
+                "waived"
+              ],
+              "title": "Status"
+            },
+            "resolution": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolution",
+              "description": "how it was settled, or why it was waived"
+            },
+            "resolution_sources": {
+              "items": {
+                "$ref": "#/components/schemas/SrsFindingSource"
+              },
+              "type": "array",
+              "title": "Resolution Sources",
+              "description": "what settled it, when settled from the graph"
+            },
+            "settled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Settled By",
+              "description": "the member who settled it; null when settled from the graph"
+            },
+            "settled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Settled At"
+            },
+            "chat_link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Link",
+              "description": "the link of the chat message that settled it"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of @ba that recorded it"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "version",
+            "item",
+            "item_code",
+            "kind",
+            "level",
+            "sources",
+            "summary",
+            "status",
+            "resolution",
+            "resolution_sources",
+            "settled_by",
+            "settled_at",
+            "chat_link",
+            "run_id",
+            "created_at"
+          ],
+          "title": "SrsFinding",
+          "description": "A conflict found in a document, with the sources that show it and, once settled, how."
+        },
+        "SrsFindingSource": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "node",
+                "code",
+                "path",
+                "version"
+              ],
+              "title": "Kind",
+              "description": "node: an id of the project's knowledge graph; code: a code an item of the project holds; path: repo:path, or a path, a file or document node carries; version: a later version of the document"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "title": "SrsFindingSource"
+        },
         "SrsImport": {
           "properties": {
             "markdown": {
@@ -65958,6 +66582,23 @@
           ],
           "title": "SrsVersionDetail",
           "description": "A version with its content and what is wrong with it."
+        },
+        "SrsWaiveIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 10000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, kept as its resolution"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "SrsWaiveIn"
         },
         "SrsWithdrawIn": {
           "properties": {
