@@ -827,7 +827,7 @@ const PAGES: Entry[] = [
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
       await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
-      await dialog.getByTestId("dispatch-runtime-info").click();
+      await dialog.getByTestId("dispatch-runtime-info").hover();
       await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
       await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
