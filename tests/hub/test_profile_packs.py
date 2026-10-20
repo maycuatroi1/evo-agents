@@ -283,8 +283,8 @@ def test_profile_pack_a_run_whose_pack_the_hub_cannot_hand_fails_at_its_claim_sa
 
     (gone,) = dispatched(client, hub["owner"], [2], profile="newer")
     v = tables.plugin_versions
-    with live.engine(hub_db).begin() as conn:
-        conn.execute(v.delete().where(v.c.version == "1.1.0"))
+    with live.engine(hub_db).begin() as conn:  # sandbox's alone: the core plugins of the image may have a 1.1.0 too
+        conn.execute(v.delete().where(v.c.plugin_id == hub["plugin_id"], v.c.version == "1.1.0"))
     assert claim(client, worker) is None
     ((state, error),) = of_run(hub_db, gone["id"], "state", "error")
     assert state == "failed"
