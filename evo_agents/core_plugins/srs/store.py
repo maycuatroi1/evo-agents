@@ -5,6 +5,10 @@ A document carries a label (the project's default, or one an admin set when impo
 review and comment of it is read under that label: through the sink X-Evo-Sink names, else the project's hub sink,
 as plans are read (``ProjectAccess.visible``). A document the member cannot see answers the 404 of one that does not
 exist.
+
+An archived document (``archived_at``) is out of the list of documents unless asked for, and out of the knowledge
+graph; it is still read by its slug, and takes no write until an admin unarchives it (``writable``): its codes stay
+held in the project and its slug taken.
 """
 
 from __future__ import annotations
@@ -148,20 +152,43 @@ async def approved_documents(conn: AsyncConnection, project_id: int) -> list[Doc
     return [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
 
 
-async def documents(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> list[DocumentRow]:
-    """The documents of the project the member sees, by slug."""
+async def documents(
+    conn: AsyncConnection, access: ProjectAccess, sink: str | None, *, with_archived: bool = False
+) -> list[DocumentRow]:
+    """The documents of the project the member sees, by slug; the archived ones too with ``with_archived``."""
     reader(access)
     through = sink_of(access, sink)
-    query = _documents_query(access.project_id).order_by(tables.srs.documents.c.slug)
+    d = tables.srs.documents
+    query = _documents_query(access.project_id).order_by(d.c.slug)
+    if not with_archived:
+        query = query.where(d.c.archived_at.is_(None))
     rows = [DocumentRow(**row._mapping) for row in await conn.execute(query)]
     return [row for row in rows if through is not None and access.visible(row.label, through)]
 
 
+def writable(access: ProjectAccess, doc: DocumentRow) -> DocumentRow:
+    """``doc`` when it takes writes; 409 when it is archived."""
+    if doc.archived_at is not None:
+        raise SrsError(
+            409,
+            f"document {doc.slug} of project {access.name} is archived and takes no change: an admin of the project "
+            f"opens it again with `evo-agents hub srs unarchive {doc.slug} --project {access.name}`",
+        )
+    return doc
+
+
 async def document(
-    conn: AsyncConnection, access: ProjectAccess, slug: str, sink: str | None, *, lock: bool = False
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    slug: str,
+    sink: str | None,
+    *,
+    lock: bool = False,
+    even_archived: bool = False,
 ) -> DocumentRow:
     """Document ``slug`` as the member sees it; 404 when there is none or they cannot see it. ``lock`` takes its row
-    lock first, for a write."""
+    lock first, for a write, and refuses an archived document (``writable``) unless ``even_archived``, which archiving
+    and unarchiving pass."""
     reader(access)
     d = tables.srs.documents
     if lock:
@@ -171,7 +198,8 @@ async def document(
     through = sink_of(access, sink)
     if row is None or through is None or not access.visible(row.label, through):
         raise missing(access.name, slug)
-    return DocumentRow(**row._mapping)
+    found = DocumentRow(**row._mapping)
+    return writable(access, found) if lock and not even_archived else found
 
 
 def _versions_query(document_id: int):
@@ -374,4 +402,5 @@ __all__ = [
     "text",
     "version",
     "versions",
+    "writable",
 ]

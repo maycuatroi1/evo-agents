@@ -1,12 +1,12 @@
-"""The tables of the core plugin srs (0046), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.srs``:
+"""The tables of the core plugin srs (0046, 0064), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.srs``:
 queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
 - srs_documents: a BA document of a project, an SRS of a template or a free specification (``kind``), with its slug,
   title, the version approved last, and the label every row of the document carries (the project's by default).
 - srs_versions: each save of a document, never changed after: its number (1 and up within the document), the number
-  it was built on, its state (draft, in_review, approved, superseded), the review round, its author, the run that
-  drafted it when an agent did, its summary, the text before the first heading and the SHA-256 of its content.
+  it was built on, its state (draft, in_review, approved, superseded, withdrawn), the review round, its author, the run
+  that drafted it when an agent did, its summary, the text before the first heading and the SHA-256 of its content.
 - srs_texts: the Markdown bodies, kept once by SHA-256, so a version that leaves an item as it was adds no text.
 - srs_items: an item's identity across versions: its key (the hub's, fixed), its kind, its code (null for a plain
   section), the version it appeared in and the one it was dropped in.
@@ -53,7 +53,7 @@ ITEM_KINDS = (  # srs_items.kind
     "approval_page",
     "revision_history",
 )
-VERSION_STATES = ("draft", "in_review", "approved", "superseded")  # srs_versions.state
+VERSION_STATES = ("draft", "in_review", "approved", "superseded", "withdrawn")  # srs_versions.state
 REF_RELS = ("uses_screen", "refines", "relates")  # srs_refs.rel
 REVIEW_ROLES = ("ba", "qa", "dev")  # srs_reviews.role
 REVIEW_DECISIONS = ("approve", "request_changes")  # srs_reviews.decision

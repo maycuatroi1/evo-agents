@@ -329,6 +329,6 @@ def test_schema_0061_takes_the_two_lenses_and_going_back_deletes_what_they_wrote
     names = ("project_id", "run_id", "lens", "severity", "title", "evidence", "label")
     with pytest.raises(psycopg.errors.CheckViolation, match="findings_lens_check"):
         sql(busy.db, insert(f).from_select(names, copied.where(f.c.lens == "cost")))
-    assert migrate(busy.db.dsn).applied == ("0061", "0062", "0063")
+    assert migrate(busy.db.dsn).applied == ("0061", "0062", "0063", "0064")
     again = finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
     assert again.status_code == 201, again.text
