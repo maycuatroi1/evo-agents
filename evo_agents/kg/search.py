@@ -14,8 +14,11 @@ above a definition (``kg.build.search_texts``). A body longer than ``MAX_TEXT_CH
 counts the cut texts in its coverage (``search.cut``), so nothing is lost without a trace. URIs are not indexed: every
 one of them shares its host and repo words.
 
-A query is read three ways, each filling what the one before left: every word as a whole word (AND), every word as a
-prefix (AND), then any word (OR), each ranked by BM25 times a light prior by kind (PRIOR). Words that only ask
+A query is read three ways, each read while the ones before found fewer nodes than asked: every word as a whole word
+(AND), every word as a prefix (AND), then any word (OR). A node scores BM25 times a light prior by kind (PRIOR) times
+the weight of the way (STAGE_WEIGHTS), at its best way, and the nodes of all ways are ranked together: a node holding
+every word comes first at a like score, not whatever its score, since a long page or reply that holds every word once
+is often not what a question asks about. Words that only ask
 (``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words. The any-word query also
 leaves out a word the index cannot tell from one of them once it folds accents: "án" of "Phương án" would match every
 English "an". ``kg_search`` then follows each step, section or document it found to what it mentions
@@ -49,6 +52,7 @@ PRIOR = {
     "ChatThread": 0.9,  # named by its chat's title, which every thread of the chat shares: after a message as good
 }
 RERANK_POOL = 300
+STAGE_WEIGHTS = (2.0, 1.5, 1.0)  # a match of all words whole, of all words as prefixes, of any word
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})
 _WORD = re.compile(r"[^\W_]+")
