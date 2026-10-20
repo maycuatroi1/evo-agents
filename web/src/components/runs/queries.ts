@@ -68,9 +68,9 @@ export const SUMMARY_LIMIT = 200;
 /** `timeout_min` of a dispatch: 5 to 240 minutes, 60 by default. */
 export const TIMEOUT_CHOICES = [30, 60, 120, 240] as const;
 export const DEFAULT_TIMEOUT = 60;
-/** `runs.PLAN_TIMEOUT_CHOICES`: hours of agent time a plan run may take; 4 by default. */
+/** `runs.PLAN_TIMEOUT_CHOICES`: hours of agent time a plan run may take; the Run plan dialog starts on the most. */
 export const PLAN_TIMEOUT_CHOICES = [2, 4, 8, 24] as const satisfies readonly PlanTimeout[];
-export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 4;
+export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 24;
 /** `runs.MAX_MODEL_CHARS`: a model name is one line of at most 200 characters. */
 export const MAX_MODEL_CHARS = 200;
 export const MAX_DISPATCH_STEPS = 50; // `MAX_DISPATCH_STEPS` of the API

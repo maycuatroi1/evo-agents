@@ -63,7 +63,7 @@ test("another writer cannot pin runs to my worker, and the dialog offers only th
   await page.getByTestId("runs-dispatch").click();
   const dialog = page.getByTestId("dispatch-dialog");
   await expect(dialog.getByTestId("dispatch-no-workers")).toBeVisible();
-  await expect(dialog.getByTestId("dispatch-target-pin").getByRole("radio")).toBeDisabled();
+  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveCount(0);
   await expect(dialog).not.toContainText(live.worker.name);
 
   const headers = await csrfHeader(page);
