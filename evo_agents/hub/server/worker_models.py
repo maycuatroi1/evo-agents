@@ -107,6 +107,11 @@ class Worker(BaseModel):
         description="its owner locked its version: its daemon stays on the evo-agents it runs and does not update "
         "itself to the tag nightly"
     )
+    shared: bool = Field(
+        False,
+        description="its owner shares it: it also takes the runs of every member who holds writer on a project it "
+        "serves, one member's runs at a time; listed to those members too, who see it but cannot change it",
+    )
     self_update: WorkerSelfUpdate | None = Field(
         description="what its daemon last said of updating itself to the tag nightly; null when its last heartbeat "
         "said nothing of it, as an older daemon does"
@@ -167,11 +172,17 @@ class WorkerUpdate(BaseModel):
         description="true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly "
         "again, once idle",
     )
+    shared: bool | None = Field(
+        None,
+        description="true: it also takes the runs of every member who holds writer on a project it serves; false: "
+        "its owner's runs alone, every worker's default",
+    )
 
     @model_validator(mode="after")
     def _some_field(self) -> WorkerUpdate:
-        if all(value is None for value in (self.slots, self.labels, self.name, self.plugins, self.version_locked)):
-            raise ValueError("name at least one of slots, labels, name, plugins and version_locked to change")
+        fields = (self.slots, self.labels, self.name, self.plugins, self.version_locked, self.shared)
+        if all(value is None for value in fields):
+            raise ValueError("name at least one of slots, labels, name, plugins, version_locked and shared to change")
         return self
 
 

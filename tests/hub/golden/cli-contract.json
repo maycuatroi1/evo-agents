@@ -9518,7 +9518,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.22.0"
+      "version": "0.23.0"
     },
     "paths": {
       "/v1/health": {
@@ -16063,7 +16063,7 @@
             "workers"
           ],
           "summary": "List Workers",
-          "description": "The caller's workers, newest first; every worker for a hub admin.",
+          "description": "The caller's workers and the live ones other members share with the caller in a project both write to, newest\nfirst; every worker for a hub admin.",
           "operationId": "list_workers_v1_workers_get",
           "parameters": [
             {
@@ -16166,6 +16166,7 @@
             "workers"
           ],
           "summary": "Show Worker",
+          "description": "One worker of the caller's, or one another member shares with them; any worker for a hub admin.",
           "operationId": "show_worker_v1_workers__worker_id__get",
           "parameters": [
             {
@@ -16228,7 +16229,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with\ntheir machine token.",
+          "description": "Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a\nweb session or with their machine token.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -42340,7 +42341,7 @@
               "maximum": 9.223372036854776e+18,
               "minimum": 1.0,
               "title": "Worker Id",
-              "description": "the worker of yours the run goes to; an author run is pinned"
+              "description": "the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned"
             },
             "plan_id": {
               "anyOf": [
@@ -46848,7 +46849,7 @@
                 }
               ],
               "title": "Worker Id",
-              "description": "pin the runs to this worker of yours"
+              "description": "pin the runs to this worker of yours, or one shared with you in the project"
             },
             "approval": {
               "type": "string",
@@ -54492,7 +54493,7 @@
                 }
               ],
               "title": "Worker Id",
-              "description": "pin the run to this worker of yours"
+              "description": "pin the run to this worker of yours, or one shared with you in the project"
             },
             "runtime": {
               "type": "string",
@@ -68684,7 +68685,7 @@
                 }
               ],
               "title": "Worker",
-              "description": "a worker of the owner, by name; a fit candidate"
+              "description": "a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate"
             },
             "runtime": {
               "anyOf": [
@@ -68793,7 +68794,7 @@
                 }
               ],
               "title": "Worker",
-              "description": "a worker of the owner, by name; a fit candidate"
+              "description": "a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate"
             },
             "runtime": {
               "anyOf": [
@@ -69529,6 +69530,12 @@
               "title": "Version Locked",
               "description": "its owner locked its version: its daemon stays on the evo-agents it runs and does not update itself to the tag nightly"
             },
+            "shared": {
+              "type": "boolean",
+              "title": "Shared",
+              "description": "its owner shares it: it also takes the runs of every member who holds writer on a project it serves, one member's runs at a time; listed to those members too, who see it but cannot change it",
+              "default": false
+            },
             "self_update": {
               "anyOf": [
                 {
@@ -69690,6 +69697,16 @@
               "type": "string",
               "title": "Worker"
             },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who owns the worker"
+            },
+            "shared": {
+              "type": "boolean",
+              "title": "Shared",
+              "description": "a worker another member shares in the project, not one of the run's owner"
+            },
             "fit": {
               "type": "boolean",
               "title": "Fit"
@@ -69764,6 +69781,8 @@
           "required": [
             "worker_id",
             "worker",
+            "owner",
+            "shared",
             "fit",
             "rank",
             "reasons",
@@ -70128,6 +70147,18 @@
               ],
               "title": "Version Locked",
               "description": "true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly again, once idle"
+            },
+            "shared": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shared",
+              "description": "true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default"
             }
           },
           "type": "object",

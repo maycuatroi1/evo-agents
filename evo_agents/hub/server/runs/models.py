@@ -105,7 +105,9 @@ class Dispatch(BaseModel):
     )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     mode: Literal[runs.MODES] = "headless"
-    worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours")
+    worker_id: int | None = Field(
+        None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours, or one shared with you in the project"
+    )
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
     model: ModelName | None = Field(
@@ -131,7 +133,12 @@ class AuthorRunDispatch(BaseModel):
         description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
         "of UTF-8",
     )
-    worker_id: int = Field(ge=1, le=MAX_ID, description="the worker of yours the run goes to; an author run is pinned")
+    worker_id: int = Field(
+        ge=1,
+        le=MAX_ID,
+        description="the worker of yours, or one shared with you in the project, the run goes to; an author run is "
+        "pinned",
+    )
     plan_id: str | None = Field(
         None,
         pattern=PLAN_ID,
@@ -151,7 +158,9 @@ class AuthorRunDispatch(BaseModel):
 
 class PlanRunDispatch(BaseModel):
     plan_id: str = Field(pattern=PLAN_ID)
-    worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
+    worker_id: int | None = Field(
+        None, ge=1, le=MAX_ID, description="pin the run to this worker of yours, or one shared with you in the project"
+    )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     model: ModelName | None = Field(
         None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"

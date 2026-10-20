@@ -31,7 +31,7 @@ describes how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins and version lock after it joined | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, version lock and sharing after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
@@ -55,9 +55,10 @@ a task run its agent type and the draft pull requests of its branch (`agent_type
 
 ## Who may do what
 
-- **A worker belongs to the member who registered it, and only that member dispatches to it.** A claim takes only
-  runs whose dispatcher owns the worker, and a dispatch that names a worker must name one of the caller's own (403
-  otherwise). Another writer of the same project never gets a run onto your worker. The night shift of a project's
+- **A worker belongs to the member who registered it, and only that member dispatches to it, unless they share it.**
+  A claim takes only runs whose dispatcher owns the worker, and a dispatch that names a worker must name one of the
+  caller's own (403 otherwise). Another writer of the same project never gets a run onto your worker, until you share
+  it with the writers of its projects ([Shared workers](#shared-workers)). The night shift of a project's
   charter dispatches as the owner of the charter's worker on duty (`docs/curator.md`), so its runs keep this rule
   too. A hub admin sees every worker
   and may drain or revoke one, but cannot dispatch to it or undrain it: only the owner sets a drained worker going
@@ -68,8 +69,8 @@ a task run its agent type and the draft pull requests of its branch (`agent_type
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name, plugins
-  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)) and version lock
-  ([Updating itself to nightly](#updating-itself-to-nightly)), from a web session with its CSRF header or with the
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), version lock
+  ([Updating itself to nightly](#updating-itself-to-nightly)) and sharing ([Shared workers](#shared-workers)), from a web session with its CSRF header or with the
   owner's machine token. A hub admin who does not own the worker gets
   403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
   terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
@@ -107,6 +108,51 @@ question. The web terminal is a remote shell into the machine, which is why it h
 `dispatch_from` or of settings (`worker.update`), revoke and terminal session leaves an audit row (`run.*`, `worker.*`, `terminal.open`,
 `terminal.close`), and so does each message, takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
 never the text.
+
+## Shared workers
+
+A worker its owner shares (`workers.shared`, schema 0062) also takes the runs of every other member who holds writer on
+a project it serves. Its owner turns sharing on or off with `PATCH /v1/workers/{id}` and `{"shared": true}`, from a web
+session or with their machine token, or with the switch "Share with the writers of its projects" on the worker's page;
+every worker starts unshared, and the audit row `worker.update` names the change.
+
+- **Dispatch.** A member who holds writer on a project the worker serves may pin a run to it, while its owner holds
+  writer there too, and a run they dispatch without a pin may go to it as well as to their own workers. A token pinning
+  a run to it still gets 403 when the owner keeps it to runs dispatched from the web (`dispatch_from`). The web's
+  dispatch picker, `evo-agents hub run dispatch`, `plan` and `author --worker`, and a rerun list a shared worker after
+  the member's own; `--worker` takes an id, a name (the member's own worker first, then the one worker of that name
+  shared with them) or `owner/name`.
+- **Claim.** A claim of a shared worker takes the queued runs of its owner and of every member who holds writer on the
+  run's project now, never a run of the night shift's kinds of another member, and only while every run the worker
+  holds is of the same member: the agents of two members never run side by side as the daemon's user, so one of them
+  cannot read the leases of the other's run. A run of another member waits while the worker holds the owner's, and the
+  owner's waits while it holds another member's. The candidates of a failed run, the worker a chat run goes to, and the
+  workers an agent profile's worker axis is checked against count a shared worker the same way, the member's own
+  first; a chat run of an agent type routed to its `run_as` goes to the workers of that member alone.
+- **The run stays its dispatcher's.** It leases the dispatcher's secrets and accounts (a secret they bound to any of
+  their workers covers the shared one, and one bound to a named worker covers only that worker of theirs), the hub's
+  GitHub App token for the repos they may push to, and the agent's session on `/mcp` acts as the dispatcher, within
+  their grant on the run's project capped at writer, never as the worker's owner. Messages, takeover, handback,
+  cancel, approve, rerun, decisions and notices are the dispatcher's, as on any worker; the web terminal of a run opens
+  only for a dispatcher who also owns the worker.
+- **What the members see.** `GET /v1/workers` and `GET /v1/workers/{id}` show a shared worker to the members it is
+  shared with, with only the projects on which they hold a grant and without `kg_sync`; it shows `owner` and
+  `shared`. They cannot drain, undrain, revoke or change it (404, as for a worker they cannot see); a hub admin still
+  may drain or revoke it.
+- **Turning it off.** The worker claims no new run of another member; the runs of other members it holds finish, and
+  those queued pinned to it wait until it is shared again or their dispatcher cancels or reruns them elsewhere. A
+  member who loses writer on the project, or an owner who does, ends the sharing there as for any run: claims skip
+  their runs and the hub takes back their leases.
+
+What sharing means for the members: each one hands their run's leases (an account's token, a GitHub token, the secrets
+of the project) to a machine its owner administers. Root on it reads them, and so does the daemon's user while the run
+holds them. The agent of every run runs as the daemon's user, with what that user can read: the worker's token, the
+spool and the worktrees of earlier runs, the files of the projects other members' runs worked on, and any credential
+of the machine itself. A repo the hub leases nothing for falls back to the machine's own git credentials, as on any
+worker. Share only a machine whose user holds no credential of its owner beyond the worker's token (`evo-agents worker
+doctor` lists what it holds), with members who may read each other's work in the projects it serves. A worker that
+holds runs of several members over time keeps their worktrees until it prunes them; one slot keeps the side-by-side
+rule simple, and more slots serve one member at a time.
 
 ## Worker status
 
@@ -481,7 +527,8 @@ plan it wrote or revises. A run of another kind has no chat (404). The chat live
 ## Chat runs
 
 A chat run (kind `chat`, `evo_agents.hub.chat_runs`) is one turn of an agent mentioned in a group chat (`docs/hub.md`,
-Group chats): the hub queues it, pinned to the worker of the person who mentioned the agent that it picked, with no plan
+Group chats): the hub queues it, pinned to the worker it picked among those of the person who mentioned the agent and
+those shared with them in the project ([Shared workers](#shared-workers)), their own first, with no plan
 (`plan_id` empty), its chat, the message that started it (`chat_message_id`), its hop, the branch `chat/<id>` of the
 first run of its session and the repos of its project the worker has a checkout of (none when it has none of them; on a
 daemon with the feature `lazy_chat_repos`, the project's harness alone: [Repos a chat run
@@ -2531,6 +2578,8 @@ credential off.
 - A handback closes the terminal UI where it stands: the daemon cannot see a turn the person started there end.
 - A laptop whose lid is closed while it runs on battery sleeps, power assertion or not, and its runs are lost and
   tried again (see [Sleep and wake](#sleep-and-wake)).
-- Only the owner dispatches to a worker; workers shared by a team are a later decision.
+- A shared worker serves every writer of its projects, one member at a time, as its owner's machine user; there is no
+  isolation between the runs of two members beyond that rule (separate users, containers), and no share with a chosen
+  few members only.
 - A run of one step never dispatches the next one; a plan run does a plan's steps in one session on one worker,
   never several workers at once. Nothing opens a pull request.

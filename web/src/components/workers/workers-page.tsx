@@ -181,7 +181,16 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       helper.accessor("owner", {
         header: () => t("columns.owner"),
         sortFn: "alphanumeric",
-        cell: (info) => <span className="font-mono text-xs text-foreground">{info.getValue()}</span>,
+        cell: (info) => (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-xs text-foreground">{info.getValue()}</span>
+            {info.row.original.shared ? (
+              <Badge variant="outline" className="text-[11px]" data-testid="worker-shared-badge">
+                {t("columns.shared")}
+              </Badge>
+            ) : null}
+          </span>
+        ),
       }),
       helper.accessor((row) => (row.last_heartbeat_at ? new Date(row.last_heartbeat_at) : new Date(0)), {
         id: "heartbeat",

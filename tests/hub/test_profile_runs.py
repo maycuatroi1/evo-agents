@@ -152,7 +152,7 @@ def test_a_profile_dispatch_to_a_worker_outside_its_worker_allowlist_is_422(clie
     assert dispatched(client, admin["owner"], worker=linux, profile="gpu-only")["pinned_worker_id"] == linux["id"]
     profile(client, admin["owner"], "elsewhere", permissions=allow(worker=["some-other-box"]))
     text = refused(dispatch(client, admin["owner"], "lumen-kb-docs", profile="elsewhere"))
-    assert "allows none of your workers of project evo-agents to take the run" in text
+    assert "allows none of your workers of project evo-agents, nor any shared there, to take the run" in text
 
 
 def test_a_profile_dispatch_picking_an_account_the_profile_leaves_out_is_422(client, admin, hub_db):

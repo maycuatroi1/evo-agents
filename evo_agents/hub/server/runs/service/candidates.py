@@ -41,6 +41,8 @@ NEW_ACCOUNT_FIRST = ("rate_limit", "account_auth")  # a worker with an account t
 class WorkerCandidate(BaseModel):
     worker_id: int
     worker: str
+    owner: str = Field(description="the login of the member who owns the worker")
+    shared: bool = Field(description="a worker another member shares in the project, not one of the run's owner")
     fit: bool
     rank: int | None = Field(description="1 for the best fit worker; null for one that is no fit")
     reasons: list[str] = Field(description="what makes it fit, or each thing that makes it not")
@@ -113,6 +115,7 @@ async def _run(conn: AsyncConnection, run_id: int):
         r.c.dispatched_via,
         r.c.profile_id,
         r.c.worker_id,
+        r.c.dispatched_by,
     ).where(r.c.id == run_id)
     return (await conn.execute(query)).one()
 
@@ -167,7 +170,7 @@ def _ready_on(worker_id: int, ready: dict, found) -> list[tuple[int, str]]:
 
 
 def _worker_view(row, profile, run, repos, project, accounts, cause):
-    """(the candidate of worker ``row``, its sort key)."""
+    """(the candidate of worker ``row``, its sort key): the run's owner's own workers before those shared with them."""
     found, ready, used = accounts
     reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind)
     missing = [name for name in repos if f"{project}/{name}" not in (row.checkouts or {})]
@@ -204,9 +207,12 @@ def _worker_view(row, profile, run, repos, project, accounts, cause):
             reasons.append("the worker the run failed on")
         if other and cause in NEW_ACCOUNT_FIRST:
             reasons.append("has an account the run did not use")
+    shared = row.owner_id != run.dispatched_by
     candidate = WorkerCandidate(
         worker_id=row.id,
         worker=row.name,
+        owner=row.owner,
+        shared=shared,
         fit=fit,
         rank=None,
         reasons=reasons,
@@ -218,7 +224,7 @@ def _worker_view(row, profile, run, repos, project, accounts, cause):
         labels=list(row.labels or ()),
         accounts=[name for _, name in mine],
     )
-    return candidate, (not fit, bias, -held, row.holding - row.slots, row.id)
+    return candidate, (not fit, bias, shared, -held, row.holding - row.slots, row.id)
 
 
 def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, project: str) -> AgentCandidate:
@@ -232,7 +238,7 @@ def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, pr
         f"{row.name} {why}" for row in rows if (why := (worker_problems(row, profile, via, "chat") or [None])[0])
     ]
     if rows and len(problems) == len(rows):
-        reasons.append(f"no worker of yours can take it: {'; '.join(problems)}")
+        reasons.append(f"no worker of yours, nor one shared with you, can take it: {'; '.join(problems)}")
     elif not rows:
         reasons.append(f"you have no worker that takes runs of project {project}")
     if cause == "missing_tool" and not profiles.allows(profile.permissions, "tool", "bash"):

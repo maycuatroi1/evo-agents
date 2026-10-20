@@ -15,8 +15,9 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 - the caller needs a live machine token as ``Authorization: Bearer``, else 401: the web session cookie is not taken;
 - or the live token of a worker with X-Evo-Run, the id of a run that worker holds now (``runs.HELD_STATES``, waiting
   among them) and whose owner still holds a grant on its project; else 403, as for a worker token without the header.
-  The caller is then the agent of that run: its owner with a ``RunScope`` (``security``), the run's project alone,
-  the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
+  The caller is then the agent of that run: its owner, the member who dispatched it (on a shared worker another member
+  than the worker's), with a ``RunScope`` (``security``), the run's project alone, the owner's grant there capped at
+  writer, and never a hub admin, so ``projects.project_access`` holds every tool to
   it. Once the run leaves the held states, its id opens nothing. The agent of a judge run gets the code graph's tools
   and hub_projects alone (JUDGE_TOOLS): never a run's events, a plan, a memory or a digest, which the Builder it judges
   wrote or could have written for it; the agent of a replay run gets none of the tools (REPLAY_TOOLS), which hold the
@@ -53,7 +54,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from urllib.parse import urlsplit
@@ -67,14 +68,11 @@ from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, Transpo
 from mcp_types import CallToolResult, ListToolsResult
 from mcp_types import Tool as McpTool
 from pydantic import ValidationError
-from sqlalchemy import and_, select
 from sqlalchemy import exc as sa_exc
-from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.requests import Request
 
 from evo_agents import __version__
-from evo_agents.hub import runs, tables
-from evo_agents.hub.access import has_role
+from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
@@ -96,7 +94,6 @@ from evo_agents.hub.memory import AGENT_SINK, HARNESS, memory_type
 from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
     chat_read,
     decisions,
@@ -118,6 +115,7 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
+from evo_agents.hub.server.mcp_run import MOUNT, run_principal
 from evo_agents.hub.server.mcp_text import (
     EXCERPT,
     TEXT_CHARS,
@@ -138,7 +136,6 @@ from evo_agents.hub.server.security import (
     WORKER,
     WWW_AUTHENTICATE,
     Principal,
-    RunScope,
     authenticate,
 )
 from evo_agents.kg.serve import Session, _error, for_model, wants_data
@@ -146,7 +143,6 @@ from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
-MOUNT = "/mcp"
 ENDPOINT = MOUNT + "/"  # the path the mounted app answers at
 MAX_BODY = DEFAULT_MAX_REQUEST_BODY_SIZE  # 4 MiB: a memory escaped as JSON fits several times over
 LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
@@ -166,27 +162,6 @@ RUN_ONLY = (
     f"a worker token opens {MOUNT} only for the agent of a run its worker holds, named in {RUN_HEADER}: "
     "`evo-agents hub mcp` sends it inside a run"
 )
-NOT_HELD = (
-    f"this worker does not hold run {{run}} now: it ended, or another worker holds it, and {MOUNT} opens for the "
-    "agent of a run its worker holds only"
-)
-
-
-def _held_run(token_id: int, run_id: int):
-    """The run ``run_id`` that the live worker of token ``token_id`` holds for its owner: its state, its project and
-    the owner's grant there (role and max_level None without one)."""
-    workers, runs, projects, grants = tables.workers, tables.runs, tables.projects, tables.grants
-    return (
-        select(runs.c.state, projects.c.name, grants.c.role, grants.c.max_level, runs.c.kind)
-        .select_from(
-            workers.join(runs, and_(runs.c.worker_id == workers.c.id, runs.c.dispatched_by == workers.c.owner_id))
-            .join(projects, projects.c.id == runs.c.project_id)
-            .outerjoin(grants, and_(grants.c.project_id == runs.c.project_id, grants.c.user_id == workers.c.owner_id))
-        )
-        .where(workers.c.token_id == token_id, workers.c.revoked_at.is_(None), runs.c.id == run_id)
-    )
-
-
 KIND_ONLY = {  # what a judge run, a replay run and a history run may call is mcp_tools.RUN_TOOLS
     "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
     "not for a judge run",
@@ -344,7 +319,7 @@ class McpGate:
             principal = await authenticate(engine, token, kind, config)
             if principal is not None and kind == WORKER:
                 async with engine.begin() as conn:
-                    principal = replace(principal, scope=await run_scope(conn, principal, int(run)))
+                    principal = await run_principal(conn, principal, int(run))
         except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
@@ -357,19 +332,6 @@ class McpGate:
             return _unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}")
         request.state.principal = principal
         return None
-
-
-async def run_scope(conn: AsyncConnection, user: Principal, run_id: int) -> RunScope:
-    """The scope of the agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's project,
-    the owner's grant there with its role capped at writer. HTTPException 403 when that worker does not hold the run
-    now (another worker's, one that ended, none) or the owner holds no grant on the project any more."""
-    row = (await conn.execute(_held_run(user.token_id, run_id))).first()
-    if row is None or row.state not in HELD_STATES:
-        raise HTTPException(403, NOT_HELD.format(run=run_id))
-    _, project, role, max_level, kind = row
-    if role is None:
-        raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
-    return RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level, kind)
 
 
 def _unauthorized(request: Request, message: str):

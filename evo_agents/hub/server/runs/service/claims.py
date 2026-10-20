@@ -22,7 +22,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, any_, case, column, exists, func, literal, or_, select, true
+from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -56,6 +56,7 @@ from evo_agents.hub.server.runs.service.profiles import (
     runtime_rule,
 )
 from evo_agents.hub.server.runs.service.views import current_plan, lost_here, run_view, steady, text_or_none
+from evo_agents.hub.server.runs.service.worker_fit import writes
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.run_environments import ContainerEnvironment
 from evo_agents.plugins.runtimes import AcpRuntime
@@ -113,8 +114,8 @@ class RunWakeups:
 
 async def worker_of(conn: AsyncConnection, user: Principal):
     """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
-    drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels and plugins. 403 when there is
-    none."""
+    drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels, plugins and shared. 403 when
+    there is none."""
     w = tables.workers
     query = (
         select(
@@ -132,6 +133,7 @@ async def worker_of(conn: AsyncConnection, user: Principal):
             w.c.features,
             w.c.labels,
             w.c.plugins,
+            w.c.shared,
         )
         .where(w.c.token_id == user.token_id)
         .with_for_update()
@@ -173,10 +175,12 @@ def _claimable(
     task_runs: bool = False,
     step_sessions: bool = False,
     steady: bool = True,
+    shared: bool = False,
     profile_gate=None,
 ):
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its owner,
-    in ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
+    or, on a ``shared`` worker, of any member who holds writer on its project now (``_dispatcher_clause``), in
+    ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
     ``runtimes`` or ``offered`` (runtimes of plugins), of a repo it has a checkout of (``pairs`` of project id and
     repo), and, while the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one
     step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT
@@ -215,7 +219,7 @@ def _claimable(
     query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(
         r.c.state == "queued",
         r.c.project_id.in_(projects),
-        r.c.dispatched_by == owner_id,
+        _dispatcher_clause(worker_id, owner_id, shared),
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(*asked),
         case(
@@ -245,10 +249,32 @@ def _claimable(
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
 
 
+def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
+    """Whose queued runs worker ``worker_id`` of ``owner_id`` may take: its owner's alone; on a shared worker, also
+    those of another member who holds writer on the run's project now, none of the night shift's kinds
+    (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
+    agents of two members never run side by side as the daemon's user (``docs/workers.md``, Shared workers)."""
+    r = tables.runs
+    if not shared:
+        return r.c.dispatched_by == owner_id
+    held = tables.runs.alias("held")
+    member = and_(
+        r.c.dispatched_by != owner_id, writes(r.c.dispatched_by, r.c.project_id), r.c.kind.not_in(runs.CURATOR_KINDS)
+    )
+    other = exists().where(
+        held.c.worker_id == worker_id,
+        held.c.state.in_(runs.HELD_STATES),
+        held.c.dispatched_by != r.c.dispatched_by,
+    )
+    return and_(or_(r.c.dispatched_by == owner_id, member), ~other)
+
+
 def _task_worker(worker_id: int):
-    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it."""
+    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it among the
+    workers of the run's dispatcher (the type's run_as), never a shared worker of another member by the same name."""
     w, t, r = tables.workers, tables.project_agent_types, tables.runs
-    name = select(func.lower(w.c.name)).where(w.c.id == worker_id).scalar_subquery()
+    own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
+    name = select(func.lower(w.c.name)).where(own).correlate(r).scalar_subquery()
     return exists().where(
         t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
     )
@@ -333,7 +359,7 @@ async def _try_claim(
     async with engine.begin() as conn:
         found = await worker_of(conn, user)
         worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, *said = found
-        kinds, features, labels, plugins = said  # what its daemon says it runs: kinds of run, features (HUB_FEATURES)
+        kinds, features, labels, plugins, shared = said  # what its daemon says it runs: kinds of run, features
         if drained_at is not None:
             return None
         r = tables.runs
@@ -371,6 +397,7 @@ async def _try_claim(
             task_runs="task" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
+            shared=shared,
             profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
         )
         row = (await conn.execute(query)).one_or_none()
