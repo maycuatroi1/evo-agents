@@ -115,7 +115,7 @@ def held_review(lab) -> int:
     return spec["id"]
 
 
-def agent_call(lab, run_id: int, name: str, arguments: dict | None = None) -> dict:
+def agent_call(lab, run_id: int, name: str, arguments: dict | None = None, sink: str | None = None) -> dict:
     message = {
         "jsonrpc": "2.0",
         "id": 7,
@@ -123,6 +123,8 @@ def agent_call(lab, run_id: int, name: str, arguments: dict | None = None) -> di
         "params": {"name": name, "arguments": arguments or {}, "_meta": {"evo-agents/data": True}},
     }
     headers = {**lab.worker["headers"], **MCP_HEADERS, mcp_tools.RUN_HEADER: str(run_id)}
+    if sink:
+        headers[mcp_tools.SINK_HEADER] = sink
     response = lab.client.post("/mcp", json=message, headers=headers)
     assert response.status_code == 200, response.text
     return response.json()["result"]
@@ -353,7 +355,7 @@ def night_talk(lab) -> dict:
     return chat
 
 
-def test_the_agent_of_a_run_searches_no_group_chat_and_reads_a_local_run_as_the_reviewer_alone(lab):
+def test_the_reviewer_alone_of_the_agents_of_runs_searches_the_owners_chats_and_local_runs(lab):
     two_sessions(lab)
     chat = night_talk(lab)
     mine = ended_local_run(lab.client, lab.headers["owner"], "0199a3c1-0000-7000-8000-00000000c005", "dial tcp mine")
@@ -364,10 +366,10 @@ def test_the_agent_of_a_run_searches_no_group_chat_and_reads_a_local_run_as_the_
 
     review = held_review(lab)  # its agent is the owner, the charter's, with the run's scope
     found = agent_call(lab, review, "history_search", {"query": "dial"})["structuredContent"]
-    assert found["sources"] == ["transcript", "run"], "what it reads lands in its run's events, which others read"
-    assert [(hit["source"], hit["run_id"]) for hit in found["hits"]] == [("run", mine)]  # the owner's local session
-    asked = agent_call(lab, review, "history_search", {"query": "dial", "sources": ["chat"]})
-    assert asked["isError"] is True and "searches no group chat" in asked["content"][0]["text"]
+    assert found["sources"] == ["transcript", "run", "chat"], "the Reviewer reads what the charter's owner reads"
+    assert sorted((hit["source"], hit["run_id"]) for hit in found["hits"]) == [("chat", None), ("run", mine)]
+    talked = agent_call(lab, review, "history_search", {"query": "dial", "sources": ["chat"]})["structuredContent"]
+    assert [(hit["source"], hit["chat"], hit["evidence"]) for hit in talked["hits"]] == [("chat", "Night talk", None)]
     assert not agent_call(lab, review, "run_events", {"run_id": mine}).get("isError")
     moved(lab.client, lab.worker, review, "verifying", "done")
 
@@ -378,7 +380,7 @@ def test_the_agent_of_a_run_searches_no_group_chat_and_reads_a_local_run_as_the_
     talk = agent_call(lab, spec["id"], "history_search", {"query": "dial"})["structuredContent"]
     assert (talk["sources"], talk["hits"]) == (["transcript", "run"], []), "neither the chats nor the local runs"
     refused = agent_call(lab, spec["id"], "history_search", {"query": "dial", "sources": ["chat", "run"]})
-    assert refused["isError"] is True
+    assert refused["isError"] is True and "searches no group chat" in refused["content"][0]["text"]
     runs_listed = agent_call(lab, spec["id"], "history_sessions", {"kind": "run"})["structuredContent"]
     assert mine not in [item["run_id"] for item in runs_listed["items"]]
     events = agent_call(lab, spec["id"], "run_events", {"run_id": mine})
@@ -400,6 +402,11 @@ def test_chat_hits_and_the_clusters_read_through_the_callers_sink(lab):
     refused = member_call(lab, "history_clusters", {}, sink="codex@openai")
     assert refused["isError"] is True and "you may read through this sink" in refused["content"][0]["text"]
     assert not member_call(lab, "history_clusters", {}).get("isError")  # through claude-code@anthropic
+
+    review = held_review(lab)  # the Reviewer's chat hits read through its sink as the owner's do
+    query = {"query": "dial timeout", "sources": ["chat"]}
+    assert agent_call(lab, review, "history_search", query)["structuredContent"]["total"] == 1
+    assert agent_call(lab, review, "history_search", query, sink="codex@openai")["structuredContent"]["total"] == 0
 
 
 # The command line

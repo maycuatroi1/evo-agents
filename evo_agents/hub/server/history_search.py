@@ -27,8 +27,11 @@ with a part of its label visible through that sink.
 
 The agent of a run (the caller of the hub's MCP tools with a ``RunScope``) reads less than its owner, since what it
 reads lands in its run's events and in what it writes (a finding, a chat's reply), which readers who are not the
-owner read: no group chat (AGENT_SOURCES; asking for one is 403), no replay run, and a local run only in a review run,
-whose Reviewer reads the local sessions of the charter's owner (``views.agent_reads``).
+owner read: no replay run, and a group chat or a local run only in a review run, whose Reviewer reads the chats and
+the local sessions of the charter's owner (``views.agent_reads``, ``views.agent_reads_chats``). Any other agent
+searches no group chat (AGENT_SOURCES; asking for one is 403). The Reviewer's chat hits go through the sink as the
+owner's do; what it reads of a chat can reach its run's trace and its findings, a debt kept so it reads the whole
+history.
 """
 
 from __future__ import annotations
@@ -52,11 +55,11 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.history import cluster_rows
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
-from evo_agents.hub.server.runs.service.views import agent_reads, sees_unplanned, visible_plans
+from evo_agents.hub.server.runs.service.views import agent_reads, agent_reads_chats, sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 SOURCES = ("transcript", "run", "chat")
-AGENT_SOURCES = ("transcript", "run")  # what the agent of a run searches: never a group chat (see the module)
+AGENT_SOURCES = ("transcript", "run")  # what the agent of a run other than the Reviewer searches (see the module)
 KINDS = ("session", "run")
 SCAN_ROWS = 5000  # facets one list examines
 SCAN_HITS = 200  # hits each source answers before they are merged
@@ -66,8 +69,9 @@ MAX_AROUND = 100  # lines before and after the one asked for
 HEADLINE = "MaxWords=35, MinWords=12, MaxFragments=2, FragmentDelimiter= ... , StartSel=«, StopSel=»"
 QUERY_CHARS = 500
 NO_CHAT = (
-    "the agent of a run searches no group chat: what it reads lands in its run's events and in what it writes, which "
-    "readers of the project who are not in the chat read; search the transcripts and the runs"
+    "the agent of this run searches no group chat (the Reviewer of a review run alone does): what it reads lands in its "
+    "run's events and in what it writes, which readers of the project who are not in the chat read; search the "
+    "transcripts and the runs"
 )
 
 router = APIRouter(prefix="/v1/projects", tags=["history"], responses={401: {"model": ErrorBody}})
@@ -575,10 +579,10 @@ async def search_history(
     offset: int = 0,
 ) -> HistorySearch:
     """The hits of ``text`` in the project's history ``user`` may read, best first (see the module)."""
-    agent = user.scope is not None
-    if agent and "chat" in (sources or ()):
+    chats = agent_reads_chats(user)
+    if not chats and "chat" in (sources or ()):
         raise HTTPException(403, NO_CHAT)
-    asked = [source for source in SOURCES if source in (sources or (AGENT_SOURCES if agent else SOURCES))]
+    asked = [source for source in SOURCES if source in (sources or (SOURCES if chats else AGENT_SOURCES))]
     query = history_index.tsquery(text)
     start, end = _day(since), _day(until)
     through = plan_routes._sink(access, sink)

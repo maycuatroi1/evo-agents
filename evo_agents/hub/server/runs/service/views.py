@@ -263,6 +263,16 @@ def agent_reads(user: Principal, kind: str | None) -> bool:
     return kind != "replay" and (kind != "local" or user.scope.kind == "review")
 
 
+def agent_reads_chats(user: Principal) -> bool:
+    """Whether the agent of a run (``user.scope``) searches the group chats its owner is in. Only the Reviewer (a review
+    run) does: it reads what the charter's owner, its run's owner, reads, through the sink as the owner would. What it
+    reads of a chat can still land in its run's events and in its findings, which readers who are not in the chat read:
+    a debt kept so the Reviewer reads the whole history. No other agent does: a chat run's reply would carry one chat's
+    words into another, and the Builder, the Judge, a replay run and a history run need none. Anyone else reads as the
+    owner does."""
+    return user.scope is None or user.scope.kind == "review"
+
+
 async def readable_run(
     conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
 ) -> ProjectAccess:
