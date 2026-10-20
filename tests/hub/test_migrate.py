@@ -1159,6 +1159,34 @@ def test_0062_holds_every_worker_unshared_and_going_back_drops_the_column(hub_db
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0062") :]
 
 
+def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_keeps_those_alone(hub_db):
+    move_to(hub_db, "0062")
+    old = table("telegram_links", column("user_id"), column("code_hash", Text), column("expires_at"))
+    soon = func.now() + timedelta(minutes=10)
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        conn.execute(insert(old).values(user_id=ids["user"], code_hash="a" * 64, expires_at=soon))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0063")
+    codes = hub_tables.channel_link_codes
+    assert "telegram_links" not in tables(hub_db)
+    assert query(hub_db, select(codes.c.code_hash, codes.c.kind)) == [("a" * 64, "telegram")]
+    named = select(PG_CONSTRAINT.c.conname).where(
+        PG_CONSTRAINT.c.conrelid == cast(literal("channel_link_codes", Text), REGCLASS)
+    )
+    assert all(name.startswith("channel_link_codes_") for (name,) in query(hub_db, named))
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(codes).values(user_id=ids["user"], kind="northwind", code_hash="b" * 64, expires_at=soon))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(codes).values(user_id=ids["user"], kind="web", code_hash="c" * 64, expires_at=soon))
+        with pytest.raises(errors.NotNullViolation):  # no default: each code names its kind
+            conn.execute(insert(codes).values(user_id=ids["user"], code_hash="d" * 64, expires_at=soon))
+    move_to(hub_db, "0062", down=True)
+    assert query(hub_db, select(old.c.code_hash)) == [("a" * 64,)]  # the northwind code went, Telegram's stays
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0063") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

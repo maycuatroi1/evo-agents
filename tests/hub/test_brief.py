@@ -310,15 +310,18 @@ def test_the_columns_of_0015_hold_together(night, hub_db):  # noqa: F811
     n = tables.notifications
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(hub_db, update(n).values(notice_kind="curator_gossip").where(n.c.notice_kind == "curator_brief"))
-    links = tables.telegram_links
+    links = tables.channel_link_codes  # telegram_links, whose checks 0063 kept
     owner = user_id(hub_db, OWNER)
     for bad in (
         {"code_hash": "A" * 64},
         {"code_hash": "a" * 63},
         {"expires_at": func.now() + timedelta(minutes=11)},
         {"expires_at": func.now()},
+        {"kind": "web"},  # a code links a kind of members' channel (0063), never the web
+        {"kind": "Not a kind"},
     ):
-        values = {"user_id": owner, "code_hash": "a" * 64, "expires_at": func.now() + timedelta(minutes=10), **bad}
+        values = {"user_id": owner, "kind": "telegram", "code_hash": "a" * 64, **bad}
+        values.setdefault("expires_at", func.now() + timedelta(minutes=10))
         with pytest.raises(psycopg.errors.CheckViolation):
             sql(hub_db, insert(links).values(**values))
     d = tables.notification_deliveries
@@ -334,8 +337,8 @@ def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # n
     telegram_channel(hub_db)
     sql(
         hub_db,
-        insert(tables.telegram_links).values(
-            user_id=owner, code_hash="b" * 64, expires_at=func.now() + timedelta(minutes=10)
+        insert(tables.channel_link_codes).values(
+            user_id=owner, kind="telegram", code_hash="b" * 64, expires_at=func.now() + timedelta(minutes=10)
         ),
     )
     assert briefed(client, BRIEF) == {"brief": 1}
@@ -347,7 +350,7 @@ def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # n
     n = tables.notifications
     assert sql(hub_db, select(func.count()).select_from(n).where(n.c.kind == "notice")) == [(0,)]
     assert sql(hub_db, select(func.count()).select_from(BRIEFS)) == [(0,)]
-    assert sql(hub_db, select(func.count()).select_from(tables.telegram_links)) == [(0,)]
+    assert sql(hub_db, select(func.count()).select_from(tables.channel_link_codes)) == [(0,)]
     assert sql(hub_db, select(d.c.external_id)) == []
     assert sql(hub_db, select(func.count()).select_from(channels)) == [(1,)]  # a member's link survives
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}

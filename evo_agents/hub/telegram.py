@@ -170,6 +170,28 @@ def restricted(clearance, levels: Sequence[str] | None, locations: Sequence[str]
     return location is None or location >= _mark(locations, RESTRICTED_LOCATION)
 
 
+def restricted_for(
+    clearance, levels: Sequence[str] | None, locations: Sequence[str] | None, level: str, location: str | None
+) -> bool:
+    """Whether a project whose hub sink has ``clearance``, on the project's ladder of ``levels`` and ``locations``,
+    is kept from a channel cleared for ``level`` and ``location``: its hub sink sits above the channel's clearance on
+    the project's ladder, in level or in location. The ladder is read as ``restricted`` reads it, failing closed: no
+    hub sink, a sink without a level, or a level or location (the sink's or the channel's) the ladder lacks is
+    restricted. A location of None, the sink's or the channel's, sits at the top of the locations, as
+    ``evo_agents.kg.policy`` reads a clearance that names none: the channel then receives any location."""
+    if not isinstance(clearance, Mapping):
+        return True
+    levels, locations = list(levels or []), list(locations or [])
+    sink_level, cleared_level = _rank(levels, clearance.get("level")), _rank(levels, level)
+    if sink_level is None or cleared_level is None or sink_level > cleared_level:
+        return True
+    top = len(locations) - 1
+    named = clearance.get("location")
+    sink_location = top if named is None else _rank(locations, named)
+    cleared_location = top if location is None else _rank(locations, location)
+    return sink_location is None or cleared_location is None or sink_location > cleared_location
+
+
 def escape(text: str) -> str:
     return html.escape(text, quote=False)
 
