@@ -4,9 +4,10 @@ A project on the hub can have a daily release. Once a day, at a local time its a
 by default), the hub checks without any model whether the code that makes the package changed between the newest
 release tag and the commit of the tag `nightly`. When it did, an agent on a worker the hub picks cuts the next
 version on a branch, and the hub merges that branch and tags the merge commit. The hub then follows the tag's
-`release.yml` until the version is on PyPI. A red CI is fixed forward with the next patch, as often as it takes, under
-a cap of what one cycle may cost (200 USD by default). The cycle stops and asks its owner what next when the same test
-fails at two tags in a row, the cap is spent, a run fails, the CI overruns, or a fix shows signs of test hacking.
+`release.yml` until its job `publish` puts the version on PyPI. A red CI is fixed forward with the next patch, as often
+as it takes, under a cap of what one cycle may cost (200 USD by default). The cycle stops and asks its owner what next
+when the same test fails at two tags in a row, the cap is spent, a run fails, the CI overruns, or a fix shows signs of
+test hacking.
 
 No GitHub Actions cron and no model credential in GitHub's secrets are involved: the hub's job runner makes the check,
 a member's worker runs the agent, and the hub's GitHub App, never the agent, merges and tags.
@@ -283,7 +284,7 @@ paused, the cycle stopped, or the App lacking Actions (`web/DESIGN.md`).
 
 | Notice or decision | When | Links to |
 | --- | --- | --- |
-| notice `release`, `details.event` `published` | the cycle's tag passed its CI and the version is on PyPI | the Releases page; the version, the workflow run and the PyPI page in its body |
+| notice `release`, `details.event` `published` | the cycle's tag passed its CI, its job `publish` included | the Releases page; the version, the workflow run and the version's PyPI page in its body |
 | notice `release`, `details.event` `actions_permission` | the hub cannot read the CI because the installation grants no Actions | the Releases page |
 | decision of category `release` | the cycle stopped | the Inbox (`/inbox?decision=ID`), and the cycle's thread in the triage chat |
 
