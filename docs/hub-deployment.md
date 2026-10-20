@@ -23,7 +23,7 @@ puts them in order for a new instance.
 | Trusted publishers | `EVO_HUB_PLUGIN_PUBLISHERS`, `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | whose signed bundles this hub's store accepts |
 | Branding and features | the hub (Administration, Branding and Features) | kept in the database with versions; `docs/hub.md`, section Branding and features |
 | Isolated plugins | the hub's store, then each project | signed bundles; their backends run in the `plugins` service |
-| Core plugins | the image | a child image built FROM the hub's image (below) |
+| Core plugins | the image | those evo-agents pins in `deploy/hub/core-plugins.txt`, a hub's own through two build variables, or a child image built FROM the hub's image (below) |
 
 ## The images
 
@@ -35,12 +35,101 @@ first when the release has a migration). As it starts, the api turns off every i
 longer covers the release, and every hub admin who has signed in gets the notice `plugin_disabled`: run
 `evo-agents hub plugin list` after an upgrade and upgrade those plugins.
 
+## Core plugins in the image
+
+Core plugins are Python packages that run in the hub's own processes (`docs/plugins.md`, section Core plugins). The
+hub's image installs them into its virtualenv, `/opt/venv`, which the api, the worker and the `plugins` service
+share, from two sources:
+
+- **Pinned in evo-agents.** `deploy/hub/core-plugins.txt` holds the core plugins evo-agents ships with the hub, one
+  wheel a line, `name==version --hash=sha256:<64 hex>`, installed from PyPI. Every image of a release and every build
+  of main has them; no variable is needed.
+- **A hub's own**, from two variables the build reads, in the environment compose reads (the platform's, or a `.env`
+  next to `deploy/hub/docker-compose.yml`):
+
+| Variable | Reaches the build as | Meaning |
+| --- | --- | --- |
+| `EVO_HUB_EXTRA_CORE_PLUGINS` | the build argument of the same name | requirements `name==version --hash=sha256:<64 hex>` (one hash or more), separated by spaces or line breaks; a token that does not start with `--hash=` starts the next requirement. The rules of an isolated backend's requirements: no option, URL, path, extra or marker. Name the plugin and every dependency of it the image lacks, since pip installs exactly these. evo-ak, a package the pinned file names, and a package the image has at another version are refused: a plugin may not change a library of the hub |
+| `EVO_HUB_CORE_PLUGIN_INDEX_URL` | the build secret `core_plugin_index` | one or more URLs of a package index (PEP 503), separated by spaces, a credential in the URL if the index wants one; the first is the index, the others extra indexes. https, or http to localhost. Unset: PyPI |
+
+For example, with a wheel Lumen publishes to a registry of its own:
+
+```sh
+EVO_HUB_EXTRA_CORE_PLUGINS="lumen-relay==1.0.0 --hash=sha256:<sha256 of the wheel>"
+EVO_HUB_CORE_PLUGIN_INDEX_URL="https://deploy:<token>@registry.lumen.example/pypi/simple https://pypi.org/simple"
+```
+
+The hash is that of the wheel file: `pip hash dist/lumen_relay-1.0.0-py3-none-any.whl`, or `sha256sum` of it. pip
+installs only a file with that hash, so a package of the same name on another index, PyPI included, cannot take its
+place. Build by hand with the same two values:
+
+```sh
+EVO_HUB_CORE_PLUGIN_INDEX_URL="https://deploy:<token>@registry.lumen.example/pypi/simple" \
+  docker build -f deploy/hub/Dockerfile --build-arg EVO_HUB_EXTRA_CORE_PLUGINS="lumen-relay==1.0.0 --hash=sha256:..." \
+  --secret id=core_plugin_index,env=EVO_HUB_CORE_PLUGIN_INDEX_URL -t evo-agents-hub:local .
+```
+
+What the build does (`deploy/hub/Dockerfile`, with `evo_agents.plugins.core_install`):
+
+1. It reads the pinned file and the variable by those rules and fails on the first line it refuses, naming it.
+2. pip installs them with `--no-deps --require-hashes --only-binary=:all:`: exactly the lines given, each file against
+   its hash, and never a source distribution, whose build would run the package's code in the build.
+3. `pip check` fails on a dependency a plugin declares that the requirements left out, and
+   `python -I -m evo_agents.plugins.core_install check` fails when a core plugin of the image would not load in the
+   hub: an entry point of the group `evo_agents.plugins` that the hub leaves out (a wrong manifest, `engines` that do
+   not cover the release, a core plugin API the plugin requires that this hub does not serve, an import that fails),
+   or one name that two distributions declare. The build's log names the entry point, its distribution and version,
+   and the reason. Both run on every build, with nothing installed too.
+
+The index URL never reaches a layer of the image. The build reads the secret from a file that exists only while its
+step runs, and hands the URLs to that one `pip` command as its environment; the command `index` of
+`core_install` refuses a wrong URL without printing it. The requirements are a build argument, which `docker history` shows: they hold no secret.
+Neither variable reaches a running container, since the compose file passes them to the build alone. CI builds the
+image with a wheel from a local index that wants a fake credential, then checks that the hub loads the plugin and
+that neither `docker history` nor any layer holds the credential (`tests/plugins/test_core_install_image.py`).
+
+A core plugin from outside evo-agents has the limits a child image's has (below): no `tables` and no native `pages`.
+
+### A hub built from source with Auto Deploy
+
+On a platform that clones the repository and runs `docker compose up -d --build` on each push of main, such as
+Dokploy with Auto Deploy:
+
+1. Set `EVO_HUB_EXTRA_CORE_PLUGINS` and `EVO_HUB_CORE_PLUGIN_INDEX_URL` in the environment of the compose app. For a
+   private registry, give the URL a token that only reads its packages.
+2. Deploy again. From then on each build of main the platform starts installs the plugins as well; no override file
+   and no compose command of its own.
+3. To upgrade a plugin, change its version and hash in the variable and deploy by hand: changing a variable is no
+   push, so nothing builds on its own.
+4. To remove it, clear both variables and deploy again.
+5. When main changes the core plugin API, a build fails at `check` until the variable names a release of the plugin
+   that requires the new API.
+
+The platform's admins can read the token in the app's environment; the image never holds it. A build secret taken
+from an environment variable needs a Docker Compose whose top-level `secrets` take `environment`.
+
+### A hub run outside Docker
+
+A hub that runs `evo-agents hub serve` from a pip install installs the pinned plugins after evo-ak, from the checkout
+of the same commit, then a hub's own by the same rules, and checks them:
+
+```sh
+pip install --no-deps --require-hashes --only-binary=:all: -r deploy/hub/core-plugins.txt
+EVO_HUB_EXTRA_CORE_PLUGINS="lumen-relay==1.0.0 --hash=sha256:..." \
+  python -I -m evo_agents.plugins.core_install extra deploy/hub/core-plugins.txt > extra-core-plugins.txt
+pip install --no-deps --require-hashes --only-binary=:all: -r extra-core-plugins.txt
+python -I -m evo_agents.plugins.core_install check
+```
+
+evo-ak has no extra that installs the pinned plugins: the pinned file is the one place that says which of their
+versions runs on that commit.
+
 ## A child image
 
-Most clients need none. Isolated plugins come through the store, and branding and features through the hub. Build a
-child image only to add core plugins, which are Python packages that run in the hub's own processes, or files the
-hub's image lacks, such as a company's CA certificate. It starts FROM the hub's image of one release and changes
-nothing of evo-agents:
+Most clients need none. Isolated plugins come through the store, branding and features through the hub, and a hub
+built from source gets its own core plugins through the two variables above. Build a child image only to add core
+plugins to the image of a release that compose pulls, or files the hub's image lacks, such as a company's CA
+certificate. It starts FROM the hub's image of one release and changes nothing of evo-agents:
 
 ```dockerfile
 # The hub image of one evo-agents release, with Acme's core plugin.
@@ -50,7 +139,8 @@ USER root
 COPY wheels/ /tmp/wheels/
 RUN /opt/venv/bin/pip install --no-cache-dir --no-index --find-links /tmp/wheels acme-hub-notices==1.4.0 \
     && rm -rf /tmp/wheels \
-    && /opt/venv/bin/evo-agents --version
+    && /opt/venv/bin/evo-agents --version \
+    && /opt/venv/bin/python -I -m evo_agents.plugins.core_install check
 USER hub:hub
 ```
 
@@ -64,6 +154,9 @@ docker build --build-arg EVO_HUB_VERSION=<version> -t registry.acme.example/acme
 - A core plugin names its manifest in the entry point group `evo_agents.plugins` (`docs/plugins.md`, section Core
   plugins). Installing it is what trusts it: nothing signs it and the store does not check it, so install it from
   wheels you reviewed, pinned, without an index.
+- The last line, `core_install check`, fails the build when a core plugin of the image would not load in the hub,
+  naming it and why (section Core plugins in the image). A base image older than the module lacks it: leave the line
+  out there.
 - A core plugin from outside evo-agents contributes channels, routes, MCP tools, jobs and events, but no `tables` and
   no native `pages`. The hub's tables come from its one chain of migrations, which is in evo-agents, and the hub
   records a core plugin only when every table the plugin owns exists. A native page is part of the web image's build.
