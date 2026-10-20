@@ -22,7 +22,12 @@ change nothing, and the next heartbeat answer carries them.
 
 And step 1 of the auto-update-nightly plan: the owner locks a worker's version the same way, the heartbeat answer
 carries the lock, and the hub keeps and shows the commit a daemon runs and what it found of updating itself, which a
-daemon that sends neither leaves empty."""
+daemon that sends neither leaves empty.
+
+And step 1 of the nightly-within-a-minute plan: the heartbeat answer carries where nightly points once the hub read it;
+the owner or a hub admin asks for and cancels an Update now as they drain, audited once and refused with why when the
+worker is locked, its daemon too old or already current; the answer carries the open request, and the hub ends it on
+the heartbeat that shows it ended."""
 
 import hashlib
 import hmac
@@ -37,7 +42,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.log import scrub
@@ -823,7 +828,14 @@ def test_a_heartbeat_keeps_the_commit_and_the_self_update_state_and_the_worker_v
     assert worker["agent_commit"] == COMMIT
     report = worker["self_update"]
     since = report.pop("since")
-    assert report == {**waiting, "checked_at": "2026-10-19T10:00:00Z", "reason": None, "error": None, "error_at": None}
+    assert report == {
+        **waiting,
+        "checked_at": "2026-10-19T10:00:00Z",
+        "reason": None,
+        "error": None,
+        "error_at": None,
+        "update_now": None,
+    }
     assert since is not None
 
     # the same state keeps since, however many heartbeats say it; another state moves it to now
@@ -876,6 +888,166 @@ def test_a_heartbeat_with_a_malformed_commit_or_self_update_is_422_and_changes_n
         assert refused.status_code == 422, (bad, refused.text)
     worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
     assert (worker["agent_commit"], worker["self_update"]["state"]) == (COMMIT, "current")
+
+
+# The hub's read of nightly, and the owner's Update now
+
+
+def read_nightly(db, commit: str = NIGHTLY) -> None:
+    """What the job hub.read_nightly keeps when nightly points to ``commit``."""
+    nightly = tables.hub_nightly
+    sql(db, delete(nightly))
+    sql(db, insert(nightly).values(commit_sha=commit, read_at=func.now()))
+
+
+def test_the_heartbeat_answer_carries_nightly_once_the_hub_read_it_and_the_worker_views_show_it(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    beat = {"free_slots": 1}
+    before = client.post("/v1/worker/heartbeat", json=beat, headers=headers)
+    assert before.status_code == 200 and "nightly" not in before.json() and "update_now" not in before.json()
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert (worker["nightly"], worker["update_now"]) == (None, None)
+    read_nightly(hub_db)
+    nightly = client.post("/v1/worker/heartbeat", json=beat, headers=headers).json()["nightly"]
+    assert nightly["commit"] == NIGHTLY and datetime.fromisoformat(nightly["read_at"])
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert worker["nightly"] == nightly
+    assert [x["nightly"] for x in client.get("/v1/workers", headers=hub["owner"]).json()] == [nightly]
+
+
+def update_now_of(db, worker_id: int) -> tuple:
+    w = tables.workers
+    shown = select(w.c.update_requested_at, w.c.update_ended_at, w.c.update_outcome, w.c.update_reason)
+    return sql(db, shown.where(w.c.id == worker_id))[0]
+
+
+def test_an_update_now_is_asked_and_cancelled_with_the_rights_of_drain_and_audited_once(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path, target = f"/v1/workers/{worker_id}/update-now", f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    beat = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    assert client.post("/v1/worker/heartbeat", json=beat, headers=headers).status_code == 200
+    read_nightly(hub_db)
+    for credential in (hub["other"], worker_headers(answer["token"])):
+        assert client.post(path, headers=credential).status_code in (403, 404)
+        assert client.post(f"{path}/cancel", headers=credential).status_code in (403, 404)
+    assert client.post("/v1/workers/999999/update-now", headers=hub["owner"]).status_code == 404
+    assert update_now_of(hub_db, worker_id) == (None, None, None, None)
+
+    for _ in range(2):  # the second request finds one open: nothing changes, no audit row
+        asked = client.post(path, headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        shown = asked.json()["update_now"]
+        assert (shown["ended_at"], shown["outcome"], shown["reason"]) == (None, None, None)
+    assert audit_rows(hub_db, "worker.update_now") == [(target, OWNER)]
+    requested_at = update_now_of(hub_db, worker_id)[0]
+    assert datetime.fromisoformat(shown["requested_at"]) == requested_at
+
+    for _ in range(2):  # cancelling when none is open changes nothing either
+        cancelled = client.post(f"{path}/cancel", headers=hub["owner"])
+        assert cancelled.status_code == 200 and cancelled.json()["update_now"]["outcome"] == "cancelled"
+    assert audit_rows(hub_db, "worker.update_now_cancel") == [(target, OWNER)]
+    assert update_now_of(hub_db, worker_id)[2:] == ("cancelled", None)
+
+    # a hub admin may ask for and cancel another member's Update now, as they may drain
+    assert client.post(path, headers=hub["admin"]).json()["update_now"]["outcome"] is None
+    assert client.post(f"{path}/cancel", headers=hub["admin"]).json()["update_now"]["outcome"] == "cancelled"
+    assert [login for _, login in audit_rows(hub_db, "worker.update_now")] == [OWNER, ADMIN]
+    assert [login for _, login in audit_rows(hub_db, "worker.update_now_cancel")] == [OWNER, ADMIN]
+
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    for route in (path, f"{path}/cancel"):
+        gone = client.post(route, headers=hub["owner"])
+        assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    assert len(audit_rows(hub_db, "worker.update_now")) == 2
+
+
+def test_an_update_now_is_refused_with_why_when_locked_too_old_or_current(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}/update-now"
+
+    def refused(why: str) -> None:
+        response = client.post(path, headers=hub["owner"])
+        assert response.status_code == 409 and why in response.json()["message"], response.text
+
+    # a daemon that does not say update_now, as an older one: it still updates itself once idle
+    client.post("/v1/worker/heartbeat", json={"free_slots": 1, "agent_commit": COMMIT}, headers=headers)
+    refused("does not say update_now")
+    beat = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    client.post("/v1/worker/heartbeat", json=beat, headers=headers)
+    assert client.patch(f"/v1/workers/{worker_id}", json={"version_locked": True}, headers=hub["owner"]).is_success
+    refused("locked")
+    client.patch(f"/v1/workers/{worker_id}", json={"version_locked": False}, headers=hub["owner"])
+    read_nightly(hub_db, COMMIT)
+    refused("already")
+    assert update_now_of(hub_db, worker_id) == (None, None, None, None)
+    assert audit_rows(hub_db, "worker.update_now") == []
+    # before the hub has read nightly once, it cannot say the worker is current, and takes the request
+    sql(hub_db, delete(tables.hub_nightly))
+    assert client.post(path, headers=hub["owner"]).status_code == 200
+
+
+def test_the_heartbeat_answer_carries_an_open_update_now_until_a_heartbeat_shows_it_ended(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}"
+    says = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    read_nightly(hub_db)
+
+    def beat(**body) -> dict:
+        response = client.post("/v1/worker/heartbeat", json={**says, **body}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def ask() -> str:
+        asked = client.post(f"{path}/update-now", headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        return asked.json()["update_now"]["requested_at"]
+
+    def ended() -> tuple:
+        shown = client.get(path, headers=hub["owner"]).json()["update_now"]
+        listed = [x["update_now"] for x in client.get("/v1/workers", headers=hub["owner"]).json()]
+        assert listed == [shown]
+        return shown["outcome"], shown["reason"]
+
+    beat()
+    requested_at = ask()
+    for _ in range(2):  # a daemon that carries it out says so in self_update; the hub keeps it open
+        answer = beat(self_update={"state": "waiting", "update_now": {"requested_at": requested_at}})
+        assert datetime.fromisoformat(answer["update_now"]["requested_at"]) == datetime.fromisoformat(requested_at)
+    assert ended() == (None, None)
+    # current: the daemon runs the commit of nightly the hub read
+    assert "update_now" not in beat(agent_commit=NIGHTLY, self_update={"state": "current"})
+    assert ended() == ("current", None)
+    assert "update_now" not in beat()  # an ended request is never carried again
+
+    # failed and impossible as the daemon reports them for this request, with why
+    read_nightly(hub_db, "e" * 40)
+    for outcome, report in (
+        ("failed", {"state": "waiting", "error": "uv tool install failed (2): no network"}),
+        ("impossible", {"state": "waiting", "reason": "a process of the install would not stop"}),
+    ):
+        requested_at = ask()
+        # an end it reports for an earlier request is not this one's
+        stale = {**report, "update_now": {"requested_at": "2026-01-01T00:00:00+00:00", "ended": outcome}}
+        assert "update_now" in beat(self_update=stale)
+        mine = {**report, "update_now": {"requested_at": requested_at, "ended": outcome}}
+        assert "update_now" not in beat(self_update=mine)
+        assert ended() == (outcome, report.get("error") or report["reason"])
+
+    # impossible, as the hub sees it: a daemon that says locked or unsupported, or drops update_now
+    for report, why in (
+        ({"state": "unsupported", "reason": "an editable install of evo-agents"}, "an editable install of evo-agents"),
+        ({"state": "locked"}, "its daemon says locked"),
+    ):
+        ask()
+        assert "update_now" not in beat(self_update=report)
+        assert ended() == ("impossible", why)
+    ask()
+    assert "update_now" not in beat(features=[])
+    assert ended() == ("impossible", "its daemon does not say update_now in its features")
 
 
 def seed_plan(db, project: str = "demo") -> dict:

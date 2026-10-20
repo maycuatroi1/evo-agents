@@ -441,6 +441,82 @@ test("the list and a worker's page say only what went wrong with its updates", a
   await expect(row(page, failed.name).getByTestId("worker-update")).toHaveText("Update failed");
 });
 
+test("its owner asks a worker behind nightly to update now, sees what it waits for, and cancels", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("behind"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, {
+    agentCommit: AGENT_COMMIT,
+    features: ["update_now"],
+    selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT },
+  });
+  const updateNowOf = async () => (await workersOf(me)).find((w) => w.id === worker.id)?.update_now;
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  const panel = main.getByTestId("update-now");
+  const ask = panel.getByRole("button", { name: "Update now" });
+  await expect(ask).toHaveAccessibleDescription(/runs another commit than nightly/);
+  await ask.click();
+  await expect(toast(page, `${worker.name} updates now`)).toContainText("claims no new run");
+  await expect(panel.getByTestId("update-now-status")).toHaveAttribute("data-phase", "asked");
+  expect(await updateNowOf()).toMatchObject({ ended_at: null, outcome: null });
+
+  // Its daemon took the request and holds no run: the page says it updates once its install is idle.
+  const requestedAt = (await updateNowOf())?.requested_at ?? "";
+  await heartbeat(worker.id, { selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT, update_now: { requested_at: requestedAt, ended: null } } });
+  await page.reload();
+  await expect(panel.getByTestId("update-now-status")).toHaveAttribute("data-phase", "starting");
+
+  // The hub refuses the cancel (here it cannot write): said under the button, which stays as the hub holds it.
+  const cancelOf = `**/v1/workers/${worker.id}/update-now/cancel`;
+  await page.route(cancelOf, (route) => route.fulfill({ status: 503, json: { error: "service_unavailable", message: "the database is read-only" } }));
+  const cancel = panel.getByRole("button", { name: "Cancel" });
+  await cancel.click();
+  const refused = panel.getByTestId("update-now-error");
+  await expect(refused).toContainText(`Couldn't cancel the Update now of ${worker.name}`);
+  await expect(refused).toContainText("the database is read-only");
+  await page.unroute(cancelOf);
+
+  await cancel.click();
+  await expect(toast(page, `Update now of ${worker.name} cancelled`)).toContainText("claims runs again");
+  await expect(panel.getByTestId("update-now-status")).toHaveCount(0);
+  await expect(refused).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Update now" })).toBeVisible();
+  expect(await updateNowOf()).toMatchObject({ outcome: "cancelled" });
+
+  // Locked, the button is greyed with why.
+  await main.getByRole("switch", { name: "Lock version" }).click();
+  await expect(panel.getByTestId("update-now-hint")).toHaveAttribute("data-blocked", "locked");
+  await expect(panel.getByRole("button", { name: "Update now" })).toHaveAttribute("aria-disabled", "true");
+});
+
+test("the Version card shows the commit nightly points to as the hub read it, in amber only once that read is old", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("reader"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, { agentCommit: NIGHTLY_COMMIT, selfUpdate: { state: "current", nightly_commit: NIGHTLY_COMMIT } });
+  // The hub's read is one row for the whole hub, so the specs running beside this one keep theirs: the answer is edited.
+  // The server renders the page from the hub's own answer, so the edited one shows from the browser's first refresh.
+  test.slow();
+  const REFRESH = { timeout: 15_000 };
+  let readAt = new Date().toISOString();
+  await page.route(`**/v1/workers/${worker.id}`, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), nightly: { commit: NIGHTLY_COMMIT, read_at: readAt } } });
+  });
+
+  await page.goto(`/workers/${worker.id}`);
+  const version = page.locator("#main").getByTestId("worker-version");
+  const read = version.getByTestId("worker-hub-nightly");
+  await expect(read.getByRole("link", { name: "def5678 on GitHub (opens in a new tab)" })).toBeVisible(REFRESH);
+  await expect(read.getByTestId("worker-hub-nightly-stale")).toHaveCount(0);
+  await expect(version.getByTestId("update-now")).toHaveCount(0); // it runs nightly: nothing to offer
+
+  readAt = new Date(Date.now() - 25 * 60 * 1000).toISOString();
+  await page.reload();
+  await expect(read.getByTestId("worker-hub-nightly-stale")).toContainText("the hub has not reached GitHub since", REFRESH);
+});
+
 test("a worker token on the admin tokens page says so, and revoking it revokes the worker", async ({ page, admin, signInAs }) => {
   const owner = newAccount("worker-owner");
   const project = uniqueName("fleet");

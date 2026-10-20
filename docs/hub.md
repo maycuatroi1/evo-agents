@@ -832,7 +832,11 @@ takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's
 codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
 is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
 name. Schema 0064 lets a version of a BA document be `withdrawn` (`docs/srs-plugin.md`, Approval); going back to 0063
-makes every withdrawn version a draft again.
+makes every withdrawn version a draft again. Schema 0065 adds `hub_nightly`, one row: the commit the tag `nightly`
+pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); and `workers.update_requested_at`,
+`update_ended_at`, `update_outcome` (`current`, `cancelled`, `failed` or `impossible`) and `update_reason`, an owner's
+last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
+the four columns, and the hub then reads no nightly and takes no Update now.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2196,6 +2200,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   (Session facets, above).
 - `hub.index_history`, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
   that ended, for search (The project's history, above).
+- `hub.read_nightly`, every minute: reads where the tag `nightly` of evo-agents points, with one `ls-refs` of git's
+  smart HTTP (protocol v2) to GitHub, no git and no GitHub API, and keeps the commit and the time in `hub_nightly`, which
+  every heartbeat answer hands the daemons (`docs/workers.md`, Updating itself to nightly). A read that fails keeps the
+  last one and logs one warning, `nightly not read, the last read kept`.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -2382,6 +2390,9 @@ images there with `docker compose up -d --build`; no image of main goes through 
    when the hub does not answer, since api and worker migrate as they start;
 3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
    and this commit's schema.
+4. moves the tag `nightly` to this commit once `/v1/health` confirmed it: its job `nightly` calls
+   `.github/workflows/nightly.yml` with the commit, writes the tag with the repository's token, and holds no secret of
+   `production`. The hub reads the tag every minute, so idle workers follow the deployment. A run that stopped at step 1, or failed, leaves `nightly` where it is.
 
 The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
 variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand

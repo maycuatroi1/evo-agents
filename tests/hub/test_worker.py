@@ -6,6 +6,7 @@ take its lock and queue at most one.
 The worker runs as a process of its own, as in production; the fake S3 runs in this process (``tests.hub.s3``)."""
 
 import asyncio
+import logging
 import re
 import signal
 import subprocess
@@ -23,6 +24,7 @@ from tests.hub import live, pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+import httpx
 import procrastinate
 from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
@@ -32,7 +34,8 @@ from sqlalchemy import Boolean, Text, cast, column, func, literal, select, table
 from sqlalchemy.dialects.postgresql import REGCLASS
 from sqlalchemy.types import UserDefinedType
 
-from evo_agents.hub import jobs
+from evo_agents.hub import jobs, nightly
+from evo_agents.hub import tables as hub_tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.jobs import JobQueue
@@ -340,6 +343,85 @@ def test_the_cleanup_and_the_pruning_are_periodic_and_queue_at_most_one():
     for name in (jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS, jobs.PRUNE_KG_ARTIFACTS):
         assert queue.tasks[name].queueing_lock == name
     assert {jobs.PING, jobs.CLEANUP_UPLOADS, jobs.PRUNE_JOBS, jobs.PRUNE_KG_ARTIFACTS} <= set(queue.tasks)
+
+
+# Reading where the tag nightly points
+
+PEELED = "a" * 40
+
+
+def test_the_nightly_read_runs_every_minute_and_queues_at_most_one():
+    periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
+    assert periodic[jobs.READ_NIGHTLY].cron == "* * * * *"
+    assert queue.tasks[jobs.READ_NIGHTLY].queueing_lock == jobs.READ_NIGHTLY
+
+
+def test_the_nightly_read_asks_git_for_the_tag_alone_and_takes_the_commit_an_annotated_tag_peels_to():
+    assert nightly.LS_REFS == (b"0014command=ls-refs\n00010009peel\n0021ref-prefix refs/tags/nightly\n0000")
+    plain = nightly.pkt_line(f"{NIGHTLY_COMMIT} refs/tags/nightly\n") + b"0000"
+    assert nightly.parse_ls_refs(plain) == NIGHTLY_COMMIT
+    annotated = nightly.pkt_line(f"{NIGHTLY_COMMIT} refs/tags/nightly peeled:{PEELED}\n") + b"0000"
+    assert nightly.parse_ls_refs(annotated) == PEELED
+    other = nightly.pkt_line(f"{NIGHTLY_COMMIT} refs/tags/nightly-old\n") + b"0000"
+    assert nightly.parse_ls_refs(other) is None
+    assert nightly.parse_ls_refs(b"0000") is None
+    with pytest.raises(ValueError):
+        nightly.pkt_lines(b"00ffshort")
+
+    seen = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=annotated)
+
+    async def read(handler):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await nightly.read_commit(client)
+
+    assert asyncio.run(read(answer)) == PEELED
+    (request,) = seen
+    assert str(request.url) == "https://github.com/maycuatroi1/evo-agents.git/git-upload-pack"
+    assert request.headers["git-protocol"] == "version=2" and request.content == nightly.LS_REFS
+    for failing in (
+        lambda request: httpx.Response(503),
+        lambda request: httpx.Response(200, content=b"0000"),
+        lambda request: httpx.Response(200, content=b"zzzz"),
+    ):
+        with pytest.raises(LookupError):
+            asyncio.run(read(failing))
+
+
+NIGHTLY_COMMIT = "f" * 40
+
+
+def test_a_nightly_read_keeps_the_commit_and_one_that_fails_keeps_the_last_read_and_logs_one_line(hub_db, caplog):
+    kept = select(hub_tables.hub_nightly.c.id, hub_tables.hub_nightly.c.commit_sha)
+
+    async def refresh(*reads):
+        pool = await open_pool(HubConfig(dsn=hub_db.dsn, data_dir=Path("."), pool_min_size=1, pool_max_size=2))
+        engine = make_engine(pool)
+        try:
+            return [await nightly.refresh(engine, read) for read in reads]
+        finally:
+            await engine.dispose()
+            await pool.close()
+
+    async def points(commit):
+        return commit
+
+    async def fails():
+        raise LookupError("HTTPStatusError: 503")
+
+    caplog.set_level(logging.WARNING, logger="evo_agents.hub.nightly")
+    (none_yet,) = asyncio.run(refresh(fails))
+    assert none_yet == {"read": False, "error": "HTTPStatusError: 503"}
+    assert query(hub_db, kept) == []
+    first, second, failed = asyncio.run(refresh(partial(points, NIGHTLY_COMMIT), partial(points, PEELED), fails))
+    assert (first["read"], first["commit"], second["commit"]) == (True, NIGHTLY_COMMIT, PEELED)
+    assert query(hub_db, kept) == [(1, PEELED)]
+    assert (failed["read"], failed["commit"], failed["read_at"]) == (False, PEELED, second["read_at"])
+    warnings = [r for r in caplog.records if r.message == "nightly not read, the last read kept"]
+    assert len(warnings) == 2 and warnings[-1].error == "HTTPStatusError: 503"
 
 
 # Refusing to start
