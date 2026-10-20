@@ -275,7 +275,9 @@ LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that 
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
 ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a decision may be shown as
+# what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
+RELEASE_DECISION_CATEGORY = "release"
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, RELEASE_DECISION_CATEGORY)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -291,7 +293,8 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
 # chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``);
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
-# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder)
+# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
+# release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -301,6 +304,7 @@ NOTICE_KINDS = (
     "chat_added",
     "plugin_disabled",
     "builder_proposal",
+    "release",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel

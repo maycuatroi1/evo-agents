@@ -48099,7 +48099,8 @@
                 "architecture",
                 "scope",
                 "question",
-                "triage"
+                "triage",
+                "release"
               ],
               "title": "Category"
             },
@@ -54351,7 +54352,8 @@
                     "chat_mention",
                     "chat_added",
                     "plugin_disabled",
-                    "builder_proposal"
+                    "builder_proposal",
+                    "release"
                   ]
                 },
                 {
@@ -55044,7 +55046,8 @@
                 "architecture",
                 "scope",
                 "question",
-                "triage"
+                "triage",
+                "release"
               ],
               "title": "Category"
             },
@@ -59915,6 +59918,53 @@
               ],
               "title": "Stop Reason"
             },
+            "stop_cause": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "run_failed",
+                    "run_cancelled",
+                    "refused",
+                    "github",
+                    "hacking",
+                    "budget",
+                    "same_test",
+                    "timeout",
+                    "ci"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop Cause",
+              "description": "why it stopped last"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the decision its last stop asked the owner"
+            },
+            "thread": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread",
+              "description": "the thread its last stop opened in the project's triage chat"
+            },
             "opened_at": {
               "type": "string",
               "format": "date-time",
@@ -59938,6 +59988,14 @@
               },
               "type": "array",
               "title": "Runs"
+            },
+            "tags": {
+              "items": {
+                "$ref": "#/components/schemas/ReleaseTag"
+              },
+              "type": "array",
+              "title": "Tags",
+              "description": "the tags it follows, in the order it began to"
             }
           },
           "type": "object",
@@ -59955,9 +60013,13 @@
             "budget_usd",
             "cost_usd",
             "stop_reason",
+            "stop_cause",
+            "decision_id",
+            "thread",
             "opened_at",
             "ended_at",
-            "runs"
+            "runs",
+            "tags"
           ],
           "title": "ReleaseCycle"
         },
@@ -60547,6 +60609,137 @@
             "cycle"
           ],
           "title": "ReleaseStatus"
+        },
+        "ReleaseTag": {
+          "properties": {
+            "tag": {
+              "type": "string",
+              "title": "Tag"
+            },
+            "commit": {
+              "type": "string",
+              "title": "Commit"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run whose merge commit the hub tagged; null for a tag a person made"
+            },
+            "ci_state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "passed",
+                "failed",
+                "timeout"
+              ],
+              "title": "Ci State",
+              "description": "the CI of the schedule's workflow for the tag"
+            },
+            "workflow_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Url",
+              "description": "the run of the workflow for the tag"
+            },
+            "run_attempt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Attempt"
+            },
+            "reruns": {
+              "type": "integer",
+              "title": "Reruns",
+              "description": "times the hub ran its failed jobs again, for a fault of the infrastructure"
+            },
+            "failed_tests": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Failed Tests",
+              "description": "the test ids that failed, else each failed job and its step"
+            },
+            "failed_jobs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Failed Jobs"
+            },
+            "infra": {
+              "type": "boolean",
+              "title": "Infra",
+              "description": "whether the infrastructure alone failed it"
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "what kept the hub from reading its CI: actions_permission, GitHub failing"
+            },
+            "watched_since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Watched Since",
+              "description": "what its deadlines count from"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "tag",
+            "commit",
+            "run_id",
+            "ci_state",
+            "workflow_url",
+            "run_attempt",
+            "reruns",
+            "failed_tests",
+            "failed_jobs",
+            "infra",
+            "problem",
+            "watched_since",
+            "checked_at"
+          ],
+          "title": "ReleaseTag"
         },
         "Replay": {
           "properties": {

@@ -2,9 +2,10 @@
 the branch the worker reports it pushed, and what its end does to its cycle.
 
 ``release_claim`` is the claim's ``release`` (``runs.models.ReleaseSpec``): the cycle and mode, the schedule's repo,
-the commit the worktree starts at (a cut's target commit; a fix's red tag's commit, the merge commit the hub tagged,
-else the cycle's base commit when the red tag is its base tag) and the tags' prefix. ``release_prompt`` is its prompt,
-built from what the cycle keeps (its range, ``span``), so a claim reads nothing of GitHub.
+the commit the worktree starts at (a cut's target commit; a fix's red tag's commit as the cycle follows it in
+release_tags, else the merge commit the hub tagged, else the cycle's base commit when the red tag is its base tag) and
+the tags' prefix. ``release_prompt`` is its prompt, built from what the cycle keeps (its range, ``span``, and for a fix
+what the hub read of the red tag's CI, ``release_ci.failures_text``), so a claim reads nothing of GitHub.
 
 POST /v1/worker/runs/{id}/release/branch: the worker that holds a release run pushed release/<version> of the
 schedule's repo; the hub keeps the version, the branch, the commit and the agent's Decision line on the run's row of
@@ -15,7 +16,7 @@ hub landed it.
 ``release_run_moved`` is what a release run's move means for its cycle (``run_state.record_move``): one that fails, or
 is cancelled while its schedule is not paused, stops the open cycle with the reason (a pause closes it instead); one
 that ends done without a branch stops it too, its row refused; one done with its branch waits for the landing.
-``stop_cycle`` is the one way a cycle stops.
+``release_cycles.stop_cycle`` is the one way a cycle stops, and asks the owner what next.
 """
 
 from __future__ import annotations
@@ -24,11 +25,12 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import release_runs, releases, runs, tables
+from evo_agents.hub import release_ci, release_runs, releases, runs, tables
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.release_cycles import stop_cycle
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, ReleaseSpec, Run, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
@@ -89,9 +91,19 @@ async def _found(conn: AsyncConnection, run_id: int):
     return (await conn.execute(_release_run(run_id))).one_or_none()
 
 
+async def _red_tag(conn: AsyncConnection, found):
+    """The row of release_tags of the red tag a fix run of ``found`` fixes, or None."""
+    t = tables.release_tags
+    query = select(t).where(t.c.cycle_id == found.cycle_id, t.c.tag == found.red_tag)
+    return (await conn.execute(query)).one_or_none()
+
+
 async def _fix_start(conn: AsyncConnection, found) -> str | None:
-    """The commit a fix run of ``found`` starts at: the merge commit the hub tagged its red tag on, else the cycle's
-    base commit when the red tag is the cycle's base tag."""
+    """The commit a fix run of ``found`` starts at: its red tag's commit as the cycle follows it, else the merge
+    commit the hub tagged it on, else the cycle's base commit when the red tag is the cycle's base tag."""
+    followed = await _red_tag(conn, found)
+    if followed is not None:
+        return followed.commit
     rr = tables.release_runs
     query = select(rr.c.merge_commit).where(rr.c.cycle_id == found.cycle_id, rr.c.tagged == found.red_tag)
     tagged = (await conn.execute(query.limit(1))).scalar_one_or_none()
@@ -126,7 +138,11 @@ async def release_prompt(conn: AsyncConnection, view: Run) -> str:
     common = {"project": found.project, "run_id": view.id, "cycle_id": found.cycle_id, "repo": found.repo}
     if found.mode == "fix":
         start = await _fix_start(conn, found) or found.target_commit or ""
-        prompt = release_runs.fix_prompt(**common, red_tag=found.red_tag or "", start_commit=start, tag_prefix=prefix)
+        red = await _red_tag(conn, found)
+        failures = release_ci.failures_text(found.red_tag or "", red.workflow_url, red.failures) if red else None
+        prompt = release_runs.fix_prompt(
+            **common, red_tag=found.red_tag or "", start_commit=start, tag_prefix=prefix, failures=failures
+        )
     else:
         prompt = release_runs.cut_prompt(
             **common,
@@ -200,21 +216,6 @@ async def pushed(request: Request, run_id: RunId, body: ReleasePushed, user: Cur
 # What a run's end does to its cycle
 
 
-async def stop_cycle(conn: AsyncConnection, cycle_id: int, reason: str) -> bool:
-    """Stop cycle ``cycle_id`` while it is open, keeping ``reason``; whether it stopped now."""
-    c = tables.release_cycles
-    statement = (
-        update(c)
-        .values(state="stopped", stop_reason=releases.clip_reason(reason), updated_at=func.now())
-        .where(c.c.id == cycle_id, c.c.state == "open")
-        .returning(c.c.id)
-    )
-    stopped = (await conn.execute(statement)).scalar_one_or_none() is not None
-    if stopped:
-        log.warning("release cycle stopped", extra={"cycle_id": cycle_id, "reason": releases.clip_reason(reason)})
-    return stopped
-
-
 async def release_run_moved(conn: AsyncConnection, run_id: int, new: str, *, reason: str) -> None:
     """What release run ``run_id``'s move to ``new`` means for its cycle (see the module)."""
     if new not in ("done", "failed", "cancelled"):
@@ -224,10 +225,10 @@ async def release_run_moved(conn: AsyncConnection, run_id: int, new: str, *, rea
         return
     if new == "cancelled":
         if found.paused_at is None:  # a pause closes the cycle itself
-            await stop_cycle(conn, found.cycle_id, f"release run #{run_id} was cancelled: {reason}")
+            await stop_cycle(conn, found.cycle_id, f"release run #{run_id} was cancelled: {reason}", "run_cancelled")
         return
     if new == "failed":
-        await stop_cycle(conn, found.cycle_id, f"release run #{run_id} failed: {reason}")
+        await stop_cycle(conn, found.cycle_id, f"release run #{run_id} failed: {reason}", "run_failed")
         return
     rr = tables.release_runs
     branch = (await conn.execute(select(rr.c.branch).where(rr.c.run_id == run_id))).scalar_one()
@@ -237,6 +238,6 @@ async def release_run_moved(conn: AsyncConnection, run_id: int, new: str, *, rea
             "nothing to land"
         )
         await conn.execute(update(rr).where(rr.c.run_id == run_id).values(land_state="refused", land_reason=why))
-        await stop_cycle(conn, found.cycle_id, why)
+        await stop_cycle(conn, found.cycle_id, why, "refused")
         return
     await write_event(conn, run_id, {"text": f"The hub lands {branch} on its next pass of the release job."})

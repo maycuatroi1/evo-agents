@@ -44,12 +44,20 @@ as it lists. POST .../pulls refuses with 422 and GitHub's ``errors`` as GitHub w
 of (field head, code invalid), a pull request of the branch open already, a draft on a repo whose ``drafts`` is False
 (code custom, a message about drafts), and, first of all, each answer a test queued in ``pull_refusals`` for the next
 tries, one a try.
+
+For the CI of a release tag it plays GitHub Actions (``workflow_run`` makes a run of a workflow for a tag pushed at a
+commit, with its jobs, their failed steps and logs; ``attempt`` sets what a later attempt of it says): GET
+.../actions/workflows/{workflow}/runs (head_sha, event), GET .../actions/runs/{id} and GET .../actions/runs/{id}/jobs
+for a token with actions read; GET .../actions/jobs/{id}/logs, which redirects to the fake's own /_logs/{id} as GitHub
+redirects to its storage, with no credential asked there; and POST .../actions/runs/{id}/rerun-failed-jobs for a token
+with actions write, which queues the run's next attempt (``reruns`` records each).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
 import json
 import secrets
 import threading
@@ -129,6 +137,23 @@ class FakePull:
 
 
 @dataclass
+class FakeWorkflowRun:
+    """A run of a workflow for the push of a tag: its current attempt and the jobs of it."""
+
+    id: int
+    owner: str
+    name: str
+    workflow: str
+    sha: str
+    tag: str
+    status: str
+    conclusion: str | None
+    started_at: str
+    attempt: int = 1
+    jobs: list = field(default_factory=list)  # each {id, name, status, conclusion, step}
+
+
+@dataclass
 class AppToken:
     installation: int
     repositories: tuple[str, ...]
@@ -193,9 +218,13 @@ class FakeGitHub:
     app_jwts: list[str] = field(default_factory=list)  # every App JWT a request carried, taken or not
     accounts: dict = field(default_factory=dict)  # login, lower case -> GitHub id, of every account the fake knows
     collaborators: dict = field(default_factory=dict)  # (owner, repo, login), lower case -> role on the repo
+    workflow_runs: dict = field(default_factory=dict)  # run id -> FakeWorkflowRun
+    job_logs: dict = field(default_factory=dict)  # job id -> the text of its log
+    reruns: list = field(default_factory=list)  # (owner, name, run id, app) of each run of failed jobs again
 
     def __post_init__(self):
         self._lock = threading.Lock()
+        self._job_ids = itertools.count(50_001)
         self._server = _QuietServer(("127.0.0.1", 0), _handler(self))
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
 
@@ -333,6 +362,54 @@ class FakeGitHub:
             pull = self.pull_of(owner, name, branch)
             pull.state = "closed"
         return pull
+
+    def _jobs(self, run_id: int, jobs) -> list[dict]:
+        made = []
+        for item in jobs:
+            job_id = next(self._job_ids)
+            if item.get("log") is not None:
+                self.job_logs[job_id] = item["log"]
+            made.append(
+                {
+                    "id": job_id,
+                    "name": item["name"],
+                    "status": item.get("status", "completed"),
+                    "conclusion": item.get("conclusion", "success"),
+                    "step": item.get("step"),
+                }
+            )
+        return made
+
+    def workflow_run(
+        self,
+        owner: str,
+        name: str,
+        *,
+        workflow: str,
+        sha: str,
+        tag: str,
+        status: str = "completed",
+        conclusion: str | None = "success",
+        jobs=(),
+        started_at: str | None = None,
+    ) -> FakeWorkflowRun:
+        """A run of ``workflow`` for the push of ``tag`` at ``sha``, with ``jobs``: each {name, conclusion, step (the
+        step that failed), log (its text)}."""
+        with self._lock:
+            run_id = 7_000_000 + len(self.workflow_runs) + 1
+            run = FakeWorkflowRun(
+                run_id, owner, name, workflow, sha, tag, status, conclusion, started_at or _now(), 1, []
+            )
+            run.jobs = self._jobs(run_id, jobs)
+            self.workflow_runs[run_id] = run
+        return run
+
+    def attempt(self, run_id: int, *, status: str = "completed", conclusion: str | None = "success", jobs=()) -> None:
+        """The run's current attempt now says ``status`` and ``conclusion``, with ``jobs``."""
+        with self._lock:
+            run = self.workflow_runs[run_id]
+            run.status, run.conclusion = status, conclusion
+            run.jobs = self._jobs(run_id, jobs)
 
     def pull_of(self, owner: str, name: str, branch: str) -> FakePull | None:
         return next(
@@ -663,12 +740,82 @@ class FakeGitHub:
             and app not in item.get("bypass", ())
         ]
 
+    def _run_answer(self, run: FakeWorkflowRun) -> dict:
+        return {
+            "id": run.id,
+            "name": run.workflow.rsplit(".", 1)[0],
+            "path": f".github/workflows/{run.workflow}",
+            "head_branch": run.tag,
+            "head_sha": run.sha,
+            "event": "push",
+            "status": run.status,
+            "conclusion": run.conclusion,
+            "html_url": f"https://github.com/{run.owner}/{run.name}/actions/runs/{run.id}",
+            "run_attempt": run.attempt,
+            "run_started_at": run.started_at,
+            "created_at": run.started_at,
+        }
+
+    def _job_answer(self, run: FakeWorkflowRun, job: dict) -> dict:
+        failed = job["conclusion"] in ("failure", "timed_out")
+        steps = [{"number": 1, "name": "Set up job", "status": "completed", "conclusion": "success"}]
+        if job.get("step"):
+            steps.append({"number": 2, "name": job["step"], "status": "completed", "conclusion": job["conclusion"]})
+        return {
+            "id": job["id"],
+            "run_id": run.id,
+            "run_attempt": run.attempt,
+            "name": job["name"],
+            "status": job["status"],
+            "conclusion": job["conclusion"],
+            "html_url": f"https://github.com/{run.owner}/{run.name}/actions/runs/{run.id}/job/{job['id']}",
+            "steps": steps if failed or job.get("step") else steps[:1],
+        }
+
+    def _actions_api(self, method: str, owner: str, name: str, rest: list[str], query: dict, need):
+        runs = [run for run in self.workflow_runs.values() if (run.owner, run.name) == (owner, name)]
+        if method == "POST" and len(rest) == 4 and rest[1] == "runs" and rest[3] == "rerun-failed-jobs":
+            _, app, refused = need("actions", "write")
+            if refused:
+                return refused
+            run = next((item for item in runs if str(item.id) == rest[2]), None)
+            if run is None:
+                return 404, {"message": "Not Found"}
+            with self._lock:
+                run.status, run.conclusion, run.attempt = "queued", None, run.attempt + 1
+                self.reruns.append((owner, name, run.id, app))
+            return 201, {}
+        _, _, refused = need("actions", "read")
+        if refused:
+            return refused
+        if rest[1:2] == ["workflows"] and rest[3:] == ["runs"]:
+            found = [
+                self._run_answer(run)
+                for run in runs
+                if run.workflow == rest[2]
+                and run.sha == query.get("head_sha", run.sha)
+                and query.get("event", "push") == "push"
+            ]
+            return 200, {"total_count": len(found), "workflow_runs": found}
+        run = next((item for item in runs if rest[1:2] == ["runs"] and str(item.id) == rest[2]), None)
+        if run is not None and len(rest) == 3:
+            return 200, self._run_answer(run)
+        if run is not None and rest[3:] == ["jobs"]:
+            jobs = [self._job_answer(run, job) for job in run.jobs]
+            return 200, {"total_count": len(jobs), "jobs": jobs}
+        if rest[1:2] == ["jobs"] and rest[3:] == ["logs"] and rest[2].isdigit() and int(rest[2]) in self.job_logs:
+            return 302, None, {"Location": f"{self.url}/_logs/{rest[2]}"}
+        return 404, {"message": "Not Found"}
+
     def _curator_api(self, method: str, parts: list[str], query: dict, headers: dict, body: str):
         owner, name, rest = parts[1], parts[2], parts[3:]
         repo = self.repos.get((owner.lower(), name.lower()))
 
         def need(permission: str, level: str):
             return self._api_token(headers, owner, name, permission, level)
+
+        if rest[:1] == ["actions"] and len(rest) >= 3:
+            return self._actions_api(method, repo.owner, repo.name, rest, query, need)
 
         if method == "GET" and not rest:
             _, _, refused = need("metadata", "read")
@@ -953,6 +1100,9 @@ class FakeGitHub:
             return self._curator_api(method, parts, query, headers, body)
         if path == "/moved":
             return 302, None, {"Location": f"{self.url}/user"}
+        if method == "GET" and path.startswith("/_logs/") and path[len("/_logs/") :].isdigit():
+            text = self.job_logs.get(int(path[len("/_logs/") :]))
+            return (404, {"message": "gone"}) if text is None else (200, text.encode())
         return 404, {"message": "Not Found"}
 
 

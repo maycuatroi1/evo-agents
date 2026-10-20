@@ -6,7 +6,8 @@ Each call asks the App's installation on the repo for a token of that repo alone
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
 write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
-a comparison with contents read), uses it, and revokes it.
+a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
+its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
 The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
 no redirect, one log line without the token): GitHub failing raises ``GitHubUnavailable``, which the job takes as "try
 again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
@@ -61,6 +62,8 @@ SERVER_PERMISSIONS = {
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
     "tree": {"contents": "read", "metadata": "read"},
+    "ci": {"actions": "read", "metadata": "read"},
+    "rerun": {"actions": "write", "metadata": "read"},
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
