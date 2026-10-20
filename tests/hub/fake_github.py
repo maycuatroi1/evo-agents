@@ -32,7 +32,10 @@ and modes, which the merge commit of a pull request of that head holds too; GET 
 ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files``
 set) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them);
 POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
-the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
+the token's App may not bypass (405), and otherwise merges. It answers git's own POST /{o}/{r}.git/git-upload-pack
+with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and an installation token that
+opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under each ref-prefix asked,
+an annotated tag with the commit it peels to. A pull request names the base's commit it opened on, and
 once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
 GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
 required_status_checks of its own; GET .../pulls/{n}/commits lists the head commit with the message ``push`` gave it
@@ -103,6 +106,7 @@ class FakeRepo:
     merge_bases: dict = field(default_factory=dict)  # a pushed branch's head -> the default branch's head at the push
     blobs: dict = field(default_factory=dict)  # blob sha -> its bytes (``snapshot``)
     modes: dict = field(default_factory=dict)  # (commit, path) -> its mode in the tree, 100644 when not named
+    refs: dict = field(default_factory=dict)  # full ref -> (the object it names, the commit a tag peels to or None)
 
 
 @dataclass
@@ -283,6 +287,18 @@ class FakeGitHub:
                 repo.modes[(sha, path)] = mode
                 tree[path] = blob
             repo.trees[sha] = tree
+
+    def set_ref(self, owner: str, name: str, ref: str, sha: str, peeled: str | None = None) -> None:
+        """Full ref ``ref`` of owner/name names object ``sha``; ``peeled`` is the commit an annotated tag points to."""
+        with self._lock:
+            self.repos[(owner.lower(), name.lower())].refs[ref] = (sha, peeled)
+
+    def tag(self, owner: str, name: str, tag: str, sha: str, *, annotated: bool = False) -> None:
+        """Tag ``tag`` of owner/name on commit ``sha``: lightweight, or an annotated tag object that peels to it."""
+        if annotated:
+            self.set_ref(owner, name, f"refs/tags/{tag}", hashlib.sha1(f"tag {tag}".encode()).hexdigest(), sha)
+        else:
+            self.set_ref(owner, name, f"refs/tags/{tag}", sha)
 
     def put_file(self, owner: str, name: str, sha: str, path: str, text: str | None) -> None:
         """File ``path`` of commit ``sha`` of owner/name holds ``text`` (None: the commit has no such file)."""
@@ -601,6 +617,38 @@ class FakeGitHub:
             "merged_by": {"login": pull.merged_by} if pull.merged_by else None,
         }
 
+    def _upload_pack(self, owner: str, name: str, headers: dict, body: str):
+        """git's ls-refs over smart HTTP, protocol version 2, with an installation token as the password."""
+        scheme, _, encoded = headers.get("authorization", "").partition(" ")
+        try:
+            user, _, token = base64.b64decode(encoded).decode().partition(":")
+        except ValueError:
+            user, token = "", ""
+        if scheme.lower() != "basic" or user != "x-access-token":
+            return 401, {"message": "Authentication failed"}
+        _, _, refused = self._api_token({"authorization": f"token {token}"}, owner, name, "contents", "read")
+        if refused:
+            return refused
+        asked, at = [], 0
+        while at < len(body):
+            size = int(body[at : at + 4], 16)
+            if size >= 4:
+                asked.append(body[at + 4 : at + size].rstrip("\n"))
+            at += max(size, 4)
+        if "command=ls-refs" not in asked or headers.get("git-protocol") != "version=2":
+            return 400, {"message": "only ls-refs of protocol version 2"}
+        prefixes = [line.removeprefix("ref-prefix ") for line in asked if line.startswith("ref-prefix ")]
+        peel = "peel" in asked
+        with self._lock:
+            refs = sorted(self.repos[(owner.lower(), name.lower())].refs.items())
+        lines = []
+        for ref, (sha, peeled) in refs:
+            if prefixes and not any(ref.startswith(prefix) for prefix in prefixes):
+                continue
+            text = f"{sha} {ref}" + (f" peeled:{peeled}" if peel and peeled else "") + "\n"
+            lines.append(f"{len(text) + 4:04x}{text}")
+        return 200, ("".join(lines) + "0000").encode()
+
     def _blocks(self, repo: FakeRepo, branch: str, app: str | None) -> list[dict]:
         """The active rulesets with an update rule on ``branch`` (the default branch) that ``app`` may not bypass."""
         if branch != repo.default_branch:
@@ -876,6 +924,9 @@ class FakeGitHub:
             return self._access_tokens(parts[2], headers, body)
         if method == "DELETE" and path == "/installation/token":
             return self._revoke_token(headers)
+        pack = len(parts) == 3 and parts[1].endswith(".git") and parts[2] == "git-upload-pack"
+        if method == "POST" and pack and (parts[0].lower(), parts[1][:-4].lower()) in self.repos:
+            return self._upload_pack(parts[0], parts[1][:-4], headers, body)
         if parts[0] == "repos" and len(parts) >= 3 and (parts[1].lower(), parts[2].lower()) in self.repos:
             return self._curator_api(method, parts, query, headers, body)
         if path == "/moved":
@@ -914,11 +965,12 @@ def _handler(fake: FakeGitHub):
             query = {k: v[0] for k, v in parse_qs(parts.query).items()}
             headers = {k.lower(): v for k, v in self.headers.items()}
             status, payload, *extra = fake.answer(method, parts.path, query, headers, body)
-            data = b"" if payload is None else json.dumps(payload).encode()
+            raw = isinstance(payload, bytes)  # git's own protocol, not JSON
+            data = payload if raw else b"" if payload is None else json.dumps(payload).encode()
             self.send_response(status)
             for name, value in (extra[0] if extra else {}).items():
                 self.send_header(name, value)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/x-git-upload-pack-result" if raw else "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)

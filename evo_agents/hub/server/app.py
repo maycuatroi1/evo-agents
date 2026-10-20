@@ -259,6 +259,7 @@ def create_app(config: HubConfig) -> FastAPI:
         notifications,
         overview,
         proposals,
+        releases,
     )
 
     for routes in (
@@ -273,6 +274,7 @@ def create_app(config: HubConfig) -> FastAPI:
         curator.router,
         proposals.router,
         proposals.worker_router,
+        releases.router,  # the daily release of a project (evo_agents.hub.releases)
     ):
         app.include_router(routes)
 

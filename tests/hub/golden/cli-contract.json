@@ -5257,6 +5257,246 @@
         ]
       }
     },
+    "hub release pause": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "schedule",
+          "paused",
+          "next_check_at",
+          "last_check",
+          "checks",
+          "cycle"
+        ],
+        "schema": "ReleaseStatus"
+      }
+    },
+    "hub release resume": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "schedule",
+          "paused",
+          "next_check_at",
+          "last_check",
+          "checks",
+          "cycle"
+        ],
+        "schema": "ReleaseStatus"
+      }
+    },
+    "hub release run": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "trigger",
+          "local_day",
+          "checked_at",
+          "requested_by",
+          "outcome",
+          "reason",
+          "base_tag",
+          "base_commit",
+          "target_commit",
+          "changed_paths",
+          "cycle_id",
+          "run_id"
+        ],
+        "schema": "ReleaseCheck"
+      }
+    },
+    "hub release set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--timezone"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--target-ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tag-pattern"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--workflow"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--budget"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "schedule",
+          "paused",
+          "next_check_at",
+          "last_check",
+          "checks",
+          "cycle"
+        ],
+        "schema": "ReleaseStatus"
+      }
+    },
+    "hub release status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "schedule",
+          "paused",
+          "next_check_at",
+          "last_check",
+          "checks",
+          "cycle"
+        ],
+        "schema": "ReleaseStatus"
+      }
+    },
     "hub run approve": {
       "positionals": [
         {
@@ -6217,6 +6457,7 @@
             "task",
             "replay",
             "history",
+            "release",
             "local"
           ]
         },
@@ -17488,6 +17729,7 @@
                       "task",
                       "replay",
                       "history",
+                      "release",
                       "local"
                     ],
                     "type": "string"
@@ -24550,6 +24792,426 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/releases": {
+        "get": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Status",
+          "description": "Where the project's daily release stands: its schedule, its latest checks and the cycle open now.",
+          "operationId": "status_v1_projects__project__releases_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/releases/schedule": {
+        "put": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Set Schedule",
+          "description": "Set the project's release schedule; the caller becomes its owner.",
+          "operationId": "set_schedule_v1_projects__project__releases_schedule_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseScheduleWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/releases/pause": {
+        "post": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Pause",
+          "description": "Pause the release schedule, cancel the release runs still queued and close an open cycle left idle.",
+          "operationId": "pause_v1_projects__project__releases_pause_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/releases/resume": {
+        "post": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Resume",
+          "description": "Let the release schedule check again.",
+          "operationId": "resume_v1_projects__project__releases_resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/releases/run": {
+        "post": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Run Now",
+          "description": "Check now, through the gates of the daily check, and answer the check.",
+          "operationId": "run_now_v1_projects__project__releases_run_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseCheck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -54252,6 +54914,7 @@
                 "task",
                 "replay",
                 "history",
+                "release",
                 "local"
               ],
               "title": "Kind"
@@ -58705,6 +59368,661 @@
           ],
           "title": "Relation"
         },
+        "ReleaseCheck": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "trigger": {
+              "type": "string",
+              "enum": [
+                "schedule",
+                "manual"
+              ],
+              "title": "Trigger",
+              "description": "schedule, the daily job; manual, an admin's run"
+            },
+            "local_day": {
+              "type": "string",
+              "format": "date",
+              "title": "Local Day",
+              "description": "the day of the check in the schedule's time zone"
+            },
+            "checked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Checked At"
+            },
+            "requested_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Requested By",
+              "description": "the admin of a manual check"
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "opened",
+                "unchanged",
+                "busy",
+                "paused",
+                "owner",
+                "error"
+              ],
+              "title": "Outcome",
+              "description": "opened: a cycle opened and its cut run queued; unchanged: no packaging path changed since the newest tag; busy: a cycle is open or stopped; paused: the schedule is paused; owner: its owner holds no admin role on the project; error: the check could not read GitHub, the reason says why"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "base_tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Tag",
+              "description": "the newest tag the pattern matched"
+            },
+            "base_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Commit"
+            },
+            "target_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Commit",
+              "description": "the commit of the target ref"
+            },
+            "changed_paths": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed Paths",
+              "description": "the packaging paths that changed since the newest tag"
+            },
+            "cycle_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cycle Id"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "trigger",
+            "local_day",
+            "checked_at",
+            "requested_by",
+            "outcome",
+            "reason",
+            "base_tag",
+            "base_commit",
+            "target_commit",
+            "changed_paths",
+            "cycle_id",
+            "run_id"
+          ],
+          "title": "ReleaseCheck"
+        },
+        "ReleaseCycle": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "stopped",
+                "published",
+                "closed"
+              ],
+              "title": "State"
+            },
+            "start": {
+              "type": "string",
+              "enum": [
+                "cut",
+                "fix"
+              ],
+              "title": "Start",
+              "description": "the mode of its first run"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "local_day": {
+              "type": "string",
+              "format": "date",
+              "title": "Local Day"
+            },
+            "base_tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Tag"
+            },
+            "base_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Commit"
+            },
+            "target_ref": {
+              "type": "string",
+              "title": "Target Ref"
+            },
+            "target_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Commit"
+            },
+            "changed_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed Paths"
+            },
+            "budget_usd": {
+              "type": "number",
+              "title": "Budget Usd",
+              "description": "what the cycle's runs may cost"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd",
+              "description": "what they cost so far, each agent session once"
+            },
+            "stop_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop Reason"
+            },
+            "opened_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Opened At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/ReleaseCycleRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "start",
+            "owner",
+            "local_day",
+            "base_tag",
+            "base_commit",
+            "target_ref",
+            "target_commit",
+            "changed_paths",
+            "budget_usd",
+            "cost_usd",
+            "stop_reason",
+            "opened_at",
+            "ended_at",
+            "runs"
+          ],
+          "title": "ReleaseCycle"
+        },
+        "ReleaseCycleRun": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "cut",
+                "fix"
+              ],
+              "title": "Mode"
+            },
+            "tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag",
+              "description": "the red tag a fix run fixes forward"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "cost_usd": {
+              "type": "number",
+              "title": "Cost Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "mode",
+            "tag",
+            "state",
+            "cost_usd"
+          ],
+          "title": "ReleaseCycleRun"
+        },
+        "ReleaseSchedule": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "github_repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Github Repo",
+              "description": "owner/name of the repo on GitHub; null once its origin is not there"
+            },
+            "at": {
+              "type": "string",
+              "title": "At",
+              "description": "the local time of the daily check, HH:MM"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone"
+            },
+            "target_ref": {
+              "type": "string",
+              "title": "Target Ref",
+              "description": "the ref whose commit a release ships: a tag, else a branch of that name"
+            },
+            "tag_pattern": {
+              "type": "string",
+              "title": "Tag Pattern",
+              "description": "the release tags: a literal prefix, then *, before a version X.Y.Z"
+            },
+            "workflow": {
+              "type": "string",
+              "title": "Workflow",
+              "description": "the workflow that publishes a tag"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths",
+              "description": "the packaging paths: a check opens a cycle when one of them changed"
+            },
+            "cycle_budget_usd": {
+              "type": "number",
+              "title": "Cycle Budget Usd",
+              "description": "what one cycle's runs may cost"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the admin who set the schedule last, whom its runs are dispatched as"
+            },
+            "updated_by": {
+              "type": "string",
+              "title": "Updated By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "paused_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "github_repo",
+            "at",
+            "timezone",
+            "target_ref",
+            "tag_pattern",
+            "workflow",
+            "paths",
+            "cycle_budget_usd",
+            "owner",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "paused_at",
+            "paused_by"
+          ],
+          "title": "ReleaseSchedule"
+        },
+        "ReleaseScheduleWrite": {
+          "properties": {
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "a repo of the project, on GitHub"
+            },
+            "at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At",
+              "description": "the local time of the daily check, HH:MM"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone",
+              "description": "an IANA name"
+            },
+            "target_ref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Ref",
+              "description": "the ref a release ships"
+            },
+            "tag_pattern": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._/-]{0,50}\\*$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Pattern",
+              "description": "a prefix, then *"
+            },
+            "workflow": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,100}\\.ya?ml$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow",
+              "description": "the workflow that publishes"
+            },
+            "paths": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paths",
+              "description": "packaging paths"
+            },
+            "cycle_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 10000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cycle Budget Usd"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ReleaseScheduleWrite",
+          "description": "What PUT .../releases/schedule sets; a key left out keeps what the schedule holds, or its default."
+        },
+        "ReleaseStatus": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "schedule": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReleaseSchedule"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null before an admin sets one"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused"
+            },
+            "next_check_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Check At",
+              "description": "the next moment of the daily check, in UTC"
+            },
+            "last_check": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReleaseCheck"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "checks": {
+              "items": {
+                "$ref": "#/components/schemas/ReleaseCheck"
+              },
+              "type": "array",
+              "title": "Checks",
+              "description": "the latest 10 checks, newest first"
+            },
+            "cycle": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReleaseCycle"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the cycle that is open or stopped, if any"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "schedule",
+            "paused",
+            "next_check_at",
+            "last_check",
+            "checks",
+            "cycle"
+          ],
+          "title": "ReleaseStatus"
+        },
         "Replay": {
           "properties": {
             "id": {
@@ -59722,10 +61040,11 @@
                 "task",
                 "replay",
                 "history",
+                "release",
                 "local"
               ],
               "title": "Kind",
-              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches"
+              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches"
             },
             "project": {
               "type": "string",
@@ -59784,7 +61103,8 @@
                   "enum": [
                     "machine",
                     "web",
-                    "schedule"
+                    "schedule",
+                    "release"
                   ]
                 },
                 {
@@ -59792,7 +61112,7 @@
                 }
               ],
               "title": "Dispatched Via",
-              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0"
+              "description": "the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; release, the project's release schedule, for its owner; null for a run dispatched before 0.5.0"
             },
             "worker_id": {
               "anyOf": [
@@ -61842,7 +63162,8 @@
                 "chat",
                 "task",
                 "replay",
-                "history"
+                "history",
+                "release"
               ],
               "title": "Kind"
             },

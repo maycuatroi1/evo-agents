@@ -87,7 +87,7 @@ from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.power import KeepAwake, WakeWatch
-from evo_agents.worker.run import Run, Sender, run_class
+from evo_agents.worker.run import KINDS, Run, Sender, run_class
 from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.selfupdate.updater import SelfUpdate
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
@@ -420,7 +420,8 @@ class Daemon:
             "free_slots": min(self.free_slots, runs.MAX_SLOTS),
             "runs": reported,
             "agent_version": __version__,
-            "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
+            # the kinds of runs.RUN_KINDS this daemon has a class for (run.KINDS): the hub hands it no other
+            "run_kinds": [kind for kind in runs.RUN_KINDS if kind in KINDS],
             # a plan run with a session for each step (runner.sessions), an author run that asks decisions
             "features": [name for name in runs.WORKER_FEATURES if self.kg_on or name != runs.KG_SYNC],
             **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
