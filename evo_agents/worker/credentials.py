@@ -44,18 +44,17 @@ protocol; store and erase do nothing), ``evo-agents worker env --run N`` and the
 run's ``repo open``, is ``evo_agents.worker.credential_commands``, over ``ask``. This module is standard library only,
 so git's helper starts without the worker extra; the daemon's side imports ``hubapi`` when it runs.
 
-A run of the Curator (``RunCredentials.guarded``) never hands its agent a push credential, on GitHub or GitLab alike:
-the agent's environment gets the env leases and git configuration that empties the list of credential helpers
-(``GUARDED_AGENT_CONFIG``), never this run's helper; and the socket answers ``op git`` only for a ticket the daemon
-issues for one git command of its own (``RunCredentials.ticketed``: TICKET_VARIABLE in that command's environment,
-valid while the command runs, with git's hooks and fsmonitor off and https the one protocol, DAEMON_GIT_CONFIG). Its
-socket answers ``op env`` likewise only for a ticket of the pane the daemon opens for a takeover (``pane_command``:
-ENV_TICKET_VARIABLE on that pane's one ``evo-agents worker env``, good for one answer within PANE_TICKET_SECONDS), so
-code the run does not trust, such as a verify command or a hidden check of a judge run, cannot read the env leases (a
-subscription token among them) from the socket. A
-Builder's agent that reports a step done asks the daemon to push instead (``{"op": "push", "repo", "title"}``,
-``credential_commands.ask_push``): the daemon pushes that repo's own branch, curator/..., from its worktree, with the run's credential, and
-answers what it pushed.
+A run of the Curator, and a release run (``RunCredentials.guarded``), never hands its agent a push credential, on GitHub
+or GitLab alike: the agent's environment gets the env leases and git configuration that empties the list of credential
+helpers (``GUARDED_AGENT_CONFIG``), never this run's helper; and the socket answers ``op git`` only for a ticket the
+daemon issues for one git command of its own (``RunCredentials.ticketed``: TICKET_VARIABLE in that command's
+environment, valid while the command runs, with git's hooks and fsmonitor off and https the one protocol,
+DAEMON_GIT_CONFIG). Its socket answers ``op env`` likewise only for a ticket of the pane the daemon opens for a takeover
+(``pane_command``: ENV_TICKET_VARIABLE on that pane's one ``evo-agents worker env``, good for one answer within
+PANE_TICKET_SECONDS), so code the run does not trust, such as a verify command or a hidden check of a judge run, cannot
+read the env leases (a subscription token among them) from the socket. A Builder's agent that reports a step done asks
+the daemon to push instead (``{"op": "push", "repo", "title"}``, ``credential_commands.ask_push``): the daemon pushes
+that repo's own branch, curator/..., from its worktree, with the run's credential, and answers what it pushed.
 
 A chat run's agent opens a repo of its project the same way (``{"op": "open", "repo"}``, ``credential_commands.ask_open``, ``evo-agents
 worker repo open``): the daemon asks the hub to add the repo to the run, takes the run's leases again so they cover it
@@ -391,7 +390,7 @@ class RunCredentials:
         guarded: bool = False,
     ):
         self.run_id = int(run_id)
-        # A run of the Curator: no push credential reaches its agent (see the module's docstring).
+        # A run of the Curator or a release run: no push credential reaches its agent (see the module's docstring).
         self.guarded = guarded
         # The daemon's push of a repo for a Builder's agent, which asks for it on the socket.
         self.pusher: Callable[[str, str | None], Awaitable[dict]] | None = None

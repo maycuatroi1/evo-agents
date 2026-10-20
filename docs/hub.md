@@ -95,6 +95,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -851,7 +852,11 @@ pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); a
 last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
 the four columns, and the hub then reads no nightly and takes no Update now. Schema 0066 adds `oauth_sealed`, `oauth_nonce` and
 `oauth_key_id` to `accounts`, the sealed tokens of an OAuth account (`docs/credentials.md`, Accounts), all null for every
-account there is; going back to 0065 drops them and the tokens with them.
+account there is; going back to 0065 drops them and the tokens with them. Schema 0067 adds the daily release
+(`docs/releases.md`): `release_schedules`, `release_cycles`, `release_runs`, `release_tags` and `release_checks`, the
+run kind `release` with `dispatched_via` `release` and one active release run per project, the decision category
+`release` and the notice `release`; going back to 0066 deletes the release runs, their decisions and the release
+notices, and drops the five tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1519,6 +1524,26 @@ evo-agents hub curator resume
 `GET /v1/projects/{p}/curator/proposals/{id}/ledger` lists a proposal's lines, oldest first, for anyone who reads the
 proposal, with when the hub counts its figures again (`outcome_due_at`). The web shows the ledger on the proposal's
 page (`/p/{project}/curator/proposals/{id}`), and a revert proposal names the proposal it undoes.
+
+## The daily release
+
+A project can release itself once a day, apart from the Curator (`docs/releases.md`). At the release schedule's local
+time (06:00 Asia/Ho_Chi_Minh by default) the job `hub.release_schedules` checks, without any model, whether a packaging
+path changed between the newest release tag and the commit of the tag `nightly`, and when it did opens a cycle and
+queues a run of kind `release`. Its agent cuts the version on `release/<version>` on a worker of the schedule's owner
+or one shared with them; the hub merges the branch and tags the merge commit with the workers' GitHub App, follows the
+tag's `release.yml` through the Actions API, fixes a red tag forward with the next patch, and stops the cycle with a
+decision for its owner and a thread in the project's triage chat on the causes `docs/releases.md` lists. That page
+also gives the version rule, the cost cap, the App's permissions and the commands:
+
+```sh
+evo-agents hub release set --project evo-agents            # an admin, who becomes the schedule's owner
+evo-agents hub release status --project evo-agents
+evo-agents hub release run --project evo-agents            # check now, through the same gates
+evo-agents hub release pause --project evo-agents
+```
+
+The web shows it on the project's Releases page (`/p/{project}/releases`).
 
 ## Memories, skills and knowledge graphs
 
@@ -2221,6 +2246,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   smart HTTP (protocol v2) to GitHub, no git and no GitHub API, and keeps the commit and the time in `hub_nightly`, which
   every heartbeat answer hands the daemons (`docs/workers.md`, Updating itself to nightly). A read that fails keeps the
   last one and logs one warning, `nightly not read, the last read kept`.
+- `hub.release_schedules`, every minute, one pass at a time: the daily check of each release schedule whose local
+  time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
+  CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
+  server's release pass to the job runner (`HubContext.release_pass`).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

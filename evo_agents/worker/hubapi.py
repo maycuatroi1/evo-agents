@@ -218,6 +218,11 @@ class WorkerHub:
         chat/repos for a repo the daemon opens in a chat run for its agent."""
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/{route}", body)
 
+    async def release_branch(self, run_id: int, body: dict) -> dict:
+        """Tell the hub release run ``run_id`` pushed ``body``: its repo, branch release/<version>, head, version and
+        the agent's Decision line (``evo_agents.hub.server.release_claims``)."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/release/branch", body)
+
     async def step(self, run_id: int, key: str, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
 

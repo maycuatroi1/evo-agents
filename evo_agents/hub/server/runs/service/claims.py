@@ -173,6 +173,7 @@ def _claimable(
     author_runs: bool = False,
     chat_runs: bool = False,
     task_runs: bool = False,
+    release_runs: bool = False,
     step_sessions: bool = False,
     steady: bool = True,
     shared: bool = False,
@@ -191,7 +192,8 @@ def _claimable(
     leaves out the other repos it has no checkout of. A chat run is pinned to the worker the hub picked for it and
     needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
     has any, a daemon that says it runs task runs (``task_runs``) and, when its agent type names workers, to be one of
-    them. A plan run with a session per
+    them. A release run needs a checkout of its one repo and a daemon that says it runs release runs
+    (``release_runs``). A plan run with a session per
     step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
     whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
@@ -223,7 +225,7 @@ def _claimable(
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(*asked),
         case(
-            (r.c.kind.in_(("plan", "review", "judge", "replay", "history")), every_repo),
+            (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "release")), every_repo),
             (r.c.kind == "author", harness),
             (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
             (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
@@ -237,7 +239,7 @@ def _claimable(
     if not step_sessions:
         query = query.where(r.c.session_per_step.is_(False))
     said = {"review": review_runs, "judge": judge_runs, "replay": replay_runs, "history": history_runs}
-    said |= {"author": author_runs, "chat": chat_runs}
+    said |= {"author": author_runs, "chat": chat_runs, "release": release_runs}
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
         query = query.where(r.c.kind.not_in(left_out))
@@ -395,6 +397,7 @@ async def _try_claim(
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
             task_runs="task" in (kinds or ()),
+            release_runs="release" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
             shared=shared,
@@ -544,7 +547,7 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
     return None
 
 
-OWN_PROMPTS = ("review", "chat", "task", "judge", "replay", "history")  # the kinds whose prompt their module builds
+OWN_PROMPTS = ("review", "chat", "task", "judge", "replay", "history", "release")  # whose prompt their module builds
 
 
 async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = ()) -> str:
@@ -571,6 +574,10 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.history import RUN_PROMPT
 
         return RUN_PROMPT
+    if view.kind == "release":
+        from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
+
+        return await release_prompt(conn, view)
     from evo_agents.hub.server.replays import run_prompt
 
     return await run_prompt(conn, view)
@@ -654,7 +661,17 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         verify=verify,
         session_per_step=view.session_per_step,
         profile=await run_profile(conn, run_id),
+        release=await _release_spec(conn, view),
     )
+
+
+async def _release_spec(conn: AsyncConnection, view: Run):
+    """A release run's cycle, mode and start commit (``release_claims.release_claim``); None for any other run."""
+    if view.kind != "release":
+        return None
+    from evo_agents.hub.server.release_claims import release_claim  # it reads runs through this package
+
+    return await release_claim(conn, view.id)
 
 
 async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> CuratorSpec | None:

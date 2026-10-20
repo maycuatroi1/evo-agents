@@ -48,6 +48,10 @@ from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
+
+# The hub worker runs the release pass, but evo_agents.hub.worker imports no server module beyond its job list
+# (docs/structure.md, section Package boundaries): the hub worker command takes it from here and hands it down.
+from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
 
@@ -259,6 +263,8 @@ def create_app(config: HubConfig) -> FastAPI:
         notifications,
         overview,
         proposals,
+        release_claims,
+        releases,
     )
 
     for routes in (
@@ -273,6 +279,8 @@ def create_app(config: HubConfig) -> FastAPI:
         curator.router,
         proposals.router,
         proposals.worker_router,
+        releases.router,  # the daily release of a project (evo_agents.hub.releases)
+        release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
     ):
         app.include_router(routes)
 

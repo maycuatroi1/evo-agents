@@ -33,6 +33,10 @@ heartbeat counts it and the worker hands it to the agent like any message of the
 
 The audit row decision.answer names the decision, its run and the option, never the text.
 
+A decision of category release is the hub's own, asked of the owner of a release cycle that stopped, on the cycle's
+last run (``release_cycles``): its answer names one of its options, which ``release_answer`` does (go on, close the
+cycle, or pause the schedule) whatever the state of that run, and goes to no inbox.
+
 GET /v1/projects/{p}/decisions lists a project's decisions, newest first, filtered by state, run and plan, a page at a
 time, and GET .../decisions/{id} shows one, to the readers of the decision's run, as ``views.readable_run`` reads it:
 the readers of its plan (``views.visible_plans``), and for an author run that has put no plan, those who read the
@@ -685,6 +689,8 @@ async def answer_decision(
         if chosen is None:
             keys = ", ".join(option["key"] for option in options)
             raise HTTPException(422, f"decision {decision_id} has no option {body.option!r}; its options are {keys}")
+    if category == runs.RELEASE_DECISION_CATEGORY:
+        return await _answer_release(conn, user, project, decision_id, run_id, chosen, body, via)
     if kind == "local":  # the session takes the answer at its next turn, whatever it does now, but not once it is over
         if run_state == "ended":
             raise HTTPException(
@@ -738,6 +744,48 @@ async def answer_decision(
         project_id=access.project_id,
     )
     return Answered(await decision_view(conn, decision_id), run_id, inbox_run)
+
+
+async def _answer_release(
+    conn: AsyncConnection,
+    user: Principal,
+    project: str,
+    decision_id: int,
+    run_id: int,
+    chosen: dict | None,
+    body: AnswerIn,
+    via: str | None,
+) -> Answered:
+    """Answer a decision of a stopped release cycle (see the module): its option done, the decision answered and its
+    notification read, audited as decision.answer."""
+    if chosen is None:
+        raise HTTPException(
+            422, f"decision {decision_id} of a release takes one of its options: continue, close, pause"
+        )
+    from evo_agents.hub.server.release_answer import answer_stop  # it queues runs through the routes that import this
+
+    await answer_stop(conn, user, decision_id, chosen["key"])
+    d, n = tables.decisions, tables.notifications
+    answered = {"answer_option": body.option, "answer_text": body.text, "answered_by": user.user_id}
+    await conn.execute(
+        update(d).values(state="answered", answered_at=func.now(), **answered).where(d.c.id == decision_id)
+    )
+    await conn.execute(
+        update(n)
+        .values(read_at=func.now())
+        .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
+    )
+    target = answer_target(project, None, None, decision_id, run_id, body.option, "release")
+    access = await project_access(conn, user, project)
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.DECISION_ANSWER,
+        target=target + (f" via={via}" if via is not None else ""),
+        project_id=access.project_id,
+    )
+    return Answered(await decision_view(conn, decision_id), run_id, run_id)
 
 
 @router.post(

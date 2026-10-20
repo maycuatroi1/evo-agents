@@ -164,7 +164,7 @@ type = "forbidden"
 source_modules = ["evo_agents.hub.*"]
 forbidden_modules = ["evo_agents.hub.server"]
 ignore_imports = [
-    # `hub serve` and `hub openapi` start or dump the app.
+    # `hub serve` and `hub openapi` start or dump the app; `hub worker` takes Sentry and the release pass from it.
     "evo_agents.hub.cli -> evo_agents.hub.server.app",
     "evo_agents.hub.openapi -> evo_agents.hub.server.app",
     # The audit row of a pruned graph build.
