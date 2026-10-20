@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the hub's replays needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import replay
 from evo_agents.hub.replay_suite import new_tasks
 
