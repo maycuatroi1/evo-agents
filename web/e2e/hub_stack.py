@@ -42,11 +42,12 @@ The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, day
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
 
-The Telegram specs need the hub's bot without Telegram: the stack serves the fake Bot API of the Python tests
-(``tests.hub.fake_telegram``) on a free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and
-webhook secret, so the channel is on. POST /telegram/start {code, chat_id, username} plays the member pressing Start in
-Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the secret header, and
-answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
+The Telegram specs need the hub's bot without Telegram: the stack serves a fake Bot API (``fake_telegram.py``) on a
+free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and webhook secret, so the channel is on.
+The bot is the core plugin telegram of evo-agents-core-plugins: the stack's Python has deploy/hub/core-plugins.txt
+installed after evo-ak, as CI's web-e2e job has. POST /telegram/start {code, chat_id, username} plays the member
+pressing Start in Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the
+secret header, and answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
 
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
@@ -86,14 +87,14 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
 
+from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
+from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
+from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
+from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
-from tests.hub.fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
-from tests.hub.fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
-from tests.hub.fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
-from tests.hub.fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from tests.hub.s3 import fake_s3  # noqa: E402
 from tests.plugins.samples import ed25519_publishers  # noqa: E402
 
