@@ -158,6 +158,65 @@ def test_triage_plan_edit_with_a_rerun_writes_a_revision_as_the_owner_and_queues
     assert f"run:{run_id}" in target and f"revision:{start + 1}" in target and f"rerun:{answer['run_id']}" in target
 
 
+def edits(client, hub, worker, agent_run: int, steps: list, **body):
+    held = plan(client, hub["owner"])["revision"]
+    body = {"steps": steps, "reason": "the verify was prose", "if_revision": held, **body}
+    return client.post(f"/v1/worker/runs/{agent_run}/triage/plan", json=body, headers=worker["headers"])
+
+
+def test_triage_plan_edit_of_several_steps_writes_one_revision_one_decision_line_and_one_audit_row(client, hub, hub_db):
+    worker, run_id, agent = setup(client, hub, hub_db, cause="verify_failed")
+    start = plan(client, hub["owner"])["revision"]
+    before = len(said(client, hub, hub_db, run_id))
+    steps = [
+        {"step": "2", "verify": "test -f feature.txt && test -s feature.txt"},
+        {"step": "3", "what": "daemon", "why": "the daemon is all it builds"},
+        {"step": "4", "what": "docs"},
+    ]
+    done = edits(client, hub, worker, agent, steps)
+    assert done.status_code == 201, done.text
+    assert (done.json()["plan_revision"], done.json()["run_id"]) == (start + 1, None)
+    held = plan(client, hub["owner"])
+    by_id = {item["id"]: item for item in held["body"]["steps"]}
+    assert (held["revision"], held["updated_by"]) == (start + 1, OWNER_LOGIN)
+    assert (by_id[2]["verify"], by_id[3]["what"], by_id[4]["what"]) == (
+        "test -f feature.txt && test -s feature.txt",
+        "daemon",
+        "docs",
+    )
+    lines = said(client, hub, hub_db, run_id)
+    assert len(lines) == before + 1
+    head, *items = lines[-1].splitlines()
+    assert head.startswith(f"Decision: changed 3 steps of plan {PLAN} (revision {start} to {start + 1}):")
+    assert "the verify was prose" in head and f"has revision {start}." in head
+    assert items == [
+        "- step 2: old verify: test -f feature.txt",
+        "- step 3: the daemon is all it builds; old what: the daemon",
+        "- step 4: old what: the docs",
+    ]
+    (target,) = audited(hub_db, "run.triage_plan_edit")
+    assert f"step:2,3,4 revision:{start + 1}" in target
+
+
+def test_triage_plan_edit_of_several_steps_writes_none_when_one_is_refused(client, hub, hub_db):
+    worker, run_id, agent = setup(client, hub, hub_db, cause="verify_failed")
+    before = plan(client, hub["owner"])
+    refused = edits(client, hub, worker, agent, [{"step": "2", "verify": "true"}, {"step": "1", "verify": "true"}])
+    assert refused.status_code == 422 and "only a pending step may be edited" in refused.json()["message"]
+    refused = edits(client, hub, worker, agent, [{"step": "2", "verify": "true"}, {"step": "99", "verify": "true"}])
+    assert refused.status_code == 422
+    twice = edits(client, hub, worker, agent, [{"step": "2", "verify": "true"}, {"step": "2", "what": "q"}])
+    assert twice.status_code == 422 and "edited twice" in twice.text
+    both = edits(client, hub, worker, agent, [{"step": "2", "verify": "true"}], step="3", verify="true")
+    assert both.status_code == 422 and "not both" in both.text
+    empty = edits(client, hub, worker, agent, [{"step": "2"}])
+    assert empty.status_code == 422 and "give verify, what, or both" in empty.text
+    after = plan(client, hub["owner"])
+    assert (after["revision"], after["body"]) == (before["revision"], before["body"])
+    assert audited(hub_db, "run.triage_plan_edit") == []
+    assert not any(line.startswith("Decision:") for line in said(client, hub, hub_db, run_id))
+
+
 def test_triage_plan_edit_whose_rerun_is_refused_leaves_the_plan_as_it_was(client, hub, hub_db):
     worker, run_id, agent = setup(client, hub, hub_db, cause="verify_failed")
     t = tables.run_triage
