@@ -66,6 +66,8 @@ BRIEFS = tables.curator_briefs
 def bot(monkeypatch):
     fake = FakeTelegram()
     monkeypatch.setattr(server_telegram, "TRANSPORT", fake.transport())
+    monkeypatch.setenv(server_telegram.TOKEN_VARIABLE, TOKEN)  # where the plugin reads the bot's variables
+    monkeypatch.setenv(server_telegram.SECRET_VARIABLE, SECRET)
 
     async def pause(seconds: float) -> None:
         return None

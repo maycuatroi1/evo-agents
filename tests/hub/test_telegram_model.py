@@ -1,11 +1,14 @@
-"""The Telegram channel's model (``evo_agents.hub.telegram``): link codes, the data of buttons, what a restricted
-project's message holds, and the messages of a decision, a proposal and a notice. No database, no network."""
+"""The Telegram channel's model: the hub's part (``evo_agents.hub.telegram``: link codes, what may reach a channel, the
+URL of a page) and the core plugin's (``evo_agents.core_plugins.telegram.model``: commands, the data of buttons, what a
+restricted project's message holds, and the messages of a decision, a proposal and a notice). No database, no
+network."""
 
 import re
 
 import pytest
 
-from evo_agents.hub import telegram
+from evo_agents.core_plugins.telegram import model as telegram
+from evo_agents.hub import telegram as hub_telegram
 
 OPTIONS = [
     {"key": "sqlite", "label": "Keep SQLite"},
@@ -14,13 +17,13 @@ OPTIONS = [
 
 
 def test_a_link_code_is_32_characters_a_start_parameter_takes_and_the_hub_keeps_its_hash():
-    code = telegram.new_code()
-    assert len(code) == telegram.LINK_CODE_CHARS == 32 and re.fullmatch(r"[A-Za-z0-9_-]{32}", code)
-    assert telegram.new_code() != code
-    digest = telegram.code_hash(code)
+    code = hub_telegram.new_code()
+    assert len(code) == hub_telegram.LINK_CODE_CHARS == 32 and re.fullmatch(r"[A-Za-z0-9_-]{32}", code)
+    assert hub_telegram.new_code() != code
+    digest = hub_telegram.code_hash(code)
     assert re.fullmatch(r"[0-9a-f]{64}", digest) and code not in digest
     assert telegram.link_url("evo_hub_bot", code) == f"https://t.me/evo_hub_bot?start={code}"
-    assert telegram.LINK_SECONDS == 600
+    assert hub_telegram.LINK_SECONDS == 600
 
 
 @pytest.mark.parametrize(
@@ -87,7 +90,7 @@ DOMESTIC = ["any", "domestic-only"]
     ],
 )
 def test_a_project_cleared_for_customer_or_domestic_only_is_restricted(clearance, locations, restricted):
-    assert telegram.restricted(clearance, LEVELS, locations) is restricted
+    assert hub_telegram.restricted(clearance, LEVELS, locations) is restricted
 
 
 @pytest.mark.parametrize(
@@ -112,7 +115,7 @@ def test_a_project_cleared_for_customer_or_domestic_only_is_restricted(clearance
     ],
 )
 def test_restricted_compares_ranks_on_the_projects_ladder_and_fails_closed(clearance, levels, locations):
-    assert telegram.restricted(clearance, levels, locations) is True
+    assert hub_telegram.restricted(clearance, levels, locations) is True
 
 
 @pytest.mark.parametrize(
@@ -125,7 +128,7 @@ def test_restricted_compares_ranks_on_the_projects_ladder_and_fails_closed(clear
     ],
 )
 def test_below_customer_and_domestic_only_on_the_ladder_is_not_restricted(clearance, levels, locations):
-    assert telegram.restricted(clearance, levels, locations) is False
+    assert hub_telegram.restricted(clearance, levels, locations) is False
 
 
 # A channel of any clearance (restricted_for, the API of core plugins' restricted and prepare)
@@ -150,7 +153,27 @@ def test_below_customer_and_domestic_only_on_the_ladder_is_not_restricted(cleara
     ],
 )
 def test_restricted_for_keeps_a_sink_above_the_channels_clearance_and_fails_closed(clearance, level, location, kept):
-    assert telegram.restricted_for(clearance, LEVELS, DOMESTIC, level, location) is kept
+    assert hub_telegram.restricted_for(clearance, LEVELS, DOMESTIC, level, location) is kept
+
+
+@pytest.mark.parametrize(
+    ("clearance", "levels", "level", "location", "kept"),
+    [
+        ({"level": "internal", "location": "any"}, LEVELS, "customer", "domestic-only", False),
+        ({"level": "customer", "location": "any"}, LEVELS, "customer", "domestic-only", True),  # at the level
+        ({"level": "internal", "location": "domestic-only"}, LEVELS, "customer", "domestic-only", True),
+        ({"level": "customer"}, LEVELS, "secret", None, False),  # None: any location
+        ({"level": "secret"}, LEVELS, "secret", None, True),
+        ({"level": "internal", "location": "moon"}, LEVELS, "secret", None, True),  # a location the ladder lacks
+        ({"level": "public"}, ["public", "confidential"], "customer", None, False),  # no customer: the lowest rung
+        ({"level": "confidential"}, ["public", "confidential"], "customer", None, True),
+        (None, LEVELS, "secret", None, True),  # no hub sink
+    ],
+)
+def test_restricted_for_below_keeps_a_sink_at_or_above_the_channels_clearance(clearance, levels, level, location, kept):
+    """``Clearance(level, location, below=True)`` of the API of core plugins: what sits under the rungs, not at them;
+    ``restricted`` is customer and domestic-only, below."""
+    assert hub_telegram.restricted_for(clearance, levels, DOMESTIC, level, location, below=True) is kept
 
 
 def test_a_restricted_message_holds_the_project_the_kind_and_the_link_only():
@@ -279,10 +302,10 @@ def test_an_answered_message_keeps_its_web_button_only():
 
 
 def test_web_url_needs_the_public_url_and_a_path_of_the_hub():
-    assert telegram.web_url("https://hub.test/", "/inbox?decision=1") == "https://hub.test/inbox?decision=1"
-    assert telegram.web_url(None, "/inbox") is None
-    assert telegram.web_url("https://hub.test", "//evil.example") is None
-    assert telegram.web_url("https://hub.test", "https://evil.example") is None
+    assert hub_telegram.web_url("https://hub.test/", "/inbox?decision=1") == "https://hub.test/inbox?decision=1"
+    assert hub_telegram.web_url(None, "/inbox") is None
+    assert hub_telegram.web_url("https://hub.test", "//evil.example") is None
+    assert hub_telegram.web_url("https://hub.test", "https://evil.example") is None
 
 
 # What a message holds when its text runs long, and when what it was about closed

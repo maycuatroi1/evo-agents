@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    0
+    1
   ],
   "names": {
     "AgentRef": {
@@ -23,6 +23,13 @@
           "annotation": "str",
           "default": null
         }
+      ]
+    },
+    "Caller": {
+      "kind": "alias",
+      "annotated": "Session",
+      "metadata": [
+        "Depends(caller)"
       ]
     },
     "Channel": {
@@ -169,6 +176,11 @@
           "name": "location",
           "annotation": "str | None",
           "default": "None"
+        },
+        {
+          "name": "below",
+          "annotation": "bool",
+          "default": "False"
         }
       ]
     },
@@ -321,6 +333,32 @@
         }
       ]
     },
+    "LinkedChannel": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "config",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "linked_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "enabled",
+          "annotation": "bool",
+          "default": null
+        },
+        {
+          "name": "disabled_reason",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
     "Login": {
       "kind": "alias",
       "annotated": "str",
@@ -363,6 +401,10 @@
           "default": null
         }
       ]
+    },
+    "NOT_YOURS": {
+      "kind": "constant",
+      "value": "'the hub has nothing by that for you to answer: it is not of a project you hold a grant on, or not there'"
     },
     "NotACorePlugin": {
       "kind": "error",
@@ -535,6 +577,10 @@
         }
       ]
     },
+    "RESTRICTED_ANSWER": {
+      "kind": "constant",
+      "value": "'answer this on the hub: its project keeps its decisions and proposals off this channel'"
+    },
     "Refused": {
       "kind": "error",
       "bases": [
@@ -625,6 +671,22 @@
       "kind": "error",
       "bases": [
         "Exception"
+      ]
+    },
+    "Unlinked": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "unlinked",
+          "annotation": "bool",
+          "default": null
+        }
       ]
     },
     "UnsupportedApi": {
@@ -759,6 +821,42 @@
         }
       ],
       "returns": "ProposalAnswer"
+    },
+    "audit": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "actor",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "action",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "target",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "None"
     },
     "begin": {
       "kind": "function",
@@ -999,6 +1097,36 @@
         }
       ],
       "returns": "LinkCode"
+    },
+    "linked_channel": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "session",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "LinkedChannel | None"
     },
     "open_direct_chat": {
       "kind": "async function",
@@ -1281,6 +1409,42 @@
         }
       ],
       "returns": "AbstractAsyncContextManager[AsyncConnection]"
+    },
+    "unlink_by_login": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "login",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "actor",
+          "kind": "keyword_only",
+          "annotation": "Session",
+          "default": null
+        }
+      ],
+      "returns": "Unlinked"
     },
     "unlink_channel": {
       "kind": "async function",

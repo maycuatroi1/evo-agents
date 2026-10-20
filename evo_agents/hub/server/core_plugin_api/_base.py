@@ -1,11 +1,12 @@
 """The ground of the API of core plugins: the plugin's handle, the callers of its routes, transactions, the hub's
-config, the plugin's own config and environment, its grants, and what a clearance keeps out. Private to
+config, the plugin's own config and environment, its grants and audit rows, and what a clearance keeps out. Private to
 ``core_plugin_api``."""
 
 from __future__ import annotations
 
 import importlib.util
 import os
+import re
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from types import MappingProxyType
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables, telegram
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.plugin_calls import CoreContext, core_registry, effective_grant, enabled_in
+from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
     Clearance,
@@ -29,6 +31,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     issue_session,
     own_clearance,
     own_plugin,
+    own_session,
 )
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.plugin_tokens import layer_config
@@ -42,6 +45,9 @@ NOT_FROM_THIS_HUB = (
     "EVO_HUB_PUBLIC_URL"
 )
 NO_PUBLIC_URL = "this hub has no EVO_HUB_PUBLIC_URL, so it cannot tell its own pages' writes from another site's"
+AUDIT_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}")  # what follows the family of a plugin's audit action
+MAX_AUDIT_TARGET = 1024
+HUB_FAMILIES = audit_log.NAMED_FAMILIES | {"memory", "skill"}  # families whose target names a project or a memory
 
 # The plugin
 
@@ -89,6 +95,12 @@ def web_session(request: Request, user: CurrentUser) -> Session:
         raise Refused(403, member_channels.FROM_SESSION)
     _from_this_hub(request)
     return issue_session(user.user_id, user.login, user.token_id, True)
+
+
+def caller(user: CurrentUser) -> Session:
+    """The caller, a member signed in with any credential the hub's own routes take: ``web`` for a web session, which
+    alone links a channel. The hub's middleware has checked a web session's write for its CSRF header."""
+    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB)
 
 
 def hub_admin(request: Request, user: AdminUser) -> Session:
@@ -186,8 +198,27 @@ async def project_grants(conn: AsyncConnection, plugin_id: str, project: str, pe
 
 async def restricted(conn: AsyncConnection, project: str | None, cleared: Clearance) -> bool:
     """Whether ``project`` is kept from a channel cleared for ``cleared``: none, no hub sink, a level or location the
-    project's ladder lacks, or a hub sink above ``cleared`` in level or location, read as Telegram reads the ladder."""
+    project's ladder lacks, or a hub sink above ``cleared`` in level or location (at or above, with ``below``), read as
+    Telegram reads the ladder."""
     own_clearance(cleared)
     if project is None:
         return True
-    return member_channels.kept_from(await member_channels.rules_of(conn, project), cleared.level, cleared.location)
+    rules = await member_channels.rules_of(conn, project)
+    return member_channels.kept_from(rules, cleared.level, cleared.location, cleared.below)
+
+
+# The audit log
+
+
+async def audit(conn: AsyncConnection, plugin: Plugin, actor: Session, action: str, target: str) -> None:
+    """Record in the hub's audit log that ``actor`` (from ``WebSession``, ``Caller`` or ``HubAdmin``) did ``action``,
+    ``<the plugin's id or one of its kinds>.<word>``, to ``target``, one line of at most 1 KiB that holds no secret:
+    hub admins read it."""
+    own_plugin(plugin)
+    own_session(actor)
+    family, _, word = action.partition(".") if isinstance(action, str) else ("", "", "")
+    if family not in (plugin.id, *plugin.kinds) or family in HUB_FAMILIES or not AUDIT_WORD.fullmatch(word):
+        raise ValueError(f"a plugin's audit action is {plugin.id}.<word> or <a kind of its channels>.<word>")
+    if not isinstance(target, str) or len(target) > MAX_AUDIT_TARGET or "\n" in target or "\r" in target:
+        raise ValueError(f"an audit target is one line of at most {MAX_AUDIT_TARGET} characters")
+    await audit_log.record(conn, actor_id=actor.user_id, token_id=actor.token_id, action=action, target=target)
