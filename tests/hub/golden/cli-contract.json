@@ -7649,6 +7649,52 @@
         "schema": "SrsVersion"
       }
     },
+    "hub srs archive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SrsDocumentSummary"
+      }
+    },
     "hub srs export": {
       "positionals": [
         {
@@ -7798,6 +7844,14 @@
           ],
           "value": "string",
           "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
           "repeatable": false
         },
         {
@@ -7964,6 +8018,52 @@
           "reviews"
         ],
         "schema": "SrsVersion"
+      }
+    },
+    "hub srs unarchive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SrsDocumentSummary"
       }
     },
     "hub srs withdraw": {
@@ -28316,7 +28416,7 @@
             "plugins"
           ],
           "summary": "List Documents",
-          "description": "The BA documents of the project the caller sees, by slug, each with its latest version.",
+          "description": "The BA documents of the project the caller sees, by slug, each with its latest version; the archived ones only\nwith ``all``.",
           "operationId": "list_documents_v1_x_srs__project__documents_get",
           "parameters": [
             {
@@ -28328,6 +28428,18 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "all",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the archived documents too",
+                "default": false,
+                "title": "All"
+              },
+              "description": "the archived documents too"
             },
             {
               "name": "X-Evo-Sink",
@@ -29858,6 +29970,246 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/archive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Archive Document",
+          "description": "Archive a document, as an admin of the project: it leaves the list of documents (``all`` lists it), @ba's\nsearch and the knowledge graph, is still read by its slug, and takes no write until it is unarchived; its codes\nstay held and its slug taken. 409 when it is archived already.",
+          "operationId": "archive_document_v1_x_srs__project__documents__slug__archive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDocumentSummary"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/unarchive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Unarchive Document",
+          "description": "Open an archived document again, as an admin of the project. 409 when it is not archived.",
+          "operationId": "unarchive_document_v1_x_srs__project__documents__slug__unarchive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDocumentSummary"
                   }
                 }
               }

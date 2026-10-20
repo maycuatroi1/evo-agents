@@ -1,4 +1,4 @@
-"""Deciding versions and keeping comments.
+"""Deciding versions and documents, and keeping comments.
 
 - ``submit``: a writer sends a draft to review once it has no error (``checks``); its review round goes up by one.
 - ``review``: a writer approves a version in review or asks for changes. Nobody who wrote a version since the one
@@ -10,6 +10,9 @@
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
+- ``archive``: an admin of the project archives a document, or unarchives it. An archived document is out of the list
+  of documents (unless asked for), of @ba's search and of the knowledge graph, still read by its slug, and takes no
+  write (``store.writable``); its codes stay held and its slug taken. The agent of a run never archives one.
 - ``comments``, ``comment``, ``resolve``: threads on a document, a version or an item; writers write them and close
   them, readers read them.
 """
@@ -180,6 +183,21 @@ async def withdraw(
     return await store.version(conn, doc, number)
 
 
+async def archive(conn: AsyncConnection, access: ProjectAccess, user: Principal, doc: DocumentRow, archived: bool):
+    """Archive ``doc`` (``archived``) or unarchive it, as ``user``, an admin of the project; 409 when it is so already.
+    The caller holds the document's row lock and reads the document again."""
+    what = "archives" if archived else "unarchives"
+    if user.scope is not None:
+        raise SrsError(403, f"the agent of a run never {what} a document: an admin of the project does")
+    if not has_role(access.role, "admin"):
+        raise SrsError(403, f"only an admin of project {access.name} {what} a document")
+    if (doc.archived_at is not None) == archived:
+        state = "archived already" if archived else "not archived"
+        raise SrsError(409, f"document {doc.slug} of project {access.name} is {state}")
+    d = tables.srs.documents
+    await conn.execute(update(d).where(d.c.id == doc.id).values(archived_at=func.now() if archived else None))
+
+
 # Comments
 
 
@@ -318,6 +336,7 @@ __all__ = [
     "CommentRow",
     "ReviewRequest",
     "approved_by",
+    "archive",
     "comment",
     "comments",
     "resolve",

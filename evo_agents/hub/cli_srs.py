@@ -1,16 +1,18 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw``: the BA documents of a project that enabled
-the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core plugins). The plugin's
-code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|archive|unarchive``: the BA documents of a
+project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
+plugins). The plugin's code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
 
-``list`` prints the documents with their latest and approved versions. ``show SLUG`` prints a document's versions and
+``list`` prints the documents with their latest and approved versions, ``--all`` the archived ones too. ``show SLUG``
+prints a document's versions and
 the items of its latest version (``--version N`` another), ``--item CODE`` one item with its fields and children.
 ``import FILE`` reads Markdown (``-`` for stdin) whose headings follow the template, as a new document (``--slug``,
 ``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only. ``export SLUG`` prints a
 version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output`` writes a file). ``submit
 SLUG N`` sends a draft to review; ``approve SLUG N`` approves it, ``--request-changes`` sends it back with
 ``--comment``. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an admin, with
-the reason as a comment on it (``--comment``). ``--json`` prints what the hub answered. A refusal prints the hub's
-reason and each problem it listed.
+the reason as a comment on it (``--comment``). ``archive SLUG``, an admin's, takes a document out of the list, @ba's
+search and the knowledge graph and closes it to changes; ``unarchive SLUG`` opens it again. ``--json`` prints what the
+hub answered. A refusal prints the hub's reason and each problem it listed.
 Standard library only, like the rest of the client.
 """
 
@@ -88,7 +90,7 @@ def _call(method: str, path: str, body: dict | None = None):
 
 @client_command
 def cmd_list(args) -> int:
-    found = _call("GET", _path(args.project, "documents"))
+    found = _call("GET", _path(args.project, "documents", query={"all": "true" if args.all else None}))
     if args.json:
         print_json(found)
         return 0
@@ -99,7 +101,9 @@ def cmd_list(args) -> int:
         (d["slug"], d["kind"], d["latest_version"] or "-", d["latest_state"] or "-", d["approved_version"] or "-")
         for d in found
     ]
-    table(("SLUG", "KIND", "LATEST", "STATE", "APPROVED"), rows)
+    if args.all:
+        rows = [(*row, when(d["archived_at"])) for row, d in zip(rows, found, strict=True)]
+    table(("SLUG", "KIND", "LATEST", "STATE", "APPROVED", *(("ARCHIVED",) if args.all else ())), rows)
     return 0
 
 
@@ -259,6 +263,21 @@ def cmd_withdraw(args) -> int:
     return 0
 
 
+@client_command
+def cmd_archive(args) -> int:
+    found = _call("POST", _path(args.project, "documents", args.slug, args.srs_command))  # archive or unarchive
+    if args.json:
+        print_json(found)
+    elif found["archived_at"]:
+        print(
+            f"Archived {args.slug}: it is out of `srs list`, search and the knowledge graph, still read by its slug, "
+            f"and takes no change; `evo-agents hub srs unarchive {args.slug} --project {args.project}` opens it again."
+        )
+    else:
+        print(f"Unarchived {args.slug}: it is in `srs list` again and takes changes.")
+    return 0
+
+
 def _project(parser) -> None:
     parser.add_argument("--project", required=True, metavar="PROJECT", help="the project that enabled plugin srs")
 
@@ -266,6 +285,7 @@ def _project(parser) -> None:
 def _register_reading(ssub) -> None:
     listed = ssub.add_parser("list", help="the documents, with their latest and approved versions")
     _project(listed)
+    listed.add_argument("--all", action="store_true", help="the archived documents too")
     json_option(listed, returns_array(*SUMMARY_KEYS, schema="SrsDocumentSummary"))
     listed.set_defaults(func=cmd_list)
 
@@ -328,9 +348,22 @@ def _register_review(ssub) -> None:
     withdraw.set_defaults(func=cmd_withdraw)
 
 
+def _register_documents(ssub) -> None:
+    for name, what in (
+        ("archive", "archive a document: out of list, search and the graph, closed to changes (an admin)"),
+        ("unarchive", "open an archived document again (an admin)"),
+    ):
+        parser = ssub.add_parser(name, help=what)
+        parser.add_argument("slug", metavar="SLUG")
+        _project(parser)
+        json_option(parser, returns_object(*SUMMARY_KEYS, schema="SrsDocumentSummary"))
+        parser.set_defaults(func=cmd_archive)
+
+
 def register_srs(hsub) -> None:
     srs = hsub.add_parser("srs", help="BA documents of a project: versions, coded items, approval (plugin srs)")
     ssub = srs.add_subparsers(dest="srs_command", required=True)
     _register_reading(ssub)
     _register_markdown(ssub)
     _register_review(ssub)
+    _register_documents(ssub)

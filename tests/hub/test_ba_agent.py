@@ -8,9 +8,10 @@ document's next version, in review at once, written as the writer, who therefore
 run approves nothing. Each version that enters review for the first time is handed to @ba as a task run on run_as's
 worker, whose comments are advice that blocks no approval. A task of a use case is made for the writer who asked,
 only while they hold writer. A type that does not route its chat runs to run_as, or @ba while its type is off, routes
-as before: to the worker of the person who mentioned it. The agent on the worker is a stand-in: the test calls the
-tools with the worker's token and the run, as its MCP client would. The pack's files are
-``tests.worker.test_ba_agent``'s.
+as before: to the worker of the person who mentioned it. An archived document is out of @ba's list and search, still
+read by its slug, and takes no proposal or comment (criterion a1 of plan srs-document-lifecycle). The agent on the
+worker is a stand-in: the test calls the tools with the worker's token and the run, as its MCP client would. The pack's
+files are ``tests.worker.test_ba_agent``'s.
 """
 
 from __future__ import annotations
@@ -399,6 +400,38 @@ def test_ba_agent_proposes_only_in_a_chat_run_of_ba(client, hub):
     assert error and "only the agent of a chat run of @ba" in text, text
     text, error = tool(client, agent, "srs__read", document="demo-shop", item="UC ORD-1")
     assert not error and "Item UC ORD-1 (use_case)" in text, "reading is anyone's with a grant"
+
+
+def test_ba_agent_leaves_out_an_archived_document_reads_it_by_its_slug_and_writes_nothing_in_it(client, hub):
+    imported(client, hub["chi"])
+    enable_ba(client, hub)
+    studio = owners_worker(client, hub)
+    chat = created(client, hub["other"], "SRS", people=[OWNER, CHI], agents=("ba",))
+    mention(client, hub["other"], chat["id"], "@ba tidy UC ORD-1")
+    agent = agent_of(studio, running(client, studio, "chat")["id"])
+    assert client.post(f"{DOC}/archive", headers=agent).status_code in (401, 403)
+    archived = client.post(f"{DOC}/archive", headers=hub["owner"])
+    assert archived.status_code == 200, archived.text
+    text, error = tool(client, agent, "srs__read")
+    assert not error and text == f"Project {PROJECT} has no SRS document that {OTHER} sees.", text
+    text, error = tool(client, agent, "srs__search", query="UC ORD-1")
+    assert not error and text == "No item of the latest versions matches 'UC ORD-1'.", text
+    text, error = tool(client, agent, "srs__read", document="demo-shop", item="UC ORD-1")
+    assert not error and "Item UC ORD-1 (use_case)" in text, text
+    order = item(client, hub["chi"], "UC ORD-1")
+    change = {"key": order["key"], "title": "Place an order now"}
+    for name, arguments in (
+        ("srs__propose", {"document": "demo-shop", "base_version": 1, "summary": "x", "changes": [change]}),
+        ("srs__comment", {"document": "demo-shop", "version": 1, "body": "Suggestion: shorter"}),
+    ):
+        text, error = tool(client, agent, name, **arguments)
+        assert error and "demo-shop" in text and "is archived and takes no change" in text, text
+        assert f"`evo-agents hub srs unarchive demo-shop --project {PROJECT}`" in text, text
+    assert client.get(DOC, headers=hub["chi"]).json()["latest_version"] == 1
+    assert comments(client, hub["reader"]) == []
+    assert client.post(f"{DOC}/unarchive", headers=hub["owner"]).status_code == 200
+    text, error = tool(client, agent, "srs__search", query="UC ORD-1")
+    assert not error and f"- demo-shop v1: UC ORD-1 (use_case) Place an order [key {order['key']}]" in text, text
 
 
 # Its review of each version

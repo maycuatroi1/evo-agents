@@ -5,8 +5,11 @@ Readers read: the documents, a document with its versions, a version whole with 
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
 version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
 the one approved last) and comment; dropping a coded item takes an admin. The author of a version in review, or an
-admin, withdraws it (POST .../versions/{n}/withdraw), for good. Approving a version queues a build of the project's
-knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub
+admin, withdraws it (POST .../versions/{n}/withdraw), for good. An admin archives a document (POST
+.../documents/{slug}/archive) and unarchives it (POST .../unarchive): an archived one is out of the list of documents
+unless ``all`` asks for it, still read by its slug, and refuses every write with 409 (``store.writable``). Approving a
+version, archiving a document and unarchiving it queue a build of the project's knowledge graph, which reads the
+approved versions of the documents not archived. Reads go through the sink X-Evo-Sink names, else the project's hub
 sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
@@ -53,7 +56,7 @@ from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_srs import SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
@@ -90,12 +93,20 @@ async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.Docum
 
 
 @router.get("/{project}/documents", response_model=list[SrsDocumentSummary])
-async def list_documents(request: Request, project: ProjectName, user: CurrentUser, sink: Sink = None):
-    """The BA documents of the project the caller sees, by slug, each with its latest version."""
+async def list_documents(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    with_archived: Annotated[bool, Query(alias="all", description="the archived documents too")] = False,
+    sink: Sink = None,
+):
+    """The BA documents of the project the caller sees, by slug, each with its latest version; the archived ones only
+    with ``all``."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
-        return [summary_model(row) for row in await store.documents(conn, access, sink)]
+        found = await store.documents(conn, access, sink, with_archived=with_archived)
+        return [summary_model(row) for row in found]
 
     return await _answer(request, work)
 
@@ -337,6 +348,34 @@ async def withdraw_version(
     return await _answer(request, work)
 
 
+async def _archived(request: Request, project: str, slug: str, user: Principal, sink: str | None, archived: bool):
+    """Archive document ``slug`` of ``project`` or unarchive it, queue a build of the knowledge graph, which leaves
+    archived documents out, and answer the document."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True, even_archived=True)
+        await reviews.archive(conn, access, user, doc, archived)
+        await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+        return summary_model(await store.document(conn, access, slug, sink))
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/archive", response_model=SrsDocumentSummary)
+async def archive_document(request: Request, project: ProjectName, slug: Slug, user: CurrentUser, sink: Sink = None):
+    """Archive a document, as an admin of the project: it leaves the list of documents (``all`` lists it), @ba's
+    search and the knowledge graph, is still read by its slug, and takes no write until it is unarchived; its codes
+    stay held and its slug taken. 409 when it is archived already."""
+    return await _archived(request, project, slug, user, sink, True)
+
+
+@router.post("/{project}/documents/{slug}/unarchive", response_model=SrsDocumentSummary)
+async def unarchive_document(request: Request, project: ProjectName, slug: Slug, user: CurrentUser, sink: Sink = None):
+    """Open an archived document again, as an admin of the project. 409 when it is not archived."""
+    return await _archived(request, project, slug, user, sink, False)
+
+
 # Comments
 
 
@@ -360,7 +399,7 @@ async def add_comment(
 
     async def work(conn):
         access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
+        doc = await store.document(conn, access, slug, sink, lock=True)
         asked = reviews.CommentRequest(body.body, body.version, body.item, body.parent_id)
         return comment_model(await reviews.comment(conn, access, user, doc, asked))
 
@@ -380,7 +419,7 @@ async def resolve_comment(
 
     async def work(conn):
         access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
+        doc = await store.document(conn, access, slug, sink, lock=True)
         return comment_model(await reviews.resolve(conn, access, user, doc, comment_id))
 
     return await _answer(request, work)
