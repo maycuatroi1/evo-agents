@@ -465,7 +465,8 @@ steps:
       cho project evo-agents, owner maycuatroi1, repository evo-agents, workflow release.yml, environment pypi.
       Tạo environment pypi trong cài đặt repo GitHub.
     depends_on: [13]
-    verify: Người dùng xác nhận trong chat rằng pending publisher đã tạo; gh api repos/maycuatroi1/evo-agents/environments --jq '.environments[].name' có pypi
+    verify: gh api repos/maycuatroi1/evo-agents/environments --jq '.environments[].name' | grep -qx pypi
+    note: Người dùng xác nhận trong chat rằng pending publisher đã tạo.
     status: done
     done_at: '2026-10-03'
     evidence: >
