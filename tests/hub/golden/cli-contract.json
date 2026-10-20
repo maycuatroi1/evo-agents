@@ -9610,11 +9610,19 @@
           "name": "step",
           "metavar": "STEP",
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
       "options": [
+        {
+          "flags": [
+            "--edits"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
         {
           "flags": [
             "--if-revision"
@@ -9741,7 +9749,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.23.1"
+      "version": "0.24.0"
     },
     "paths": {
       "/v1/health": {
@@ -38022,7 +38030,7 @@
             "worker protocol"
           ],
           "summary": "Edit Plan",
-          "description": "Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new\nrevision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run\nagain in the same transaction, and a refused rerun leaves the plan as it was.",
+          "description": "Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or\nseveral (``steps``), as one new revision under their name and one ``Decision:`` line, inside the frame\n(``triage_rules.edit_problems``); with ``rerun`` the failed step is run again in the same transaction, and a refused\nrerun leaves the plan as it was.",
           "operationId": "edit_plan_v1_worker_runs__run_id__triage_plan_post",
           "parameters": [
             {
@@ -66081,6 +66089,62 @@
           "title": "SteadyWait",
           "description": "The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only\nonce it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,\nruns.STEADY_GAP_SECONDS)."
         },
+        "StepEdit": {
+          "properties": {
+            "step": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Step",
+              "description": "the step's id, a step that is pending"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "the new verify: no command fewer"
+            },
+            "what": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "What",
+              "description": "the new what: shorter than the old one"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "why this step, when the call's reason is not all"
+            }
+          },
+          "type": "object",
+          "required": [
+            "step"
+          ],
+          "title": "StepEdit"
+        },
         "StepReadiness": {
           "properties": {
             "key": {
@@ -69946,11 +70010,18 @@
               "default": false
             },
             "step": {
-              "type": "string",
-              "maxLength": 100,
-              "minLength": 1,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Step",
-              "description": "the step's id, a step that is pending"
+              "description": "the step's id, a step that is pending; or give steps"
             },
             "verify": {
               "anyOf": [
@@ -69978,6 +70049,23 @@
               "title": "What",
               "description": "the new what: shorter than the old one"
             },
+            "steps": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepEdit"
+                  },
+                  "type": "array",
+                  "maxItems": 50,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps",
+              "description": "several steps edited at once, in one revision and one Decision line, instead of step, verify and what"
+            },
             "if_revision": {
               "type": "integer",
               "minimum": 1.0,
@@ -70000,7 +70088,6 @@
           },
           "type": "object",
           "required": [
-            "step",
             "if_revision",
             "reason"
           ],
