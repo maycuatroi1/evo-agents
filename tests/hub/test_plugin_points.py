@@ -8,7 +8,9 @@ version.
 The isolated plugin here is tests/fixtures/plugins/sample, whose backend runs for real in a plugin host reached over
 its own HTTP app (``host``), or a stand-in host that answers what a test says (``FakeHost``). The core plugin is
 ``tests.hub.core_notes``, with a table of its own that a revision appended to the hub's chain of migrations creates
-(``notes``); Telegram, the core plugin evo-ak ships, is ``tests.hub.test_telegram``'s.
+(``notes``), and beacon beside it, which runs hub-wide as Telegram does. A core plugin's channel of members is the
+sample plugin northwind-chat's (``tests.hub.northwind_channel``); Telegram's, a core plugin of the repository
+evo-agents-core-plugins, is checked there.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from evo_agents.hub.server.notifications import channel_class, notify
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import core_notes
+from tests.hub.northwind_channel import northwind  # noqa: F401 (a fixture)
 from tests.hub.test_mcp import MCP_HEADERS, call, request
 from tests.hub.test_runs import OTHER, OWNER, PLAN, PROJECT, READER, add_worker, claim, dispatched, members
 from tests.plugins import backends
@@ -501,10 +504,10 @@ def test_plugin_channel_of_an_isolated_plugin_gets_the_project_notifications_wit
     assert deliver(client)["failed"] == 1
 
 
-def test_plugin_channel_of_a_core_plugin_is_a_kind_of_members_channel_telegram_s_among_them():
-    from evo_agents.core_plugins.telegram.server import TelegramChannel
+def test_plugin_channel_of_a_core_plugin_is_a_kind_of_members_channel(northwind):  # noqa: F811
+    from northwind_chat.server import NorthwindChannel
 
-    assert channel_class("telegram") is TelegramChannel
+    assert channel_class("northwind") is NorthwindChannel
     assert channel_class("nowhere") is None
 
 
@@ -525,8 +528,10 @@ def installed(monkeypatch):
 
 
 @pytest.fixture
-def migrations(monkeypatch):
-    """The hub's chain of migrations with the revision of notes appended after its head."""
+def migrations(monkeypatch, hub_template):
+    """The hub's chain of migrations with the revision of notes appended after its head. ``hub_template``, which every
+    hub_db of this process copies, is made first, at the hub's own head: made under this chain it would be at notes'
+    revision, which every other test's hub refuses."""
     hub_config = hub_migrate.alembic_config
 
     def with_notes():
@@ -569,36 +574,36 @@ def test_core_plugin_migration_puts_its_prefixed_table_in_the_hub_chain_and_the_
 
 HUB_WIDE = [
     EntryPoint("phantom", "tests.hub.core_notes:HUB_WIDE_MISSING_TABLE", ENTRY_POINT_GROUP),
-    EntryPoint("telegram", "evo_agents.core_plugins.telegram:MANIFEST", ENTRY_POINT_GROUP),
+    EntryPoint("beacon", "tests.hub.core_notes:HUB_WIDE", ENTRY_POINT_GROUP),
 ]
 
 
 @pytest.fixture
 def hub_wide(installed, monkeypatch):
-    """Beside notes and ghost: Telegram, the core plugin evo-ak ships, with nothing per project, and phantom, as
-    Telegram but owning a table no migration creates."""
+    """Beside notes and ghost: beacon, with nothing per project, as Telegram, and phantom, as beacon but owning a table
+    no migration creates."""
     points = [*core.entry_points(group=ENTRY_POINT_GROUP), *HUB_WIDE]
     monkeypatch.setattr(core, "entry_points", lambda *, group: list(points) if group == ENTRY_POINT_GROUP else [])
     plugin_calls.core_registry.cache_clear()
 
 
-def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_store_and_in_no_project(
+def test_core_plugin_migration_made_tables_records_a_hub_wide_plugin_in_the_store_and_in_no_project(
     hub_wide, notes, hub_db
 ):
     client = notes.client
     listed = {plugin["name"]: plugin for plugin in client.get("/v1/plugins", headers=notes.admin).json()}
     # per project (ghost) or hub-wide (phantom), a plugin that owns a table no migration made is not recorded
-    assert sorted(listed) == ["notes", "telegram"]
-    telegram = listed["telegram"]
-    shown = (telegram["tier"], telegram["state"], telegram["installed_version"], telegram["installed_by"])
+    assert sorted(listed) == ["beacon", "notes"]
+    beacon = listed["beacon"]
+    shown = (beacon["tier"], beacon["state"], beacon["installed_version"], beacon["installed_by"])
     assert shown == ("core", "installed", "1.0.0", None)
-    (version,) = client.get("/v1/plugins/telegram", headers=notes.admin).json()["versions"]
+    (version,) = client.get("/v1/plugins/beacon", headers=notes.admin).json()["versions"]
     signed = (version["signature_kind"], version["published_by"], version["signed_by"])
-    assert signed == ("image", None, "image:evo_agents.core_plugins.telegram:MANIFEST")
+    assert signed == ("image", None, "image:tests.hub.core_notes:HUB_WIDE")
     for action in ("install", "upgrade", "remove"):
-        refused = client.post(f"/v1/plugins/telegram/{action}", json={}, headers=notes.admin)
+        refused = client.post(f"/v1/plugins/beacon/{action}", json={}, headers=notes.admin)
         assert refused.status_code == 409 and "core plugin of the hub's image" in refused.json()["message"]
-    # Telegram ran before the store listed it, and nobody did anything: only notes, which projects enable, is audited
+    # beacon ran before the store listed it, and nobody did anything: only notes, which projects enable, is audited
     trail = tables.audit
     installs = live.sql(hub_db, select(trail.c.target).where(trail.c.action == "plugin.install"))
     assert installs == [("plugin:notes@1.0.0 via=image",)]
@@ -609,12 +614,12 @@ def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_stor
         return await disable_incompatible(app.state.engine, frozenset({live.ADMIN}), "0.1.0")
 
     assert on_hub(client, on_an_older_release) == []
-    assert client.get("/v1/plugins/telegram", headers=notes.admin).json()["state"] == "installed"
+    assert client.get("/v1/plugins/beacon", headers=notes.admin).json()["state"] == "installed"
 
     # No project's plugin: left out of the list, and nothing to read, enable, disable or configure in a project.
     names = [plugin["name"] for plugin in client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.owner).json()]
     assert names == ["notes"]
-    base = f"/v1/projects/{PROJECT}/plugins/telegram"
+    base = f"/v1/projects/{PROJECT}/plugins/beacon"
     asked = [
         ("GET", base, None),
         ("POST", f"{base}/enable", {"permissions": []}),
@@ -625,22 +630,22 @@ def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_stor
     for method, path, body in asked:
         answered = client.request(method, path, json=body, headers=notes.owner)
         assert answered.status_code == 404, (method, path, answered.text)
-        assert "plugin telegram runs hub-wide" in answered.json()["message"]
+        assert "plugin beacon runs hub-wide" in answered.json()["message"]
     assert live.sql(hub_db, select(func.count()).select_from(tables.project_plugins)) == [(0,)]
     # its routes stay where they were, checking their callers themselves
-    assert client.get("/v1/me/telegram", headers=notes.owner).status_code == 200
+    assert client.get("/v1/me/beacon", headers=notes.owner).json() == {"login": OWNER}
 
 
 def test_core_plugin_migration_rule_tables_carry_the_plugin_prefix_and_come_from_the_hub_chain(hub_db):
     from evo_agents.core_plugins.builder import MANIFEST as BUILDER
-    from evo_agents.core_plugins.telegram import MANIFEST as TELEGRAM
     from evo_agents.plugins.manifest import ManifestError, read_manifest
 
-    builder, telegram = read_manifest(BUILDER), read_manifest(TELEGRAM)
+    builder, beacon = read_manifest(BUILDER), read_manifest(core_notes.HUB_WIDE)
     assert builder.tables() == ("builder_proposals",)
     assert "builder_proposals" in tables.metadata.tables  # a table of the hub's own chain (0043)
-    # Telegram's link codes are rows of the hub's channel_link_codes since 0063: it owns no table, and runs hub-wide
-    assert telegram.tables() == () and not telegram.per_project()
+    # a channel of members and routes of its own, as Telegram (whose link codes are rows of the hub's
+    # channel_link_codes since 0063): no table, and nothing per project
+    assert beacon.tables() == () and not beacon.per_project()
     stray = {**core_notes.MANIFEST, "contributes": {"tables": [{"name": "entries"}]}}
     with pytest.raises(ManifestError, match="must start with notes_"):
         read_manifest(stray)

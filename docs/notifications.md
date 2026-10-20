@@ -253,14 +253,17 @@ they hold a grant on.
 
 ## Telegram
 
-Telegram is a core plugin that evo-ak ships, `telegram` (`docs/plugins.md`, section Core plugins): the hub finds it
-in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the hub
-through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1).
-`evo_agents/core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
-`evo_agents/core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at
-the paths they had before Telegram was a plugin. The hub keeps in `evo_agents/hub/telegram.py` what it says itself: the
-link codes, what may reach a chat (which the group chats share) and the words of a minimal message. The plugin calls
-the Bot API with httpx; no bot library.
+Telegram is a core plugin, `telegram`, of the distribution `evo-agents-core-plugins` (repository
+[maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins)), which
+`deploy/hub/core-plugins.txt` pins into every image of the hub (`docs/plugins.md`, section Core plugins): the hub finds
+it in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the
+hub through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1). Its
+`evo_core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
+`evo_core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at the paths
+they had before Telegram was a plugin; its tests are in that repository. The hub keeps in `evo_agents/hub/telegram.py`
+what it says itself: the link codes, what may reach a chat (which the group chats share) and the words of a minimal
+message, and in evo-agents the Inbox's Telegram dialog, `hub admin telegram`, the variables below and the end-to-end
+test `web/e2e/telegram.spec.ts`. The plugin calls the Bot API with httpx; no bot library.
 
 ### One bot of the hub
 

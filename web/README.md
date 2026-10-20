@@ -42,7 +42,10 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 | `pnpm exec playwright test` | end-to-end tests, see below |
 
 CI fails when `schema.d.ts` differs from what `pnpm gen:api` writes. After changing an API model, run it and
-commit the result.
+commit the result. The document holds the routes of the core plugins the hub's image installs, Telegram's among them,
+so that Python has them too, installed after evo-ak:
+`uv pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt` (`docs/plugins.md`, section Core plugins).
+The end-to-end stack needs them as well, for `e2e/telegram.spec.ts`.
 
 CI also fails when a route loads more JS first than its budget in `bundle-budget.json`: the gzip size of the chunks
 the build lists for the route, in kB of 1000 bytes. Load the heavy part later (`next/dynamic`), or raise the budget
