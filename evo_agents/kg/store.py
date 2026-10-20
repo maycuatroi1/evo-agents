@@ -693,16 +693,20 @@ class Store:
     ) -> list[str]:
         """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
         query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
-        of its words, ranked by BM25 (``evo_agents.kg.search``). ``kinds`` keeps only nodes of those kinds."""
+        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best
+        (``evo_agents.kg.search``). ``kinds`` keeps only nodes of those kinds."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.exact(query, b, want, kinds)
         queries = list(text_search.fts_queries(text_search.query_words(query)))
-        for fts_query in queries if any_word else queries[:2]:
-            if len(hits) >= want:
+        scores: dict[str, float] = {}
+        for weight, fts_query in zip(text_search.STAGE_WEIGHTS, queries if any_word else queries[:2], strict=False):
+            if len(hits) + len(scores.keys() - set(hits)) >= want:
                 break
-            hits += [h for h in self._ranked(fts_query, want, kinds) if h not in hits]
-        return hits[:want]
+            for node_id, score in self._ranked(fts_query, want, kinds):
+                scores[node_id] = min(score * weight, scores.get(node_id, math.inf))  # bm25 is negative
+        ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
+        return [*hits, *(h for h in ranked if h not in hits)][:want]
 
     def exact(self, query: str, b: int, limit: int, kinds: list[str] = ()) -> list[str]:
         """Live nodes whose id, alias or name is ``query``, by id; each through an index, never a scan of nodes."""
@@ -729,9 +733,9 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
-    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[str]:
-        """Node ids matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored again with the prior
-        by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
+    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float]]:
+        """(node id, score) of the nodes matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored
+        again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
         for a reader with an audience, and only those within it, each with the score ``node_fts`` would give it
         (``_as_public``)."""
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
@@ -749,8 +753,8 @@ class Store:
                 return []
             rows += self._as_public(fts_query, found) if table == "node_fts_aud" else found
         prior = text_search.PRIOR
-        rows.sort(key=lambda r: (r[2] * prior.get(r[1], 1.0), r[0]))  # bm25 is negative: lower is better
-        return [r[0] for r in rows[:limit]]
+        scored = sorted(((r[0], r[2] * prior.get(r[1], 1.0)) for r in rows), key=lambda r: (r[1], r[0]))
+        return scored[:limit]  # bm25 is negative: lower is better
 
     def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
         """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
