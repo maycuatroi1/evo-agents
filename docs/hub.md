@@ -959,8 +959,10 @@ day, as GitLab ends an access token on its expiry date. `secret list` reads `GET
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
 list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
-as the web's Accounts page does, and `hub account login` adds or renews a Claude account with the token
-`claude setup-token` prints (`docs/credentials.md`, section "Accounts").
+as the web's Accounts page does, `hub account login` adds or renews a Claude account with the token
+`claude setup-token` prints, and `hub account oauth-login` signs one in with Claude's OAuth flow: the hub keeps its
+refresh token sealed, refreshes the access token when a run is leased and ends within five minutes, and shows the state
+`needs-relogin` when the refresh token is refused (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:
