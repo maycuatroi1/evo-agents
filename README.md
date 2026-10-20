@@ -18,6 +18,8 @@ uv tool install 'evo-ak[graphify]'   # or: pip install 'evo-ak[graphify]' (PyPI 
 uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents'   # unreleased main
 uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night
 # or, from a checkout: python -m pip install -e '.[test,graphify]'
+# the hub's tests also take the core plugins the hub's image pins, after evo-ak:
+#   python -m pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt
 ```
 
 The core needs Python 3.11+ and PyYAML; nothing else. The `graphify` extra adds graphify's tree-sitter

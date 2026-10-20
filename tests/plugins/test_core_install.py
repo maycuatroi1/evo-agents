@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import subprocess
 import sys
 from importlib.metadata import distributions
@@ -48,7 +49,8 @@ def pinned(tmp_path):
 def test_core_install_pinned_file_of_the_repository_is_valid():
     code, out, err = run("pinned", str(PINNED))
     assert code == 0, err
-    assert out == "", "this release pins no core plugin yet; a pinned line changes this test"
+    (line,) = out.splitlines()  # telegram and chats, of the repository evo-agents-core-plugins
+    assert re.fullmatch(r"evo-agents-core-plugins==\d+\.\d+\.\d+ --hash=sha256:[0-9a-f]{64}", line), line
 
 
 def test_core_install_pinned_prints_each_requirement_once_as_pip_reads_it(pinned):

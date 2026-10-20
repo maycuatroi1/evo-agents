@@ -6,10 +6,11 @@ null) before its first put, a step_key only once it has a plan with that step (4
 judge run still gets 404; whoever reads the run reads its decisions, on the list, the page of one, Home and the MCP
 tool decision_list, no more and no fewer; its owner alone answers, and the answer goes to the run's inbox, not to its
 chat; a run that ends another way cancels its open decisions. The notification of a decision without a plan names the
-author run and its title on the web and on Telegram, with a button per option; a run that waits with a decision open
-sends no author_waiting notice and stands on Home through its decision alone. A parked author run is resumed only when
-none of its decisions is open, or on a reply in its chat, and the run that resumes it takes every answer given while it
-was parked."""
+author run on the web, and reaches a channel of its owner (the sample core plugin northwind-chat,
+``tests.hub.northwind_channel``) with the run's kind and title and a button per option; a run that waits with a
+decision open sends no author_waiting notice and stands on Home through its decision alone. A parked author run is
+resumed only when none of its decisions is open, or on a reply in its chat, and the run that resumes it takes every
+answer given while it was parked."""
 
 import pytest
 
@@ -21,12 +22,19 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
-from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.kg.serve import DATA_META
 from tests.hub import live
 from tests.hub.live import bearer, sql
+from tests.hub.northwind_channel import (
+    cleared,
+    deliver,
+    hub_config,
+    linked,
+    northwind,  # noqa: F401 (a fixture)
+    set_up,
+)
 from tests.hub.test_author_chat import (
     QUESTION as SAID,
 )
@@ -65,32 +73,23 @@ from tests.hub.test_runs import (
     recover,
     state_of,
 )
-from tests.hub.test_telegram import (
-    bot,  # noqa: F401 (a fixture)
-    deliver,
-    linked,
-    telegram_config,
-    unrestricted,
-    web,
-)
 
 
 @pytest.fixture
-def client(hub_db, tmp_path, github, s3, bot):  # noqa: F811
-    config = telegram_config(hub_db, tmp_path, github, **s3.config())
+def client(hub_db, tmp_path, github, s3, northwind):  # noqa: F811
+    config = hub_config(hub_db, tmp_path, github, **s3.config())
     with TestClient(create_app(config), base_url="https://hub.test") as client:
-        client.app.state.telegram_inbound = server_telegram.InboundLimit(updates=1000)
         yield client
 
 
 @pytest.fixture
 def hub(client, github, hub_db) -> dict:
-    """test_author_chat's ``hub``: test_runs' members, the project's hub sink not restricted, a web session of the
-    owner's."""
+    """test_author_chat's ``hub``: test_runs' members, the project's hub sink not restricted, northwind-chat set up by
+    the hub's admin."""
     headers = members(client, github)
-    unrestricted(hub_db)
+    cleared(hub_db)
+    set_up(client, headers["admin"])
     sql(hub_db, update(tables.projects).values(triage_enabled=False))  # a failed run here opens no triage thread
-    headers["owner_web"] = web(client, hub_db, OWNER)
     return headers
 
 
@@ -288,17 +287,17 @@ def test_an_author_run_that_ends_another_way_cancels_its_open_decisions(client, 
     assert decision(client, hub["owner"], parked["id"])["state"] == "cancelled"
 
 
-# The notification, Telegram and Home
+# The notification, a member's channel and Home
 
 
-def test_an_author_decision_without_a_plan_notifies_its_owner_naming_the_run_and_its_title_on_web_and_telegram(
+def test_an_author_decision_without_a_plan_notifies_its_owner_naming_the_run_and_its_title_on_web_and_channel(
     client,
     hub,
     hub_db,
     tmp_path,
-    bot,  # noqa: F811
+    northwind,  # noqa: F811
 ):
-    linked(client, hub["owner_web"])
+    linked(hub_db, OWNER)
     worker, run_id = running(client, hub, tmp_path)
     title = run_view(client, hub["owner"], run_id)["title"]
     assert title
@@ -316,23 +315,25 @@ def test_an_author_decision_without_a_plan_notifies_its_owner_naming_the_run_and
     )
     assert client.get("/v1/me/notifications", headers=hub["other"]).json()["notifications"] == []
 
+    # the channel gets the decision with the run's kind and title, which name it while it has no plan
     assert deliver(client)["failed"] == 0
-    message = bot.fake.sent()[-1]
-    assert message["text"].startswith(f"<b>Author run #{run_id} of {PROJECT} asks a decision</b> (scope, {title})")
-    assert QUESTION in message["text"] and "None" not in message["text"]
-    assert message["reply_markup"]["inline_keyboard"] == [
-        [{"text": "Keep SQLite", "callback_data": f"d:{found['id']}:sqlite"}],
-        [{"text": "Move to Postgres (recommended)", "callback_data": f"d:{found['id']}:postgres"}],
-        [{"text": "Open on the hub", "url": f"https://hub.test/inbox?decision={found['id']}"}],
+    decision = northwind.outgoing[-1].extra["decision"]
+    assert (decision["category"], decision["plan_id"], decision["step_key"]) == ("scope", None, None)
+    assert (decision["run_kind"], decision["run_title"], decision["question"]) == ("author", title, QUESTION)
+    message = northwind.chat.last()
+    assert message["text"] == f"Decision #{found['id']}: {QUESTION}"
+    assert message["buttons"] == [
+        {"text": "Keep SQLite", "data": f"d:{found['id']}:sqlite"},
+        {"text": "Move to Postgres", "data": f"d:{found['id']}:postgres"},
     ]
 
     # once it put a plan, a decision names the plan and the step, under the author run
     assert put(client, worker, run_id, new_plan()).status_code == 200
     asks(client, worker, run_id, step_key="2")
     assert deliver(client)["failed"] == 0
-    assert bot.fake.sent()[-1]["text"].startswith(
-        f"<b>Author run #{run_id} of {PROJECT} asks a decision</b> (architecture, plan wait-helper, step 2)"
-    )
+    decision = northwind.outgoing[-1].extra["decision"]
+    assert (decision["category"], decision["plan_id"], decision["step_key"]) == ("architecture", "wait-helper", "2")
+    assert decision["run_kind"] == "author"
 
 
 def test_an_author_run_waiting_with_a_decision_open_sends_no_notice_and_home_shows_it_once_through_the_decision(

@@ -1,9 +1,12 @@
 """Agents find chat messages in the knowledge graph and read them whole through tools that check who may, at each call
 (``evo_agents.hub.server.chat_read``), as criterion a5 of plan chat-history-in-kg names it.
 
-Checked here, on Postgres with the api and the worker in this process, on the chats of ``tests.hub.test_chats_kg_source``
-(chat one, Kiwi rollout, of alice, dave and bob, who joined once the agent of beta had left; chat two, Mango, of alice
-and dave; chat three, Lunch, with no agent; erin holds a grant on alpha and is in no chat):
+Checked here, on Postgres with the api and the worker in this process, on chats that the core plugin chats puts into
+each project's graph: chat one, Kiwi rollout, of alice, dave and bob, who joined once the agent of beta had left; chat
+two, Mango, of alice and dave; chat three, Lunch, with no agent; erin holds a grant on alpha and is in no chat. chats is
+a plugin of the distribution evo-agents-core-plugins, which deploy/hub/core-plugins.txt pins and the tests install
+after evo-ak (``uv pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt``); without it the tests that
+build a graph skip. The tests of its source are in that repository (``plugin_tests/test_chats_kg_source.py``).
 
 - kg_search finds a message by the words of its text, with the accents typed or not, and prints its id, chat, author,
   time and thread, never its text; kg_node and kg_context print none of it either;
@@ -36,21 +39,81 @@ from evo_agents.hub.contract import check_command, commands
 from evo_agents.hub.server.chat_read import DATA_LINE, NOT_THERE
 from evo_agents.kg import serve
 from tests.hub import live
-from tests.hub.test_chats_kg_source import (
-    A,
-    converse,
-    done,
-    hub,  # noqa: F401 (a fixture)
-    message,
-    plugins_core,  # noqa: F401 (a fixture)
-    say,
-    thread,
-)
-from tests.hub.test_kg import grant, run_jobs, tool_ok
+from tests.hub.test_kg import PROJECT, REGISTRATION, Machine, doc, grant, open_hub, push, run_jobs, tool_ok
 from tests.hub.test_mcp import MCP_HEADERS, call
 
+A, B = PROJECT, "beta"
+SOURCE = "plugin.chats"  # the core plugin chats, whose items the hub names
 NOWHERE = "nowhere@example"  # a sink no project declares
 UNTYPED = ("sửa lỗi", "tìm kiếm", "khởi")  # words of the message no query below types
+GRANTS = {  # login: [(project, role, max level)], beside those of tests.hub.test_kg.open_hub
+    "alice": [(B, "writer", "internal")],  # made every chat and is in each
+    "dave": [(B, "reader", "internal")],  # in every chat, until he is taken out of chat one
+    "bob": [(A, "reader", "internal")],  # joined chat one once the agent of beta had left
+    "erin": [(A, "reader", "internal")],  # in no chat
+    "owner": [(A, "admin", "internal"), (B, "admin", "internal")],
+}
+
+
+def done(response, status: int = 200) -> dict | None:
+    assert response.status_code == status, response.text
+    return response.json() if response.content else None
+
+
+@pytest.fixture
+def hub(hub_db, tmp_path, s3):
+    """Projects alpha and beta, each with a knowledge config pushed from a machine and a first build, enabling chats
+    with chats:read; the members of GRANTS."""
+    pytest.importorskip("evo_core_plugins.chats", reason="install deploy/hub/core-plugins.txt: chats is its plugin")
+    client, found = open_hub(hub_db, tmp_path, s3)
+    try:
+        registration = {**REGISTRATION, "harness": {**REGISTRATION["harness"], "name": B, "path": f"{B}-harness"}}
+        done(client.put(f"/v1/projects/{B}", json=registration, headers=found.admin))
+        for login, grants in GRANTS.items():
+            for project, role, level in grants:
+                grant(client, found.admin, login, role, level, project)
+            if not hasattr(found, login):
+                setattr(found, login, live.bearer(live.insert_token(hub_db, login)))
+        for project in (A, B):
+            body = {"permissions": ["chats:read"]}
+            done(client.post(f"/v1/projects/{project}/plugins/chats/enable", json=body, headers=found.owner))
+            machine = Machine(tmp_path, f"laptop-{project}", project)
+            machine.sync("docs", {**doc("runbook", "How to roll back."), "path": "docs/runbook.md"})
+            assert push(found, machine).ok
+        run_jobs(hub_db, s3, found.worker_dir)
+        yield found
+    finally:
+        client.__exit__(None, None, None)
+
+
+def chat(hub, title: str, agents: list[str]) -> int:
+    body = {"title": title, "people": ["dave"], "agents": agents}
+    return done(hub.client.post("/v1/chats", json=body, headers=hub.alice), 201)["id"]
+
+
+def say(hub, chat_id: int, member: str, text: str, reply_to: int | None = None) -> dict:
+    body = {"body": text, "reply_to": reply_to}
+    return done(hub.client.post(f"/v1/chats/{chat_id}/messages", json=body, headers=getattr(hub, member)), 201)
+
+
+def converse(hub) -> SimpleNamespace:
+    """The chats of the module's docstring, and their messages."""
+    one, two, three = chat(hub, "Kiwi rollout", [A, B]), chat(hub, "Mango", [A]), chat(hub, "Lunch", [])
+    m1 = say(hub, one, "alice", "The kiwi rollout breaks the search service, see docs/runbook.md")
+    done(hub.client.delete(f"/v1/chats/{one}/agents/{B}", headers=hub.alice), 204)
+    done(hub.client.put(f"/v1/chats/{one}/people/bob", headers=hub.alice))
+    m2 = say(hub, one, "dave", "Fixed after the search service restart, as docs/runbook.md says", reply_to=m1["id"])
+    m3 = say(hub, two, "alice", "Mango picks up what the kiwi chat said")
+    m0 = say(hub, three, "alice", "Kiwi tart for lunch")
+    return SimpleNamespace(one=one, two=two, three=three, m0=m0, m1=m1, m2=m2, m3=m3)
+
+
+def message(found) -> str:
+    return f"{SOURCE}:message:{found['id']}"
+
+
+def thread(chat_id: int, root: dict) -> str:
+    return f"{SOURCE}:thread:{chat_id}/{root['id']}"
 
 
 def mcp(hub, member: str, name: str, *, sink: str | None = None, headers: dict | None = None, **arguments) -> dict:
