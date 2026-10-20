@@ -241,6 +241,29 @@ def test_chat_members_leave_and_only_the_creator_takes_others_out(client, hub, h
     assert ("chat.remove", f"chat:{chat['id']} person:{OTHER}", OTHER, None) in audit_rows(hub_db, "chat")
 
 
+def candidates(client, headers, *agents) -> dict:
+    response = client.get("/v1/chats/people", params={"agents": list(agents)}, headers=headers)
+    assert response.status_code == 200, response.text
+    return {person["login"]: person for person in response.json()}
+
+
+def test_chat_candidates_are_the_people_one_shares_a_project_or_a_chat_with(client, hub):
+    shared = candidates(client, hub["owner"])
+    assert list(shared) == [PUBLIC_READER, READER, OTHER]  # by login; the caller, the admin and the stranger left out
+    assert all(p["why"] is None and p["avatar_url"].startswith(chats.GITHUB_AVATARS) for p in shared.values())
+    # the agents given say who could not be in the chat, in the words of the hub's refusal; unknown handles count not
+    picked = candidates(client, hub["owner"], "reviewer", "no-such-agent", "Not A Handle")
+    assert {login: p["why"] for login, p in picked.items() if p["why"]} == {
+        PUBLIC_READER: "a grant on project evo-agents up to public, below its label internal"
+    }
+    # a chat adds its people; the stranger, sharing no project, sees the owner and no agent of evo-agents
+    created(client, hub["owner"], people=[STRANGER])
+    assert candidates(client, hub["owner"], "reviewer")[STRANGER]["why"] == "no grant on project evo-agents"
+    assert {login: p["why"] for login, p in candidates(client, hub["stranger"], "reviewer").items()} == {OWNER: None}
+    too_many = client.get("/v1/chats/people", params={"agents": [f"a{n}" for n in range(11)]}, headers=hub["owner"])
+    assert too_many.status_code == 422
+
+
 # Messages, threads and mentions
 
 

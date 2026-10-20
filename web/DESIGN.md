@@ -829,8 +829,14 @@ Shared pieces built on them:
   by GitHub id and proxies nothing), or while it loads, and when there is none or it fails, their initials on a
   neutral round. New chat (`new-chat-dialog.tsx`, loaded when first pressed) takes a title (one line, 120 characters),
   the agents of the projects the visitor writes to as checkboxes by project with each one's face (at most 10, a filter
-  past eight) and people by login, those of the visitor's other chats suggested (a login typed and not added yet goes
-  along); the hub's refusal stays in the dialog with its words, and the chat opens once made. A chat (`chat-view.tsx`)
+  past eight) and people, searched and picked (`people-picker.tsx`): a search field over the people the visitor shares
+  a project or a chat with (`GET /v1/chats/people`), each a checkbox with their face and login, at most 100 drawn (a
+  search narrows the rest); one who could not be in a chat with the agents picked says why in the hub's words and is
+  not picked (one picked already says it in `danger`), and a login typed that matches nobody listed is offered as it
+  is. Enter in the field takes the login typed when listed, else the one row left, else the login typed. The people
+  picked show under it as chips with their faces; the hub's refusal stays in the dialog with its words, and the chat
+  opens once made. Members adds a person with the same picker, each row a button that adds them at once, who is in
+  the chat left out. A chat (`chat-view.tsx`)
   is a card: its head, its messages, and the composer. A group chat's head (`chat-header.tsx`) puts its face first, 40
   px, as a button with a `Camera` badge (`chat-image-control.tsx`) whose menu says what an image takes (PNG, JPEG or
   WebP, at most 512 KiB) and offers Upload image, or Change image and Remove image once there is one; Remove asks
@@ -906,10 +912,10 @@ Shared pieces built on them:
   @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
   message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
-  project, or takes one out), the people (any member adds one by login; the creator takes others out; each may Leave,
-  confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its creator changes it; anyone else
-  reads it), and for a chat with a restricted project, that its notices name it and link only; a refusal shows at the
-  top of the sheet, a change made is a toast. Live (`use-chat-feed.ts`, `feed-model.ts`): the page follows the chat's
+  project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
+  takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
+  creator changes it; anyone else reads it), and for a chat with a restricted project, that its notices name it and
+  link only; a refusal shows at the top of the sheet, a change made is a toast. Live (`use-chat-feed.ts`, `feed-model.ts`): the page follows the chat's
   stream with an EventSource from the chat's last event when the page was read (Last-Event-ID on reconnect, an event
   seen twice applied once), reads `events?after=` every 2 seconds while the stream fails and tries it again every 30,
   and feeds the top bar's LiveIndicator; a message and a reaction arrive in place, a member change reads the chat

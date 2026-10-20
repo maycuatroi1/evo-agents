@@ -97,7 +97,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -447,6 +447,13 @@ P needs the writer role on P, and a deleted agent is refused. A person leaves, o
 any member takes an agent out. A chat holds at most 50 people and 10 agents, and never a person and an agent of the same
 name, so that `@name` names one member.
 
+**Whom to add.** `GET /v1/chats/people` (`evo_agents/hub/server/chat_people.py`) lists the people a caller may pick
+for a chat without typing a login: everyone who holds a grant on a project the caller holds one on, and everyone in a
+chat the caller is in, the caller left out, by login, at most 500. Given the handles of a chat's agents (`agents`,
+repeated), each says why they could not be in it (`why`, the words of the hub's refusal; null when they could); a
+handle of no agent, or of one whose project the caller holds no grant on, counts for nothing. Someone outside the list
+who signed in once is still added by login. The web's New chat and Members search this list.
+
 **Label.** A chat's label is the labels of the projects of its agents: for each project, its default label, the one
 its runs on no plan read as. Every person in the chat holds a grant on each of those projects whose max level reaches
 that project's label, on the project's own ladder: adding an agent that would take the label past someone in the chat
@@ -612,6 +619,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
 | `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
+| `GET /v1/chats/people` (`agents`, repeated): whom they may add, each with why they could not be in a chat with those agents | | anyone: the people they share a project or a chat with |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
