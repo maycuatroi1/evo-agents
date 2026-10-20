@@ -1,30 +1,54 @@
 """Which workers of a member can take a run of an agent profile now, and why one cannot: the workers of a member that
-serve a project with what each holds, whether it is online and what its last heartbeat says (``workers_of``), and the
-reasons a worker is no fit (``worker_problems``). A chat run (``evo_agents.hub.server.chat_runs``) picks its worker
-with the first reason, and the candidates to run a failed run again (``service.candidates``) list them all."""
+serve a project, and those other members share in it (``shared_in``), with what each holds, whether it is online and
+what its last heartbeat says (``workers_of``), and the reasons a worker is no fit (``worker_problems``). A chat run
+(``evo_agents.hub.server.chat_runs``) picks its worker with the first reason, and the candidates to run a failed run
+again (``service.candidates``) list them all."""
 
 from __future__ import annotations
 
 from sqlalchemy import exists, func, or_, select
 
 from evo_agents.hub import profiles, runs, tables
+from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.server.runs.models import available
 
 OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
+WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
+
+
+def writes(user_id, project_id):
+    """Whether member ``user_id`` holds writer on project ``project_id`` now, as a condition (each a value or a
+    column)."""
+    g = tables.grants
+    return exists().where(g.c.user_id == user_id, g.c.project_id == project_id, g.c.role.in_(WRITER_ROLES))
+
+
+def shared_in(project_id):
+    """Whether the worker of the row (``tables.workers``) is one its owner shares in project ``project_id``: shared,
+    serving the project, and its owner holding writer there now (``docs/workers.md``, Shared workers)."""
+    w, wp = tables.workers, tables.worker_projects
+    serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
+    return w.c.shared & serves & writes(w.c.owner_id, project_id)
 
 
 def workers_of(user_id: int, project_id: int):
-    """The workers of ``user_id`` that serve project ``project_id`` and are not revoked, with how many runs each
-    holds or has waiting for it (queued, pinned to it), and whether it is online."""
-    w, wp, r = tables.workers, tables.worker_projects, tables.runs
+    """The workers of ``user_id`` that serve project ``project_id`` and are not revoked, then those other members share
+    in it (``shared_in``), with the owner of each, how many runs each holds or has waiting for it (queued, pinned to
+    it), how many of the runs it holds are another member's than ``user_id`` (``others``: a shared worker takes no run
+    of ``user_id`` while it holds one), and whether it is online."""
+    w, wp, r, users = tables.workers, tables.worker_projects, tables.runs, tables.users
     held = (r.c.worker_id == w.c.id) & r.c.state.in_(runs.HELD_STATES)
     waiting = (r.c.pinned_worker_id == w.c.id) & (r.c.state == "queued")
     holding = select(func.count()).where(or_(held, waiting)).scalar_subquery()
+    others = select(func.count()).where(held, r.c.dispatched_by != user_id).scalar_subquery()
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
+    owner = select(users.c.login).where(users.c.id == w.c.owner_id).scalar_subquery()
     return (
         select(
             w.c.id,
             w.c.name,
+            w.c.owner_id,
+            owner.label("owner"),
             w.c.labels,
             w.c.runtimes,
             w.c.checkouts,
@@ -37,9 +61,10 @@ def workers_of(user_id: int, project_id: int):
             w.c.plugins,
             (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
             holding.label("holding"),
+            others.label("others"),
         )
-        .where(w.c.owner_id == user_id, w.c.revoked_at.is_(None), serves)
-        .order_by(w.c.id)
+        .where(or_(w.c.owner_id == user_id, shared_in(project_id)), w.c.revoked_at.is_(None), serves)
+        .order_by(w.c.owner_id != user_id, w.c.id)
     )
 
 
@@ -72,6 +97,7 @@ def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
         (not takes_kind(row, kind), f"runs evo-agents {row.agent_version or '?'}, which takes no {kind} run"),
         (row.dispatch_from == "web" and via != "web", "takes runs dispatched from the web only"),
         (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
+        (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
         (not row.checkouts, "has no checkout, and claims nothing"),
         (
             not profiles.allows_worker(profile.permissions, row.name, row.labels or ()),

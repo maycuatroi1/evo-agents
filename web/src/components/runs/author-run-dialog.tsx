@@ -280,8 +280,9 @@ function AuthorRunForm({
             >
               {mine.map((worker) => (
                 <NativeSelectOption key={worker.id} value={String(worker.id)}>
-                  {tDispatch("workerOption", {
+                  {tDispatch(worker.shared ? "workerOptionShared" : "workerOption", {
                     name: worker.name,
+                    owner: worker.owner,
                     status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status),
                   })}
                   {workerFitsNow(worker, fit) ? "" : ` ${t("workerCannot")}`}

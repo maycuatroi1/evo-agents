@@ -37,7 +37,7 @@ import { ConfirmByName } from "./confirm-by-name";
 import { DispatchFromSwitch } from "./dispatch-from-switch";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
-import { readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
+import { dispatchKey, readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
 import { Note } from "./note";
 import {
   changeWorker,
@@ -47,6 +47,7 @@ import {
   workerQuery,
 } from "./queries";
 import { SectionCard } from "./section-card";
+import { SharedSwitch } from "./shared-switch";
 import { UpdateNotes, VersionCard } from "./version-card";
 import { WorkerSettings } from "./worker-settings";
 
@@ -247,13 +248,18 @@ function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
           <span>{t("permissionsValue", { owner: worker.owner })}</span>
         </dd>
         <dt className="text-muted-foreground">{t("dispatch")}</dt>
-        <dd data-testid="worker-dispatch" data-dispatch-from={worker.dispatch_from}>
-          {webOnly ? t("dispatchWeb", { owner: worker.owner }) : t("dispatchValue", { owner: worker.owner })}
+        <dd data-testid="worker-dispatch" data-dispatch-from={worker.dispatch_from} data-shared={worker.shared}>
+          {t(dispatchKey(worker.shared, webOnly), { owner: worker.owner })}
         </dd>
         <dt className="text-muted-foreground">{t("terminal")}</dt>
         <dd>{worker.allow_web_terminal ? t("terminalOn") : t("terminalOff")}</dd>
       </dl>
-      {isOwner && workerView(worker) !== "revoked" ? <DispatchFromSwitch worker={worker} /> : null}
+      {isOwner && workerView(worker) !== "revoked" ? (
+        <>
+          <DispatchFromSwitch worker={worker} />
+          <SharedSwitch worker={worker} />
+        </>
+      ) : null}
     </SectionCard>
   );
 }

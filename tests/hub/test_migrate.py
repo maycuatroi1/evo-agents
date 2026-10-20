@@ -1139,6 +1139,26 @@ def test_0053_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(h
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0053") :]
 
 
+def test_0062_holds_every_worker_unshared_and_going_back_drops_the_column(hub_db):
+    move_to(hub_db, "0061")
+    workers = hub_tables.workers
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="6" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0062")
+    shown = select(workers.c.shared).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(False,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(workers).values(shared=True).where(workers.c.id == worker))
+    assert query(hub_db, shown) == [(True,)]
+    move_to(hub_db, "0061", down=True)
+    assert "shared" not in columns(hub_db, "workers")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0062") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

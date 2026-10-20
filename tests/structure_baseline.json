@@ -3,7 +3,6 @@
   "modules": {
     "evo_agents/hub/judge.py": 1087,
     "evo_agents/hub/memory.py": 1124,
-    "evo_agents/hub/run_cli.py": 1003,
     "evo_agents/hub/server/changes.py": 1562,
     "evo_agents/hub/server/curator.py": 1330,
     "evo_agents/worker/cli.py": 1229,
