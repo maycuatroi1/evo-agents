@@ -834,10 +834,13 @@ Shared pieces built on them:
   sent, and that, or the hub's refusal, shows under the head as an inline error until the next try; a change is a
   toast, and the chat's image_changed event shows it to the other members at once. Then the title as the h1, the
   visibility its agents' projects give it, its agents' faces, who else is in it (Only you so far, alone), and Members.
-  A direct chat's head is its agent's: its avatar, its name as the h1 with a Direct tag (`Bot`) and Deleted when it
-  is, its `@handle` linking to the agent's page and its project under it, and Details, which opens the members sheet
-  as its Details: its agent and its person with nobody to add, take out or leave (a `Lock` note says to start a group
-  chat for that), and the budget. Its composer says that every message goes to the agent, no @ needed. Messages
+  A direct chat's head is its agent's, laid out as a messenger's: its avatar, its name as the h1 on one line (cut with
+  an ellipsis, the whole name in its tooltip) with a Direct tag (`Bot`) and Deleted when it is, under the name its
+  `@handle` linking to the agent's page, its project and the visibility, and Details at the end of the name's row,
+  which opens the members sheet as its Details: its agent and its person with nobody to add, take out or leave (a
+  `Lock` note says to start a group chat for that), and the budget. Below 768 px Details is its `Info` icon (a 44 px
+  target, its word kept as its name) and Direct its `Bot`, so the way back, the face, the name and Details share one
+  row on a phone. Its composer says that every message goes to the agent, no @ needed. Messages
   (`message-list.tsx`, the line worked out by `line-model.ts`) sit in a `role="log"` region (polite) that scrolls on
   its own and Tab reaches, under a line for each day; it opens at the newest message, follows new ones while the
   visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier messages reads the page
@@ -888,10 +891,14 @@ Shared pieces built on them:
   not ended. In the Inbox and on Home a
   decision of category `triage` reads "Triage run #N" and "project, triage of a failed run" where an author run's reads
   "Author run #N", and a `run_failed` notice that links to the thread opens it (Open triage thread). The composer
-  (`composer.tsx`) is the kit's Composer with Send and Cmd or Ctrl with Enter; typing `@` opens the suggestions above
-  the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`, grouped Agents,
-  Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space, Escape closes it, a
-  polite region says how many there are); the bar under the box says what the message will do ("Hands work to
+  (`composer.tsx`) is the kit's Composer with Send and its `kbd` (↵). In every chat and thread Enter sends and Shift
+  with Enter adds a line, as in messenger apps; Cmd or Ctrl with Enter sends too, and the Enter that ends an input
+  method's word (Telex, `isComposing` or Safari's key code 229) sends nothing (`isChatSend` in `lib/keyboard.ts`). On
+  a touch screen (`TOUCH_QUERY`: no hover, a coarse pointer) Enter adds a line and Send sends, the `kbd` hidden; with a
+  keyboard the text area names Enter in `aria-keyshortcuts` and its description says it. Typing `@` opens the
+  suggestions above the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`,
+  grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
+  Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
   @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
   message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
@@ -1472,7 +1479,7 @@ so the server renders a page the same way for everyone who has not picked a lang
   palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Home, Inbox, Plans, Runs, the Curator or
   Workers, D
   opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
-  Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
+  Enter sends a chat's message and Shift with Enter adds a line to it, Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
   or in the palette's foot. A single key never takes a key pressed with Cmd, Ctrl or Alt (the browser's and the
   screen reader's own), nor one typed in a text field, the web terminal, a menu, a list or a dialog
   (`characterKeyBlocked` in `lib/keyboard.ts`); a screen reader in browse mode keeps its letters, since the page never

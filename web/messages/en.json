@@ -157,15 +157,19 @@
       "goWorkers": "Workers",
       "dispatch": "Dispatch a step",
       "send": "Send an answer or a message",
+      "chatSend": "Send a chat message",
+      "chatLine": "Add a line to a chat message",
       "goCurator": "Curator"
     },
     "where": {
       "project": "Of the project you are in",
-      "writer": "On a project's pages, with the Writer role"
+      "writer": "On a project's pages, with the Writer role",
+      "chat": "In a chat's message box"
     },
     "keys": {
       "command": "Command",
       "control": "Control",
+      "shift": "Shift",
       "enter": "Enter",
       "escape": "Escape",
       "slash": "Slash",
@@ -2549,6 +2553,7 @@
       "bytes": "{count} of {max} bytes",
       "sending": "Sending",
       "send": "Send",
+      "keys": "Enter sends, Shift Enter adds a line.",
       "blank": "Write something first.",
       "long": "A message is at most {max} bytes of UTF-8.",
       "mention": {

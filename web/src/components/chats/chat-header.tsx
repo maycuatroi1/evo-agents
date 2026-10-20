@@ -38,9 +38,11 @@ function BackLink() {
  * The head of a chat (web/DESIGN.md, Chats), its title the page's h1 beside its face, the visibility its agents'
  * projects give it. A group chat's face is a button that changes or removes its image (`ChatImageControl`), and its
  * head says who is in it, with Members, which opens the sheet that adds and takes them out. A direct chat's head is its
- * agent's: its avatar and name, its @handle linking to the agent's page, its project, and Details, which opens the same
- * sheet without adding or taking out anyone. Under 1024 px a back link to the list stands before the face, in the row
- * of the face and the title, so it stays beside them when the head wraps at 375 px.
+ * agent's, laid out as a messenger's: its avatar, its name on one line with Direct, under the name its @handle linking
+ * to the agent's page, its project and the visibility, and Details at the end of the name's row, which opens the same
+ * sheet without adding or taking out anyone; below 768 px Details and Direct are their icons, so the name, Direct and
+ * Details share one row on a phone. Under 1024 px a back link to the list stands before the face, in the row of the face and the
+ * title, so it stays beside them when the head wraps at 375 px.
  */
 export function ChatHeader({ chat, me, onMembers }: { chat: Chat; me: string | null; onMembers: () => void }) {
   const [problem, setProblem] = useState<WriteFailure | null>(null);
@@ -105,46 +107,46 @@ function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | nu
 function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; onDetails: () => void }) {
   const t = useTranslations("chats.header");
   return (
-    <PageHeader
-      className="min-w-0"
-      leading={
-        <>
-          <BackLink />
-          <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
-        </>
-      }
-      title={<span id="chat-title" data-testid="chat-title">{agent.name}</span>}
-      tags={
-        <>
+    <header className="flex min-w-0 items-start gap-2 md:gap-3" data-testid="chat-header">
+      <div className="flex shrink-0 items-center gap-2 md:gap-3">
+        <BackLink />
+        <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-h-11 min-w-0 items-center gap-2 md:min-h-10">
+          <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={agent.name}>
+            <span id="chat-title" data-testid="chat-title">
+              {agent.name}
+            </span>
+          </h1>
           <Tag data-testid="chat-direct-tag">
             <Bot aria-hidden="true" />
-            {t("direct")}
+            <span className="max-md:sr-only">{t("direct")}</span>
           </Tag>
           {agent.deleted ? <Tag className="text-danger">{t("deleted")}</Tag> : null}
-          {levelsOf(chat).map((level) => (
-            <VisibilityTag key={level} level={level} testId="chat-visibility" />
-          ))}
-        </>
-      }
-      actions={
-        <Button type="button" variant="outline" size="sm" onClick={onDetails} data-testid="chat-details-open">
-          <Info aria-hidden="true" />
-          {t("details")}
-        </Button>
-      }
-      sub={
-        <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1" data-testid="chat-who">
-          <Link href={agentHref(agent.project, agent.handle)} className={`${NAME_LINK} font-mono text-[13px] font-normal`} title={t("agentPage", { name: agent.name })} data-testid="chat-agent-link">
-            @{agent.handle}
-          </Link>
-          <span className="inline-flex min-w-0 items-center gap-1" data-testid="chat-agent-project">
-            <FolderKanban className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="sr-only">{t("project")}</span>
-            <span className="truncate">{agent.project}</span>
+        </div>
+        <p className="text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]" data-slot="page-sub">
+          <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1" data-testid="chat-who">
+            <Link href={agentHref(agent.project, agent.handle)} className={`${NAME_LINK} max-w-full truncate font-mono text-[13px] font-normal`} title={t("agentPage", { name: agent.name })} data-testid="chat-agent-link">
+              @{agent.handle}
+            </Link>
+            <span className="inline-flex min-w-0 items-center gap-1" data-testid="chat-agent-project">
+              <FolderKanban className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="sr-only">{t("project")}</span>
+              <span className="truncate">{agent.project}</span>
+            </span>
+            {levelsOf(chat).map((level) => (
+              <VisibilityTag key={level} level={level} testId="chat-visibility" />
+            ))}
           </span>
-        </span>
-      }
-      testId="chat-header"
-    />
+        </p>
+      </div>
+      <div className="flex h-11 shrink-0 items-center md:h-10">
+        <Button type="button" variant="outline" size="sm" onClick={onDetails} className="max-md:min-w-11" data-testid="chat-details-open">
+          <Info aria-hidden="true" />
+          <span className="max-md:sr-only">{t("details")}</span>
+        </Button>
+      </div>
+    </header>
   );
 }
