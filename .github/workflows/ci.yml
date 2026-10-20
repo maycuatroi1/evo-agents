@@ -1,14 +1,12 @@
 name: ci
 
-# Two weights. A pull request and a push to main run the light one: Linux on Python 3.12, the Python of the hub's
-# image, then the web's checks and its end-to-end tests, since main deploys to the hub once ci passes (deploy.yml). The
-# full one adds Python 3.11 on Linux, and macOS and Windows on both Pythons: release.yml runs it on a v* tag before it
-# builds anything, and a manual run with `full` runs it on any branch. No linter runs here: ruff, ESLint, import-linter
-# and the structure budgets of tests/test_structure.py are commands to run when wanted (docs/structure.md).
+# Runs on a v* tag only, through release.yml, or by hand. A pull request and a push to main run no ci: the agent that
+# makes a change tests the cases it puts at risk on its own machine, merges, and main deploys to the hub at once
+# (deploy.yml). Two weights. The full one, which release.yml runs before it builds anything: Linux, macOS and Windows on
+# Python 3.11 and 3.12, the web's checks and its end-to-end tests. The light one, a manual run without `full`: Linux on
+# Python 3.12, the Python of the hub's image, and the web. No linter runs here: ruff, ESLint, import-linter and the
+# structure budgets of tests/test_structure.py are commands to run when wanted (docs/structure.md).
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_call:
     inputs:
       full:
