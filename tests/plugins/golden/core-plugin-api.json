@@ -1,0 +1,1346 @@
+{
+  "api_version": [
+    1,
+    0
+  ],
+  "names": {
+    "AgentRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "handle",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "Channel": {
+      "kind": "class",
+      "bases": [
+        "object"
+      ],
+      "methods": {
+        "__init__": {
+          "params": [
+            {
+              "name": "self",
+              "kind": "positional_or_keyword",
+              "annotation": "",
+              "default": null
+            },
+            {
+              "name": "config",
+              "kind": "positional_or_keyword",
+              "annotation": "",
+              "default": "None"
+            }
+          ],
+          "returns": ""
+        },
+        "prepare": {
+          "params": [
+            {
+              "name": "self",
+              "kind": "positional_or_keyword",
+              "annotation": "",
+              "default": null
+            },
+            {
+              "name": "conn",
+              "kind": "positional_or_keyword",
+              "annotation": "AsyncConnection",
+              "default": null
+            },
+            {
+              "name": "notification",
+              "kind": "positional_or_keyword",
+              "annotation": "Outgoing",
+              "default": null
+            }
+          ],
+          "returns": "Outgoing"
+        },
+        "send": {
+          "params": [
+            {
+              "name": "self",
+              "kind": "positional_or_keyword",
+              "annotation": "",
+              "default": null
+            },
+            {
+              "name": "notification",
+              "kind": "positional_or_keyword",
+              "annotation": "Outgoing",
+              "default": null
+            },
+            {
+              "name": "config",
+              "kind": "positional_or_keyword",
+              "annotation": "dict",
+              "default": null
+            }
+          ],
+          "returns": "str | None"
+        }
+      },
+      "attributes": {
+        "needs_session": "False"
+      }
+    },
+    "ChannelGone": {
+      "kind": "error",
+      "bases": [
+        "Undeliverable"
+      ]
+    },
+    "ChatMessage": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "seq",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "thread_root_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "author_kind",
+          "annotation": "Literal['person', 'agent', 'hub']",
+          "default": null
+        },
+        {
+          "name": "author",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "body",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "Clearance": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "level",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "location",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ]
+    },
+    "Context": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "plugin",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "engine",
+          "annotation": "AsyncEngine | None",
+          "default": null
+        },
+        {
+          "name": "config",
+          "annotation": "object | None",
+          "default": "None"
+        },
+        {
+          "name": "project",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "project_id",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "sink",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "jobs",
+          "annotation": "object | None",
+          "default": "None"
+        }
+      ]
+    },
+    "DecisionAnswer": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "decision_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "option",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "option_label",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "inbox_run",
+          "annotation": "int",
+          "default": null
+        }
+      ]
+    },
+    "DirectChat": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "chat_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "made",
+          "annotation": "bool",
+          "default": null
+        }
+      ]
+    },
+    "ErrorBody": {
+      "kind": "model",
+      "fields": {
+        "error": {
+          "annotation": "str",
+          "required": true
+        },
+        "message": {
+          "annotation": "str",
+          "required": true
+        },
+        "request_id": {
+          "annotation": "str | None",
+          "required": false
+        },
+        "detail": {
+          "annotation": "list[dict] | None",
+          "required": false
+        }
+      }
+    },
+    "HubAdmin": {
+      "kind": "alias",
+      "annotated": "Session",
+      "metadata": [
+        "Depends(hub_admin)"
+      ]
+    },
+    "KgSourceAnswer": {
+      "kind": "typeddict",
+      "keys": {
+        "cursor": "dict",
+        "identifiers": "list",
+        "items": "list"
+      },
+      "required": [
+        "identifiers",
+        "items"
+      ]
+    },
+    "LinkCode": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "code",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "expires_at",
+          "annotation": "datetime",
+          "default": null
+        }
+      ]
+    },
+    "Login": {
+      "kind": "alias",
+      "annotated": "str",
+      "metadata": [
+        "Path(pattern='^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$')"
+      ]
+    },
+    "Member": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "user_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "channel_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "config",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ]
+    },
+    "NotACorePlugin": {
+      "kind": "error",
+      "bases": [
+        "LookupError"
+      ]
+    },
+    "NotificationRef": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "decision_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "proposal_id",
+          "annotation": "int | None",
+          "default": null
+        }
+      ]
+    },
+    "Outgoing": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "user_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "notice_kind",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "decision_id",
+          "annotation": "int | None",
+          "default": null
+        },
+        {
+          "name": "title",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "body",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "details",
+          "annotation": "dict | None",
+          "default": null
+        },
+        {
+          "name": "link",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "annotation": "datetime",
+          "default": null
+        },
+        {
+          "name": "proposal_id",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "extra",
+          "annotation": "dict | None",
+          "default": "None"
+        }
+      ]
+    },
+    "Plugin": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "kinds",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        }
+      ]
+    },
+    "PluginConfig": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "values",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "missing_secrets",
+          "annotation": "tuple[str, ...]",
+          "default": null
+        }
+      ]
+    },
+    "ProposalAnswer": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "proposal_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "action",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "str",
+          "default": null
+        }
+      ]
+    },
+    "Refused": {
+      "kind": "error",
+      "bases": [
+        "HTTPException"
+      ]
+    },
+    "RetryAfter": {
+      "kind": "error",
+      "bases": [
+        "Exception"
+      ],
+      "init": {
+        "params": [
+          {
+            "name": "self",
+            "kind": "positional_or_keyword",
+            "annotation": "",
+            "default": null
+          },
+          {
+            "name": "seconds",
+            "kind": "positional_or_keyword",
+            "annotation": "float",
+            "default": null
+          },
+          {
+            "name": "message",
+            "kind": "positional_or_keyword",
+            "annotation": "str",
+            "default": null
+          }
+        ],
+        "returns": ""
+      }
+    },
+    "SESSION_ENDED": {
+      "kind": "constant",
+      "value": "'the web session that linked this channel ended (signed out, revoked or expired): link it again'"
+    },
+    "SentMessage": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "seq",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "thread_root_id",
+          "annotation": "int | None",
+          "default": null
+        }
+      ]
+    },
+    "Session": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "user_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "login",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "token_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "web",
+          "annotation": "bool",
+          "default": "True"
+        }
+      ]
+    },
+    "Undeliverable": {
+      "kind": "error",
+      "bases": [
+        "Exception"
+      ]
+    },
+    "UnsupportedApi": {
+      "kind": "error",
+      "bases": [
+        "RuntimeError"
+      ]
+    },
+    "WebSession": {
+      "kind": "alias",
+      "annotated": "Session",
+      "metadata": [
+        "Depends(web_session)"
+      ]
+    },
+    "agents": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        }
+      ],
+      "returns": "list[AgentRef]"
+    },
+    "answer_decision": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "decision_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "positional_or_keyword",
+          "annotation": "Clearance",
+          "default": null
+        },
+        {
+          "name": "option",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "text",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "via",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "DecisionAnswer"
+    },
+    "answer_proposal": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "proposal_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "positional_or_keyword",
+          "annotation": "Clearance",
+          "default": null
+        },
+        {
+          "name": "action",
+          "kind": "positional_or_keyword",
+          "annotation": "Literal['accept', 'reject', 'defer']",
+          "default": null
+        },
+        {
+          "name": "defer_days",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        },
+        {
+          "name": "note",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        },
+        {
+          "name": "via",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "ProposalAnswer"
+    },
+    "begin": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "request",
+          "kind": "positional_or_keyword",
+          "annotation": "Request",
+          "default": null
+        }
+      ],
+      "returns": "AbstractAsyncContextManager[AsyncConnection]"
+    },
+    "chat_history_items": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "KgSourceAnswer"
+    },
+    "delivered_notification": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "NotificationRef | None"
+    },
+    "direct_chat_member": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "Member | None"
+    },
+    "find_member": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "match",
+          "kind": "positional_or_keyword",
+          "annotation": "Mapping[str, str | int]",
+          "default": null
+        },
+        {
+          "name": "live",
+          "kind": "keyword_only",
+          "annotation": "bool",
+          "default": "True"
+        }
+      ],
+      "returns": "Member | None"
+    },
+    "granted": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "permission",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
+    "hub_config": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "request",
+          "kind": "positional_or_keyword",
+          "annotation": "Request",
+          "default": null
+        }
+      ],
+      "returns": "HubConfig"
+    },
+    "link_channel": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "session",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "unique_on",
+          "kind": "keyword_only",
+          "annotation": "tuple[str, ...]",
+          "default": "()"
+        }
+      ],
+      "returns": "Member"
+    },
+    "link_code": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "session",
+          "kind": "positional_or_keyword",
+          "annotation": "Session",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "LinkCode"
+    },
+    "open_direct_chat": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "handle",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "DirectChat"
+    },
+    "plugin": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "module",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "Plugin"
+    },
+    "plugin_config": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "keyword_only",
+          "annotation": "str | None",
+          "default": "None"
+        }
+      ],
+      "returns": "PluginConfig"
+    },
+    "plugin_environment": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        }
+      ],
+      "returns": "Mapping[str, str]"
+    },
+    "prepare": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "notification",
+          "kind": "positional_or_keyword",
+          "annotation": "Outgoing",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "positional_or_keyword",
+          "annotation": "Clearance",
+          "default": null
+        }
+      ],
+      "returns": "Outgoing"
+    },
+    "read_message": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "message_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "positional_or_keyword",
+          "annotation": "Clearance",
+          "default": null
+        }
+      ],
+      "returns": "ChatMessage"
+    },
+    "redeem_link_code": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "code",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        }
+      ],
+      "returns": "Session | None"
+    },
+    "require": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "major",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "minor",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "None"
+    },
+    "restricted": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "positional_or_keyword",
+          "annotation": "Clearance",
+          "default": null
+        }
+      ],
+      "returns": "bool"
+    },
+    "send_message": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "body",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "reply_to",
+          "kind": "keyword_only",
+          "annotation": "int | None",
+          "default": "None"
+        }
+      ],
+      "returns": "SentMessage"
+    },
+    "set_channel_state": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "member",
+          "kind": "positional_or_keyword",
+          "annotation": "Member",
+          "default": null
+        },
+        {
+          "name": "state",
+          "kind": "positional_or_keyword",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        }
+      ],
+      "returns": "None"
+    },
+    "transaction": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "context",
+          "kind": "positional_or_keyword",
+          "annotation": "Context",
+          "default": null
+        }
+      ],
+      "returns": "AbstractAsyncContextManager[AsyncConnection]"
+    },
+    "unlink_channel": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "kind",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "user_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "by",
+          "kind": "keyword_only",
+          "annotation": "Literal['web', 'bot', 'admin']",
+          "default": null
+        },
+        {
+          "name": "actor",
+          "kind": "keyword_only",
+          "annotation": "Session | None",
+          "default": "None"
+        }
+      ],
+      "returns": "bool"
+    },
+    "web_url": {
+      "kind": "function",
+      "params": [
+        {
+          "name": "config",
+          "kind": "positional_or_keyword",
+          "annotation": "HubConfig",
+          "default": null
+        },
+        {
+          "name": "link",
+          "kind": "positional_or_keyword",
+          "annotation": "str | None",
+          "default": null
+        }
+      ],
+      "returns": "str | None"
+    }
+  }
+}

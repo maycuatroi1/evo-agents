@@ -245,7 +245,7 @@ async def close(websocket: WebSocket, code: int, reason: str) -> None:
         pass
 
 
-def _origin(url: str | None) -> str | None:
+def origin_of(url: str | None) -> str | None:
     """``url`` as a browser writes its origin, scheme://host[:port] in lower case without a default port."""
     if not url:
         return None
@@ -293,7 +293,7 @@ async def _open(websocket: WebSocket, project: str, run_id: int) -> Session | No
     config = app.state.config
     if config.web_login_missing():
         raise Refusal(frames.CLOSE_FORBIDDEN, "the web terminal needs web sign-in, which this hub has not set up")
-    if _origin(websocket.headers.get("origin")) != _origin(config.public_url):
+    if origin_of(websocket.headers.get("origin")) != origin_of(config.public_url):
         raise Refusal(frames.CLOSE_FORBIDDEN, "the terminal opens only from a page of this hub (Origin)")
     token = websocket.cookies.get(SESSION_COOKIE)
     if not token:

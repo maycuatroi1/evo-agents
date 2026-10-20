@@ -632,12 +632,15 @@ def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_stor
 
 
 def test_core_plugin_migration_rule_tables_carry_the_plugin_prefix_and_come_from_the_hub_chain(hub_db):
+    from evo_agents.core_plugins.builder import MANIFEST as BUILDER
     from evo_agents.core_plugins.telegram import MANIFEST as TELEGRAM
     from evo_agents.plugins.manifest import ManifestError, read_manifest
 
-    telegram = read_manifest(TELEGRAM)
-    assert telegram.tables() == ("telegram_links",) and not telegram.per_project()
-    assert "telegram_links" in tables.metadata.tables  # a table of the hub's own chain (0015)
+    builder, telegram = read_manifest(BUILDER), read_manifest(TELEGRAM)
+    assert builder.tables() == ("builder_proposals",)
+    assert "builder_proposals" in tables.metadata.tables  # a table of the hub's own chain (0043)
+    # Telegram's link codes are rows of the hub's channel_link_codes since 0063: it owns no table, and runs hub-wide
+    assert telegram.tables() == () and not telegram.per_project()
     stray = {**core_notes.MANIFEST, "contributes": {"tables": [{"name": "entries"}]}}
     with pytest.raises(ManifestError, match="must start with notes_"):
         read_manifest(stray)

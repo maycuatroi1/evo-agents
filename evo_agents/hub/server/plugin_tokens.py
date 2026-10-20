@@ -92,12 +92,12 @@ async def backend_payload(conn: AsyncConnection, sealer: Sealer | None, hub_url:
     token it gets at the backend's start under ``hub``."""
     manifest = plugin_row.manifest
     schema = manifest.get("config")
-    instance, instance_missing = await _layer_config(conn, sealer, plugin_row.id, plugin_row.name, schema, None)
+    instance, instance_missing = await layer_config(conn, sealer, plugin_row.id, plugin_row.name, schema, None)
     grants = await project_grants(conn, plugin_row.name)
     projects: dict[str, dict] = {}
     missing: dict[str, list[str]] = {"instance": instance_missing} if instance_missing else {}
     for row in await _enabled_rows(conn, plugin_row.name):
-        cfg, lost = await _layer_config(conn, sealer, row.id, row.name, schema, row.project_id, row.project)
+        cfg, lost = await layer_config(conn, sealer, row.id, row.name, schema, row.project_id, row.project)
         projects[row.project] = cfg
         if lost:
             missing[row.project] = lost
@@ -122,7 +122,7 @@ async def _enabled_rows(conn: AsyncConnection, name: str) -> list:
     return list(await conn.execute(query))
 
 
-async def _layer_config(conn, sealer, plugin_id, name, schema, project_id, project=None):
+async def layer_config(conn, sealer, plugin_id, name, schema, project_id, project=None):
     """The effective config of one plugin for one project (or the instance layer when ``project_id`` is None), its
     secrets decrypted; the fields the hub cannot open for want of the key."""
     stacks = await stored_stacks(conn, [plugin_id], project_id or 0, None)
