@@ -443,6 +443,44 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
     with_daemon(machine, body)
 
 
+def test_triage_plan_edits_several_steps_in_one_call_and_refuses_a_mixed_or_broken_one(machine, tmp_path):  # noqa: F811
+    edits = tmp_path / "edits.json"
+    edits.write_text(
+        '[{"step": 2, "verify": "make check"}, {"step": "4", "verify": "make docs", "why": "the docs step had none"}]'
+    )
+    broken = tmp_path / "broken.json"
+    broken.write_text('{"step": 2}')
+    plan = ["triage", "plan", "--if-revision", "3", "--reason", "prose in verify"]
+    machine.scenarios(
+        {
+            "chat": [
+                {"cli": [*plan, "--edits", str(edits)]},
+                {"cli": [*plan, "2", "--edits", str(edits)]},
+                {"cli": [*plan, "--edits", str(broken)]},
+                {"cli": [*plan]},
+                {"say": "Done."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        edited, mixed, bad, none = [e for e in machine.commands() if e["run"] == run_id]
+        assert edited["exit"] == 0 and "Wrote revision 4 of the plan;" in edited["stdout"]
+        assert mixed["exit"] == 2 and "not both" in mixed["stderr"]
+        assert bad["exit"] == 2 and "give a JSON list" in bad["stderr"]
+        assert none["exit"] == 2 and "give STEP" in none["stderr"]
+        (call,) = hub.chat_calls
+        assert call["route"] == "triage/plan" and "step" not in call and "verify" not in call
+        assert call["steps"] == [
+            {"step": "2", "verify": "make check"},
+            {"step": "4", "verify": "make docs", "why": "the docs step had none"},
+        ]
+
+    with_daemon(machine, body)
+
+
 def opened_repos(hub) -> list[tuple[int, str]]:
     return [(c["run_id"], c["repo"]) for c in hub.chat_calls if c["route"] == "chat/repos"]
 
