@@ -7,5 +7,10 @@ no package of evo_agents imports this one (import-linter contract core-plugins-b
 package holds its manifest in ``__init__`` and imports nothing heavy there, since every process that reads the entry
 points imports it; its contributions' Python lives in modules the hub imports when it uses them.
 
-- ``telegram``: the Telegram channel of notifications, its webhook and its routes (``docs/notifications.md``).
+- ``builder``, ``srs`` and ``tasks``: @builder, which changes the hub's settings through chat once an admin approves,
+  BA documents to a template, and the backlog (``docs/plugins.md``, sections Builder and SRS and tasks).
+
+telegram and chats, the Telegram channel and the history of group chats in the knowledge graph, left for the
+distribution evo-agents-core-plugins (repository maycuatroi1/evo-agents-core-plugins), which deploy/hub/core-plugins.txt
+pins into the hub's image.
 """

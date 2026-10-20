@@ -113,6 +113,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
       - run: uv pip install --system -e '.[test,graphify,hub-server,worker]'
+      # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): telegram and chats of
+      # evo-agents-core-plugins, whose routes the golden copy of the API holds and with which tests build a hub's graph.
+      - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt
       - name: Install tmux, for the interactive runs of the worker
         if: matrix.part == 'worker'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
@@ -185,6 +188,65 @@ jobs:
           EVO_TEST_HUB_IMAGE: "1"
         run: pytest -q -rs -p no:cacheprovider tests/plugins/test_core_install_image.py
 
+  # The tests of the core plugins deploy/hub/core-plugins.txt pins, telegram and chats: the repository
+  # evo-agents-core-plugins at the tag of the pinned release, its tests run against this checkout of evo-agents in place
+  # of the commit its evo-agents.lock names (`make setup` with EVO_AGENTS_URL and EVO_AGENTS_REF), on a Postgres service
+  # as the test jobs'. A change of the hub that breaks them without changing the core plugin API fails here, not only
+  # in that repository's nightly run against main.
+  core-plugins-suite:
+    name: core-plugins-suite
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql/data
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      EVO_HUB_TEST_DSN: postgresql://postgres:test@localhost:5432/postgres
+    steps:
+      - name: Postgres without fsync
+        run: >-
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -q
+          -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off"
+          -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
+      - uses: actions/checkout@v4
+        with:
+          path: evo-agents
+      - name: The release of evo-agents-core-plugins the pinned file names
+        id: pinned
+        run: |
+          version=$(sed -n -E 's/^evo-agents-core-plugins==([^ ]+) .*/\1/p' evo-agents/deploy/hub/core-plugins.txt)
+          test -n "$version" || { echo "deploy/hub/core-plugins.txt pins no evo-agents-core-plugins"; exit 1; }
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: maycuatroi1/evo-agents-core-plugins
+          ref: ${{ steps.pinned.outputs.tag }}
+          path: evo-agents-core-plugins
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: evo-agents/pyproject.toml
+      - name: Its venv, with this checkout of evo-agents installed in place of the lock's commit
+        working-directory: evo-agents-core-plugins
+        run: make setup EVO_AGENTS_URL="$GITHUB_WORKSPACE/evo-agents" EVO_AGENTS_REF=HEAD
+      - name: Its tests
+        working-directory: evo-agents-core-plugins
+        run: make test PYTEST_ARGS="-n 4 --durations=20"
+
   # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the
   # hub-server and worker extras, and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that
   # need a hub or the worker's SDKs.
@@ -254,6 +316,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
       - run: uv pip install --system -e '.[test,hub-server]'
+        working-directory: .
+      # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt), so `pnpm gen:api` sees
+      # the routes of Telegram that web/src/lib/api/schema.d.ts holds.
+      - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt
         working-directory: .
       - uses: pnpm/action-setup@v4
         with:
@@ -332,6 +398,10 @@ jobs:
           cache-dependency-glob: pyproject.toml
       - run: uv pip install --system -e '.[test,hub-server]'
         working-directory: .
+      # The core plugins the hub's image installs, after evo-ak (deploy/hub/core-plugins.txt): the stack's hub serves
+      # Telegram's routes, which e2e/telegram.spec.ts drives.
+      - run: uv pip install --system --no-deps --require-hashes -r deploy/hub/core-plugins.txt
+        working-directory: .
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: web/package.json
@@ -365,7 +435,16 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, test, plugin-host-root, core-plugins-image, test-macos, test-windows, web-check, web-e2e]
+    needs:
+      - changes
+      - test
+      - plugin-host-root
+      - core-plugins-image
+      - core-plugins-suite
+      - test-macos
+      - test-windows
+      - web-check
+      - web-e2e
     runs-on: ubuntu-latest
     steps:
       - env:
