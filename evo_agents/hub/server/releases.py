@@ -22,15 +22,19 @@ release.resume.
 
 POST .../releases/run (admin) makes a check now, through the same gates as the job's, and answers it; audited as
 release.run. A member without the admin role gets 403 on each write, and a worker token 403 from the guard of /v1.
+
+GET .../releases/cycles (reader) lists the cycles of the project that ended, published or closed, newest first, a page
+of ``limit`` from ``offset``, each as the status shows the cycle open now: its runs, its tags and their CI, its cost
+against its cap and why it ended. The web's Releases page lists them under the cycle open now.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Text, case, cast, column, exists, func, insert, literal, select, table, update
 from sqlalchemy.dialects.postgresql import INTERVAL
@@ -57,6 +61,11 @@ RESUME = "release.resume"
 RUN = "release.run"  # an admin checked now: "<project> check:<id>"
 PG_TIMEZONES = table("pg_timezone_names", column("name", Text))
 WRITES = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
+READS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
+ENDED = tuple(state for state in releases.CYCLE_STATES if state not in releases.UNFINISHED)  # published, closed
+SHOWN_CYCLES = 20  # the ended cycles one page of GET .../releases/cycles lists by default
+MAX_CYCLES = 100
+MAX_CYCLES_OFFSET = 10_000
 
 
 # Models
@@ -189,6 +198,14 @@ class ReleaseCycle(BaseModel):
     tags: list[ReleaseTag] = Field(description="the tags it follows, in the order it began to")
 
 
+class ReleaseCycleList(BaseModel):
+    project: str
+    cycles: list[ReleaseCycle] = Field(description="the cycles that ended, published or closed, newest first")
+    total: int = Field(description="the cycles that ended, on every page")
+    limit: int
+    offset: int
+
+
 class ReleaseStatus(BaseModel):
     project: str
     schedule: ReleaseSchedule | None = Field(description="null before an admin sets one")
@@ -279,16 +296,19 @@ def check_view(row) -> ReleaseCheck:
     )
 
 
-async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
-    c, rr, r, u = tables.release_cycles, tables.release_runs, tables.runs, tables.users
-    found = (
-        await conn.execute(
-            select(c, u.c.login.label("owner")).join_from(c, u, u.c.id == c.c.owner_id).where(c.c.id == cycle_id)
-        )
-    ).one()
+def _cycles():
+    """The cycles with their owner's login, for ``_cycle_views``."""
+    c, u = tables.release_cycles, tables.users
+    return select(c, u.c.login.label("owner")).join_from(c, u, u.c.id == c.c.owner_id)
+
+
+def _runs_of(cycle_ids: list[int]):
+    """The runs of the cycles ``cycle_ids`` with their state, cost and landing, by cycle then run."""
+    rr, r = tables.release_runs, tables.runs
     landed = (rr.c.version, rr.c.branch, rr.c.decision, rr.c.pull_url, rr.c.merge_commit, rr.c.tagged, rr.c.tagged_at)
-    query = (
+    return (
         select(
+            rr.c.cycle_id,
             rr.c.run_id,
             rr.c.mode,
             rr.c.tag,
@@ -299,14 +319,17 @@ async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
             rr.c.land_reason,
         )
         .join_from(rr, r, r.c.id == rr.c.run_id)
-        .where(rr.c.cycle_id == cycle_id)
-        .order_by(rr.c.run_id)
+        .where(rr.c.cycle_id.in_(cycle_ids))
+        .order_by(rr.c.cycle_id, rr.c.run_id)
     )
-    items = [
-        ReleaseCycleRun(**{**row._mapping, "cost_usd": float(row.cost)}) for row in (await conn.execute(query)).all()
-    ]
-    t = tables.release_tags
-    tags = [_tag_view(row) for row in (await conn.execute(select(t).where(t.c.cycle_id == cycle_id).order_by(t.c.id)))]
+
+
+def _run_view(row) -> ReleaseCycleRun:
+    values = {key: value for key, value in row._mapping.items() if key not in ("cycle_id", "cost")}
+    return ReleaseCycleRun(**values, cost_usd=float(row.cost))
+
+
+def _cycle_model(found, items: list[ReleaseCycleRun], tags: list[ReleaseTag]) -> ReleaseCycle:
     thread = chats.chat_link(found.triage_chat_id, found.triage_root_id) if found.triage_root_id else None
     return ReleaseCycle(
         id=found.id,
@@ -330,6 +353,27 @@ async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
         runs=items,
         tags=tags,
     )
+
+
+async def _cycle_views(conn: AsyncConnection, found: list) -> list[ReleaseCycle]:
+    """The cycle rows ``found`` (of ``_cycles``) as the API shows them, in their order, with their runs and tags read
+    in one query each whatever their number."""
+    ids = [row.id for row in found]
+    if not ids:
+        return []
+    runs: dict[int, list[ReleaseCycleRun]] = {cycle_id: [] for cycle_id in ids}
+    for row in (await conn.execute(_runs_of(ids))).all():
+        runs[row.cycle_id].append(_run_view(row))
+    tags: dict[int, list[ReleaseTag]] = {cycle_id: [] for cycle_id in ids}
+    t = tables.release_tags
+    for row in (await conn.execute(select(t).where(t.c.cycle_id.in_(ids)).order_by(t.c.id))).all():
+        tags[row.cycle_id].append(_tag_view(row))
+    return [_cycle_model(row, runs[row.id], tags[row.id]) for row in found]
+
+
+async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
+    found = (await conn.execute(_cycles().where(tables.release_cycles.c.id == cycle_id))).one()
+    return (await _cycle_views(conn, [found]))[0]
 
 
 def _tag_view(row) -> ReleaseTag:
@@ -377,17 +421,34 @@ async def release_status(conn: AsyncConnection, access: ProjectAccess) -> Releas
     )
 
 
-@router.get(
-    "/{project}/releases",
-    response_model=ReleaseStatus,
-    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}},
-)
+@router.get("/{project}/releases", response_model=ReleaseStatus, responses=READS)
 async def status(request: Request, project: ProjectName, user: CurrentUser) -> ReleaseStatus:
     """Where the project's daily release stands: its schedule, its latest checks and the cycle open now."""
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
         return await release_status(conn, access)
+
+
+@router.get("/{project}/releases/cycles", response_model=ReleaseCycleList, responses=READS)
+async def ended_cycles(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=MAX_CYCLES, description="the cycles of one page")] = SHOWN_CYCLES,
+    offset: Annotated[int, Query(ge=0, le=MAX_CYCLES_OFFSET, description="the cycles before the page")] = 0,
+) -> ReleaseCycleList:
+    """The project's release cycles that ended, published or closed, newest first, each with its runs and tags."""
+    c = tables.release_cycles
+    async with request.app.state.engine.connect() as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        ended = (c.c.project_id == access.project_id, c.c.state.in_(ENDED))
+        total = (await conn.execute(select(func.count()).select_from(c).where(*ended))).scalar_one()
+        page = _cycles().where(*ended).order_by(c.c.id.desc()).limit(limit).offset(offset)
+        found = (await conn.execute(page)).all()
+        cycles = await _cycle_views(conn, found)
+    return ReleaseCycleList(project=access.name, cycles=cycles, total=total, limit=limit, offset=offset)
 
 
 # Writing
