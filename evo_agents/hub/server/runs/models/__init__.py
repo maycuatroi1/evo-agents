@@ -21,6 +21,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
     PluginRuntime,
+    ReleaseSpec,
     RunBudget,
     RunEnvironment,
     RunPack,
@@ -229,8 +230,8 @@ class Run(BaseModel):
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
         "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
         "written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in "
-        "a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and "
-        "the hub only watches"
+        "a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a "
+        "Claude Code session on a member's own machine, which no worker runs and the hub only watches"
     )
     project: str
     plan_id: str = Field(
@@ -244,8 +245,8 @@ class Run(BaseModel):
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     dispatched_via: Literal[DISPATCHED_VIA] | None = Field(
         description="the credential it was dispatched with: web, a web session; machine, a token (the command line, "
-        "an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched "
-        "before 0.5.0"
+        "an agent); schedule, the night shift of the project's charter, for its owner; release, the project's "
+        "release schedule, for its owner; null for a run dispatched before 0.5.0"
     )
     worker_id: int | None = Field(description="the worker that claimed it")
     worker: str | None = Field(description="that worker's name")
@@ -501,6 +502,9 @@ class RunSpec(BaseModel):
         default_factory=list,
         description="the agent packs the run's profile attaches, in its order, each at the version it pins, which the "
         "worker builds into the run's directory for its runtime; empty for a profile that attaches none",
+    )
+    release: ReleaseSpec | None = Field(
+        None, description="a release run's cycle, mode and start commit; null for any other run"
     )
 
 

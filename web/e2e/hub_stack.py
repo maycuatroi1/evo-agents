@@ -38,6 +38,11 @@ every minute: in each charter's window it counts the night's figures and queues 
 /curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
 on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
+The Releases specs need cycles without a GitHub App to read tags or CI: POST /releases/seed {project, worker_id,
+stopped} plays the release job for that project's schedule (``release_seed.py``): two cycles that ended, and one open
+whose tag is red and whose fix run is queued, or with ``stopped`` one stopped on its red test with a decision for its
+owner and a thread in the project's triage chat.
+
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
@@ -92,6 +97,7 @@ from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
 from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
 from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
+from release_seed import seed_release  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
@@ -611,6 +617,13 @@ def control_server(
             elif self.path == "/curator/collect":
                 try:
                     self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/releases/seed":
+                try:
+                    self._reply(200, seed_release(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):

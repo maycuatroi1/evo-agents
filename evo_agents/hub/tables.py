@@ -1,7 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage``, ``tables_workers`` and ``tables_curator``
-hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
+``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage``, ``tables_workers``, ``tables_curator`` and
+``tables_release`` hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -42,6 +42,7 @@ from evo_agents.hub import (
     tables_kg,
     tables_plugins,
     tables_profiles,
+    tables_release,
     tables_sessions,
     tables_settings,
     tables_triage,
@@ -942,27 +943,7 @@ Index(
     postgresql_where=proposals.c.inbox_at.is_not(None),
 )
 
-# The Curator's morning briefs (0015)
-
-curator_briefs = Table(
-    "curator_briefs",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("day", Date, nullable=False),
-    Column("night", Date, nullable=False),
-    Column("user_id", BigInteger, nullable=False),
-    Column("body", JSONB, nullable=False),
-    Column("notification_id", BigInteger),
-    _stamp("created_at"),
-    ForeignKeyConstraint(
-        ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
-    UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
-)
+curator_briefs = tables_curator.briefs_table(metadata)  # the Curator's morning briefs (0015)
 
 channel_link_codes = Table(  # the one-time codes that link a member's channel: telegram_links until 0063
     "channel_link_codes",
@@ -998,3 +979,6 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
+release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
+    metadata, runs, RUN_ACTIVE
+)
