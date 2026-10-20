@@ -92,7 +92,7 @@ from evo_agents.hub.mcp_tools import (
     TOOLS,
     offered,
 )
-from evo_agents.hub.memory import AGENT_SINK, FRONTMATTER, HARNESS, frontmatter, memory_type
+from evo_agents.hub.memory import AGENT_SINK, HARNESS, memory_type
 from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
@@ -118,7 +118,17 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
-from evo_agents.hub.server.mcp_text import TEXT_CHARS, digest_json, event_lines, fit_digest, one_line
+from evo_agents.hub.server.mcp_text import (
+    EXCERPT,
+    TEXT_CHARS,
+    digest_json,
+    event_lines,
+    fit_digest,
+    memory_about,
+    memory_line,
+    memory_where,
+    one_line,
+)
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
     JOIN_HINT,
@@ -144,7 +154,6 @@ EVERY_INTERFACE = ("0.0.0.0", "::", "")
 SESSION = "evo_mcp"  # the key of McpSession in request.state
 SHOWN_PROBLEMS = 5
 ASK_WAIT_SECONDS = 20  # ask_member holds this long for an answer, well inside the proxy's 120 s and a tool's deadline
-EXCERPT = 200  # characters of a memory shown by memory_search
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
 _SINK = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
@@ -398,26 +407,6 @@ def _problems(exc: ValidationError) -> str:
     return "; ".join(found)
 
 
-def _where(memory) -> str:
-    if memory.scope == "project":
-        return f"project {memory.project}, {memory.location}"
-    return f"personal, {memory.location}"
-
-
-def _summary_line(memory) -> str:
-    deleted = ", deleted" if memory.deleted else ""
-    return f"[{memory.id}] {memory.name}: {memory.type}, {_where(memory)}, revision {memory.revision}{deleted}"
-
-
-def _about(body: str) -> str:
-    """The description of a memory's frontmatter, else the start of its text."""
-    described = frontmatter(body).get("description")
-    if isinstance(described, str) and described.strip():
-        return one_line(described, EXCERPT)
-    found = FRONTMATTER.match(body)
-    return one_line(body[found.end() :] if found else body, EXCERPT)
-
-
 class HubMcp(MCPServer):
     """The hub's MCP server: ``mcp_tools.TOOLS``, answered for the caller ``McpGate`` let through."""
 
@@ -582,8 +571,9 @@ class HubMcp(MCPServer):
         )
         lines, results = [], []
         for memory in found.items:
-            lines += [_summary_line(memory), f"    {_about(memory.body)}"]
-            results.append({**memory.model_dump(mode="json", exclude={"body"}), "description": _about(memory.body)})
+            about = memory_about(memory.body)
+            lines += [memory_line(memory), f"    {about}"]
+            results.append({**memory.model_dump(mode="json", exclude={"body"}), "description": about})
         where = f" in project {project}" if project else " among your personal memories" if scope == "personal" else ""
         text = "\n".join(lines) or f"no memory you can see{where} matches the query"
         data = {"results": results, "summary": f"{len(results)} memories", **({"project": project} if project else {})}
@@ -592,7 +582,7 @@ class HubMcp(MCPServer):
     async def _memory_get(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         memory = await memories.show(caller.request, arguments["id"], caller.user, sink=caller.sink)
         updated = f"updated {memory.updated_at:%Y-%m-%d %H:%M} UTC by {memory.updated_by}"
-        text = f"{_summary_line(memory)}, {updated}\n\n{memory.body}"
+        text = f"{memory_line(memory)}, {updated}\n\n{memory.body}"
         data = {"memory": memory.model_dump(mode="json"), "summary": f"memory {memory.id}"}
         return text, {**data, **({"project": memory.project} if memory.project else {})}
 
@@ -632,7 +622,7 @@ class HubMcp(MCPServer):
             raise Refusal(payload["message"] + held)
         verb = "created" if outcome.created else "changed" if outcome.changed else "unchanged: the hub held this"
         text = (
-            f"Memory {outcome.name} {verb} on the hub ({_where(outcome)}): id {outcome.id}, revision "
+            f"Memory {outcome.name} {verb} on the hub ({memory_where(outcome)}): id {outcome.id}, revision "
             f"{outcome.revision}. Nothing was written on this machine: `evo-agents hub memory pull` brings it into "
             "the memory directory."
         )
