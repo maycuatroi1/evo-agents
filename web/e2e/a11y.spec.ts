@@ -439,7 +439,7 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "a project's Curator, its proposals, a proposal and its charter, read by a writer",
+    name: "a project's Curator, its proposals, a proposal, its history, graph health, runtime and charter, read by a writer",
     open: async ({ page, me }) => {
       // The charter is an admin's: another member is the project's admin and owns the night shift's worker.
       const project = me.projects[0];
@@ -452,6 +452,15 @@ const PAGES: Entry[] = [
       await page.goto(`/p/${project}/curator/proposals`);
       await expect(page.locator("#main").getByTestId("proposals-table")).toBeVisible();
       await expectNoSeriousViolations(page, "the proposals");
+      await page.goto(`/p/${project}/curator/history`);
+      await expect(page.locator("#main").getByTestId("history-sessions")).toBeVisible();
+      await expectNoSeriousViolations(page, "the Curator's history");
+      await page.goto(`/p/${project}/curator/graph`);
+      await expect(page.locator("#main").getByTestId("graph-page")).toBeVisible();
+      await expectNoSeriousViolations(page, "the graph's health");
+      await page.goto(`/p/${project}/curator/runtime`);
+      await expect(page.locator("#main").getByTestId("runtime-range")).toBeVisible();
+      await expectNoSeriousViolations(page, "the runtime");
       await page.goto(`/p/${project}/curator/charter`);
       await expect(page.locator("#main").getByTestId("charter-view")).toBeVisible();
       await expectNoSeriousViolations(page, "the charter");

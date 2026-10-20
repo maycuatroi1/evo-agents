@@ -18,7 +18,9 @@ say more: RetryAfter (the service asked to wait, such as Telegram's 429 with ret
 without counting a failed try; Undeliverable fails the delivery at once; ChannelGone fails it and turns the channel off
 with its reason in the channel's config (``disabled_reason``), as when a member blocked the bot. A kind with no class
 in CHANNELS, or a channel turned off since, fails its delivery at once with that reason, so a hub that drops a channel
-does not try it forever. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
+does not try it forever. So does a kind whose class a core plugin contributes but does not load, or does not make (its
+import or its ``__init__`` raises): ``last_error`` says why, and the deliveries of every other kind, the web's
+included, go on. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
 under the kind's name (``evo_agents.core_plugins.telegram``), or an entry in CHANNELS; the tables, the outbox and the
 job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
 transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
@@ -256,14 +258,27 @@ class WebChannel(Channel):
 CHANNELS: dict[str, type[Channel]] = {WEB: WebChannel}
 
 
+def _channel_class(kind: str) -> tuple[type[Channel] | None, str]:
+    """(the class of channels of ``kind``, or None) and, for None, why: no class, or one that did not load."""
+    if kind in CHANNELS:
+        return CHANNELS[kind], ""
+    contributed = core_registry().contributions("channels")
+    found = next(((manifest, item) for manifest, item in contributed if item["name"] == kind and "python" in item), None)
+    if found is None:
+        return None, f"the hub has no class for channels of kind {kind}"
+    manifest, item = found
+    try:
+        return load(item["python"]), ""
+    except Exception as exc:  # a core plugin's broken class fails its own kind's deliveries, never the job
+        log.warning("core plugin channel not loaded", extra={"contribution": f"{manifest.id}:{kind}"}, exc_info=True)
+        return None, f"the class of channels of kind {kind} (plugin {manifest.id}) did not load: {_error_text(exc)}"
+
+
 def channel_class(kind: str) -> type[Channel] | None:
     """The class CHANNELS names for ``kind``, else the one a core plugin contributes to the channels under that name
-    (``evo_agents.hub.plugin_calls``), as the core plugin telegram does for kind telegram."""
-    if kind in CHANNELS:
-        return CHANNELS[kind]
-    contributed = core_registry().contributions("channels")
-    found = next((item for _, item in contributed if item["name"] == kind and "python" in item), None)
-    return None if found is None else load(found["python"])
+    (``evo_agents.hub.plugin_calls``), as the core plugin telegram does for kind telegram; None when there is none,
+    or when the plugin's class does not load (logged)."""
+    return _channel_class(kind)[0]
 
 
 def backoff(attempts: int) -> timedelta:
@@ -409,9 +424,9 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     attempts, has_channel = row.attempts, row.has_channel
     notification = Outgoing(**{name: found[name] for name in OUTGOING})
     kind = row.channel_kind if has_channel else WEB
-    cls = channel_class(kind)
+    cls, missing = _channel_class(kind)
     if cls is None:
-        await conn.execute(_failed(delivery_id, f"the hub has no class for channels of kind {kind}"))
+        await conn.execute(_failed(delivery_id, missing))
         return "failed"
     if has_channel and not row.enabled:
         await conn.execute(_failed(delivery_id, "the channel was turned off before the notification went out"))
@@ -427,7 +442,12 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
         return "failed"
     channel = instances.get(kind)
     if channel is None:
-        channel = instances[kind] = cls(config)
+        try:
+            channel = instances[kind] = cls(config)
+        except Exception as exc:  # a class that cannot be made fails its kind's deliveries, never the job
+            await conn.execute(_failed(delivery_id, f"the class of channels of kind {kind} failed: {_error_text(exc)}"))
+            log.warning("notification channel not made", extra={"delivery_id": delivery_id, "channel": kind})
+            return "failed"
     try:
         notification = await channel.prepare(conn, notification)
         sent = await asyncio.wait_for(channel.send(notification, dict(row.channel_config or {})), SEND_TIMEOUT_SECONDS)

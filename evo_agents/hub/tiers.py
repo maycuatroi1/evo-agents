@@ -7,7 +7,7 @@ A tier is one of ``curator.TIERS``. A proposal of tier 0, 1 or 2 that the owner 
 which the night shift builds on a branch of its own and the Judge judges (``judge.PLANNED_TIERS``): 0, the hub may
 merge its pull request once CI and the Judge pass (when the charter lets it); 1, its pull request stays open for the
 owner to merge; 2, the same as 1, and the proposal also reaches the owner's Inbox. 3, the night shift builds nothing
-and the owner alone makes the change. ``tier_of`` computes it from three things:
+and the owner alone makes the change. ``tier_of`` computes it from these:
 
 - the kind of change the proposal names (CHANGE_KINDS), each with its tier; the kinds that loosen or remove a test,
   change a plan's verify, change CI or lint, touch credentials or permissions, or change the Curator's own rules
@@ -16,9 +16,24 @@ and the owner alone makes the change. ``tier_of`` computes it from three things:
   HARD_PATHS (CI, lint and test configuration, plan copies), makes it tier 3; a migration or schema path makes it at
   least tier 2 (SCHEMA_PATHS); any path that is neither documentation nor a test makes it at least tier 1;
 - the paths those reach in the project's knowledge graph (``kg_impact``), when the project has one: a reached path
-  that is protected or one of HARD_PATHS makes it tier 3 too.
+  that is protected or one of HARD_PATHS makes it tier 3 too;
+- what that raise cannot know (``unknown``): a path the graph has no file for, one whose file the graph holds older
+  than the default branch's (the latest measure of the graph's health says so), or every path while the graph of a
+  project that has one cannot be read, makes it at least tier 1, the reason saying which;
+- for kind ``kg_source`` (KNOWLEDGE_KIND), knowledge.yaml at a repo's root (KNOWLEDGE_PATHS) is not code: tier 0 while
+  the pull request's diff, read key by key (``knowledge``, from ``evo_agents.hub.knowledge_diff``), edits nothing but
+  SOURCE_KEYS of git and harness sources the file has; anything else it changes there, or a file the hub could not
+  read at both ends, makes it at least tier 1, as knowledge.yaml is under any other kind.
 
-The tier is the highest of them, and ``Tier.reasons`` says which rule gave each raise, in words for the owner.
+The tier is the highest of them, and ``Tier.reasons`` says which rule gave each raise, in words for the owner. The hub
+computes it for a proposal from its paths, then again from the paths its pull request really changes, which only ever
+raises it (``evo_agents.hub.server.change_tiers``); a protected path stays tier 3 whatever else says.
+
+One rule lowers the tier a change merges with, never its proposal's (``replay_tier``): a change of a kind of
+REPLAY_KINDS whose pull request edits a harness alone (the files of one skill, AGENTS.md and CLAUDE.md files:
+``evo_agents.hub.replay.harness_only``) and whose replays on the project's holdout tasks won (``replay.verdict``) is
+tier 0, whatever its kind, its code paths or the graph gave it, unless a rule made it tier 3. Without replays that won,
+or with any other file in its diff, it keeps the tier these rules give.
 
 A protected glob is matched against the path within its repo (``.github/workflows/**`` protects that directory of every
 repo of the project); a glob written ``repo:glob`` protects that repo's paths alone. ``*`` matches within one
@@ -34,6 +49,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -45,6 +61,11 @@ CHANGE_KINDS: dict[str, tuple[int, str]] = {
     "docs": (0, "documentation or figures that drifted from the code, such as a version or a path in CLUSTER.md"),
     "memory": (0, "memories on the hub: merging duplicates, marking ones that contradict each other"),
     "test_add": (0, "new tests only, for a fixed bug or for behaviour without a test; no existing test changes"),
+    "kg_source": (
+        0,
+        "the ref, fetch, refresh, include, exclude or allow of a git or harness source already in knowledge.yaml, "
+        "as the pull request's diff shows key by key",
+    ),
     "fix": (1, "a bug fix that comes with its test"),
     "refactor": (1, "a refactor that keeps the behaviour, or a lint warning fixed"),
     "lint": (1, "a new lint rule, or a principle moved into an invariant a machine checks"),
@@ -97,6 +118,12 @@ TEST_PATHS = (
     "**/*.spec.*",
     "**/e2e/**",
 )
+KNOWLEDGE_KIND = "kg_source"
+KNOWLEDGE_PATHS = ("knowledge.yaml",)  # the knowledge config at the root of a repo of the project
+SOURCE_KEYS = ("ref", "fetch", "refresh", "include", "exclude", "allow")  # what a change of kind kg_source edits
+SOURCE_CONNECTORS = ("git", "harness")  # of the sources it may edit
+SHOWN_CHANGES = 3  # of what a knowledge.yaml change does besides SOURCE_KEYS, named in a reason
+REPLAY_KINDS = ("docs", "skill", "global_config")  # the kinds whose change replays that won make tier 0
 MAX_PATHS = 100  # paths one proposal names
 MAX_PATH_CHARS = 500
 PATH = re.compile(r"^[^\x00-\x1f\x7f\\]+$")
@@ -177,14 +204,72 @@ def split_target(text: str) -> tuple[str, str] | None:
 # The rules
 
 
+def _knowledge_raises(repo: str, path: str, knowledge) -> list[tuple[int, str]]:
+    """The raises of knowledge.yaml under kind kg_source: a note before the pull request's diff is known (``knowledge``
+    None), at least tier 1 for a file the hub could not read at both ends or one that changes more than SOURCE_KEYS."""
+    keys = ", ".join(SOURCE_KEYS)
+    if knowledge is None:
+        return [
+            (
+                0,
+                f"{repo}:{path} is knowledge.yaml: tier 0 while the pull request's diff edits only the {keys} of the "
+                "git and harness sources it has, which the hub reads key by key",
+            )
+        ]
+    others = knowledge.get((repo, path))
+    if others is None:
+        return [(1, f"the hub could not read {repo}:{path} at both ends of the change, key by key: at least tier 1")]
+    if not others:
+        return []
+    shown = "; ".join(others[:SHOWN_CHANGES]) + (
+        f"; {len(others) - SHOWN_CHANGES} more" if len(others) > SHOWN_CHANGES else ""
+    )
+    return [
+        (1, f"{repo}:{path} changes more than the {keys} of its git and harness sources ({shown}): at least tier 1")
+    ]
+
+
+def _path_raises(kind: str, repo: str, path: str, protected, unknown, knowledge) -> list[tuple[int, str]]:
+    """(level, why) of each rule a path raises the tier by, in the order the reasons name them; level 0 is a note."""
+    found = _first(protected, repo, path)
+    if found is not None:
+        return [(3, f"{repo}:{path} is protected by the charter ({found}): tier 3")]
+    found = _first(HARD_PATHS, repo, path)
+    if found is not None:
+        return [(3, f"{repo}:{path} is CI, lint or test configuration, or a plan's copy ({found}): tier 3")]
+    raises = []
+    found = _first(SCHEMA_PATHS, repo, path)
+    if found is not None:
+        raises.append((2, f"{repo}:{path} is a schema or a migration ({found}): at least tier 2"))
+    elif kind == KNOWLEDGE_KIND and path in KNOWLEDGE_PATHS:
+        raises += _knowledge_raises(repo, path, knowledge)
+    elif _first(DOC_PATHS, repo, path) is None and _first(TEST_PATHS, repo, path) is None:
+        raises.append((1, f"{repo}:{path} is code, neither documentation nor a test: at least tier 1"))
+    why = unknown.get((repo, path))
+    if why:
+        raises.append(
+            (
+                1,
+                f"the knowledge graph {why}: the raise by what a change reaches in the graph cannot tell what editing "
+                f"{repo}:{path} reaches, so at least tier 1",
+            )
+        )
+    return raises
+
+
 def tier_of(
     kind: str,
     paths: list[tuple[str, str]],
     protected: list[str],
     impacted: list[tuple[str, str]] = (),
+    *,
+    unknown: Mapping[tuple[str, str], str] | None = None,
+    knowledge: Mapping[tuple[str, str], Sequence[str] | None] | None = None,
 ) -> Tier:
     """The tier of a change of ``kind`` to ``paths`` ((repo, path) each), under the charter's ``protected`` globs,
-    whose edits reach ``impacted`` ((repo, path) each, from the knowledge graph); see the module's docstring.
+    whose edits reach ``impacted`` ((repo, path) each, from the knowledge graph); ``unknown`` says, of a path, why the
+    graph cannot tell what it reaches, and ``knowledge``, of a knowledge.yaml the pull request changes, what it changes
+    besides SOURCE_KEYS (None: it could not be read), None before the diff is known. See the module's docstring.
     ValueError for a kind not in CHANGE_KINDS."""
     if kind not in CHANGE_KINDS:
         raise ValueError(f"{kind!r} is not a kind of change; the kinds are {', '.join(CHANGE_KINDS)}")
@@ -196,24 +281,12 @@ def tier_of(
         if level > tier:
             tier = level
             reasons.append(why)
-        elif level == 3 and why not in reasons:
+        elif (level == 3 or level == 0) and why not in reasons:
             reasons.append(why)
 
     for repo, path in paths:
-        found = _first(protected, repo, path)
-        if found is not None:
-            raise_to(3, f"{repo}:{path} is protected by the charter ({found}): tier 3")
-            continue
-        found = _first(HARD_PATHS, repo, path)
-        if found is not None:
-            raise_to(3, f"{repo}:{path} is CI, lint or test configuration, or a plan's copy ({found}): tier 3")
-            continue
-        found = _first(SCHEMA_PATHS, repo, path)
-        if found is not None:
-            raise_to(2, f"{repo}:{path} is a schema or a migration ({found}): at least tier 2")
-            continue
-        if _first(DOC_PATHS, repo, path) is None and _first(TEST_PATHS, repo, path) is None:
-            raise_to(1, f"{repo}:{path} is code, neither documentation nor a test: at least tier 1")
+        for level, why in _path_raises(kind, repo, path, protected, unknown or {}, knowledge):
+            raise_to(level, why)
     named = set(paths)
     for repo, path in impacted:
         if (repo, path) in named:
@@ -224,6 +297,18 @@ def tier_of(
                 3, f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found}): tier 3"
             )
     return Tier(tier, reasons)
+
+
+def replay_tier(kind: str, found: Tier, *, harness: str | None, won: str | None) -> Tier:
+    """The tier a change of ``kind`` merges with, the rules having given it ``found``: tier 0 when its pull request
+    edits ``harness`` alone (what it edits, ``replay.harness_only``; None when it edits more) and its replays won
+    (``won``, why; None when they did not), its kind is one of REPLAY_KINDS and no rule made it tier 3; ``found``
+    otherwise."""
+    if found.tier in (0, 3) or kind not in REPLAY_KINDS or not harness or not won:
+        return found
+    return Tier(
+        0, [*found.reasons, f"it edits {harness} alone and its replays on the holdout tasks won ({won}): tier 0"]
+    )
 
 
 def fingerprint(kind: str, paths: list[tuple[str, str]], title: str) -> str:

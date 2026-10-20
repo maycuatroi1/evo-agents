@@ -11,8 +11,11 @@ busy token does not write on every request. Revoked, expired and unknown credent
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
 closed: a route added later needs a credential unless it is listed there. Each public prefix checks a credential of
 its own. One serves the files of plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in
-the path is their credential (``evo_agents.hub.server.plugin_pages``). The other is the API of the hub for plugins,
-whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). A
+the path is their credential (``evo_agents.hub.server.plugin_pages``). Another is the API of the hub for plugins,
+whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). The
+third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/<its id>/``
+(``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
+the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. A
 machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
@@ -84,15 +87,18 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
         "/v1/worker/join",  # a pairing code is the credential
-        "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (core plugin telegram)
+        # the secret token Telegram sends is the credential: the named exception of the core plugin telegram, whose
+        # webhook kept its path when the other core plugins' went under HOOKS_PREFIX
+        "/v1/telegram/webhook",
         "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
         "/v1/branding/logo",
         "/v1/branding/favicon",
     }
 )
-# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), or
-# a plugin token (evo_agents.hub.server.task_dispatch).
-PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/")
+HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)
+# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), a
+# plugin token (evo_agents.hub.server.task_dispatch), or a core plugin's own secret (HOOKS_PREFIX).
+PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX)
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF

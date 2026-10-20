@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMoney, ledgerTone, outcomeFigures, revertProposal, safeUrl, shortSha, triggerFigures } from "./ledger-model";
+import { isMoney, ledgerTone, outcomeFigures, releaseOf, replayOf, revertProposal, safeUrl, shortSha, triggerFigures } from "./ledger-model";
 
 describe("a line of the ledger", () => {
   it("marks merges, passed Judges and kept outcomes in success, failures and reverts in danger, an open change in attention", () => {
@@ -64,5 +64,24 @@ describe("a line of the ledger", () => {
     expect(revertProposal({ details: { revert_proposal_id: 9, outcome_days: 7 } })).toBe(9);
     expect(revertProposal({ details: { outcome_days: 7 } })).toBeNull();
     expect(revertProposal({ details: null })).toBeNull();
+  });
+
+  it("reads a skill release, its mark in success only when the hub published something", () => {
+    const published = { kind: "publish", skill: "deploy", scope: "global", version: 4, previous: 3, published: true, sha256: "f" };
+    expect(releaseOf(published)).toEqual({ kind: "publish", skill: "deploy", published: true, version: 4, previous: 3, reverted: null, why: null });
+    expect(releaseOf({ kind: "republish", skill: "deploy", reverted: 4, previous: 3, version: 5, published: true })).toMatchObject({ kind: "republish", reverted: 4, version: 5 });
+    expect(releaseOf({ kind: "publish", skill: "deploy", published: false, why: "its repo has no origin on GitHub" })).toMatchObject({ published: false, why: "its repo has no origin on GitHub" });
+    expect(releaseOf({ kind: "other", skill: "deploy" })).toBeNull();
+    expect(releaseOf(null)).toBeNull();
+    expect(ledgerTone({ action: "skill_release", outcome: null, verdict: null, details: published })).toBe("success");
+    expect(ledgerTone({ action: "skill_release", outcome: null, verdict: null, details: { ...published, published: false } })).toBe("neutral");
+  });
+
+  it("finds the replays a merge rests on and the ones an outcome kept", () => {
+    const replay = { won: true, tasks: 6 };
+    expect(replayOf({ action: "merged", details: { replay }, figures: null })).toBe(replay);
+    expect(replayOf({ action: "outcome", details: null, figures: { replay } })).toBe(replay);
+    expect(replayOf({ action: "judged", details: { replay }, figures: null })).toBeNull();
+    expect(replayOf({ action: "merged", details: { release: {} }, figures: null })).toBeNull();
   });
 });

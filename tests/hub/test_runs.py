@@ -1328,10 +1328,12 @@ def beat_as_0_9_0(client, worker: dict, held=(), slots: int = 2) -> dict:
 
 def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "laptop", slots=2)
-    # the settings the hub holds (schema 0026, plugins 0039, version_locked 0048) and the runtimes of plugins (0039)
-    # come as more keys, which its daemon leaves alone; a daemon that does not say plugin_runtimes gets none of those
+    # the settings the hub holds (schema 0026, plugins 0039, version_locked 0048), the runtimes of plugins (0039) and
+    # the graphs to keep fresh (0053) come as more keys, which its daemon leaves alone; a daemon that does not say
+    # plugin_runtimes or kg_sync gets none of those
     settings = {"slots": 2, "name": "laptop", "labels": [], "plugins": [], "version_locked": False}
-    assert beat_as_0_9_0(client, worker) == {"drain": False, "runs": [], "settings": settings, "plugin_runtimes": []}
+    answer = {"drain": False, "runs": [], "settings": settings, "plugin_runtimes": [], "kg_sync": []}
+    assert beat_as_0_9_0(client, worker) == answer
     w = tables.workers
     kept = sql(hub_db, select(w.c.agent_version, w.c.run_kinds).where(w.c.id == worker["id"]))
     assert kept == [("0.9.0", V0_9_0_RUN_KINDS)]

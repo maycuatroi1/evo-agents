@@ -3,7 +3,7 @@ now (criteria a2 and a3 of the nightly-within-a-minute plan), against the fake h
 ``tests.worker.test_self_update``, without Postgres.
 
 - A read of the hub less than 10 minutes old, made after the daemon started, starts the update at the next turn,
-  with no read of the tag; without one (a hub before 0052, an old read, a read before the start), the daemon reads
+  with no read of the tag; without one (a hub before 0064, an old read, a read before the start), the daemon reads
   the tag itself on its hourly schedule, on a clock that counts the time the machine sleeps.
 - Update now: the daemon and the other daemons of its install claim no new run, the runs held end, the daemon
   updates; a failed update an hour ago does not hold it back; an update that fails, or that cannot happen (locked, run
@@ -80,7 +80,7 @@ def test_a_fresh_read_of_the_hub_of_the_commit_it_runs_says_current(fake, home):
         updater.hear_answer(hub_read(OLD), None)
         assert idle_turn(updater) is False
         assert updater.state == "current" and fake.lookups == 0 and fake.calls() == []
-        assert "update_now" not in updater.report(), "no request: nothing a hub before 0052 would not know"
+        assert "update_now" not in updater.report(), "no request: nothing a hub before 0064 would not know"
     finally:
         updater.close()
 

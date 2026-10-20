@@ -817,7 +817,8 @@ def test_a_charter_takes_the_review_settings_and_checks_them(review):
     client, owner = review.client, review.headers["owner"]
     shown = written(client, owner, charter_body(review={"lenses": 2, "days": 3, "budget_usd": 0.25}))
     assert shown["review"] == {"lenses": 2, "days": 3, "budget_usd": 0.25}
-    for bad in ({"lenses": 0}, {"lenses": 12}, {"days": 31}, {"budget_usd": 5.0}, {"mood": "calm"}):
+    too_many = len(review_model.LENSES) + 1
+    for bad in ({"lenses": 0}, {"lenses": too_many}, {"days": 31}, {"budget_usd": 5.0}, {"mood": "calm"}):
         response = put_charter(client, owner, charter_body(review=bad))
         assert response.status_code == 422, (bad, response.text)
     assert collected(client, NIGHT)["review"] == 1
@@ -873,7 +874,7 @@ def test_the_github_token_of_a_review_run_reads_only(app_review):
     assert github.covers(app["value"], MINE, "evo-agents")
 
 
-def test_with_a_knowledge_graph_a_code_path_must_be_in_it_and_what_a_change_reaches_counts_for_its_tier(
+def test_with_a_knowledge_graph_a_code_path_it_lacks_is_kept_unmatched_and_what_a_change_reaches_counts_for_its_tier(
     review, monkeypatch
 ):
     from evo_agents.hub.server import proposals as proposal_routes
@@ -889,9 +890,11 @@ def test_with_a_knowledge_graph_a_code_path_must_be_in_it_and_what_a_change_reac
     client, worker = review.client, review.worker
     run_id = held_review(review)
     missing = finding(client, worker, run_id, evidence=[{"kind": "code", "repo": "evo-agents", "path": "gone.py"}])
-    assert missing.status_code == 422 and "the knowledge graph of project evo-agents has no file" in missing.text
+    assert missing.status_code == 201 and missing.json()["evidence"][0]["resolved"] == "unmatched"  # proposal #23
     found = finding(client, worker, run_id, evidence=[{"kind": "code", "repo": "evo-agents", "path": "here.py"}])
     assert found.status_code == 201 and found.json()["evidence"][0]["resolved"] == "graph"
+    elsewhere = finding(client, worker, run_id, evidence=[{"kind": "code", "repo": "nope", "path": "gone.py"}])
+    assert elsewhere.status_code == 422 and "has no repo nope" in elsewhere.text  # a repo of the project still
 
     made = proposed(client, worker, run_id, kind="fix", paths=[{"repo": "evo-agents", "path": "evo_agents/hub/x.py"}])
     assert made["tier"] == 3 and "reaches evo-agents:curator.yaml in the knowledge graph" in made["tier_reasons"][-1]

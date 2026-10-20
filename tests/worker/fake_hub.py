@@ -26,7 +26,9 @@ from datetime import UTC, datetime, timedelta
 from aiohttp import web
 
 from evo_agents.hub import runs
+from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
+from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
 
@@ -47,6 +49,7 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.playbook: list[dict] = []  # the deltas of the playbook the agent of a review run wrote
         self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
@@ -59,6 +62,18 @@ class FakeHub:
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
+        self.replays: list[dict] = []  # what the replay runs posted, with the run's id
+        self.replay_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon
+        # A history run's items, each {item, kind, source, fingerprint, lines, anchors, cut, excerpt}, handed out in
+        # order until reported; the groups that have no name and those named, which ``clusters`` hands; what its
+        # reports said (each with the run's id), and each ask of .../history/next (its body).
+        self.history_items: list[dict] = []
+        self.history_groups: list[dict] = []
+        self.history_named: list[dict] = []
+        self.history_reports: list[dict] = []
+        self.history_asks: list[dict] = []
+        self.history_keys: dict[int, str] = {}
+        self.history_batch = 6
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
@@ -74,8 +89,11 @@ class FakeHub:
         self.settings: dict | None = None
         # the declarations of plugins' runtimes each heartbeat answer carries (plugin_runtimes); empty: the key left out
         self.plugin_runtimes: list[dict] = []
+        # the projects whose graph the worker keeps fresh, each {project, received_at}, that each heartbeat answer of a
+        # daemon saying kg_sync carries (kg_sync); empty: the key left out
+        self.kg_duties: list[dict] = []
         # the hub's read of nightly ({commit, read_at}) and the owner's open Update now ({requested_at}) each heartbeat
-        # answer carries; None: the key left out, as a hub before 0052, or one that has not read nightly yet
+        # answer carries; None: the key left out, as a hub before 0064, or one that has not read nightly yet
         self.nightly: dict | None = None
         self.update_now: dict | None = None
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
@@ -121,8 +139,12 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/notices", self._notice),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
+                post("/v1/worker/runs/{id}/playbook", self._playbook),
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
+                post("/v1/worker/runs/{id}/replay", self._replay),
+                post("/v1/worker/runs/{id}/history/next", self._history_next),
+                post("/v1/worker/runs/{id}/history/report", self._history_report),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
                 post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
@@ -289,6 +311,74 @@ class FakeHub:
         )
         self.judge_inputs[run_id] = inputs
         self.judge_keys[run_id] = key
+        return run_id
+
+    def queue_replay_run(self, repos: list[dict], curator: dict, prompt: str = "Do the step again.", **extra) -> int:
+        """A replay run of the task and the change ``curator`` names, over ``repos``, as the night shift queues it; its
+        claim hands the daemon the run's own key, which POST .../replay takes."""
+        key = secrets.token_urlsafe(16)
+        run_id = self.queue_run(
+            kind="replay",
+            project=self.project,
+            plan_id="curator-1-change",
+            step_key=None,
+            title="Replay of fleet#3 for the Curator's change #1",
+            plan_revision=1,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model="opus",
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=repos,
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            curator={"role": "replay", **curator, "replay_key": key},
+            **extra,
+        )
+        self.replay_keys[run_id] = key
+        return run_id
+
+    def queue_history_run(self, budget: dict | None = None, model: str = "haiku", **extra) -> int:
+        """A history run of the night, as the night shift queues it, on no plan and no repo; its claim hands the daemon
+        the run's own key, which its routes take."""
+        key = secrets.token_urlsafe(16)
+        spec = {"batch_items": self.history_batch, "batch_chars": 60_000, "batch_turns": 4, "naming_share": 0.1}
+        run_id = self.queue_run(
+            kind="history",
+            project=self.project,
+            plan_id=None,
+            step_key=None,
+            title="History of the night of 2026-10-08",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model=model,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=None,
+            lease_expires_at=_now(),
+            prompt="This history run reads the project's history.",
+            plan=None,
+            budget=budget,
+            curator={"role": "history", "protected_paths": [], "history": spec, "history_key": key},
+            **extra,
+        )
+        self.history_keys[run_id] = key
         return run_id
 
     def add_skill(self, name: str, version: int, bundle: bytes, *, sha256: str | None = None) -> dict:
@@ -598,6 +688,8 @@ class FakeHub:
             answer["settings"] = self.settings
         if self.plugin_runtimes:
             answer["plugin_runtimes"] = self.plugin_runtimes
+        if self.kg_duties and runs.KG_SYNC in (body.get("features") or ()):
+            answer["kg_sync"] = self.kg_duties
         if self.nightly is not None:
             answer["nightly"] = self.nightly
         if self.update_now is not None:
@@ -882,6 +974,15 @@ class FakeHub:
             {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
         )
 
+    async def _playbook(self, request: web.Request) -> web.Response:
+        run_id, _ = self._held_review_run(request)
+        body = await request.json()
+        self.playbook.append({"run_id": run_id, **body})
+        entry = body.get("entry_id") or len([d for d in self.playbook if d["op"] == "add"])
+        helpful = sum(1 for d in self.playbook if d.get("entry_id") == entry and d["op"] == "helpful")
+        answer = {"id": entry, "ref": f"pb-{entry}", "text": body.get("text") or "Pull first.", "helpful": helpful}
+        return web.json_response({**answer, "harmful": 0, "retired": body["op"] == "retire"}, status=201)
+
     def _judge_key(self, request: web.Request, run_id: int, route: str) -> None:
         if request.headers.get(JUDGE_KEY_HEADER) != self.judge_keys.get(run_id):
             self.judge_refused.append((route, run_id))
@@ -894,6 +995,56 @@ class FakeHub:
         self._judge_key(request, run_id, "judge")
         self.judge_reads.append(run_id)
         return web.json_response(self.judge_inputs.get(run_id) or {})
+
+    async def _replay(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "replay":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a replay run")
+        if request.headers.get(REPLAY_KEY_HEADER) != self.replay_keys.get(run_id):
+            self.judge_refused.append(("replay", run_id))
+            raise _refusal(403, f"run {run_id} is a replay run: its route takes the run's own key")
+        body = await request.json()
+        self.replays.append({"run_id": run_id, **body})
+        return web.json_response({"id": 1, "state": "running"})
+
+    def _held_history(self, request: web.Request, route: str) -> int:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "history":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a history run")
+        if request.headers.get(HISTORY_KEY_HEADER) != self.history_keys.get(run_id):
+            self.judge_refused.append((route, run_id))
+            raise _refusal(403, f"run {run_id} is a history run: its routes take the run's own key")
+        return run_id
+
+    async def _history_next(self, request: web.Request) -> web.Response:
+        self._held_history(request, "history/next")
+        body = await request.json()
+        self.history_asks.append(body)
+        clusters = bool(body.get("clusters"))
+        answer = {
+            "items": self.history_items[: self.history_batch],
+            "waiting": len(self.history_items),
+            "groups": self.history_groups if clusters else [],
+            "named": self.history_named if clusters else [],
+        }
+        return web.json_response(answer)
+
+    async def _history_report(self, request: web.Request) -> web.Response:
+        run_id = self._held_history(request, "history/report")
+        body = await request.json()
+        self.history_reports.append({"run_id": run_id, **body})
+        reported = {entry["item"] for entry in body.get("facets") or []}
+        self.history_items = [item for item in self.history_items if item["item"] not in reported]
+        named = {entry["key"] for entry in body.get("names") or []}
+        self.history_groups = [group for group in self.history_groups if group["key"] not in named]
+        counts = {
+            "stored": sum(1 for entry in body.get("facets") or [] if entry.get("facet") is not None),
+            "stale": 0,
+            "failed": sum(1 for entry in body.get("facets") or [] if entry.get("error") is not None),
+            "named": len(named),
+            "waiting": len(self.history_items),
+        }
+        return web.json_response(counts)
 
     async def _verdict(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

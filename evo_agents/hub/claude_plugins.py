@@ -68,6 +68,13 @@ def session_has(plugin: str, env: Mapping[str, str] | None = None, cwd: Path | N
     env = os.environ if env is None else env
     if not _installed_plugin(env.get(PLUGIN_ROOT), env):
         return False
+    return plugin_on(plugin, env, cwd)
+
+
+def plugin_on(plugin: str, env: Mapping[str, str], cwd: Path | None = None) -> bool:
+    """Whether a Claude Code session started with ``env`` in ``cwd`` would have ``plugin`` on and installed, as its
+    settings and ``plugins/installed_plugins.json`` say (see the module); a worker asks it before it gives a run's
+    agent the hub's MCP server itself."""
     keys = [key for key, on in enabled_plugins(env, cwd).items() if on is True and key.startswith(f"{plugin}@")]
     if not keys:
         return False

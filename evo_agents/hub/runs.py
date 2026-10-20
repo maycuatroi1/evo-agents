@@ -124,14 +124,16 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
-# plugin hands an agent type of its own; a Claude Code session on a member's own machine, which no worker runs
-# (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a
-# claim hands out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task")
+# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
+# branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
+# sessions and runs with a cheap model (``evo_agents.hub.history``); a Claude Code session on a member's own
+# machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of
+# run a daemon announces and a claim hands out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
+CURATOR_KINDS = ("review", "judge", "replay", "history")  # the kinds only the night shift queues, and the Builder
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
@@ -149,6 +151,10 @@ ENVIRONMENTS = "environments"
 AGENT_PACKS = "agent_packs"
 # a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
 CHAT_DECISIONS = "chat_decisions"
+# a daemon that keeps the graph of each project whose night shift it is on duty for fresh on the hub: it syncs the git
+# sources whose ref is origin/<branch>, fetching it first, and pushes their runs with its own token, no model involved
+# (evo_agents.worker.kg_sync); the heartbeat answer names those projects (kg_sync) only to a daemon that says it
+KG_SYNC = "kg_sync"
 # a daemon whose chat run starts with the project's harness alone and whose agent opens each other repo it needs
 # (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
 # every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
@@ -166,6 +172,7 @@ WORKER_FEATURES = (
     ENVIRONMENTS,
     AGENT_PACKS,
     CHAT_DECISIONS,
+    KG_SYNC,
     LAZY_CHAT_REPOS,
     UPDATE_NOW,
 )
@@ -258,6 +265,9 @@ DECISION_CATEGORY_TEXT = {
     "architecture": "an architectural choice the plan leaves open",
     "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
 }
+# What the prompt of a plan run tells its agent to ask: every category but deploy, since merging, deploying and releasing
+# are the agent's to do (main deploys on every push, deploy.yml). A worker of an older prompt may still ask a deploy.
+PROMPTED_DECISION_CATEGORIES = tuple(name for name in DECISION_CATEGORIES if name != "deploy")
 LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
@@ -302,6 +312,14 @@ WORKER_STATUSES = ("online", "offline", "draining", "revoked")
 SELF_UPDATE_STATES = ("current", "waiting", "updating", "locked", "unsupported")
 SELF_UPDATE_REASON_CHARS = 500  # the most characters of self_update.reason a heartbeat carries
 SELF_UPDATE_ERROR_CHARS = 2000  # and of self_update.error
+# What a daemon of feature KG_SYNC last did for each git source of a project it is on duty for (kg_sync of its
+# heartbeat): ok, the source was read or found at the commit read last, and every run of it is on the hub; failed, the
+# sync, the pull of the hub's runs or the push went wrong, and error says how; skipped, the worker does not read it
+# (a ref that is not origin/<branch>, a path: source, no checkout of its repo here), and error says why.
+KG_SYNC_STATES = ("ok", "failed", "skipped")
+KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
+MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
+MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
 # The repository and the tag the daemons update themselves to, and whose commit the hub reads once a minute and hands
 # every daemon in its heartbeat answer (nightly; evo_agents.hub.nightly).
 NIGHTLY_REPO_URL = "https://github.com/maycuatroi1/evo-agents"
@@ -715,7 +733,7 @@ def _decision_lines(where: str) -> list[str]:
     """The categories of decision the agent of a plan run may ask its owner, and where it writes the others."""
     return [
         "- Ask the run's owner only a decision of one of these categories:",
-        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in DECISION_CATEGORIES),
+        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in PROMPTED_DECISION_CATEGORIES),
         f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
         'line that starts with "Decision:".',
     ]
@@ -730,7 +748,8 @@ def _plan_rules() -> list[str]:
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
         "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
-        "until every step is done. Checkpoint steps (a verification, a review, a deploy) are yours too.",
+        "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
+        "yours too, with no question to the owner.",
         "- Record progress only with `evo-agents worker step`: `evo-agents worker step KEY in_progress --repo REPO` "
         "when you start a step, and `evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND` "
         "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "

@@ -104,6 +104,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     plugins: [],
     agent_commit: null,
     version_locked: false,
+    shared: false,
     self_update: null,
     update_now: null,
     nightly: null,
@@ -268,6 +269,17 @@ describe("workers for a dispatch", () => {
       worker({ id: 5, status: "revoked" }),
     ];
     expect(dispatchWorkers(workers, "octo", "demo").map((item) => item.id)).toEqual([2, 1]);
+  });
+
+  it("offers the workers another member shares in the project after the visitor's own", () => {
+    const workers = [
+      worker({ id: 1, name: "z" }),
+      worker({ id: 2, name: "a", owner: "someone-else", shared: true }),
+      worker({ id: 3, name: "b", owner: "someone-else", shared: true, projects: ["other"] }),
+      worker({ id: 4, name: "c", owner: "someone-else", shared: true, status: "revoked" }),
+      worker({ id: 5, name: "d", owner: "someone-else" }),
+    ];
+    expect(dispatchWorkers(workers, "octo", "demo").map((item) => item.id)).toEqual([1, 2]);
   });
 
   it("says whether a worker can take the runs now, later, or not as it is", () => {

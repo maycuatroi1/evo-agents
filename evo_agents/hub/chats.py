@@ -168,7 +168,7 @@ def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
 
 
 # What names a message to read it whole (the tools chat_message and chat_thread, `evo-agents worker chat read`): its
-# id, or its item in the knowledge graph (``evo_agents.core_plugins.chats.kg``), or a thread's item for its thread.
+# id, or its item in the knowledge graph (``evo_agents.hub.server.chat_graph``), or a thread's item for its thread.
 MAX_ID = 2**63 - 1  # a message's id, within bigint
 _ID = "[1-9][0-9]{0,18}"
 READ_REF = rf"^(?:(?:plugin\.chats:message:)?{_ID}|plugin\.chats:thread:{_ID}/{_ID})$"

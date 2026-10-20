@@ -245,6 +245,27 @@ class WorkerHub:
     async def verdict(self, run_id: int, body: dict, key: str | None) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body, headers=_judge_key(key))
 
+    async def replay(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST one arm of a replay run, or why it replays nothing, with the run's own key."""
+        from evo_agents.hub.replay import REPLAY_KEY_HEADER
+
+        headers = {REPLAY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/replay", body, headers=headers)
+
+    async def history_next(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST for the next batch of a history run, with the run's own key."""
+        from evo_agents.hub.history import HISTORY_KEY_HEADER
+
+        headers = {HISTORY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/next", body, headers=headers)
+
+    async def history_report(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST the facets and the names a history run's model wrote, with the run's own key."""
+        from evo_agents.hub.history import HISTORY_KEY_HEADER
+
+        headers = {HISTORY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/report", body, headers=headers)
+
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})
 

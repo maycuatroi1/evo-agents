@@ -279,13 +279,34 @@ async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str 
     return [row.plan_id for row in rows if access.visible(row.label, through)]
 
 
+def agent_reads(user: Principal, kind: str | None) -> bool:
+    """Whether the agent of a run (``user.scope``) may read a run of ``kind`` its owner may read. What the agent reads
+    lands in its run's events and in what it writes, which others read: so never a replay run, whose task is of the
+    holdout split that changes are measured on, and a local run, its member's alone, only for the Reviewer (a review
+    run), which reads the local sessions of the charter's owner. Anyone else reads as the owner does."""
+    if user.scope is None:
+        return True
+    return kind != "replay" and (kind != "local" or user.scope.kind == "review")
+
+
+def agent_reads_chats(user: Principal) -> bool:
+    """Whether the agent of a run (``user.scope``) searches the group chats its owner is in. Only the Reviewer (a review
+    run) does: it reads what the charter's owner, its run's owner, reads, through the sink as the owner would. What it
+    reads of a chat can still land in its run's events and in its findings, which readers who are not in the chat read:
+    a debt kept so the Reviewer reads the whole history. No other agent does: a chat run's reply would carry one chat's
+    words into another, and the Builder, the Judge, a replay run and a history run need none. Anyone else reads as the
+    owner does."""
+    return user.scope is None or user.scope.kind == "review"
+
+
 async def readable_run(
     conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
 ) -> ProjectAccess:
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run). A review run,
     which has no plan, reads as what it reads: the project, through the project's default label; so does an author run
-    of a new plan. A local run is private to the member whose session it is: for anyone else it reads as no run."""
+    of a new plan. A local run is private to the member whose session it is: for anyone else it reads as no run. The
+    agent of a run reads none of what ``agent_reads`` keeps from it."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r = tables.runs
@@ -293,7 +314,9 @@ async def readable_run(
         r.c.id == run_id, r.c.project_id == access.project_id
     )
     row = (await conn.execute(found)).one_or_none()
-    if row is not None and row.kind == "local":
+    if row is not None and not agent_reads(user, row.kind):
+        visible = False
+    elif row is not None and row.kind == "local":
         visible = row.dispatched_by == user.user_id
     elif row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
         visible = sees_unplanned(access, sink)

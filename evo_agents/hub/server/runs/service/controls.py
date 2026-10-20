@@ -28,6 +28,7 @@ from evo_agents.hub.server.runs.service.dispatch import (
 )
 from evo_agents.hub.server.runs.service.profiles import Asked, rerun_choice
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, run_view
+from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
@@ -75,14 +76,15 @@ async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id
 def _web_only_worker(run_id: int):
     """The worker set to take runs dispatched from the web only that run ``run_id`` is on, or may go to, with how:
     the one holding it (or that parked it), the one it is pinned to, or, for a run queued without a pin and
-    dispatched from the web, one of its owner's workers set so, which may claim it; in that order, then by name."""
+    dispatched from the web, one of its owner's workers set so, or one another member shares in its project
+    (``shared_in``), which may claim it; in that order, then by name."""
     r, w = tables.runs, tables.workers
     held, pinned = w.c.id == r.c.worker_id, w.c.id == r.c.pinned_worker_id
     claimable = and_(
         r.c.state == "queued",
         r.c.pinned_worker_id.is_(None),
         r.c.dispatched_via == "web",
-        w.c.owner_id == r.c.dispatched_by,
+        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id)),
     )
     relation = case(
         (and_(held, r.c.state == "parked"), "was parked on"),

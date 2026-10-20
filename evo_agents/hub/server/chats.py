@@ -249,7 +249,7 @@ async def list_messages(
     return ChatPage(chat=view, messages=messages, more=len(rows) > limit)
 
 
-async def _visible_message(conn: AsyncConnection, chat: ChatAccess, message_id: int):
+async def visible_message(conn: AsyncConnection, chat: ChatAccess, message_id: int):
     """The row (``message_select``) of message ``message_id`` of the chat, when the reader clears its label; 404
     otherwise."""
     rows = await message_rows(conn, chat.chat_id, [message_id])
@@ -342,12 +342,12 @@ async def _direct_agent(
     return threaded if threaded and threaded[0]["profile_id"] == found[0]["profile_id"] else found
 
 
-async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
+async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
     the notices; its id."""
     root = None
     if body.reply_to is not None:
-        answered = await _visible_message(conn, chat, body.reply_to)
+        answered = await visible_message(conn, chat, body.reply_to)
         root = answered.thread_root_id or answered.id
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
@@ -387,7 +387,7 @@ async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, u
     """Send a message to the chat, in the thread of ``reply_to`` when given."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id)
-        message_id = await _deliver(conn, chat, user, body)
+        message_id = await deliver_message(conn, chat, user, body)
         view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": message_id, "mentions": len(view.mentions)})
     return view
@@ -419,7 +419,7 @@ async def react(
     """Put an emoji on a message; nothing changes when the caller put it already."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id)
-        row = await _visible_message(conn, chat, message_id)
+        row = await visible_message(conn, chat, message_id)
         kinds = await emoji_kinds(conn, message_id)
         if body.emoji not in kinds and len(kinds) >= chats.MAX_EMOJI_KINDS:
             raise HTTPException(
@@ -441,7 +441,7 @@ async def unreact(
     """Take the caller's emoji off a message; nothing changes when it is not there."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id)
-        row = await _visible_message(conn, chat, message_id)
+        row = await visible_message(conn, chat, message_id)
         await take_reaction(conn, chat_id, message_id, emoji, person_author(user.login), user_id=user.user_id)
         return await _message_view(conn, chat, row, user)
 

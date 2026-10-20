@@ -17,16 +17,19 @@ the one it forwards only for a proxy listed in EVO_HUB_FORWARDED_ALLOW_IPS). A c
 its ``evw_`` token, which the answer carries once; the pairing is used from then on. A machine signed in with
 ``evo-agents hub login`` registers directly instead, with POST /v1/workers and its machine token.
 
-A worker belongs to the member who registered it. GET /v1/workers lists the caller's workers, every worker for a hub
-admin; GET /v1/workers/{id} shows one; drain stops new claims, undrain resumes them, and revoke ends the worker and its
-token at once. Each of them answers 404 for another member's worker, so an id tells nothing about workers one does not
-own; a hub admin may see, drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking
-releases the runs the worker holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked
-for is cancelled, a run pinned to this worker or on its last attempt fails, and any other becomes lost with a new
-attempt queued for the same step; the steps of the runs that ended go back to pending in their plans. Every lease
-of the worker's runs is given back with them, and their GitHub tokens are revoked once the revocation commits
-(``credentials``). Revoking a worker's token (DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker
-the same way, in the same transaction (``lock_worker_of_token``, then ``end_worker``).
+A worker belongs to the member who registered it. Its owner may share it (``shared``, ``docs/workers.md``, Shared
+workers): it then takes the runs of every member who holds writer on a project it serves too, and those members see it,
+with only the projects they hold a grant on and without kg_sync, but change nothing. GET /v1/workers lists the caller's
+workers and those shared with them, every worker for a hub admin; GET /v1/workers/{id} shows one; drain stops new
+claims, undrain resumes them, and revoke ends the worker and its token at once. Each of them but GET answers 404 for
+another member's worker, shared or not, so an id tells nothing about workers one does not own; a hub admin may see,
+drain and revoke any worker, but only its owner undrains one (403 for an admin). Revoking releases the runs the worker
+holds as the reaper would (``run_state.release_runs``): a run whose cancel was asked for is cancelled, a run pinned to
+this worker or on its last attempt fails, and any other becomes lost with a new attempt queued for the same step; the
+steps of the runs that ended go back to pending in their plans. Every lease of the worker's runs is given back with
+them, and their GitHub tokens are revoked once the revocation commits (``credentials``). Revoking a worker's token
+(DELETE /v1/tokens/{id}, DELETE /v1/admin/tokens/{id}) revokes its worker the same way, in the same transaction
+(``lock_worker_of_token``, then ``end_worker``).
 
 POST /v1/workers/{id}/dispatch-from {"value": "any" | "web"} sets who may hand the worker its runs (``dispatch_from``,
 ``evo_agents.hub.credentials.DISPATCH_FROM``): with ``web`` it claims only runs dispatched from a web session, and a
@@ -36,16 +39,18 @@ worker gets 403, and anyone else 404. Setting the value it has changes nothing a
 
 PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them), name
 (unique among the owner's workers that are not revoked, 409 otherwise), plugins (the ids of at most
-``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``) or version_locked
+``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``), version_locked
 (true: its daemon stays on the evo-agents it runs; false, every worker's default: it updates itself to the tag nightly
-once idle), each field optional but at least one given. Only its owner changes them, from a web session with its CSRF
+once idle) or shared (true: it takes the runs of the writers of its projects too; false, every worker's default), each
+field optional but at least one given. Only its owner changes them, from a web session with its CSRF
 header or with their machine token: a hub admin who does not own the worker gets 403, anyone else 404, and a revoked
 worker 409. Giving the values it has changes nothing and is not audited. The daemon learns the new settings from the
 answer to its next heartbeat (``settings``), and the hub's claim counts the runs a worker holds against its slots as
 they are now. A worker shows what its last heartbeat said of its daemon's install: agent_commit, the commit of
 evo-agents it was built from, and self_update, what the daemon found of updating itself (``runs.SELF_UPDATE_STATES``),
-with since, when the hub first got that state; update_now, its last Update now (``update_now``); and nightly, where
-the tag nightly pointed when the hub last read it.
+with since, when the hub first got that state; kg_sync, what a daemon on duty for night shifts last did for their
+projects' graphs, the error of each sync that failed included (``evo_agents.worker.kg_sync``); update_now, its last
+Update now (``update_now``); and nightly, where the tag nightly pointed when the hub last read it.
 
 POST /v1/workers/{id}/update-now asks the worker's daemon to update itself to nightly now, and POST
 /v1/workers/{id}/update-now/cancel withdraws that, with the rights and refusals of drain (``update_now``).
@@ -67,7 +72,7 @@ from typing import Annotated
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, select, update
+from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, or_, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -81,6 +86,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import release_runs
+from evo_agents.hub.server.runs.service.worker_fit import writes
 from evo_agents.hub.server.security import (
     MACHINE,
     WEB,
@@ -252,8 +258,10 @@ def _listed(*where):
             w.c.labels,
             w.c.plugins,
             w.c.version_locked,
+            w.c.shared,
             w.c.self_update,
             w.c.self_update_since,
+            w.c.kg_sync,
             *update_now.update_columns(),
             *update_now.nightly_columns(),
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
@@ -299,6 +307,33 @@ async def _workers(conn: AsyncConnection, *where) -> list[Worker]:
 async def _one_worker(conn: AsyncConnection, worker_id: int) -> Worker:
     (found,) = await _workers(conn, tables.workers.c.id == worker_id)
     return found
+
+
+def _shared_with(user_id: int):
+    """Whether the worker of the row is one another member shares with ``user_id``: shared, and serving a project on
+    which both its owner and ``user_id`` hold writer now (``docs/workers.md``, Shared workers)."""
+    w, wp = tables.workers, tables.worker_projects
+    both = exists().where(
+        wp.c.worker_id == w.c.id, writes(user_id, wp.c.project_id), writes(w.c.owner_id, wp.c.project_id)
+    )
+    return (w.c.owner_id != user_id) & w.c.shared & both
+
+
+async def _seen_by(conn: AsyncConnection, user: Principal, found: list[Worker]) -> list[Worker]:
+    """``found`` as ``user`` sees them: a worker another member shares shows only the projects of it on which ``user``
+    holds a grant, and none of what its daemon did for the night shifts of projects (``kg_sync``); a hub admin and the
+    owner see a worker whole."""
+    if user.admin or all(worker.owner == user.login for worker in found):
+        return found
+    p, g = tables.projects, tables.grants
+    names = select(p.c.name).join_from(g, p, p.c.id == g.c.project_id).where(g.c.user_id == user.user_id)
+    mine = set((await conn.execute(names)).scalars())
+    return [
+        worker
+        if worker.owner == user.login
+        else worker.model_copy(update={"projects": [name for name in worker.projects if name in mine], "kg_sync": None})
+        for worker in found
+    ]
 
 
 async def _owned(conn: AsyncConnection, user: Principal, worker_id: int, *, lock: bool = False):
@@ -701,22 +736,27 @@ async def list_workers(
     revoked: Annotated[bool, Query(description="also list revoked workers")] = False,
     page: Paging = WHOLE,
 ) -> list[Worker]:
-    """The caller's workers, newest first; every worker for a hub admin."""
+    """The caller's workers and the live ones other members share with the caller in a project both write to, newest
+    first; every worker for a hub admin."""
     w = tables.workers
     where = []
     if not user.admin:
-        where.append(w.c.owner_id == user.user_id)
+        where.append(or_(w.c.owner_id == user.user_id, _shared_with(user.user_id) & w.c.revoked_at.is_(None)))
     if not revoked:
         where.append(w.c.revoked_at.is_(None))
     async with request.app.state.engine.begin() as conn:
-        return [_worker(row) for row in await page.rows(conn, _listed(*where))]
+        return await _seen_by(conn, user, [_worker(row) for row in await page.rows(conn, _listed(*where))])
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
 async def show_worker(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
+    """One worker of the caller's, or one another member shares with them; any worker for a hub admin."""
+    w = tables.workers
     async with request.app.state.engine.begin() as conn:
-        await _owned(conn, user, worker_id)
-        return await _one_worker(conn, worker_id)
+        shared = select(exists().where(w.c.id == worker_id, w.c.revoked_at.is_(None), _shared_with(user.user_id)))
+        if not (await conn.execute(shared)).scalar_one():
+            await _owned(conn, user, worker_id)  # 404 for a worker the caller neither owns nor is shared, as for none
+        return (await _seen_by(conn, user, [await _one_worker(conn, worker_id)]))[0]
 
 
 def _target(worker_id: int, name: str, owner: str) -> str:
@@ -813,8 +853,8 @@ def _shown(value) -> str:
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with
-    their machine token."""
+    """Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a
+    web session or with their machine token."""
     wanted = body.model_dump(exclude_none=True)
     for field in ("labels", "plugins"):
         if field in wanted:
@@ -826,7 +866,9 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         w = tables.workers
-        held = select(w.c.slots, w.c.labels, w.c.name, w.c.plugins, w.c.version_locked).where(w.c.id == worker_id)
+        held = select(w.c.slots, w.c.labels, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared).where(
+            w.c.id == worker_id
+        )
         row = (await conn.execute(held)).one()
         now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins)}
         changed = {field: value for field, value in wanted.items() if value != now[field]}

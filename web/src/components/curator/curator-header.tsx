@@ -1,10 +1,11 @@
 "use client";
 
-import { CirclePlay, LayoutDashboard, Lightbulb, type LucideIcon, Pause, ScrollText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CirclePlay, Layers, LayoutDashboard, Lightbulb, type LucideIcon, Network, Pause, ScrollText, TextSearch } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import type { WriteFailure } from "@/components/admin/notice";
@@ -14,24 +15,46 @@ import { PageHeader } from "@/components/shell/page-header";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Ago } from "@/components/workers/ago";
+import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
+import { syncOf } from "./graph-sync";
 import { useCuratorFailure, useCuratorRights, usePauseCurator } from "./hooks";
 import { curatorLook } from "./model";
-import { type CuratorStatus, curatorHref } from "./queries";
+import { type CuratorPageSegment, type CuratorStatus, curatorHref, figuresQuery } from "./queries";
 
-type CuratorPage = "overview" | "proposals" | "charter";
+type CuratorPage = "overview" | "proposals" | "history" | "graph" | "runtime" | "charter";
 
-const TABS: readonly { id: CuratorPage; icon: LucideIcon; page: "" | "proposals" | "charter" }[] = [
+const TABS: readonly { id: CuratorPage; icon: LucideIcon; page: CuratorPageSegment }[] = [
   { id: "overview", icon: LayoutDashboard, page: "" },
   { id: "proposals", icon: Lightbulb, page: "proposals" },
+  { id: "history", icon: TextSearch, page: "history" },
+  { id: "graph", icon: Network, page: "graph" },
+  { id: "runtime", icon: Layers, page: "runtime" },
   { id: "charter", icon: ScrollText, page: "charter" },
 ];
 
-/** The Curator's own pages as tabs under its head, the page shown underlined in `brand`, as the admin area's. */
+/** Whether the worker on duty said, with the latest night's figures, that it could not keep the graph fresh. */
+function useSyncFailed(project: string): boolean {
+  const { data } = useQuery(figuresQuery(browserApi, project));
+  const sync = syncOf((data?.figures as Record<string, unknown> | undefined)?.kg_sync);
+  return sync !== null && (sync.failed > 0 || sync.error !== null);
+}
+
+/**
+ * The Curator's own pages as tabs under its head, the page shown underlined in `brand`, as the admin area's; the row
+ * scrolls sideways when it does not fit. Graph health carries a `danger` dot while the worker on duty could not keep the
+ * graph fresh, and nothing otherwise.
+ */
 export function CuratorTabs({ project, waiting }: { project: string; waiting: number }) {
   const t = useTranslations("curator.tabs");
   const pathname = usePathname();
+  const syncFailed = useSyncFailed(project);
+  const current = useRef<HTMLAnchorElement>(null);
+  // Six tabs do not fit a phone: the row scrolls sideways, so the page shown is brought into its view.
+  useEffect(() => {
+    current.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [pathname]);
   return (
     <nav aria-label={t("label")} className="-mt-2 border-b" data-testid="curator-tabs">
       <ul className="-mb-px flex gap-1 overflow-x-auto">
@@ -41,6 +64,7 @@ export function CuratorTabs({ project, waiting }: { project: string; waiting: nu
           return (
             <li key={tab.id} className="shrink-0">
               <Link
+                ref={active ? current : undefined}
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
@@ -60,6 +84,12 @@ export function CuratorTabs({ project, waiting }: { project: string; waiting: nu
                       {waiting > 99 ? "99+" : waiting}
                     </span>
                     <span className="sr-only">{t("waiting", { count: waiting })}</span>
+                  </>
+                ) : null}
+                {tab.id === "graph" && syncFailed ? (
+                  <>
+                    <span aria-hidden="true" className="size-2 rounded-full bg-danger-solid" data-testid="curator-tab-graph-failed" />
+                    <span className="sr-only">{t("syncFailed")}</span>
                   </>
                 ) : null}
               </Link>

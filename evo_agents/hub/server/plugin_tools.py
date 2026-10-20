@@ -5,8 +5,9 @@ A plugin's tool is named ``<plugin>__<tool>`` (``plugin_calls.NAMESPACE``): the 
 hub's tools and from another plugin's. It is listed, and answers, in a session whose project enabled the plugin, for
 a caller who holds a grant there, while the plugin is installed and turned on. For the agent of a run, the run's agent
 profile decides too: a tool axis of mode ``all`` lets the plugins' tools through, an allowlist only those of the
-plugins it names as ``mcp:<plugin>``; the agent of a judge run gets no plugin's tool at all (``mcp.JUDGE_TOOLS``).
-Anywhere else, the tool is not there: tools/list leaves it out and a call answers a tool error saying so.
+plugins it names as ``mcp:<plugin>``; the agent of a judge run or a replay run gets no plugin's tool at all
+(``mcp_tools.RUN_TOOLS``). Anywhere else, the tool is not there: tools/list leaves it out and a call answers a tool
+error saying so.
 
 Its description and input schema are those its installed version's manifest gives, which the plugin's publisher
 signed; a backend cannot change them at run time, only a new version, signed and upgraded to by a hub admin, can.
@@ -21,6 +22,7 @@ import logging
 
 from fastapi import HTTPException
 
+from evo_agents.hub.mcp_tools import RUN_TOOLS
 from evo_agents.hub.plugin_calls import (
     NAMESPACE,
     CoreContext,
@@ -71,9 +73,9 @@ def described(plugin: str, item: dict) -> dict:
 
 async def visible(state, user: Principal, project: str | None) -> tuple[str | None, list[tuple[object, dict]]]:
     """The caller's role in ``project`` and the plugins' tools it may see there, as (row of ``enabled_query``,
-    contribution); none without a project or a grant, or for the agent of a judge run."""
+    contribution); none without a project or a grant, or for the agent of a judge run or a replay run."""
     scope = user.scope
-    if project is None or (scope is not None and scope.kind == "judge"):
+    if project is None or (scope is not None and scope.kind in RUN_TOOLS):
         return None, []
     async with state.engine.begin() as conn:
         try:

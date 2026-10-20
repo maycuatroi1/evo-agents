@@ -62,8 +62,9 @@ A request carries one of three credentials:
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
 webhook (its secret header is the credential), the hub's branding, which the sign-in page shows (`GET /v1/branding`,
-`/v1/branding/logo`, `/v1/branding/favicon`), and the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
-in the path is the credential, answer without one. A route added later needs a credential unless it is added to
+`/v1/branding/logo`, `/v1/branding/favicon`), the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
+in the path is the credential, and the webhooks of core plugins under `/v1/hooks/<plugin>/`, which check a secret of
+their plugin's (`docs/plugins.md`, The core plugin API), answer without one. A route added later needs a credential unless it is added to
 `PUBLIC_PATHS` or `PUBLIC_PREFIXES` in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
 expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
 client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
@@ -86,13 +87,14 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
+| session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -104,19 +106,22 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,playbook,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 25 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 32 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, what the Curator's review run reads: `curator_figures`,
-`digest_list`, `digest_show`, `run_events` and `decision_list`, and `chat_message` and `chat_thread`, which read
-messages of a group chat whole (Group chats, In the knowledge graph); they follow the same rules as the REST routes.
-`tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
-other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
+what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
+`curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), and the project's whole history
+(The project's history, below): `history_sessions`, `history_search`, `transcript_lines`, `history_clusters`,
+`curator_findings` and `curator_playbook`, and `chat_message` and `chat_thread`, which read messages of a group chat
+whole (Group chats, In the knowledge graph); they follow the same rules as the REST routes. `tools/list` shows the
+agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history
+run none, any other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
 the `kg_*` tools from the list and the graph's paragraph from the instructions, those of `initialize` and those of
 `server/discover`, where a client of MCP 2026-07-28 such as Claude Code 2.1.296 reads them, so the session sees each
@@ -133,7 +138,8 @@ token with `X-Evo-Run: <run id>` instead of the machine token of `~/.evo/hub/tok
 worker machine needs no machine token at all. The hub opens the session only while the worker holds the run (leased,
 running, interactive, verifying or waiting) and the run's owner still holds a grant on its project; any other run,
 another worker's, one that ended or one in review, gets 403, and so does a worker token without `X-Evo-Run`. A
-machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, scoped to the run:
+machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, the member who dispatched it (on a
+shared worker another member than the worker's owner, `docs/workers.md`, Shared workers), scoped to the run:
 
 - the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
 - every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
@@ -463,7 +469,8 @@ makes no run and asks no model anything.
 
 **Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`, Chat
 runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile on its
-project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile allows,
+project, dispatched by the person who mentioned it, and pinned to a worker of that person, or one another member
+shares with them in the project (their own first), that the profile allows,
 online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
 a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
 and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
@@ -792,7 +799,35 @@ no worker is locked there, and a heartbeat neither takes nor keeps a commit or a
 `runs.seen_audience`, the principals of what the hub returned to the agent of the run with an audience (Memories,
 skills and knowledge graphs, Audience of memories): empty for every run there is and every new one, it only grows,
 sorted and without repeats. Going back to 0048 drops the column, and a memory written meanwhile keeps the audience its
-label took.
+label took. Schema 0050 (direct chats) and schema 0051 (chat images) are described under Group chats above, and schema
+0052 (session transcripts) under Memories, skills and knowledge graphs below. Schema 0053 adds `workers.kg_sync`, what
+the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift it is on duty for, an
+object (`docs/workers.md`, Keeping the graph fresh); going back to 0052 drops it, and a heartbeat no longer keeps it. Schema 0054 (session facets) and schema 0055 (the health of a graph) are described under
+Memories, skills and knowledge graphs below. Schema 0056 adds the replay run (a run of kind `replay`, on the plan of
+the change it measures, which only the night shift queues and of which a project has one active at a time),
+`replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0055 deletes the replay runs and
+drops the two tables. Schema 0057 adds the kind of change `kg_source` and `curator_changes.knowledge`, what a pull
+request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0056 deletes the
+proposals of kind `kg_source`, their changes with them, and drops the column. Schema 0058 adds the ledger's line
+`skill_release` (The Curator's replays, below); going back to 0057 deletes those lines and leaves the skill versions
+the hub published. Schema 0059 adds the history run (a run of kind `history`, on no plan and no repo, which only the
+night shift queues and of which a project has one active at a time), the facet of the model on each row of
+`session_facets` (`llm` and its `llm_*` columns), `history_runs` and `facet_clusters` (The Curator's history run,
+below); going back to 0058 drops the tables and the columns and deletes the history runs. Schema 0060 adds
+`history_lines` and `history_indexed`, the words of the project's history for search (The project's history, below),
+and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0059 drops the four
+tables, and the job indexes the history again. Schema 0061 adds the lenses `runtime` and `harness` to the checks of
+`findings` and `proposals` (The Curator's review, below); going back to 0060 deletes their findings and proposals.
+Schema 0062 adds `workers.shared`, whether its owner shares the worker with the writers of its projects (`docs/workers.md`,
+Shared workers), false for every worker there is and every new one; going back to 0061 drops it, and a shared worker
+takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's `channel_link_codes`, the one-time
+codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
+is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
+name. Schema 0064 adds `hub_nightly`, one row: the commit the tag `nightly` pointed to when the job `hub.read_nightly`
+last read it, and when (`read_at`); and `workers.update_requested_at`, `update_ended_at`, `update_outcome` (`current`,
+`cancelled`, `failed` or `impossible`) and `update_reason`, an owner's last Update now of the worker (`docs/workers.md`,
+Updating itself to nightly); going back to 0063 drops the table and the four columns, and the hub then reads no
+nightly and takes no Update now.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -963,34 +998,66 @@ states and kind in `hub run list/show`; the machine side talks HTTP.
 roles, its GitHub App and the ruleset it needs, and Telegram. This section and the next two hold the details.
 
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
-`curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
-figures, the plans and the decisions of the last `review.days` of the charter (7 by default): the failures per tool
+`curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
+below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
+default): the failures per tool
 and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
-steps that have not moved for 3 days, each with evidence a finding can cite. Then the night shift queues the review
+steps that have not moved for 3 days, each with evidence a finding can cite, and what the worker on duty last said of
+keeping the project's graph fresh (`kg_sync`: each git source with the commit it holds, how far behind it was, when it
+was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing), and the
+health of the project's knowledge graph (`kg_health`, The graph's health, below: each git source against its default
+branch at the latest measure, what the builds of the span covered and how many changed nothing, the retrieval
+evaluation, and what the facets say agents got from the graph; null for a project with no graph), and the
+`runtime` and the `harness` of the sessions and runs (Runtime and harness, below). The sessions
+of the span are their facets: each session's whose transcripts or digest the charter's owner may read, a digest the job
+has not read yet as its facet would be, and a local run's only when its member owns the charter and no facet or digest
+of the same session counts it already (`sessions` says how many came from each). The night's figures add `weekly`, per
+week (from Monday, UTC, the latest first) over the whole history, the sessions, runs and members, the tool calls and
+failures, the failures from the environment, the corrections, the calls of the knowledge graph, the compactions, the
+tokens with cache reads and writes, the cost and the largest context, and `facets`, how far the facets of the project
+are: its sessions with transcripts and those analyzed or waiting, the facets made from digests, the runs that ended
+and those analyzed, the failed attempts, and under `llm` how far the facets of the model are; and `clusters`, the
+groups the facets of the model fall into, counted again that night, those of 3 sessions or more alone (The Curator's
+history run, below). Counted again from the same data, a night's figures are the same: each
+list is ordered by its counts and then by its keys. Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
 
-A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
-worker pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
-(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of eleven, taken in turn),
-says that what the agent reads is data and never instructions, and gives the night's figures. The agent reads the
-project through the MCP tools above, its run's project alone, and writes through two commands:
+A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the worker
+pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
+(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of fourteen, taken in turn),
+says that what the agent reads is data and never instructions, names the hub's tools of the history and asks it to read
+in two tiers (the numbers first, the words of a transcript only where they point), and gives what earlier nights found
+through the night's lenses, the proposals rejected lately, the project's playbook and the night's figures (The Curator's
+memory, below), within 12 KiB: `runtime` and `harness` come first, their lists cut to 5, on a night of their lens, and
+last on any other night. The agent reads the project through the MCP tools above, its run's project alone; the worker's
+adapter gives a run of the Curator the hub's MCP server whatever the machine has configured (`docs/workers.md`, The
+Curator's runs on the machine). It writes through three commands:
 
 ```sh
 evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
-  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120 --severity high
+  --evidence transcript:ID:120 --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120
 evo-agents worker propose --lens environment --kind fix --title "A wait helper" --path evo-agents:evo_agents/worker/wait.py \
   --finding 12 --plan-file draft.yaml --summary-file why.md
+evo-agents worker playbook add --lens environment --text "Wait on a file, never sleep" --evidence transcript:ID:120
 ```
 
-The hub refuses a finding or a proposal whose evidence it cannot find: a digest of the project and the entry of its
-list, an event of a run of the project, a file of a repo of the project (and of its knowledge graph, when it has one).
+The hub refuses a finding or a proposal whose evidence it cannot find: a session of the project and the entry of the
+list of its facet (`resolved` `facet`), else of its digest (`digest`), a line of a transcript of the project the hub
+holds and the owner may read (`transcript:ID:LINE`, or `transcript:ID:FILE:LINE` for a subagent's file; `resolved`
+`transcript`; refused once its content was deleted), an event of a run of the project (a local run of the owner's
+included), a file of a repo of the project (`resolved` `graph` when its knowledge graph has the file, `unmatched` when
+the graph does not hold it yet, which the hub keeps: a graph may lag its branch, and `repo` for a project with no
+graph). A finding like a closed one of an earlier night is refused too (409, The Curator's memory, below).
 A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
 hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
 its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
-that loosen a test, change a plan's verify or change CI are tier 3, always. A proposal like one the owner rejected in
+that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
+path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
+`off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
+(`evo_agents/hub/server/change_tiers.py`). A proposal like one the owner rejected in
 the last 30 days is dropped unless its evidence doubled. When the review run ends, its tier 2 proposals with the most
 evidence become Inbox items of the owner (notifications of kind `proposal`), up to the charter's
 `max_decisions_per_day` a day; the others wait in the list. The project's admins answer:
@@ -1015,6 +1082,33 @@ what each state, tier and lens would list with the other filters applied. Accept
 makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
 `proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
 may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
+
+**Runtime and harness.** The night's figures hold two more parts, counted without any model
+(`evo_agents/hub/runtime_metrics.py`, `evo_agents/hub/server/runtime_figures.py`). `runtime`: for the sessions and,
+apart, for the runs of the span, how many report their tokens, the tokens (input, output, cache write, cache read and
+the total), the shares of the prompt cache in what the model read, the cost in all and per session or per run (over
+those whose source names one: Claude Code's `cost-state`, a run's `usage`), the context (the largest peak, the median
+and the 95th percentile of the peaks, the median of the first request's), the compactions by trigger, and the five
+heaviest with their evidence (sessions by cache reads, runs by cost); for the runs, by kind, and what the first request
+of each read from the cache and wrote to it (`first_request_*` of a run's `usage`, `cold` when it read nothing and
+wrote); `merged_prs`, the pull requests that merged in the span (a repo of a plan the reader may read with status
+`merged` and its `merged_at` in the span, and the Curator's changes that merged, each plan and repo once), the cost of
+the runs of their plans and that cost per pull request; and per hook and per tool the calls timed, the mean, the median
+and the 95th percentile, read from the buckets of the facets (the bound of the bucket each falls in, at most the
+longest call when the facet knows it), the slowest 15. A session or a run whose source said no tokens is left out of
+the sums rather than counted as 0. `harness`: over the Claude Code sessions whose transcripts the hub read, per source
+of context (the always-loaded files, the instructions of MCP servers, the skill list, hooks, the output of MCP tools and
+of the others) the characters, the tokens they come to (4 characters a token, an estimate: no tokenizer runs), its
+share and the sessions it came in; the tokens of the fixed sources in all and per session; the always-loaded files,
+each once at its largest size, grouped by repo (the last directory of its path that names a repo of the project, else
+its directory); the tools whose output weighed most; the five sessions whose fixed sources weighed most; and the spool
+the sessions' digests say (`spool_results`, `spool_original_chars`, `spool_reads`), not measured again. The lens
+`runtime` reads the first and `harness` the second; their metrics in the ledger are the sessions' cost, the tokens
+written to the cache, the 95th percentile of the sessions' peak context, the compactions and the time of hooks
+(`runtime`), and the tokens of the always-loaded files, of the fixed sources and of the output of tools (`harness`).
+The 95th percentile of the peak context and the tokens of the always-loaded files are levels and compare as they are;
+the others compare per session or run, the cost from half a dollar. A revert names the heaviest sessions and runs of
+the worse figures.
 
 The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
 the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
@@ -1069,17 +1163,29 @@ assertion compared with its own file's lines alone (moved to another file, or un
 removed), an expected value changed on a line of its own, a golden, snapshot or data file of the tests changed, an
 assertion's failure caught, a skip aliased or imported on its own, an exit through `getattr(os, "_exit")` and the like,
 the configuration of tests and types (`norecursedirs`, mypy's `ignore_errors`, `tsconfig.json`), the Makefile,
-justfile, noxfile or package script a verify command runs, and a binary or unknown file where tests, CI or
-configuration live. A list of files GitHub cuts short (more than it lists, or fewer than the pull request says it
-changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The files also give the proposal its
-tier again (`tiers.tier_of` over the paths the pull request really changes, which only ever raises it), at the pull
-request and again before a merge, so a proposal of docs whose pull request changes code is tier 1 and stays open.
+justfile, noxfile or package script a verify command runs, an instruction of a skill, an AGENTS.md or a CLAUDE.md to
+test or verify weakened (`instruction_weakened`, `judge.weakened`: a line added that lets an agent skip the tests, the
+verify, lint or CI unless it forbids that, or more lines about them removed than added), and a binary or unknown file
+where tests, CI, configuration or a harness live. A list of files GitHub cuts short (more than it lists, or fewer
+than the pull request says it changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The
+files also give the proposal its tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
+they reach and cannot tell, read as the night shift's owner, and for kind `kg_source` what it does to each
+knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the head and compared key by key,
+which only ever raises it), at the pull request and again before a merge, so a proposal of docs whose pull request
+changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`, `refresh`, `include`,
+`exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read of the file stays
+with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config` whose diff edits a
+harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once its replays won
+(The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
 Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
 it, else on Claude Code with a model other than the Builder's. The change passes only when the Judge's agent passed it,
 every verify command and hidden check ran and exited 0, the worker found no sign either, and the commit judged is the
-pull request's head; the paths the worker read in the diff give the proposal its tier again. The hub writes the
+pull request's head; the paths the worker read in the diff give the proposal its tier again. For a change whose
+`curator_changes.knowledge` is set, the judge inputs' `knowledge` names two more checks the worker runs, `evo-agents
+harness validate` and a trial sync of each source the change edits, and the verdict's verify results must hold each
+of them, exited 0. The hub writes the
 verdict on the pull request as a check run of the workers' App, `evo-agents Judge`, and merges the pull request with
 the workers' App, at the head the Judge passed, only when the change is tier 0, tier 0 is in the charter's
 `auto_merge`, the repo's ruleset still keeps the Curator off (checked again then), the pull request is open into the
@@ -1090,7 +1196,9 @@ requires no check, or a head commit whose message asks CI to skip it (`[skip ci]
 `[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the pull request open. It waits while CI runs, up to 6
 hours, and while the project's night shift is paused (by a member or its circuit breaker) it merges nothing: a judged
 change waits for it. Any other change, tier 1, a GitLab merge request, or a refusal, stays open for its owner with the
-reason; the morning brief lists it with the runs that wait in review.
+reason, which for a change of a harness says what its replays came to; the morning brief lists it with the runs that
+wait in review. Each pass also releases the global skill of a merge whose replays won (`skill_release.release`, The
+Curator's replays, below).
 
 ```sh
 evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict
@@ -1108,6 +1216,237 @@ keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
 
+## The Curator's replays
+
+A replay measures a change of the Curator on the project's own history (schema 0056, `evo_agents/hub/replay.py`,
+`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays.py`): the agent does a step of a plan done before
+twice, from the code as it was before that step, once with the harness of the default branch (arm `a`) and once with
+the harness of the change (arm `b`), and the worker runs the step's verify on each arm's work.
+
+**The suite.** Every hour the job `curator.replay_suite` reads the plans of each project that has a charter and adds to
+`replay_tasks` a task for each step that is done, has a verify of one line and a repo (its own, or the plan's only
+one), and names the commits it made in its evidence; a step whose evidence names none takes the commits a run of it
+reported (a run of that step that ended done, else the step reports of plan runs while their events are kept). A plan
+of the Curator gives no task. A task keeps the step's title, what and verify, its commits, the plan's label, and its
+split, `select` or `holdout`, which the HMAC-SHA256 of its plan and step under the hub's `EVO_HUB_SESSION_SECRET` fixes:
+one task in three is held out, and nobody without the secret can tell which from the code. A hub without the secret
+builds no suite, and a new secret splits only the tasks added after it. A task once in the suite is never changed by
+the job, so the suite only grows; its base commit, the first
+parent of the oldest of its commits, is set once, by the first replay that reads it, and a task whose commits are on
+no origin is marked unusable and never replayed again.
+
+**The night shift.** After a judge run that waits, the night shift queues the replay run of the oldest change it may
+replay: built (its Builder ran and its branch is on origin), not merged or closed, of a proposal of kind `skill` or one
+that names a skill, an AGENTS.md or a CLAUDE.md, with no run of its plan active. Each change gets the charter's
+`replay.tasks` replays (3 by default, 0 to 20), one replay run each, on the tasks of the holdout split in the order they
+came in, those not unusable whose repos the worker on duty has. A replay run runs with the runtime and model of the
+charter's Builder, pinned to the worker on duty, as the schedule's owner, and its cost cap keeps the night's replay
+runs within `replay.budget_usd`; a charter without it replays nothing. One that ends without both arms is replayed
+again, two runs in all, then the replay fails with why; one whose worker refused the task fails at once. Each is
+audited as curator.replay, `<project>/<plan> run:<id> change:<id> task:<id>`.
+
+**The run's side.** The claim of a replay run names its replay, its task and the change's repo, branch and head, and
+hands the daemon the run's own key (`curator.replay_key`), whose SHA-256 alone the hub keeps
+(`curator_replays.replay_key`). The worker posts each arm, and the refusal of a task it cannot replay, with
+`POST /v1/worker/runs/{id}/replay` and that key in `X-Evo-Replay-Key`: the worker token alone gets 403, a second post
+of one arm 409. What happens on the machine is `docs/workers.md`, A replay run on the machine. The agent of a replay
+run gets none of the hub's MCP tools: they hold the project as it is now, the graph of the default branch and the
+plans with the evidence of the very step it does again.
+
+**Reading.** `GET /v1/projects/{p}/curator/replay/tasks` lists the suite, of `?split=` when given, and `GET
+.../curator/changes/{id}/replay` a change's replays, each task with arm `a` and arm `b`: whether the verify passed, the
+commit of the harness, the files of the change it ran with, the verify's exit codes, the cost, turns, tool calls and
+failed ones, the largest context and the agent's time; and `arms`, both arms added up (`replay.compare`). Both are for
+readers of the project, through its hub sink by the plan's label (the proposal's for the change). The MCP tool
+`curator_replay` answers both, but the agent of a run (the Reviewer, a Builder) lists the select split alone and reads
+no change's replays (403), nor a replay run's events, facet or words, so the holdout split a change is measured on
+stays out of what shapes it. The Judge reads none of it: neither its prompt nor
+its tools hold a replay. The change's replays also come with `verdict` (`replay.verdict`) at the head of its pull
+request: `won`, `reason`, `tasks` (the holdout tasks with both arms at that head), each arm's tasks passed and mean
+cost and turns, `saving` (arm b's share lower) and the harness `paths` arm b ran with.
+
+**What the replays decide.** They won when at least `replay.MIN_HOLDOUT` (6) such tasks are in, and arm b passed more
+of them than arm a, or as many with a mean cost or turns at least `replay.MIN_SAVING` (10%) lower. A change of kind
+`docs`, `skill` or `global_config` whose pull request edits a harness alone and whose replays won merges as tier 0 when
+the Judge and CI pass and the charter's `auto_merge` holds 0 (`change_tiers.merge_tier`, `retier`); one with too few
+replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays' verdict.
+A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change back to
+`judged`, and the next pass reads its pull request again.
+
+**A global skill's release.** The hub's merge of such a change names, on its ledger line `merged`, the verdict
+(`details.replay`) and, when the one skill directory arm b ran with is a global skill of the hub whose latest version
+names the change's repo as `source_repo`, the skill (`details.release`, `skill_release.wanted`). The next part of the
+same pass of `curator.changes` (`skill_release.release`, at most 10 a pass) reads that directory at the merge commit
+with the workers' App, `contents: read` (`GET .../git/trees/{sha}?recursive=1`, then `GET .../git/blobs/{sha}` of each
+file; a tree GitHub cuts, a symbolic link or a submodule, more than 10,000 files or 128 MiB is refused), packs it as
+`evo-agents hub skills publish` does, puts the bundle in the blob store as a blob of no project (kind `skill-bundle`,
+under the blob lock shared), and adds the next version of the global skill with `source_repo` the change's repo,
+`source_commit` the merge commit, published by the owner of the project's night shift, audited as skill.publish. The
+version before stays. Its ledger line `skill_release` (`details`: `kind` publish, `skill`, `version`, `previous`,
+`sha256`, `published`, and `why` when it published nothing) is written once per change; GitHub or the blob store
+failing leaves the release to the next pass. When `curator.outcomes` finds the figures of such a change worse and
+proposes its revert, it also adds a version holding the bundle of the version before the hub's (`kind` republish,
+`skill_release.republish`), unless the skill's latest version is no longer the hub's, which it leaves as it is.
+
+```sh
+evo-agents hub curator replay tasks --split holdout   # the project's suite of replay tasks
+evo-agents hub curator replay show 4                  # change #4's replays, arm a against arm b
+```
+
+## The Curator's history run
+
+Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
+writes a facet of each that has none (schema 0059, `evo_agents/hub/history.py`, `evo_agents/hub/excerpts.py`,
+`evo_agents/hub/server/history.py`), and the hub groups those facets into clusters. The deterministic facets (Session
+facets, below) count what happened; the facet of the model says what the session was about and how it went.
+
+**The items.** An item is the facet of a session whose own transcript the hub holds (`session:ID`), or of a run that
+ended, but a local run, whose session's transcript is the item, and a history run (`run:ID`), that the charter's owner
+may read: a session by its label through the project's hub sink, a run when it is of a plan the owner may read or a
+review run. An item waits while it has no facet of the model of `history.LLM_VERSION` written from its content as it
+is now (`llm_fingerprint`, its facet's fingerprint when the model read it), unless its last attempt failed and its
+`llm_retry_at` has not come. A facet of the model holds a summary of at most two sentences, the kind of task
+(`history.TASK_TYPES`), its outcome (`achieved`, `partial`, `failed`, `abandoned`, `unclear`), at most 5 phrases of
+what got in the way (`friction`), at most 3 failure modes of MAST (Cemri et al. 2025: 14 modes in three categories,
+specification, misalignment and verification, codes `FM-1.1` to `FM-3.3`), and at most 5 sentences in which the person
+corrected the agent (`corrections`). The hub keeps each field within its bounds whatever the model wrote.
+
+**The night shift.** Right after the night's review run, and before anything else of the night, the night shift
+queues the night's history run, one a night, once the night's review run was queued (so never before it), while an
+item waits or a group of facets has no name yet. Its cap is the charter's `history.budget_usd`, by default the smaller
+of 1 USD and a quarter of `night_budget_usd`, under the caps of the next run of the night; 0 queues none. It runs on the
+reviewer's runtime, with the charter's `history.model`, else the cheapest model the worker on duty reports for that
+runtime (by the words `nano`, `lite`, `flash`, `haiku`, `mini`, `small` in its name, in that order; `haiku` on Claude
+Code when it lists none of them), pinned to the worker on duty, as the schedule's owner, a run of the Curator of role
+`history` on no plan and no repo, once a run (`max_attempts` 1). Each is audited as curator.history, `<project>
+run:<id> night=<date>`, and a history run that fails sends its owner the notice `run_failed`.
+
+**The run's side.** The claim of a history run says how it reads its batches (`curator.history`: items and characters
+a batch, turns of the agent on a batch, the share of its caps kept for naming) and hands the daemon the run's own key
+(`curator.history_key`), whose SHA-256 alone the hub keeps (`history_runs.key_digest`). `POST
+/v1/worker/runs/{id}/history/next`, with that key in `X-Evo-History-Key`, hands the next batch: up to 6 waiting items,
+the latest first, within 60,000 characters, each with what it is, the fingerprint it was read at and its excerpt. A
+session's excerpt is read from its own transcript in the blob store, a run's from its log, else its events: the whole
+when it fits in 16,000 characters, else its first entries, the 2 entries before and after each failed tool result, error
+of the model's API and correction of the person (the earliest first, as many as fit), and its last entries, with
+`[... n lines left out ...]` at each cut, each entry `L<line>` of the transcript or `#<seq>` of the run (TRAIL:
+a model reading a long trace whole finds its faults badly). An item whose content cannot be read now waits as a failed
+attempt does. With `{"clusters": true}` the hub groups the facets again first and adds `groups`, those with no name
+yet with some of their facets, and `named`, the groups named before. `POST .../history/report`, with the same key,
+takes `facets` (each `{item, fingerprint, facet}` or `{item, fingerprint, error}`) and `names` (each `{key, name,
+description, same_as}`): a facet of content that changed since it was read, or of an item gone, is left (`stale`); an
+item the model gave none, or a facet without a summary, waits 20 hours, so the next night tries it again, and a week
+after 3 attempts; a group keeps the first name it got. The worker token alone gets 403, a run of another kind or
+another worker 404. What happens on the machine is `docs/workers.md`, A history run on the machine; the agent of a
+history run calls none of the hub's MCP tools.
+
+**The clusters.** The facets of the model fall into groups without any embedding: one per kind of task and first
+failure mode (`<task_type>/<FM-x.y or none>`, `history.cluster_key`). Each night `curator.collect` counts the groups of
+the facets the charter's owner may read again into `facet_clusters`: per group its sessions (a run counts as one, and
+`runs` says how many are runs), the members whose they are and its 3 latest sessions, the latest its representative.
+The history run's model names each new group and may say it is the same as another group, new or named before
+(`same_as`): the two then count as one cluster, under the name of the group it joined. Only a cluster of 3 sessions or
+more enters the night's figures (`clusters`) and the routes below; the others are counted as `hidden`.
+
+**Reading.** `GET /v1/projects/{p}/curator/history` (reader) says where the project's history run stands: its cap,
+runtime and model, how far the facets of the model are (`llm`: items, analyzed, waiting, failed), the latest 10
+history runs with what each wrote and cost, and how many clusters are shown and hidden; `GET
+.../curator/history/clusters` (reader) lists the clusters of 3 sessions or more as the hub last counted them. Both
+answer only a caller whose sink clears the project's default label, as the night's figures do.
+
+```sh
+evo-agents hub curator history status      # the cap and model, the facets of the model, the latest history runs
+evo-agents hub curator history clusters    # the clusters of 3 sessions or more, each with its representative session
+```
+
+## The project's history
+
+The Reviewer, and any member, read a project's whole history through the hub, Postgres alone (schema 0060,
+`evo_agents/hub/history_index.py`, `evo_agents/hub/server/history_search.py`, `evo_agents/hub/server/history_mcp.py`).
+
+**The index.** The job `hub.index_history`, every 5 minutes, reads each part of a transcript the hub holds that it has
+not read, and each run that ended 2 minutes ago and more whose log or count of events changed since (not a history run,
+whose batches are of other sessions), a line or an event at a time, into entries as the history run reads them: what
+the person wrote, what the agent said, each tool call and its result, the errors of the model's API, each text within
+2,000 characters (its start and its end). `history_lines` holds a row per entry, where it came (a transcript's session,
+file and line, or a run's event seq), when, who, its text and its tsvector of the configuration `simple`, under a GIN
+index; `history_indexed` how far each transcript and run is, and a failed attempt's error and backoff (5 minutes,
+twice as long after each failure, a day at most). A part is read once: a transcript that grows is read from its new
+parts on. Deleting a transcript's content, by an admin or by the retention, deletes its rows with its parts; a run's
+rows go with the run.
+
+**Reading.** Each route needs a grant on the project and reads what the caller may read, as the other routes do: a
+transcript and a session's facet by their label through the sink `X-Evo-Sink` names, else the project's hub sink; a
+run as its events read (a local run its member's alone, a run on no plan through the project's default label, a run
+of a plan the caller may read); a group chat's message when the caller is in the chat now and clears its label, and
+the message names the project with a part of its label visible through that sink.
+
+The agent of a run, which calls the MCP tools with its run's scope, reads less than its owner: what it reads lands in
+its run's events, which the project's readers read, and in what it writes. It reads no replay run, and a group chat or
+a local run only in a review run, whose Reviewer reads the chats and the local sessions of the charter's owner, the
+chats through the sink as the owner does; `run_events` refuses it the same runs. Any other agent searches no group
+chat (its default sources are the transcripts and the runs, and asking for the chats is 403). What the Reviewer reads
+of a chat can reach its run's events and its findings, which readers who are not in the chat read: a known debt, kept
+so the Reviewer reads the whole history (`docs/curator.md`, "The whole history").
+
+- `GET /v1/projects/{p}/curator/history/sessions` lists the sessions and runs of the project's facets, the latest
+  first, by `kind`, `since` and `until` (UTC days), `login`, `runtime`, `outcome` (what the cheap model wrote of it,
+  or a run's state) and `cluster` (a cluster's key; the groups the model joined to it count in it), each with the
+  numbers of its facet (messages, tool errors, corrections, tokens, context peak, cost), what the model wrote of it, its
+  cluster and the evidence that names it.
+- `GET .../curator/history/search?q=` finds words (`websearch_to_tsquery`: words, `"a phrase"`, `-excluded`) in the
+  transcripts, the run logs and the group chats the caller is in, best first (`ts_rank`), by `source`, `since`,
+  `until`, `login` and
+  `runtime`, each hit with a few words around the match (`ts_headline`) and the evidence that names it
+  (`transcript:ID[:FILE]:LINE` or `run:ID:SEQ`; a chat's message has none).
+- `GET /v1/projects/{p}/transcripts/{session}/lines?line=` reads the lines of one transcript file (`file`, `main` by
+  default) around a line (`before` and `after`, 10 by default, 100 at most) from the blob store, each as its entries.
+
+The MCP tools `history_sessions`, `history_search`, `transcript_lines` and `history_clusters` answer the same, the
+numbers before the words (`history_clusters` through the project's default label and the sink, as its route), and so
+does the command line:
+
+```sh
+evo-agents hub curator history sessions --outcome failed --since 2026-10-01   # the numbers first
+evo-agents hub curator history search '"non-fast-forward"' --source transcript   # then the words, with evidence
+evo-agents hub curator history lines SESSION 120 --before 5 --after 5            # and the lines around one
+```
+
+## The Curator's memory
+
+What the review runs of a project remember of it (schema 0060, `evo_agents/hub/server/earlier.py`,
+`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
+
+**Earlier nights.** A finding's status comes from the proposals that name it whose label the reader reads through the
+sink, their changes and their ledgers:
+`merged` once its change merged, `kept` or `reverted` once the ledger's outcome says so, `rejected` for a proposal the
+owner rejected or one dropped as a repeat, `proposed` otherwise, and `open` with no proposal; it takes the first of
+kept, merged, proposed, reverted and rejected. Kept, merged and rejected are closed. The prompt of a review run holds,
+for each lens of its night, the latest 5 findings of earlier nights with their status and proposals, and the proposals
+rejected in the last 30 days with the owner's note, as the run's owner reads them. The hub refuses a finding (409) of
+the same lens as a closed one whose title shares half its words with it, or whose evidence is the same, and which cited
+every piece of the new one's evidence already: the Reviewer cites evidence that one did not, or leaves it. `GET
+/v1/projects/{p}/curator/earlier` (reader), the MCP tool `curator_findings` and `evo-agents hub curator earlier` list
+the findings with their status, by lens and status, and the proposals rejected lately.
+
+**The playbook.** Each project has a playbook of the Curator, as Agentic Context Engineering keeps one: entries, each
+with an id (`pb-N`), a lens or none (every lens), a lesson of at most 500 characters, its evidence and two counters,
+helpful and harmful (`curator_playbook`). It changes by deltas alone, never written anew, each kept in
+`curator_playbook_deltas`: the agent of a review run adds an entry with evidence the hub resolves as a finding's, counts
+one helpful or harmful (once each way a run), or retires one with a note (POST `/v1/worker/runs/{id}/playbook`, 404
+for any run but a review run its worker holds; 200 live entries a project and 100 deltas a run at most, 409 past
+them). The prompt of a review run shows the live entries of its lenses and those of every lens, the most helpful less
+harmful first, 40 at most; `GET .../curator/playbook` (reader), the MCP tool `curator_playbook` and `evo-agents hub
+curator playbook` list them.
+
+```sh
+evo-agents worker playbook add --lens cost --text "Count cache reads before tokens" --evidence transcript:ID:40
+evo-agents worker playbook helpful pb-3 --evidence run:41:7      # once a run
+evo-agents worker playbook retire pb-2 --note "the figures count it now"
+evo-agents hub curator playbook --project demo                   # the live entries, the most helpful first
+evo-agents hub curator earlier --project demo --status rejected  # earlier findings and what became of them
+```
+
 ## The Curator's ledger, outcomes and circuit breaker
 
 Each proposal has a ledger the hub only adds to (schema 0018, `evo_agents/hub/ledger.py`,
@@ -1120,7 +1459,9 @@ that wrote it (environment failures, tool failures, failed runs, corrections, op
 the entries its evidence and its findings' evidence point at (an environment cause, a cause of failed runs, a command
 run again and again), with the sessions and runs the night counted. Then come the owner's answer, the plan it became,
 its Builder (`built`, or `build_failed`), the pull request the hub opened, the Judge's verdict (or the hub's own when
-the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, and its outcome.
+the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, the global
+skill the hub published from its merge (`skill_release`, schema 0058), and its outcome, which for a change with
+replays keeps their verdict under `figures.replay`.
 The job `curator.changes` reads a pull request left open for its owner again every hour, so a merge or a close by
 hand reaches the ledger too.
 
@@ -1210,6 +1551,95 @@ see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest;
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
 the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
 days.
+
+**Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
+project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
+(Claude Code's `<session>/subagents/**/*.jsonl`, a Codex thread whose `session_meta` names another session), every line,
+in parts as the session goes on. Stop and SessionEnd (`evo_agents/hub/transcripts.py`, `on_turn`) only add the session
+to `~/.evo/hub/transcripts/queue.json` and start `evo-agents hub sessions sync --wait 15` in the background, detached
+from the hook's output, so the hook waits for none of it; SessionStart starts one when sessions wait in the queue or
+the last sync of the machine was an hour ago or more. The sync (`evo_agents/hub/transcript_sync.py`) takes the
+machine's lock (a second one leaves at once), waits 15 seconds so the turns of a moment go in one part, then sends the
+queued sessions, their subagents' transcripts and every transcript changed since an hour before the last sync, takes
+the queue again before it lets the lock go, and after it starts another sync when a hook queued a session meanwhile. A
+directory decides its project as for memories; a directory of no project sends nothing, nor does the session of a
+worker run, whose log is on the hub already. `EVO_HUB_TRANSCRIPTS=0` (or `off`) turns it off. A sync that cannot
+reach the hub sends nothing more and the next one sends it; each writes one line to `~/.evo/hub/transcripts/sync.log`.
+
+A part is the whole lines from where the hub's copy ends to at most 8 MiB further (its first line whole however long; a
+line over 32 MiB becomes `{"type": "evo-hub-omitted", "bytes": N}`), each line redacted on the machine with
+`redact_data`, the same as the digest's (a line that is not JSON with `redact`), the machine's hub token among the
+values replaced. A line redaction leaves unchanged keeps its bytes, so line N on the hub is line N of the file. A line
+not finished yet waits for the next part. The part goes as a blob of kind `transcript` (gzip of its lines, at most 48
+MiB, the same lines making the same blob) through `POST /v1/blobs/uploads` and the presigned PUT, then `POST
+/v1/projects/{project}/transcripts/parts` commits the uploads and records each part under the write rule (the writer
+role and a hub sink that clears the project's default label, which every transcript carries). A part continues its
+file: it starts at the byte where the hub's copy ends and at the line after its last. Each part comes back `stored`,
+`held` (the hub has this very part: a request sent again), `conflict` (send again from the `source_bytes` the answer
+gives), `missing` (no blob of that hash: upload it), `refused` (another member sent this transcript first) or
+`deleted`. So a part sent twice is stored once, and a machine that went down mid-way loses nothing. A Codex rollout
+compressed to `.jsonl.zst` is read through `compression.zstd`, the `zstandard` module or the `zstd` command; without
+any it is skipped and said so. Reading and redacting a part took about 1.9 seconds for 8 MiB on an Apple M4 Pro
+(2026-10-19), so 5 GB of transcripts take a backfill about 20 minutes.
+
+`evo-agents hub sessions backfill` sends every transcript still on the machine that the hub does not hold whole
+(`--project`, `--since YYYY-MM-DD`), asking the hub first how far it holds each (`POST .../transcripts/held`), so a
+second run sends nothing, nor does a machine that lost `~/.evo/hub/transcripts/state.json`. `--dry-run` counts the
+sessions and files of each project, those the hub holds whole, those it misses, and among the sessions missing one
+those unchanged for more than an hour (`missing_ended`), which should be on the hub already. It looks in
+`$CLAUDE_CONFIG_DIR/projects` (else `~/.claude/projects`), every `~/.claude*/projects`, the projects directories a hook
+named, and `$CODEX_HOME` (else `~/.codex`) `sessions` and `archived_sessions`. A transcript deleted on the hub is not
+sent again.
+
+Postgres holds the index (schema 0052): `session_transcripts`, a row per transcript file (session, `file` `main` or
+`subagents/...`, project, the member who sent it first, machine, runtime, directory, the project's label, bytes of the
+file the hub holds, lines, parts, their bytes gzipped and redacted, the chain of their hashes, when its lines start
+and end), and `transcript_parts`, the parts in order; the content lives in the blob store. Going back to 0051 drops
+both tables and leaves the blobs as rows of their project. `GET /v1/projects/{project}/transcripts` lists the
+transcripts the caller may read (by session, member, machine, runtime, `since`), and `GET .../transcripts/{session}`
+shows one session's with their parts; both need a grant and go through the read rule with the transcript's label and
+the sink, as digests do. `GET .../transcripts/usage` counts what the project holds: sessions, transcripts, parts,
+bytes in the blob store, per member, and the retention (`evo-agents hub sessions usage`, `list`, `show`), for a reader
+whose grant takes the project's default label through the sink (404 otherwise, as the night's figures). An admin of
+the project deletes the content of one session's transcripts or of all of the project's (`DELETE
+.../transcripts/{session}`, `DELETE .../transcripts`, `evo-agents hub sessions delete SESSION|--all`), with an audit
+row `transcript.delete`; the rows stay, marked deleted and without parts, so no backfill sends them again, and the
+blobs no part names leave the bucket. `hub.prune_transcripts` does the same for the transcripts that got no part for
+`EVO_HUB_TRANSCRIPT_DAYS` days (365 by default), and drops the blobs of kind `transcript` a project holds that no part
+names, a day after they came. Neither touches what is computed from transcripts elsewhere.
+
+**Session facets.** The job `hub.analyze_facets` (`evo_agents/hub/facet_job.py`) reads each session and each run
+that ended once, without any model, and keeps what it counted in `session_facets` (schema 0054): one row per session
+of a project, made from its transcripts (the session's own and its subagents') or, while the hub holds none, from its
+digest, and one per run that ended (`done`, `failed`, `lost`, `cancelled`, a local run's `ended`), made from the log its
+worker uploaded (blob kind `run-log`) or else from its events on the hub. A facet (`evo_agents/hub/facets.py`,
+`facet_readers.py`) holds the tools with their calls, failures, output size and time; the failures by cause (the
+environment causes of the Curator's review, else `work`), each with where it first came (`main:LINE` of a transcript,
+the seq of a run's event); the commands, those run again and the programs; the files read and edited; the calls of the
+knowledge graph's tools, those that named no node, the searches after them and the first one after a miss, and of the
+files edited after the first call, those an earlier result named and those among its first five; the context of the
+first request and the largest; the compactions with their trigger and size; the tokens with cache reads and writes and
+the cost (Claude Code's `cost-state`, a run's `usage`); each hook's runs, time and timeouts; the skills loaded; the
+errors of the model's API; what the person wrote with the turns that correct the agent; and, for a Claude Code
+session, the characters each source of context put into its main thread (`sources`: the always-loaded files of the
+`instructions` attachments, the instructions of MCP servers, the skill list, the text of hooks) with each always-loaded
+file, its path (the home directory as `~/`), its type and its size (`loaded`), null for a Codex session, a run and a
+digest. Its lists keep the names
+and shapes of a digest's, so `session:ID:FIELD:INDEX` names an entry of a facet as it names one of a digest. The facet
+of a digest says null for what a digest does not hold.
+
+Each pass, every 5 minutes and one at a time, takes up to 200 sessions and runs, the latest first, quiet for 10 minutes,
+and stops after 240 seconds; the next pass goes on. A facet is made again when its content changed (a session's
+fingerprint is the md5 of its files' chains of hashes; a run's, its log's hash and its count of events) or when the
+facet's version (`FACET_VERSION`) did; a facet made from transcripts is never replaced by one from a digest. The job
+holds no lock on the tables the hub writes to: each read is a short transaction of its own, the blobs are read and
+parsed outside any, and a facet is written with one upsert. A blob store that does not answer, or a blob that is
+missing, fails the attempt: the facet made before stays, and the row counts `attempts` with the `error` and waits
+5 minutes before the next one, twice as long after each failure up to a day. A session's facet has no foreign key to its
+transcripts, so deleting their content, by an admin or by the retention, leaves it: the hub keeps facets without a
+limit, until the project goes. Going back to 0053 drops the table, and the job makes the facets again. Since schema
+0059 a row also holds the facet a cheap model wrote of it (`llm`), which the night's history run writes (The Curator's
+history run, above); a facet made again from other content makes the facet of the model wait to be written again.
 
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
 result out of the model's context. A successful result of Bash, Grep, WebFetch or an MCP tool longer than 10,000
@@ -1329,6 +1759,64 @@ audience (Projects and who sees what, Audience). A reader who does not hold ever
 of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
 answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
 those totals count messages most members may not read.
+
+**The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
+project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
+graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is
+involved. The heartbeat answer names those projects (`kg_sync`) to a daemon that says the feature `kg_sync`: the
+projects the worker serves whose night shift names it and whose feature `kg` is on, each with when the hub last took a
+run of its graph. The worker pushes through `/v1/worker/kg/{project}/...`, the same steps as a member's push: `POST
+.../runs`, `.../blobs/uploads` (kind `kg-blob` and `kg-log` alone), `.../blobs/commit`, `.../runs/{run_id}/commit` and
+`.../blobs/check`. Before it reads a source it merges the runs other machines pushed of it, which `GET
+.../runs?source=` lists and `GET .../runs/{run_id}/log` hands out (the log's source, SHA-256 and size, and a presigned
+GET of it). The deletions its run derives then cover every file the hub holds, and its records take the epoch of the
+hub's newest runs of the source, so a laptop and the worker pushing one source in turn leave the graph with the files
+of the newest commit, once the worker has looked after the laptop's push. Only a worker that serves the project and
+that its night shift names gets through (403 otherwise, and a machine token the guard's 403). The worker acts as its
+owner, whose writer role the push needs, as for any member. It never sends the knowledge config, so its runs go into
+the config a member pushed, and a project with none answers 422. The hub builds the graph from its runs as from any push;
+`kg_ingests.pushed_by` names the owner, and the `kg.ingest` audit row names the worker's token. `GET /v1/workers/{id}`
+shows what the worker last said of each project (`kg_sync`, schema 0053): the time of its look, what stopped it, and
+for each git source its status (`ok`, `failed` or `skipped`), the commit it holds and the error of a sync that
+failed. The night's figures of the project repeat it (The Curator's review).
+
+**The graph's health.** Each build that succeeds keeps what it covers in `kg_builds.coverage` (schema 0055,
+`evo_agents/hub/kg_coverage.py`): per source its items and mentions and how many resolved, stayed ambiguous or
+dangled, with their shares; the commit each git source read (the field `kg_status` shows); the Python functions and
+methods outside tests that no `calls` edge reaches (`evo_agents/kg/health.py`); and whether nothing had changed. It
+also keeps, in `kg_source_files`, the files each git source holds in that build, each path with its blob SHA, one row a
+source that the next build replaces. Each pass of `curator.collect` measures the graph of every project with a night
+shift and a knowledge config whose last measure is 6 hours old (an hour after one that failed), without any model, and
+keeps the measure in `kg_health` (`evo_agents/hub/server/kg_health.py`). For each git source a measure holds the commit
+read, then what GitHub says now through the workers' App, with `contents: read` alone: the default branch and its head,
+how many commits of it the graph lacks (`behind`) and how many hours the oldest of them has waited (`lag_hours`), and
+the files of the branch's tree against those the build holds, as the source reads the tree (its `exclude` and `allow`
+over the default exclusions, and with `assets: false` only what it selects): `missing`, `stale` (another blob SHA) and
+`deleted`, counted with a few paths each and the `code:` evidence a finding can cite, and those paths whole in `off`
+(2,000 at most, `cut` when there were more), which the tier rules read and the night's figures leave out. A source no
+build holds, a repo
+off GitHub, a hub without the App, an App not installed on the repo, a commit GitHub does not know or a tree it cuts
+gives the reason (`why`) and keeps what was read. Once for the project, a measure scores retrieval on the latest
+build's graph (`evo_agents/hub/kg_health_eval.py`), the way `evo-agents kg eval` scores it, with the plan-step
+questions `kg eval-questions` makes, built from the plans the charter's owner may read and the graph's own commits
+(there is no checkout on the hub, so a commit's files are its `changes` edges): at most 300 questions, a sample fixed by
+the hash of their ids, asked of `kg_search` as the owner reads the graph through the hub sink; Recall@1 and @5, MRR,
+the empty share, answers per 1,000 tokens and the time of a call. The same questions of the same graph keep the score
+they had. The night's figures (`kg_health`) take the latest measure, the coverage of the latest build, the builds of
+the span with those that changed nothing (`artifact_reused_from`), and what the facets of the span's sessions and runs
+say agents got from the graph: kg lookups that came back empty, the first search after an empty one (a fall back to
+grep), and the files edited after a lookup that it named in its top 5. The lens `kg_health` of the Curator reads them,
+and its metrics in the ledger are the commits behind, the files missing, stale or deleted, the empty lookups, the fall
+backs and the edited files outside the top 5; the first two are the state of the graph and compare as they are, not per
+session or run. `GET /v1/projects/{p}/curator/kg-health` lists the measures and the builds with their coverage, newest
+first, for a reader whose grant reaches the project's default label through the sink, and `evo-agents hub kg health
+--project demo` prints the latest measure. Going back to 0054 deletes the findings and proposals of lens `kg_health`
+and drops the two tables and the column.
+
+```sh
+evo-agents hub kg health --project demo            # each git source: commit read, behind, lag, files off; the score
+evo-agents hub kg health --project demo --json     # the measures and the builds, newest first
+```
 
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
@@ -1580,7 +2068,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | --- | --- | --- |
 | `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 and the `/mcp` tools `chat_message` and `chat_thread` return that error |
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
-| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` answers 404 and the `kg_*` tools of `/mcp` return that error |
+| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
 
 A feature is on until a layer turns it off. A project's layer, where it sets a feature, wins over the hub's, so a hub
@@ -1613,8 +2101,9 @@ Postgres holds metadata; the blob store holds bytes. The bucket stays private, a
 be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
-  blob never changes. The hub deletes only built graphs that the retention dropped, and the old graphs and source
-  blobs holding a secret that an admin's scrub deleted (see above), and only once no row refers to them. The `blobs`
+  blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
+  blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
+  the retention deleted (Session transcripts, above), and only once no row refers to them. The `blobs`
   table says which projects hold each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
@@ -1623,7 +2112,7 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
-file.
+file, 48 MiB for a part of a session's transcript.
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
@@ -1659,26 +2148,47 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   how many (`audit pruned`, with `deleted` and `days`).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
-  owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the
-  Builder of a change it planned, and plan runs of the charter's `night_plans`; and it cancels the runs it queued
+  owner: the night's review run first, then the night's history run (The Curator's history run, above), then the judge
+  run of a change of the Curator that waits for one, the replay
+  run of a change it may replay (The Curator's replays, above), the Builder of a change it planned, and plan runs of
+  the charter's `night_plans`; and it cancels the runs it queued
   that are still queued once the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
   night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
-- `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
-  without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
-  has passed (The Curator's review, above).
+- `curator.collect`, every minute: measures the knowledge graph of each project with a night shift, 6 hours after its
+  last measure (an hour after one that failed), against the default branches on GitHub (The graph's health, above);
+  inside each charter's window, counts the night's figures of the project once, without any model, with the clusters
+  of the facets of the model counted again (The Curator's history run, above), and queues the night's review run;
+  and opens again the proposals deferred until a moment that has passed (The Curator's review, above).
+- `curator.replay_suite`, hourly at minute 41, one pass at a time: adds to the suite of each project with a charter a
+  replay task for each step of its plans that is done, has a verify of one line and names its commits, with its fixed
+  split, and changes none it has (The Curator's replays, above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
   review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and
   proposals, and the last heartbeat of the worker on duty (`evo_agents.hub.server.brief`).
 - `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
   score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
-  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked: the one a planned
+  open for their owner, read again hourly for a merge or a close by hand; the global skills of merges whose replays
+  won published from the merge commit; and the rulesets checked: the one a planned
   change waits for at the next pass and hourly while it does not pass, every other once a day (The Curator's changes,
   above).
 - `curator.outcomes`, every 10 minutes: the figures of each change of the Curator merged the charter's `outcome_days`
   ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
-  they got worse (The Curator's ledger, outcomes and circuit breaker, above).
+  they got worse, with the version before of a global skill the hub released from it published again (The Curator's
+  ledger, outcomes and circuit breaker, above).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
+- `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
+  `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names
+  (Session transcripts, above).
+- `hub.analyze_facets`, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
+  or digest came and of each run that ended, made once and again when its content or the facet's version changed
+  (Session facets, above).
+- `hub.index_history`, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
+  that ended, for search (The project's history, above).
+- `hub.read_nightly`, every minute: reads where the tag `nightly` of evo-agents points, with one `ls-refs` of git's
+  smart HTTP (protocol v2) to GitHub, no git and no GitHub API, and keeps the commit and the time in `hub_nightly`, which
+  every heartbeat answer hands the daemons (`docs/workers.md`, Updating itself to nightly). A read that fails keeps the
+  last one and logs one warning, `nightly not read, the last read kept`.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -1788,7 +2298,9 @@ reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-net
 `worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
 isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
 deleting it loses that state. A hub for a client, from the same images with its own branding, publishers and plugins,
-is in `docs/hub-deployment.md`. Set the variables in the platform's environment, never in a committed file.
+is in `docs/hub-deployment.md`, and so are the core plugins the image installs: those `deploy/hub/core-plugins.txt`
+pins, from PyPI, and a hub's own, from the two build variables below. Set the variables in the platform's
+environment, never in a committed file.
 `deploy/hub/.env.example` lists them:
 
 | Variable | Used by | Meaning |
@@ -1798,7 +2310,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
 | `EVO_HUB_GITHUB_CLIENT_SECRET` | api | the OAuth App's secret, for web sign-in and the App check |
-| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
+| `EVO_HUB_SESSION_SECRET` | api, worker | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it, and the split of the Curator's replay suites, which the worker's job builds only with it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
 | `EVO_HUB_S3_INTERNAL_ENDPOINT` | api, worker | optional: where the hub itself calls the same store, such as `http://seaweedfs:8333` on the platform's network when `EVO_HUB_S3_ENDPOINT` is a public hostname behind a proxy that caps a request's body (Cloudflare takes 100 MB); presigned URLs keep `EVO_HUB_S3_ENDPOINT`; set without the four, the hub does not start |
@@ -1808,6 +2320,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
+| `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
 | `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a plan run waits for its owner's answer before the reaper parks it; default `86400` (a day), from `1` to `604800` (the end-to-end tests shorten it) |
@@ -1822,6 +2335,8 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
+| `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
+| `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
@@ -1849,21 +2364,20 @@ lets every client do that. The default trusts nobody new.
 
 ### Deploying main
 
-`.github/workflows/deploy.yml` deploys every push to main once `ci` passes on it. The platform (Dokploy) holds the
-compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three images there with
-`docker compose up -d --build`; no image of main goes through GHCR. The job:
+`.github/workflows/deploy.yml` deploys every push to main, with no `ci` run first: `ci` runs on a v* tag only. The
+platform (Dokploy) holds the compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three
+images there with `docker compose up -d --build`; no image of main goes through GHCR. The job:
 
-1. stops when main has moved past its commit, since the platform clones main as it is and the newer commit's own `ci`
-   run deploys it;
+1. stops when main has moved past its commit, since the platform clones main as it is and the run of the newer push
+   deploys it;
 2. reads the schema the hub runs from `/v1/health`, fails when this commit does not know it, and runs the platform's
    Postgres backup first when the newest file under `evo_agents/hub/migrations/versions/` is another revision, or
    when the hub does not answer, since api and worker migrate as they start;
 3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
    and this commit's schema.
-4. moves the tag `nightly` to this commit once `/v1/health` confirmed it, even when a newer commit of main is green
-   already: its job `nightly` calls `.github/workflows/nightly.yml` with the commit, writes the tag with the
-   repository's token, and holds no secret of `production`. The hub reads the tag every minute, so idle workers
-   follow the deployment. A run that stopped at step 1, or failed, leaves `nightly` where it is.
+4. moves the tag `nightly` to this commit once `/v1/health` confirmed it: its job `nightly` calls
+   `.github/workflows/nightly.yml` with the commit, writes the tag with the repository's token, and holds no secret of
+   `production`. The hub reads the tag every minute, so idle workers follow the deployment. A run that stopped at step 1, or failed, leaves `nightly` where it is.
 
 The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
 variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand

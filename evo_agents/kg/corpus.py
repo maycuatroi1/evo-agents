@@ -302,6 +302,14 @@ class Corpus:
         rows = db.execute("SELECT item_id, deleted, record FROM items ORDER BY item_id").fetchall()
         return sha256(canonical_json([[r[0], r[1], json.loads(r[2])] for r in rows]))
 
+    def alive_digest(self, source: str) -> str:
+        """Hash of what one source holds alive: each live item ID of ``source`` with its winning record. Two corpora
+        whose merges left the same items alive with the same records give the same hash, whichever runs got there."""
+        rows = self.db.execute(
+            "SELECT item_id, record FROM items WHERE source = ? AND deleted = 0 ORDER BY item_id", (source,)
+        ).fetchall()
+        return sha256(canonical_json([[r[0], json.loads(r[1])] for r in rows]))
+
     def rebuild_state(self, files: list[Path] | None = None) -> sqlite3.Connection:
         """Recompute sigma_p from the log alone, into an in-memory database."""
         db = sqlite3.connect(":memory:")
@@ -336,6 +344,23 @@ class Corpus:
     def record_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
         """Remember what run ``run_id`` of ``source`` read from, in the caller's transaction."""
         self.db.execute("INSERT OR REPLACE INTO lineages VALUES (?, ?, ?, ?)", (source, lineage, epoch, run_id))
+
+    def adopt_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
+        """Take what run ``run_id`` of ``source``, a run another machine wrote and this corpus merged, read from and its
+        epoch, when that epoch, then that run id, is above the recorded one's; in the caller's transaction. The next run
+        here that reads from the same place then takes that epoch, so its records compete with the other machine's
+        within one epoch instead of losing to them, and one that reads from elsewhere starts a newer epoch."""
+        self.db.execute(
+            "INSERT INTO lineages VALUES (?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET lineage = excluded.lineage,"
+            " epoch = excluded.epoch, run_id = excluded.run_id"
+            " WHERE (excluded.epoch, excluded.run_id) > (lineages.epoch, lineages.run_id)",
+            (source, lineage, epoch, run_id),
+        )
+
+    def lineage_of(self, source: str) -> str | None:
+        """The lineage the corpus records for ``source``, None when it records none."""
+        recorded = self._lineage(source)
+        return recorded[0] if recorded else None
 
     # -- cursors, runs, held removals ----------------------------------------------------------
 

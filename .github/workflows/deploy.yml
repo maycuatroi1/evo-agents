@@ -1,17 +1,16 @@
 name: deploy
 
-# Deploys main to the hub on Dokploy once ci passes on a push to main. Dokploy clones main and runs
-# deploy/hub/docker-compose.yml with `up -d --build`, so the panel builds api, worker and web from the source and no
-# image goes through GHCR. Api and worker migrate when they start: when this commit carries a migration the running hub
-# has not applied, the job runs the Postgres backup on Dokploy first and deploys only once it succeeds. Then it waits
-# for the deployment and for /v1/health to report status ok and this commit's schema.
+# Deploys main to the hub on Dokploy on every push to main; no ci runs first (ci.yml runs on a v* tag). Dokploy clones
+# main and runs deploy/hub/docker-compose.yml with `up -d --build`, so the panel builds api, worker and web from the
+# source and no image goes through GHCR. Api and worker migrate when they start: when this commit carries a migration
+# the running hub has not applied, the job runs the Postgres backup on Dokploy first and deploys only once it succeeds.
+# Then it waits for the deployment and for /v1/health to report status ok and this commit's schema.
 #
 # Dokploy deploys whatever main is when it clones, so a run whose commit is no longer the tip of main stops before
-# anything: the ci run of the newer commit deploys it. workflow_dispatch from main deploys main by hand.
+# anything: the run of the newer push deploys it. workflow_dispatch from main deploys main by hand.
 #
 # A deployment that ends with /v1/health at status ok and this commit's schema moves the tag nightly to this commit
-# (the job nightly calls nightly.yml), even when a newer commit of main is green already; the hub reads the tag every
-# minute and idle workers update to it. A run that stopped at "Still the tip of main", or failed, leaves nightly
+# (the job nightly calls nightly.yml); the hub reads the tag every minute and idle workers update to it. A run that stopped at "Still the tip of main", or failed, leaves nightly
 # where it is. The job deploy holds the Dokploy secret and only reads the repository; the job nightly writes the tag,
 # is not in the environment production and gets no secret.
 #
@@ -19,9 +18,7 @@ name: deploy
 # DOKPLOY_COMPOSE_ID, DOKPLOY_BACKUP_ID (the daily backup of the hub's Postgres) and EVO_HUB_URL.
 
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -35,11 +32,7 @@ concurrency:
 
 jobs:
   deploy:
-    # A ci run of a pull request, from a fork or not, never deploys.
-    if: >-
-      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -57,11 +50,9 @@ jobs:
       COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
       BACKUP_ID: ${{ vars.DOKPLOY_BACKUP_ID }}
       HUB_URL: ${{ vars.EVO_HUB_URL }}
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Settings of the environment
         run: |
@@ -79,7 +70,7 @@ jobs:
           if [ "$tip" = "$SHA" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::main moved from ${SHA::7} to ${tip::7}; the ci run of ${tip::7} deploys it"
+            echo "::notice::main moved from ${SHA::7} to ${tip::7}; the run of ${tip::7} deploys it"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -168,7 +159,6 @@ jobs:
     if: needs.deploy.outputs.deployed != ''
     permissions:
       contents: write
-      actions: read
     uses: ./.github/workflows/nightly.yml
     with:
       sha: ${{ needs.deploy.outputs.deployed }}

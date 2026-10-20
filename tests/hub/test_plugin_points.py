@@ -310,7 +310,7 @@ def test_plugin_mcp_tool_is_listed_with_the_installed_description_only_where_ena
     assert "does not enable plugin sample" in rpc(client, hub["owner"], call(2, "sample__echo"))["content"][0]["text"]
     enable(client, hub["owner"])
     listed = rpc(client, hub["owner"], request(1, "tools/list"))["tools"]
-    assert len(listed) == 26 and listed[-1]["name"] == "sample__echo"  # the hub's 25 tools, then the plugin's
+    assert len(listed) == 33 and listed[-1]["name"] == "sample__echo"  # the hub's 32 tools, then the plugin's
     assert listed[-1]["description"] == "Echo"  # the manifest's title, as no description is given: never the backend's
     assert listed[-1]["inputSchema"] == {"type": "object"}
     assert tool_names(client, hub["owner"], project=None)[-1] != "sample__echo"  # no project, no plugin tools
@@ -632,12 +632,15 @@ def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_stor
 
 
 def test_core_plugin_migration_rule_tables_carry_the_plugin_prefix_and_come_from_the_hub_chain(hub_db):
+    from evo_agents.core_plugins.builder import MANIFEST as BUILDER
     from evo_agents.core_plugins.telegram import MANIFEST as TELEGRAM
     from evo_agents.plugins.manifest import ManifestError, read_manifest
 
-    telegram = read_manifest(TELEGRAM)
-    assert telegram.tables() == ("telegram_links",) and not telegram.per_project()
-    assert "telegram_links" in tables.metadata.tables  # a table of the hub's own chain (0015)
+    builder, telegram = read_manifest(BUILDER), read_manifest(TELEGRAM)
+    assert builder.tables() == ("builder_proposals",)
+    assert "builder_proposals" in tables.metadata.tables  # a table of the hub's own chain (0043)
+    # Telegram's link codes are rows of the hub's channel_link_codes since 0063: it owns no table, and runs hub-wide
+    assert telegram.tables() == () and not telegram.per_project()
     stray = {**core_notes.MANIFEST, "contributes": {"tables": [{"name": "entries"}]}}
     with pytest.raises(ManifestError, match="must start with notes_"):
         read_manifest(stray)
