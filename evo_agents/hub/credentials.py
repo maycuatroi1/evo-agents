@@ -67,10 +67,11 @@ _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 # Who may hand a worker its runs (workers.dispatch_from): runs dispatched with any credential of its owner, or only
 # those dispatched from a web session. And the credential a run was dispatched with (runs.dispatched_via): a web
-# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none, the night shift of a
-# project's charter acting for its owner (schema 0012, evo_agents.hub.curator).
+# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none: the night shift of a
+# project's charter acting for its owner (schedule, schema 0012, evo_agents.hub.curator), or its release schedule
+# (release, schema 0066, evo_agents.hub.releases).
 DISPATCH_FROM = ("any", "web")
-DISPATCHED_VIA = ("machine", "web", "schedule")
+DISPATCHED_VIA = ("machine", "web", "schedule", "release")
 
 
 def dispatch_credential(credential_kind: str) -> str:

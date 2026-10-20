@@ -50,6 +50,7 @@ PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron ta
 PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
 DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
 READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
+RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of each release schedule, at its time
 
 
 def kg_lock(project: str) -> str:
