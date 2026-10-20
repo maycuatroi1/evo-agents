@@ -2,6 +2,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SearchX } from "lucide-react";
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -91,6 +92,45 @@ describe("DataTable", () => {
     expect(cell).toHaveTextContent("Usage of Web shell");
     expect(second).toHaveLength(1);
     expect(groups[1]).toHaveAttribute("data-row-group");
+  });
+
+  it("keeps what a cell holds when its columns are rebuilt around fresh data", async () => {
+    const user = userEvent.setup();
+    function Toggle({ id }: { id: number }) {
+      const [open, setOpen] = useState(false);
+      return (
+        <button type="button" onClick={() => setOpen(true)}>
+          {open ? `Dialog ${id} open` : `Open ${id}`}
+        </button>
+      );
+    }
+    // A page that refreshes its runs every few seconds builds new columns, with new cell functions, on each refresh.
+    function Refreshing() {
+      const [refreshes, setRefreshes] = useState(0);
+      const helper = dataTableColumns<Row>();
+      const refreshed = helper.columns([
+        helper.accessor("title", { header: () => "Step", meta: { primary: true }, cell: (info) => `${info.getValue()} ${refreshes}` }),
+        helper.display({
+          id: "actions",
+          header: () => <span className="sr-only">Actions</span>,
+          meta: { actions: true },
+          cell: (info) => <Toggle id={info.row.original.id} />,
+        }),
+      ]);
+      return (
+        <>
+          <button type="button" onClick={() => setRefreshes((count) => count + 1)}>
+            Refresh
+          </button>
+          <DataTable data={rows.map((row) => ({ ...row }))} columns={refreshed} caption="Plans" getRowId={(row) => String(row.id)} />
+        </>
+      );
+    }
+    renderVi(<Refreshing />);
+    await user.click(screen.getByRole("button", { name: "Open 1" }));
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.getByRole("cell", { name: "Web shell 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dialog 1 open" })).toBeInTheDocument();
   });
 });
 
