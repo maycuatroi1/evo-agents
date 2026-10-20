@@ -78,8 +78,8 @@ test("the second key must come within a second, and a hint shows while G waits",
 
   await page.keyboard.press("g");
   const hint = page.getByTestId("shortcuts-lead");
-  await expect(hint).toBeVisible();
-  await expect(hint).toContainText("Inbox");
+  // One assertion for both: the hint shows for well under a second, which a loaded runner can spend between two.
+  await expect(hint.filter({ hasText: "Inbox" })).toBeVisible();
   await expect(hint).toBeHidden({ timeout: 2_000 }); // the second passed
   await page.keyboard.press("i");
   await page.waitForTimeout(300); // a navigation would have started by now
