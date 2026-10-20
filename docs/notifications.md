@@ -273,8 +273,8 @@ telegram` shows where it points, with Telegram's last error.
 1. On the web, the member opens the Inbox and its Telegram dialog and asks for a link (`POST /v1/me/telegram/link`).
    Only a web session may: a machine token gets 403, so a token that leaked cannot link a chat of its own. The hub
    makes a one-time code of 32 characters of `A-Z`, `a-z`, `0-9`, `_` and `-`, keeps its SHA-256, the member and the
-   session (`telegram_links`, schemas 0015 and 0016), lets it live 10 minutes, drops the member's codes not used yet,
-   and answers the link `https://t.me/<bot>?start=<code>`.
+   session (`channel_link_codes` of kind `telegram`, schemas 0015, 0016 and 0063), lets it live 10 minutes, drops the
+   member's codes not used yet, and answers the link `https://t.me/<bot>?start=<code>`.
 2. The member opens the link, and Telegram sends the bot `/start <code>` from that member's private chat.
 3. The webhook finds the code by its hash. A used, expired or unknown code, a code whose session has ended, or a chat
    that is not private, gets one reply that says only that the link did not work, whichever it was. A right code is

@@ -64,7 +64,7 @@ DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
 # Tables of migration 0014: the night's figures of a project, and what its review run finds and proposes
 REVIEW_TABLES = frozenset({"curator_figures", "findings", "proposals"})
 # Tables of migration 0015: the Curator's morning briefs, and the codes that link a Telegram chat
-BRIEF_TABLES = frozenset({"curator_briefs", "telegram_links"})
+BRIEF_TABLES = frozenset({"curator_briefs", "channel_link_codes"})  # telegram_links until 0063
 # migration 0017: the Curator's changes, and the repos whose ruleset the hub checked
 CHANGE_TABLES = frozenset({"curator_changes", "curator_repo_checks"})
 # migration 0018: the Curator's ledger
