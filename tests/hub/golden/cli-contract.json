@@ -5149,6 +5149,185 @@
       ],
       "json": null
     },
+    "hub policy diff": {
+      "positionals": [
+        {
+          "name": "base",
+          "metavar": "FROM",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "head",
+          "metavar": "TO",
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "from_revision",
+          "to_revision",
+          "changes"
+        ],
+        "schema": "PolicyComparison"
+      }
+    },
+    "hub policy history": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "revision",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "PolicyRevision"
+      }
+    },
+    "hub policy set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "revision",
+          "policy",
+          "effective",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "PolicyWritten"
+      }
+    },
+    "hub policy show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "revision",
+          "policy",
+          "effective",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "AutonomyPolicy"
+      }
+    },
     "hub project list": {
       "positionals": [],
       "options": [
@@ -41414,6 +41593,442 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/policy": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Show Policy",
+          "description": "The project's policy now: what its newest revision sets, and every key as it reads.",
+          "operationId": "show_policy_v1_projects__project__policy_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Write Policy",
+          "description": "Write the project's policy whole as its next revision; an admin of the project alone may.",
+          "operationId": "write_policy_v1_projects__project__policy_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PolicyWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/revisions": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Policy Revisions",
+          "description": "Every revision of the project's policy, the newest first, each with the keys whose value it changed.",
+          "operationId": "policy_revisions_v1_projects__project__policy_revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PolicyRevision"
+                    },
+                    "title": "Response Policy Revisions V1 Projects  Project  Policy Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/revisions/{revision}": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Show Policy Revision",
+          "description": "One revision of the project's policy whole.",
+          "operationId": "show_policy_revision_v1_projects__project__policy_revisions__revision__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "revision",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Revision"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/compare": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Compare Policy",
+          "description": "The keys whose value differs between two revisions of the project's policy, each as it reads now.",
+          "operationId": "compare_policy_v1_projects__project__policy_compare_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "from",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "the older revision; 0 for no policy",
+                "title": "From"
+              },
+              "description": "the older revision; 0 for no policy"
+            },
+            {
+              "name": "to",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the newer revision; the newest when left out",
+                "title": "To"
+              },
+              "description": "the newer revision; the newest when left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PolicyComparison"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -43464,6 +44079,78 @@
           ],
           "title": "AuthoredPlan"
         },
+        "AutonomyPolicy": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "0 while the project has none: every repo off, every key at its default"
+            },
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "the keys the revision sets, as its writer wrote them"
+            },
+            "effective": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Effective",
+              "description": "every key at the value the revision sets or its default, each repo of the project included"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of it"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "revision",
+            "policy",
+            "effective",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "AutonomyPolicy",
+          "description": "One revision of a project's autonomy policy."
+        },
         "AvatarUpload": {
           "properties": {
             "data": {
@@ -44037,7 +44724,8 @@
                 "branding",
                 "features",
                 "plugin_config",
-                "agent"
+                "agent",
+                "policy"
               ],
               "title": "Kind"
             },
@@ -44047,13 +44735,13 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent)"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy"
             },
             "change": {
               "additionalProperties": true,
               "type": "object",
               "title": "Change",
-              "description": "set: field -> value; unset: the fields it clears"
+              "description": "set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
             },
             "summary": {
               "type": "string",
@@ -56797,6 +57485,225 @@
             "published_at"
           ],
           "title": "PluginVersion"
+        },
+        "PolicyChange": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "dotted: merge.hold_until, repos.<repo>.mode, repos.<repo>.jobs.uat_check"
+            },
+            "before": {
+              "title": "Before"
+            },
+            "after": {
+              "title": "After"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "before",
+            "after"
+          ],
+          "title": "PolicyChange"
+        },
+        "PolicyComparison": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "from_revision": {
+              "type": "integer",
+              "title": "From Revision"
+            },
+            "to_revision": {
+              "type": "integer",
+              "title": "To Revision"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/components/schemas/PolicyChange"
+              },
+              "type": "array",
+              "title": "Changes",
+              "description": "each key whose value differs, as the two revisions read now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "from_revision",
+            "to_revision",
+            "changes"
+          ],
+          "title": "PolicyComparison"
+        },
+        "PolicyRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the dotted keys whose value differs from the revision before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "PolicyRevision"
+        },
+        "PolicyWrite": {
+          "properties": {
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "sections repos, merge, judge, breaker, audit; a key left out reads as its default"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the policy is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "policy"
+          ],
+          "title": "PolicyWrite",
+          "description": "The next revision of the policy: the whole of it, as its writer wants it."
+        },
+        "PolicyWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "0 while the project has none: every repo off, every key at its default"
+            },
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "the keys the revision sets, as its writer wrote them"
+            },
+            "effective": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Effective",
+              "description": "every key at the value the revision sets or its default, each repo of the project included"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of it"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the newest revision is this policy already: nothing was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "revision",
+            "policy",
+            "effective",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "PolicyWritten"
         },
         "Problem": {
           "properties": {

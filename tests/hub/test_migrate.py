@@ -96,6 +96,7 @@ TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
+TABLES |= pg.POLICY_TABLES  # migration 0066
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -170,8 +171,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_two_tables(hub_db):
-    assert len(TABLES) == 102  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_three_tables(hub_db):
+    assert len(TABLES) == 103  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1254,6 +1255,62 @@ def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
     assert not added & columns(hub_db, "workers")
     assert not columns(hub_db, "hub_nightly")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+
+
+def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0065")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0043 knows no policy proposal
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0066")
+    assert columns(hub_db, "autonomy_policies") == {
+        "project_id",
+        "revision",
+        "body",
+        "note",
+        "created_by",
+        "created_at",
+    }
+    row = {"project_id": ids["project"], "revision": 1, "body": {"merge": {"hold_until": "merged"}}}
+    row["created_by"] = ids["user"]
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Policy"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.autonomy_policies).values(row))
+        conn.execute(insert(t.autonomy_policies).values({**row, "revision": 2, "body": {}, "note": "all defaults"}))
+        for bad in (
+            insert(t.autonomy_policies).values(row),  # one row per revision of a project
+            insert(t.autonomy_policies).values({**row, "revision": 0}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "body": ["merge"]}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "note": ""}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "note": "x" * 1001}),
+            insert(t.builder_proposals).values({**proposal, "kind": "secrets"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "agent", "target": {"agent": "r"}}))
+        conn.execute(insert(t.notifications).values({**notice, "details": {"proposal": 1, "kind": "policy"}}))
+        conn.execute(insert(t.notifications).values({**notice, "details": {"proposal": 2, "kind": "agent"}}))
+    p, n = t.builder_proposals, t.notifications
+    assert query(hub_db, select(t.autonomy_policies.c.revision).order_by(t.autonomy_policies.c.revision)) == [
+        (1,),
+        (2,),
+    ]
+    # Going back drops the policies, and the proposals of a change of one with their notices.
+    move_to(hub_db, "0065", down=True)
+    assert "autonomy_policies" not in tables(hub_db)
+    assert query(hub_db, select(p.c.kind)) == [("agent",)]
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("agent",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

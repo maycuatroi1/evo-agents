@@ -129,6 +129,10 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
+# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
+# "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
+# approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
+POLICY_SET = "policy.set"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

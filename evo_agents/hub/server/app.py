@@ -327,6 +327,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_packs,
         agent_profiles,
         agent_types,
+        autonomy_policies,
         branding,
         chat_agents,
         chat_direct,
@@ -380,6 +381,7 @@ def create_app(config: HubConfig) -> FastAPI:
         branding.admin_router,
         features.router,
         features.admin_router,
+        autonomy_policies.router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
