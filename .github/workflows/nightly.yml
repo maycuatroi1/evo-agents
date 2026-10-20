@@ -4,27 +4,50 @@ name: nightly
 # `uv tool install --force 'evo-ak[worker,graphify] @ git+<this repository>@nightly'`, and the update-evo-agents skill
 # compares what a machine runs with it. No ci gates it: main runs none, and the full one runs on a v* tag
 # (release.yml). A manual run moves it now.
+#
+# deploy.yml also moves it, through workflow_call with the commit it deployed: once Dokploy deployed main and
+# /v1/health reports ok and that commit's schema, nightly points there, and the hub's next read of the tag (every
+# minute) brings the idle workers to it. The caller passes no secret, so the job that writes the tag holds none of the
+# environment production.
 on:
   schedule:
     - cron: "0 19 * * *" # 02:00 in Vietnam
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      sha:
+        description: The commit to move nightly to; empty takes the tip of main.
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
-concurrency:
-  group: nightly
-  cancel-in-progress: false
-
 jobs:
   tag:
     runs-on: ubuntu-latest
+    # On the job, not the workflow: a workflow called by deploy.yml runs under the caller's run, and the group still
+    # keeps the night's move and a deploy's move from running at once.
+    concurrency:
+      group: nightly
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
+      DEPLOYED: ${{ inputs.sha }}
     steps:
-      - name: Move nightly to the tip of main
+      - name: Move nightly to the tip of main, or to the commit deploy.yml deployed
         run: |
-          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ -n "$DEPLOYED" ]; then
+            if ! [[ "$DEPLOYED" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::deploy.yml passed '$DEPLOYED', which is not the full sha of a commit"
+              exit 1
+            fi
+            sha=$DEPLOYED
+            echo "the deployment of ${sha::7} succeeded"
+          else
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          fi
           now=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/nightly" \
             --jq '[.[] | select(.ref == "refs/tags/nightly")][0].object.sha // empty')
           if [ "$now" = "$sha" ]; then

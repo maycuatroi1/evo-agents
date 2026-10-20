@@ -1938,7 +1938,10 @@
         "updatingTo": "Installing",
         "since": "Since {time}",
         "unsupported": "Doesn't update itself."
-      }
+      },
+      "nightlyLabel": "Nightly",
+      "nightlyUnread": "Not read by the hub yet.",
+      "nightlyStale": "Read {time}: the hub has not reached GitHub since, so daemons read the tag themselves."
     },
     "versionLock": {
       "label": "Lock version",
@@ -1971,6 +1974,35 @@
         "waitingNext": "It updates only once no daemon of its install holds a run.",
         "waitingOwner": "It updates only once no daemon of its install holds a run. To let it update sooner, drain it, then resume it once it shows the new commit."
       }
+    },
+    "updateNow": {
+      "button": "Update now",
+      "pending": "Asking…",
+      "cancel": "Cancel",
+      "cancelPending": "Cancelling…",
+      "ready": "It runs another commit than nightly. Update now: it claims no new run, lets the ones it holds end, updates, then claims again.",
+      "readyFailed": "Its last update failed. Update now tries again at once: it claims no new run, lets the ones it holds end, then updates.",
+      "blocked": {
+        "locked": "Its version is locked. Unlock it in Settings to update it.",
+        "unsupported": "Its daemon can't update itself, so it needs updating by hand.",
+        "tooOld": "Its daemon is too old for Update now. It still updates itself to nightly once idle."
+      },
+      "phase": {
+        "offline": "Update now asked: it waits for the worker to come back online.",
+        "installing": "Update now: installing nightly, then restarting on it.",
+        "runs": "Update now: it claims no new run and waits for {count, plural, one {the run it holds} other {the # runs it holds}} to end.",
+        "asked": "Update now asked: its daemon takes it at its next heartbeat.",
+        "starting": "Update now: it updates once no daemon of its install holds a run."
+      },
+      "requested": "Asked",
+      "impossible": "The last Update now couldn't happen: {reason}",
+      "asked": "{name} updates now",
+      "askedText": "It claims no new run, lets the ones it holds end, updates to nightly, then claims again.",
+      "cancelled": "Update now of {name} cancelled",
+      "cancelledText": "It claims runs again and updates itself once idle.",
+      "askFailed": "Couldn't ask {name} to update now",
+      "cancelFailed": "Couldn't cancel the Update now of {name}",
+      "refused": "The hub refused it; its reason follows. The page was reloaded."
     }
   },
   "secrets": {
@@ -3084,41 +3116,33 @@
         "unknown": "The hub does not say why"
       },
       "runtime": "Runtime",
-      "runtimeAny": "Any runtime the worker has",
-      "runtimeAnyHint": "Claude Code first, then opencode, then Codex CLI",
-      "runtimeCommand": {
-        "claude-code": "claude -p, headless",
-        "opencode": "opencode run",
-        "codex": "codex exec"
-      },
-      "runtimeWorkers": {
-        "none": "None of your workers here reports it.",
-        "all": "{total, plural, one {Your worker here reports it.} other {All # of your workers here report it.}}",
-        "some": "{count} of your {total} workers here report it."
-      },
+      "runtimeAny": "Any",
+      "runtimeInfo": "Any: the worker takes Claude Code first, then opencode, then Codex CLI. Claude Code runs claude -p headless, opencode runs opencode run, Codex CLI runs codex exec.",
+      "runtimeNone": "No worker has it",
       "mode": "Mode",
+      "modeInfo": "Headless: the log streams to the hub; message the agent or take over at any time. Interactive: a TUI in a tmux session on the worker from the start; Claude Code also opens Remote Control.",
       "modes": {
         "headless": "Headless",
-        "headlessHint": "The log streams to the hub; message the agent or take over at any time.",
-        "interactive": "Interactive from the start",
-        "interactiveHint": "A TUI in a tmux session on the worker; Claude Code also opens Remote Control."
+        "interactive": "Interactive"
       },
       "worker": "Worker",
-      "workerAuto": "Match a worker automatically",
-      "workerAutoHint": "One of yours, or one shared with you, that is online, with a free slot, the runtime and {subject, select, plan {a checkout of every repo the plan runs in} other {a checkout of the step's repo}}.",
-      "workerPin": "Pin to one worker",
-      "workerPinHint": "{subject, select, plan {The plan run stays} other {The runs stay}} queued until this worker has a free slot.",
-      "workerSelect": "Pinned worker",
+      "workerInfo": "Filled with a worker of yours that can take {subject, select, plan {the plan run} other {the runs}} now: online, with a free slot, the runtime and {subject, select, plan {a checkout of every repo the plan runs in} other {a checkout of each step's repo}}. Pick another one, or any worker that fits: the hub then gives the work to the first one free.",
+      "workersLoading": "Reading your workers…",
+      "workerShared": "{name} of {owner}, shared",
+      "workerFree": "{name}: {count, plural, one {# free slot} other {# free slots}}",
+      "workerBusy": "{name}: every slot in use",
+      "workerOffline": "{name}: offline",
+      "workerNo": "{name}: {problem}",
+      "workerAny": "Any worker that fits",
       "workerOption": "{name} ({status})",
       "workerOptionShared": "{name} of {owner}, shared ({status})",
       "noWorkers": "You have no worker registered for project {project} yet.",
       "registerWorker": "Register a worker",
       "approval": "When the step's verify commands pass",
+      "approvalInfo": "Hold for review: you read the diff and log, then approve on the run page. Mark done: the hub writes the step's status, done time and evidence to the plan.",
       "approvals": {
         "review": "Hold for review",
-        "reviewHint": "You read the diff and log, then approve on the run page.",
-        "auto": "Mark the step done with evidence",
-        "autoHint": "The hub writes the step's status, done time and evidence to the plan."
+        "auto": "Mark done"
       },
       "cancel": "Cancel",
       "submit": "{count, plural, =0 {Dispatch} one {Dispatch # run} other {Dispatch # runs}}",
@@ -3158,7 +3182,6 @@
       "kind": "Plan run",
       "button": "Run plan",
       "title": "Run plan",
-      "description": "One run on one of your workers does every step of <name>{plan}</name> not done yet, in depends_on order and {sessions, select, step {with a new session for each step} other {in one session}}, and asks you only the decisions that matter.",
       "loading": "Loading the plan's steps",
       "loadFailed": "The plan's steps could not be loaded. Close the dialog and try again.",
       "timeout": "Timeout",
@@ -3169,7 +3192,6 @@
         "label": "A new session for each step",
         "hintOff": "Off: one agent session does every step, so what it read for one step stays in its context for the next.",
         "hintOn": "Each step starts a new agent session. Its prompt is the step and a handoff of the plan: the goal, what the steps before it did, their Decision lines and commits. Each session's context stays small; a decision is still answered in the session of its step.",
-        "reach": "Your workers for this project that run it: {count} of {total}.",
         "reachNone": "None of your workers for this project runs it yet: upgrade evo-agents on one and restart its daemon."
       },
       "submit": "Run plan",
@@ -3191,11 +3213,13 @@
       },
       "model": {
         "label": "Model",
-        "optional": "(optional)",
-        "placeholder": "The runtime's default",
-        "hintAny": "Pick a runtime to name a model: each runtime names its models its own way.",
-        "hintSuggested": "{count, plural, one {# model} other {# models}} your workers list for {runtime} are suggested; any other name works too. Empty keeps {runtime}'s default.",
-        "hintNone": "Your workers list no model for {runtime}. Type one as {runtime} names it (opencode: provider/model), or leave it empty for its default.",
+        "info": "Empty keeps the runtime's default. The list holds the models your workers report; with Another model, type a name as its runtime writes it (opencode: provider/model).",
+        "default": "The runtime's default",
+        "defaultOf": "{runtime}'s default",
+        "other": "Another model…",
+        "typed": "Model name",
+        "placeholder": "Model name, as the runtime writes it",
+        "placeholderOpencode": "provider/model",
         "line": "A model is one line, without control characters.",
         "long": "A model name is at most {max} characters.",
         "runtime": "Pick a runtime for this model: a model name means something only to the runtime it is written for."
@@ -4126,8 +4150,9 @@
       "option": "{name} ({variable})",
       "onWorkers": "{name} ({variable}), on {workers} only",
       "paused": "{name} ({variable}), paused",
+      "cooling": "{name} ({variable}), cooling down",
       "keep": "As run #{id}: its account picked by hand, if any",
-      "hint": "The run takes the account you pick and keeps it, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run.",
+      "hint": "An account picked here stays with the run, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run, and move on when an account hits its limit.",
       "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
       "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
       "expired": "{name} ({variable}), expired"
@@ -4487,6 +4512,9 @@
     "region": "Notifications",
     "dismiss": "Dismiss",
     "requestId": "Request id: {id}"
+  },
+  "infoTip": {
+    "label": "About {field}"
   },
   "live": {
     "label": "Updates:",
@@ -5936,7 +5964,8 @@
       "draft": "Draft",
       "in_review": "In review",
       "approved": "Approved",
-      "superseded": "Superseded"
+      "superseded": "Superseded",
+      "withdrawn": "Withdrawn"
     },
     "change": {
       "changed": "Changed",

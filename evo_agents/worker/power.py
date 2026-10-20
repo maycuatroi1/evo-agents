@@ -17,6 +17,10 @@ sleep, however many loops see it, and holds the daemon's claims for WAKE_HOLD_SE
 heartbeats go on. A forward step of the wall clock by more than the slack reads as a sleep too, which only delays
 claims.
 
+``clock_through_sleep``: a clock of seconds that goes on while the machine sleeps, for a schedule that counts the
+time asleep (the reads of the tag nightly of ``selfupdate``): CLOCK_BOOTTIME on Linux, CLOCK_MONOTONIC on macOS
+(where, unlike mach_absolute_time, it goes on during a sleep), and the wall clock elsewhere.
+
 Standard library only: ctypes for IOKit and CoreFoundation.
 """
 
@@ -42,6 +46,24 @@ CORE_FOUNDATION = "/System/Library/Frameworks/CoreFoundation.framework/CoreFound
 
 WAKE_SLACK_SECONDS = 30.0  # a turn this much later on the wall clock than its loop expected is a sleep
 WAKE_HOLD_SECONDS = 120.0  # no claim for this long after a sleep, while the network and the hub come back
+
+
+def _through_sleep_id(platform: str) -> int | None:
+    if platform.startswith("linux"):
+        return getattr(time, "CLOCK_BOOTTIME", None)
+    if platform == "darwin":
+        return getattr(time, "CLOCK_MONOTONIC", None)
+    return None
+
+
+_THROUGH_SLEEP = _through_sleep_id(sys.platform)
+
+
+def clock_through_sleep() -> float:
+    """Seconds on a clock that goes on while the machine sleeps, which time.monotonic does not."""
+    if _THROUGH_SLEEP is None:
+        return time.time()
+    return time.clock_gettime(_THROUGH_SLEEP)
 
 
 class PowerUnavailable(Exception):

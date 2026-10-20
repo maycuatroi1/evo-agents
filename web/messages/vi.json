@@ -1938,7 +1938,10 @@
         "updatingTo": "Đang cài",
         "since": "Từ {time}",
         "unsupported": "Không tự cập nhật."
-      }
+      },
+      "nightlyLabel": "Nightly",
+      "nightlyUnread": "Hub chưa đọc lần nào.",
+      "nightlyStale": "Đọc {time}: từ đó hub chưa tới được GitHub, nên các daemon tự đọc tag."
     },
     "versionLock": {
       "label": "Khoá phiên bản",
@@ -1971,6 +1974,35 @@
         "waitingNext": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run.",
         "waitingOwner": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run. Muốn cập nhật sớm hơn, cho worker ngừng nhận việc, rồi cho nhận việc lại khi trang hiện commit mới."
       }
+    },
+    "updateNow": {
+      "button": "Cập nhật ngay",
+      "pending": "Đang yêu cầu…",
+      "cancel": "Huỷ",
+      "cancelPending": "Đang huỷ…",
+      "ready": "Worker đang chạy commit khác nightly. Cập nhật ngay: worker không nhận run mới, chờ các run đang giữ chạy xong, cập nhật, rồi nhận việc lại.",
+      "readyFailed": "Lần cập nhật gần nhất bị lỗi. Cập nhật ngay thử lại liền: worker không nhận run mới, chờ các run đang giữ chạy xong, rồi cập nhật.",
+      "blocked": {
+        "locked": "Phiên bản đang bị khoá. Mở khoá trong Cài đặt để cập nhật.",
+        "unsupported": "Daemon không tự cập nhật được, nên phải cập nhật bằng tay.",
+        "tooOld": "Daemon quá cũ để Cập nhật ngay. Nó vẫn tự cập nhật lên nightly khi rảnh."
+      },
+      "phase": {
+        "offline": "Đã yêu cầu cập nhật ngay: chờ worker online trở lại.",
+        "installing": "Cập nhật ngay: đang cài nightly, rồi khởi động lại trên bản đó.",
+        "runs": "Cập nhật ngay: worker không nhận run mới và chờ {count, plural, other {# run đang giữ}} chạy xong.",
+        "asked": "Đã yêu cầu cập nhật ngay: daemon nhận yêu cầu ở heartbeat kế tiếp.",
+        "starting": "Cập nhật ngay: worker cập nhật khi không daemon nào của bản cài còn giữ run."
+      },
+      "requested": "Đã yêu cầu",
+      "impossible": "Lần Cập nhật ngay trước không thực hiện được: {reason}",
+      "asked": "{name} sẽ cập nhật ngay",
+      "askedText": "Worker không nhận run mới, chờ các run đang giữ chạy xong, cập nhật lên nightly, rồi nhận việc lại.",
+      "cancelled": "Đã huỷ Cập nhật ngay của {name}",
+      "cancelledText": "Worker nhận run trở lại và tự cập nhật khi rảnh.",
+      "askFailed": "Không yêu cầu {name} cập nhật ngay được",
+      "cancelFailed": "Không huỷ được Cập nhật ngay của {name}",
+      "refused": "Hub từ chối, lý do ở dưới. Trang vừa được tải lại."
     }
   },
   "secrets": {
@@ -3084,41 +3116,33 @@
         "unknown": "Hub không nêu lý do"
       },
       "runtime": "Runtime",
-      "runtimeAny": "Runtime bất kỳ mà worker có",
-      "runtimeAnyHint": "Ưu tiên Claude Code, rồi opencode, rồi Codex CLI",
-      "runtimeCommand": {
-        "claude-code": "claude -p, headless",
-        "opencode": "opencode run",
-        "codex": "codex exec"
-      },
-      "runtimeWorkers": {
-        "none": "Chưa worker nào của bạn ở dự án này báo có runtime này.",
-        "all": "{total, plural, =1 {Worker của bạn ở dự án này có runtime này.} other {Cả # worker của bạn ở dự án này đều có.}}",
-        "some": "{count} trên {total} worker của bạn ở dự án này có runtime này."
-      },
+      "runtimeAny": "Bất kỳ",
+      "runtimeInfo": "Bất kỳ: worker ưu tiên Claude Code, rồi opencode, rồi Codex CLI. Claude Code chạy claude -p ở chế độ headless, opencode chạy opencode run, Codex CLI chạy codex exec.",
+      "runtimeNone": "Chưa worker nào có",
       "mode": "Chế độ",
+      "modeInfo": "Headless: log gửi về hub; bạn nhắn cho agent hoặc tiếp quản bất cứ lúc nào. Tương tác: TUI trong một phiên tmux trên worker ngay từ đầu; Claude Code mở thêm Remote Control.",
       "modes": {
         "headless": "Headless",
-        "headlessHint": "Log gửi về hub; bạn nhắn cho agent hoặc tiếp quản bất cứ lúc nào.",
-        "interactive": "Tương tác ngay từ đầu",
-        "interactiveHint": "TUI trong một phiên tmux trên worker; Claude Code mở thêm Remote Control."
+        "interactive": "Tương tác"
       },
       "worker": "Worker",
-      "workerAuto": "Tự ghép worker",
-      "workerAutoHint": "Một worker của bạn, hoặc được chia sẻ với bạn, đang online, còn slot trống, có runtime và {subject, select, plan {có checkout của mọi repo mà plan chạy} other {có checkout của repo của bước}}.",
-      "workerPin": "Ghim vào một worker",
-      "workerPinHint": "{subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi worker này có slot trống.",
-      "workerSelect": "Worker được ghim",
+      "workerInfo": "Điền sẵn một worker của bạn nhận được {subject, select, plan {plan run này} other {các run này}} ngay: đang online, còn slot trống, có runtime và {subject, select, plan {có checkout của mọi repo mà plan chạy} other {có checkout của repo của từng bước}}. Chọn worker khác, hoặc worker bất kỳ phù hợp: hub giao việc cho worker đầu tiên rảnh.",
+      "workersLoading": "Đang đọc các worker của bạn…",
+      "workerShared": "{name} của {owner}, chia sẻ",
+      "workerFree": "{name}: {count, plural, other {còn # slot trống}}",
+      "workerBusy": "{name}: hết slot",
+      "workerOffline": "{name}: offline",
+      "workerNo": "{name}: {problem}",
+      "workerAny": "Worker bất kỳ phù hợp",
       "workerOption": "{name} ({status})",
       "workerOptionShared": "{name} của {owner}, chia sẻ ({status})",
       "noWorkers": "Bạn chưa đăng ký worker nào cho dự án {project}.",
       "registerWorker": "Đăng ký worker",
       "approval": "Khi các lệnh verify của bước chạy qua",
+      "approvalInfo": "Giữ lại chờ duyệt: bạn đọc diff và log, rồi duyệt trên trang run. Đánh dấu xong: hub ghi trạng thái, thời điểm xong và bằng chứng của bước vào plan.",
       "approvals": {
         "review": "Giữ lại chờ duyệt",
-        "reviewHint": "Bạn đọc diff và log, rồi duyệt trên trang run.",
-        "auto": "Đánh dấu bước xong kèm bằng chứng",
-        "autoHint": "Hub ghi trạng thái, thời điểm xong và bằng chứng của bước vào plan."
+        "auto": "Đánh dấu xong"
       },
       "cancel": "Huỷ",
       "submit": "{count, plural, =0 {Dispatch} other {Dispatch # run}}",
@@ -3158,7 +3182,6 @@
       "kind": "Plan run",
       "button": "Chạy plan",
       "title": "Chạy plan",
-      "description": "Một run trên một worker của bạn làm mọi bước chưa xong của <name>{plan}</name>, theo thứ tự depends_on và {sessions, select, step {mỗi bước một phiên mới} other {trong một phiên}}, và chỉ hỏi bạn những quyết định quan trọng.",
       "loading": "Đang tải các bước của plan",
       "loadFailed": "Không tải được các bước của plan. Đóng hộp thoại rồi thử lại.",
       "timeout": "Thời gian tối đa",
@@ -3169,7 +3192,6 @@
         "label": "Mỗi bước một phiên mới",
         "hintOff": "Tắt: một phiên agent làm mọi bước, nên những gì nó đã đọc cho bước trước vẫn nằm trong context ở bước sau.",
         "hintOn": "Mỗi bước bắt đầu một phiên agent mới. Prompt của phiên là bước đó kèm bản bàn giao của plan: goal, việc các bước trước đã làm, các dòng Decision và commit của chúng. Context của từng phiên nhỏ; quyết định vẫn được trả lời trong phiên của bước đã hỏi.",
-        "reach": "Worker của bạn cho dự án này chạy được: {count} trên {total}.",
         "reachNone": "Chưa worker nào của bạn cho dự án này chạy được: nâng evo-agents trên một máy rồi khởi động lại daemon của nó."
       },
       "submit": "Chạy plan",
@@ -3191,11 +3213,13 @@
       },
       "model": {
         "label": "Model",
-        "optional": "(không bắt buộc)",
-        "placeholder": "Mặc định của runtime",
-        "hintAny": "Chọn một runtime để ghi model: mỗi runtime đặt tên model theo cách riêng.",
-        "hintSuggested": "Gợi ý {count} model mà các worker của bạn báo cho {runtime}; ghi tên khác cũng được. Để trống thì dùng mặc định của {runtime}.",
-        "hintNone": "Các worker của bạn không báo model nào cho {runtime}. Ghi tên model theo cách {runtime} gọi (opencode: provider/model), hoặc để trống để dùng mặc định.",
+        "info": "Để mặc định thì runtime tự chọn model. Danh sách là các model mà worker của bạn báo; chọn Model khác để gõ tên theo cách runtime ghi (opencode: provider/model).",
+        "default": "Mặc định của runtime",
+        "defaultOf": "Mặc định của {runtime}",
+        "other": "Model khác…",
+        "typed": "Tên model",
+        "placeholder": "Tên model, theo cách runtime ghi",
+        "placeholderOpencode": "provider/model",
         "line": "Tên model chỉ gồm một dòng, không có ký tự điều khiển.",
         "long": "Tên model dài tối đa {max} ký tự.",
         "runtime": "Chọn runtime cho model này: tên model chỉ có nghĩa với runtime mà nó được viết cho."
@@ -4126,8 +4150,9 @@
       "option": "{name} ({variable})",
       "onWorkers": "{name} ({variable}), chỉ trên {workers}",
       "paused": "{name} ({variable}), đang tạm dừng",
+      "cooling": "{name} ({variable}), đang nghỉ",
       "keep": "Như run #{id}: tài khoản đã chọn tay cho nó, nếu có",
-      "hint": "Run dùng tài khoản bạn chọn và giữ nó, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run.",
+      "hint": "Tài khoản chọn ở đây đi theo run, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run, và chuyển tiếp khi một tài khoản chạm giới hạn.",
       "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
       "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
       "expired": "{name} ({variable}), đã hết hạn"
@@ -4487,6 +4512,9 @@
     "region": "Thông báo",
     "dismiss": "Đóng thông báo",
     "requestId": "Mã request: {id}"
+  },
+  "infoTip": {
+    "label": "Giải thích về {field}"
   },
   "live": {
     "label": "Cập nhật:",
@@ -5936,7 +5964,8 @@
       "draft": "Nháp",
       "in_review": "Chờ duyệt",
       "approved": "Đã duyệt",
-      "superseded": "Đã thay thế"
+      "superseded": "Đã thay thế",
+      "withdrawn": "Đã rút"
     },
     "change": {
       "changed": "Đã sửa",

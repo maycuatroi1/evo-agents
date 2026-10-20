@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from evo_agents.hub import runs
 from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.runs.models import KgSyncReport, SelfUpdateReport
+from evo_agents.hub.server.runs.models import KgSyncReport, NightlyRead, SelfUpdateReport
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
@@ -85,6 +85,18 @@ class WorkerSelfUpdate(SelfUpdateReport):
     )
 
 
+class WorkerUpdateNow(BaseModel):
+    """The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now)."""
+
+    requested_at: datetime = Field(description="when its owner or a hub admin asked for it")
+    ended_at: datetime | None = Field(description="when it ended; null while the daemon carries it out")
+    outcome: Literal[runs.UPDATE_NOW_OUTCOMES] | None = Field(
+        description="how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, "
+        "the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open"
+    )
+    reason: str | None = Field(description="why it failed or was impossible, as the daemon or the hub said")
+
+
 class Worker(BaseModel):
     id: int
     name: str
@@ -121,6 +133,13 @@ class Worker(BaseModel):
         description="what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on "
         "duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat "
         "said nothing of it",
+    )
+    update_now: WorkerUpdateNow | None = Field(
+        description="the last Update now its owner or a hub admin asked for, open or ended; null when none was"
+    )
+    nightly: NightlyRead | None = Field(
+        description="where the tag nightly pointed when the hub last read it, the same for every worker; null until "
+        "the hub has read it once"
     )
     projects: list[str]
     runtimes: dict = Field(

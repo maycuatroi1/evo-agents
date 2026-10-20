@@ -60,9 +60,9 @@ export const AGENT_COMMIT = "ca3e9af0f1b2c3d4e5f60718293a4b5c6d7e8f90";
 export const NIGHTLY_COMMIT = "def5678a1b2c3d4e5f60718293a4b5c6d7e8f901";
 
 /**
- * A heartbeat of the worker `seconds_ago` seconds ago, reporting `report` when given: `agentCommit` and `selfUpdate`
- * as the daemon sends them (null clears them, as a heartbeat that leaves them out does), with the hub having kept
- * that state for `selfUpdateHours`.
+ * A heartbeat of the worker `seconds_ago` seconds ago, reporting `report` when given: `agentCommit`, `selfUpdate` and
+ * `features` as the daemon sends them (null clears them, as a heartbeat that leaves them out does), with the hub having
+ * kept that state for `selfUpdateHours`.
  */
 export async function heartbeat(
   workerId: number,
@@ -73,6 +73,7 @@ export async function heartbeat(
     agentCommit?: string | null;
     selfUpdate?: SelfUpdateReport | null;
     selfUpdateHours?: number;
+    features?: string[] | null;
   } = {},
 ): Promise<void> {
   const response = await fetch(`${STACK_URL}/workers/heartbeat`, {
@@ -84,6 +85,7 @@ export async function heartbeat(
       checkouts: report.checkouts,
       seconds_ago: report.secondsAgo ?? 0,
       ...(report.agentCommit !== undefined ? { agent_commit: report.agentCommit } : {}),
+      ...(report.features !== undefined ? { features: report.features } : {}),
       ...(report.selfUpdate !== undefined ? { self_update: report.selfUpdate, self_update_hours: report.selfUpdateHours ?? 0 } : {}),
     }),
   });

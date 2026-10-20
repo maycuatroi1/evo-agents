@@ -1,5 +1,5 @@
 """Importing Markdown: a file whose headings follow the template becomes a new document, or the next version of one
-(``document``), after a preview of what it holds.
+(``document``), after a preview of what it holds. An archived document takes no import, a dry run included.
 
 The preview lists every item with its kind, code and title, how many of each kind, what is wrong (``checks`` and what
 the tables tell), and for a document that exists the items the import adds, changes and drops. A dry run stops there;
@@ -148,6 +148,7 @@ async def import_markdown(
     base, held = None, None
     if request.document:
         held = await store.document(conn, access, request.document, sink, lock=not request.dry_run)
+        store.writable(access, held)  # a dry run too: its preview promises no import an archived document refuses
         base = await store.snapshot(conn, await store.version(conn, held)) if held.latest_version else None
     else:
         request = replace(request, slug=request.slug or slug_of(request.title or markdown.title_of(doc) or ""))

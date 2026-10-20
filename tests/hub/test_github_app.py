@@ -212,7 +212,12 @@ def permission_calls(fake) -> list[str]:
 def test_a_token_opens_only_the_repos_its_pusher_may_push_to_and_the_wider_one_is_revoked(fake, app_key):
     installation = fake.install(THEIRS, "lumen-identity", "lumen-kb", "lumen-ops", "lumen-docs", "lumen-web")
     someone = Account("someone-else", 502)
-    for repo, role in (("lumen-identity", "write"), ("lumen-kb", "maintain"), ("lumen-ops", "admin"), ("lumen-docs", "triage")):
+    for repo, role in (
+        ("lumen-identity", "write"),
+        ("lumen-kb", "maintain"),
+        ("lumen-ops", "admin"),
+        ("lumen-docs", "triage"),
+    ):
         fake.collaborate(THEIRS, repo, someone, role)
     asked = [(THEIRS, repo) for repo in ("lumen-identity", "lumen-kb", "lumen-ops", "lumen-docs", "lumen-web")]
     result = tokens(config(fake, app_key), asked, Pusher(someone.login, someone.id))
@@ -231,7 +236,13 @@ def test_a_token_opens_only_the_repos_its_pusher_may_push_to_and_the_wider_one_i
 
     # The token that answered the question opened all five: it is revoked, never handed out.
     first, second = [r for r in calls(fake, f"/app/installations/{installation}/access_tokens")]
-    assert json.loads(first.body)["repositories"] == ["lumen-docs", "lumen-identity", "lumen-kb", "lumen-ops", "lumen-web"]
+    assert json.loads(first.body)["repositories"] == [
+        "lumen-docs",
+        "lumen-identity",
+        "lumen-kb",
+        "lumen-ops",
+        "lumen-web",
+    ]
     assert json.loads(second.body)["repositories"] == ["lumen-identity", "lumen-kb", "lumen-ops"]
     (wide,) = [value for value, made in fake.app_tokens.items() if len(made.repositories) == 5]
     assert made_revoked(fake, wide) and not fake.covers(wide, THEIRS, "lumen-docs")
@@ -279,7 +290,9 @@ def test_a_member_whose_repo_names_another_account_gets_no_token_for_it(fake, ap
     fake.collaborate(THEIRS, "lumen-identity", mallory, "write")
     renamed = tokens(config(fake, app_key), [(THEIRS, "lumen-identity")], Pusher(mallory.login, 7))
     assert renamed.tokens == []
-    assert renamed.missing[f"{THEIRS}/lumen-identity"].endswith("is not the one that signed in to the hub; sign in again")
+    assert renamed.missing[f"{THEIRS}/lumen-identity"].endswith(
+        "is not the one that signed in to the hub; sign in again"
+    )
     (granted,) = tokens(config(fake, app_key), [(THEIRS, "lumen-identity")], Pusher(mallory.login, mallory.id)).tokens
     assert fake.covers(granted.token, THEIRS, "lumen-identity"), "once a collaborator who may push, mallory gets one"
 
@@ -303,7 +316,9 @@ def test_a_push_permission_is_kept_five_minutes_and_a_refusal_is_asked_again(fak
         fake.collaborate(THEIRS, "lumen-kb", someone, "write")  # the account's admin lets them push to lumen-kb now
         second = await app.tokens(asked, pusher)
         assert second.missing == {} and [t.repositories for t in second.tokens] == [("lumen-identity", "lumen-kb")]
-        assert permission_calls(fake)[2:] == [f"{THEIRS}/lumen-kb/someone-else"], "lumen-identity was kept, lumen-kb asked"
+        assert permission_calls(fake)[2:] == [f"{THEIRS}/lumen-kb/someone-else"], (
+            "lumen-identity was kept, lumen-kb asked"
+        )
 
         fake.collaborate(THEIRS, "lumen-identity", someone, "read")  # and takes lumen-identity away
         await app.tokens(asked, pusher)
@@ -316,7 +331,10 @@ def test_a_push_permission_is_kept_five_minutes_and_a_refusal_is_asked_again(fak
 
         # Another hub user, or the same login of another GitHub id, is asked for on its own.
         await app.tokens(asked, Pusher(someone.login, 9))
-        assert permission_calls(fake)[-2:] == [f"{THEIRS}/lumen-identity/someone-else", f"{THEIRS}/lumen-kb/someone-else"]
+        assert permission_calls(fake)[-2:] == [
+            f"{THEIRS}/lumen-identity/someone-else",
+            f"{THEIRS}/lumen-kb/someone-else",
+        ]
 
     with_app(config(fake, app_key), body, clock=lambda: clock[0])
 
@@ -537,7 +555,8 @@ def test_one_log_line_per_call_and_no_token_or_jwt_in_any(fake, app_key, caplog)
 
     async def body(app: GitHubApp):
         result = await app.tokens(
-            [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "lumen-identity"), (THEIRS, "lumen-kb")], PUSHER
+            [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "lumen-identity"), (THEIRS, "lumen-kb")],
+            PUSHER,
         )
         for token in result.tokens:
             assert await app.revoke(token.token)

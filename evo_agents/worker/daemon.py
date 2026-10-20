@@ -39,7 +39,10 @@
   (``selfupdate``): a daemon that launchd or systemd runs from a uv tool install of evo-ak, whose worker the hub says
   is not locked, installs the commit nightly points to once no daemon of the install holds a run, and exits
   ``home.EXIT_UPDATED`` for its manager to start the new one. It claims nothing while another daemon of its install
-  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json.
+  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json. The
+  answer's ``nightly`` (the commit the hub read the tag at, once a minute) spares the daemon its own hourly read, and
+  its ``update_now`` (its owner's Update now) stops the claims of every daemon of the install until it updated, while
+  the runs held go on to their end (``runs.UPDATE_NOW``).
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
   ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the worktrees
   of runs that ended more than 7 days ago are removed.
@@ -428,8 +431,8 @@ class Daemon:
         return body
 
     def _take_worker_state(self, answer: dict) -> None:
-        """What a heartbeat answer says of the worker itself: whether to drain, and its settings when the hub sends
-        them."""
+        """What a heartbeat answer says of the worker itself: whether to drain, its settings when the hub sends them,
+        and for the self-update, the hub's read of nightly and its owner's Update now."""
         drain = bool(answer.get("drain"))
         if drain != self.draining:
             log.info("draining: no new claims" if drain else "drain ended: claiming again")
@@ -439,6 +442,7 @@ class Daemon:
             self._take_settings(answer["settings"])
         else:
             self.updater.hear_lock(None)
+        self.updater.hear_answer(answer.get("nightly"), answer.get("update_now"))
         self._take_plugin_runtimes(answer.get("plugin_runtimes"))
         if self.kg_on:
             self._take_kg_duties(answer.get("kg_sync"))

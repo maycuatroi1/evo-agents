@@ -1336,6 +1336,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/update-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Update Now
+         * @description Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
+         *     and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already.
+         */
+        post: operations["ask_update_now_v1_workers__worker_id__update_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/update-now/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Update Now
+         * @description Withdraw the worker's open Update now; the daemon claims runs again.
+         */
+        post: operations["cancel_update_now_v1_workers__worker_id__update_now_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/dispatch-from": {
         parameters: {
             query?: never;
@@ -3418,7 +3459,8 @@ export interface paths {
         };
         /**
          * List Documents
-         * @description The BA documents of the project the caller sees, by slug, each with its latest version.
+         * @description The BA documents of the project the caller sees, by slug, each with its latest version; the archived ones only
+         *     with ``all``.
          */
         get: operations["list_documents_v1_x_srs__project__documents_get"];
         put?: never;
@@ -3575,6 +3617,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Items
+         * @description Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the
+         *     document's next version, a draft built on the latest through the same save as any other, so its checks hold and a
+         *     code dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no
+         *     item of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes
+         *     nothing.
+         */
+        post: operations["retire_items_v1_x_srs__project__documents__slug__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
         parameters: {
             query?: never;
@@ -3611,6 +3677,70 @@ export interface paths {
          *     it, and the agent of a run never does.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Version
+         * @description Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a
+         *     comment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves
+         *     it withdrawn. The agent of a run never withdraws one.
+         */
+        post: operations["withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Document
+         * @description Archive a document, as an admin of the project: it leaves the list of documents (``all`` lists it), @ba's
+         *     search and the knowledge graph, is still read by its slug, and takes no write until it is unarchived; its codes
+         *     stay held and its slug taken. 409 when it is archived already.
+         */
+        post: operations["archive_document_v1_x_srs__project__documents__slug__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Document
+         * @description Open an archived document again, as an admin of the project. 409 when it is not archived.
+         */
+        post: operations["unarchive_document_v1_x_srs__project__documents__slug__unarchive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4857,9 +4987,10 @@ export interface paths {
         put?: never;
         /**
          * Edit Plan
-         * @description Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new
-         *     revision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run
-         *     again in the same transaction, and a refused rerun leaves the plan as it was.
+         * @description Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or
+         *     several (``steps``), as one new revision under their name and one ``Decision:`` line, inside the frame
+         *     (``triage_rules.edit_problems``); with ``rerun`` the failed step is run again in the same transaction, and a refused
+         *     rerun leaves the plan as it was.
          */
         post: operations["edit_plan_v1_worker_runs__run_id__triage_plan_post"];
         delete?: never;
@@ -9247,6 +9378,10 @@ export interface components {
              * @description for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise
              */
             kg_sync?: components["schemas"]["KgDuty"][];
+            /** @description the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065 */
+            nightly?: components["schemas"]["NightlyRead"] | null;
+            /** @description the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now */
+            update_now?: components["schemas"]["UpdateNowRequest"] | null;
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -10787,6 +10922,20 @@ export interface components {
              * @description curator.collect counted the night's figures
              */
             figures: boolean;
+        };
+        /**
+         * NightlyRead
+         * @description Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly).
+         */
+        NightlyRead: {
+            /** Commit */
+            commit: string;
+            /**
+             * Read At
+             * Format: date-time
+             * @description when the hub read it; the hub reads it once a minute
+             */
+            read_at: string;
         };
         /** NodeDetail */
         NodeDetail: {
@@ -15214,6 +15363,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
         };
         /**
          * SessionDigest
@@ -15649,7 +15800,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15694,7 +15845,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15978,6 +16129,56 @@ export interface components {
              */
             to: string;
         };
+        /** SrsRetireIn */
+        SrsRetireIn: {
+            /**
+             * Codes
+             * @description the codes or aliases of the items to retire
+             */
+            codes: string[];
+            /**
+             * Summary
+             * @description the new version's; from the codes if left out
+             * @default
+             */
+            summary: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** SrsRetireResult */
+        SrsRetireResult: {
+            /** Document */
+            document: string;
+            /**
+             * Version
+             * @description the version saved, a draft; null for a dry run
+             */
+            version: number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Dropped
+             * @description every item the version drops: each one retired and the items under it, in document order
+             */
+            dropped: components["schemas"]["SrsRetiredItem"][];
+        };
+        /** SrsRetiredItem */
+        SrsRetiredItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+        };
         /** SrsReview */
         SrsReview: {
             /** Reviewer */
@@ -16053,7 +16254,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16096,7 +16297,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16130,6 +16331,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWithdrawIn */
+        SrsWithdrawIn: {
+            /**
+             * Comment
+             * @description why, kept as a comment on the version
+             */
+            comment?: string | null;
         };
         /**
          * StateCounts
@@ -16266,6 +16475,29 @@ export interface components {
              * @description when the worker becomes steady if its heartbeats go on as now; null while it sends none
              */
             steady_at: string | null;
+        };
+        /** StepEdit */
+        StepEdit: {
+            /**
+             * Step
+             * @description the step's id, a step that is pending
+             */
+            step: string;
+            /**
+             * Verify
+             * @description the new verify: no command fewer
+             */
+            verify?: string | null;
+            /**
+             * What
+             * @description the new what: shorter than the old one
+             */
+            what?: string | null;
+            /**
+             * Why
+             * @description why this step, when the call's reason is not all
+             */
+            why?: string | null;
         };
         /** StepReadiness */
         StepReadiness: {
@@ -17927,9 +18159,9 @@ export interface components {
             cause_confirmed: boolean;
             /**
              * Step
-             * @description the step's id, a step that is pending
+             * @description the step's id, a step that is pending; or give steps
              */
-            step: string;
+            step?: string | null;
             /**
              * Verify
              * @description the new verify: no command fewer
@@ -17940,6 +18172,11 @@ export interface components {
              * @description the new what: shorter than the old one
              */
             what?: string | null;
+            /**
+             * Steps
+             * @description several steps edited at once, in one revision and one Decision line, instead of step, verify and what
+             */
+            steps?: components["schemas"]["StepEdit"][] | null;
             /**
              * If Revision
              * @description the revision of the plan the edit was made against
@@ -17997,6 +18234,35 @@ export interface components {
              * @description the web page of the thread, /chats/ID?message=ID
              */
             link: string;
+        };
+        /**
+         * UpdateNowReport
+         * @description Where the daemon stands with its owner's Update now (update_now of the heartbeat answer).
+         */
+        UpdateNowReport: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description the request it is about: requested_at of the answer's update_now
+             */
+            requested_at: string;
+            /**
+             * Ended
+             * @description null while the daemon carries it out; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with either, and with a value it does not know ends nothing
+             */
+            ended?: string | null;
+        };
+        /**
+         * UpdateNowRequest
+         * @description An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends.
+         */
+        UpdateNowRequest: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when it was asked for; it names the request in self_update.update_now
+             */
+            requested_at: string;
         };
         /** UploadItem */
         UploadItem: {
@@ -18279,6 +18545,10 @@ export interface components {
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
+            update_now: components["schemas"]["WorkerUpdateNow"] | null;
+            /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
+            nightly: components["schemas"]["NightlyRead"] | null;
             /** Projects */
             projects: string[];
             /**
@@ -18493,6 +18763,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
             /**
              * Since
              * @description when the hub first got this state, in an unbroken line of heartbeats that said it: how long the daemon has been waiting, for one
@@ -18553,6 +18825,33 @@ export interface components {
              * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
              */
             shared?: boolean | null;
+        };
+        /**
+         * WorkerUpdateNow
+         * @description The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now).
+         */
+        WorkerUpdateNow: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when its owner or a hub admin asked for it
+             */
+            requested_at: string;
+            /**
+             * Ended At
+             * @description when it ended; null while the daemon carries it out
+             */
+            ended_at: string | null;
+            /**
+             * Outcome
+             * @description how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open
+             */
+            outcome: ("current" | "cancelled" | "failed" | "impossible") | null;
+            /**
+             * Reason
+             * @description why it failed or was impossible, as the daemon or the hub said
+             */
+            reason: string | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -23298,6 +23597,140 @@ export interface operations {
         };
     };
     undrain_v1_workers__worker_id__undrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_update_now_v1_workers__worker_id__update_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_update_now_v1_workers__worker_id__update_now_cancel_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -30708,7 +31141,10 @@ export interface operations {
     };
     list_documents_v1_x_srs__project__documents_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the archived documents too */
+                all?: boolean;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
@@ -31440,6 +31876,89 @@ export interface operations {
             };
         };
     };
+    retire_items_v1_x_srs__project__documents__slug__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsRetireIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsRetireResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post: {
         parameters: {
             query?: never;
@@ -31546,6 +32065,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SrsWithdrawIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_document_v1_x_srs__project__documents__slug__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocumentSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unarchive_document_v1_x_srs__project__documents__slug__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocumentSummary"];
                 };
             };
             /** @description Unauthorized */
