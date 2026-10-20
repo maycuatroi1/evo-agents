@@ -1919,7 +1919,10 @@
         "updatingTo": "Installing",
         "since": "Since {time}",
         "unsupported": "Doesn't update itself."
-      }
+      },
+      "nightlyLabel": "Nightly",
+      "nightlyUnread": "Not read by the hub yet.",
+      "nightlyStale": "Read {time}: the hub has not reached GitHub since, so daemons read the tag themselves."
     },
     "versionLock": {
       "label": "Lock version",
@@ -1952,6 +1955,35 @@
         "waitingNext": "It updates only once no daemon of its install holds a run.",
         "waitingOwner": "It updates only once no daemon of its install holds a run. To let it update sooner, drain it, then resume it once it shows the new commit."
       }
+    },
+    "updateNow": {
+      "button": "Update now",
+      "pending": "Asking…",
+      "cancel": "Cancel",
+      "cancelPending": "Cancelling…",
+      "ready": "It runs another commit than nightly. Update now: it claims no new run, lets the ones it holds end, updates, then claims again.",
+      "readyFailed": "Its last update failed. Update now tries again at once: it claims no new run, lets the ones it holds end, then updates.",
+      "blocked": {
+        "locked": "Its version is locked. Unlock it in Settings to update it.",
+        "unsupported": "Its daemon can't update itself, so it needs updating by hand.",
+        "tooOld": "Its daemon is too old for Update now. It still updates itself to nightly once idle."
+      },
+      "phase": {
+        "offline": "Update now asked: it waits for the worker to come back online.",
+        "installing": "Update now: installing nightly, then restarting on it.",
+        "runs": "Update now: it claims no new run and waits for {count, plural, one {the run it holds} other {the # runs it holds}} to end.",
+        "asked": "Update now asked: its daemon takes it at its next heartbeat.",
+        "starting": "Update now: it updates once no daemon of its install holds a run."
+      },
+      "requested": "Asked",
+      "impossible": "The last Update now couldn't happen: {reason}",
+      "asked": "{name} updates now",
+      "askedText": "It claims no new run, lets the ones it holds end, updates to nightly, then claims again.",
+      "cancelled": "Update now of {name} cancelled",
+      "cancelledText": "It claims runs again and updates itself once idle.",
+      "askFailed": "Couldn't ask {name} to update now",
+      "cancelFailed": "Couldn't cancel the Update now of {name}",
+      "refused": "The hub refused it; its reason follows. The page was reloaded."
     }
   },
   "secrets": {
