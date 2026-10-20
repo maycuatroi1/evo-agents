@@ -423,8 +423,22 @@ columns of the account's `accounts` row (schema 0064); no column holds a token i
 `expires_at` of the secret is the end of the access token. An account shows `auth: oauth` in `account list|show`
 (`token` for any other); a write of the secret without `oauth`, or its deletion, drops the sealed set. Running the
 command again for an existing NAME replaces the tokens alone, as `account login` does: same secret id, so weight,
-priority, pause, cooldown and runs stay. This step stores and shows the tokens; the lease still hands out the access
-token the secret holds, and refreshing it at lease time is the next step of the plan.
+priority, pause, cooldown and runs stay.
+
+#### Refresh at lease time
+
+An access token lives about eight hours. When a run asks for its credentials (`POST /v1/worker/runs/{id}/credentials`),
+the hub first looks at each OAuth account the run may be leased (`evo_agents/hub/server/account_refresh.py`). One whose
+access token ends in under five minutes, or has ended, is traded at the token endpoint for a new one with its refresh
+token. Anthropic rotates the refresh token at every use, so the new access token, the new refresh token and the new end
+are stored together in one transaction: the sealed set and the secret's value (the lease hands out the value as
+`CLAUDE_CODE_OAUTH_TOKEN`, as for any account, and the worker's path is unchanged: an environment variable, no
+credential file, the daemon's `ANTHROPIC_API_KEY` dropped). A token with more than five minutes left is leased as it is,
+with no call out. The secret's row is locked during a refresh, so runs of one account that lease together refresh once:
+the others wait, read the set the first stored and find it good. A refresh that fails (the refresh token revoked, the
+endpoint down) changes nothing and logs the reason without a token; a token that has not ended is still leased, one that
+has ended is not. The endpoint and client id are in `evo_agents/hub/claude_oauth.py` (`EVO_CLAUDE_OAUTH_TOKEN_URL`
+names another endpoint, for a test).
 
 ### Compared with a proxy
 
