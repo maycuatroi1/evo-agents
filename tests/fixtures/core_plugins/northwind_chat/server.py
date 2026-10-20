@@ -67,7 +67,9 @@ class Service:
             raise hub.Undeliverable("Northwind Chat is not set up: a hub admin sets the plugin's token")
         body = {"group_id": group_id, "user_id": user_id, "text": text, "buttons": buttons or []}
         async with httpx.AsyncClient(transport=TRANSPORT, timeout=10) as client:
-            answer = await client.post(f"{self.url}/messages", json=body, headers={"Authorization": f"Bearer {self.token}"})
+            answer = await client.post(
+                f"{self.url}/messages", json=body, headers={"Authorization": f"Bearer {self.token}"}
+            )
         if answer.status_code == 429:
             raise hub.RetryAfter(float(answer.json().get("retry_after", 5)), "Northwind Chat asked to wait")
         if answer.status_code == 403:
@@ -89,7 +91,10 @@ def message(notification: hub.Outgoing, url: str | None) -> tuple[str, list]:
     if notification.kind == "decision":
         if not decision or decision["state"] != "open":
             return f"Decision #{notification.decision_id} is no longer open: {where}", []
-        buttons = [{"text": item["label"], "data": f"d:{notification.decision_id}:{item['key']}"} for item in decision["options"] or []]
+        buttons = [
+            {"text": item["label"], "data": f"d:{notification.decision_id}:{item['key']}"}
+            for item in decision["options"] or []
+        ]
         return f"Decision #{notification.decision_id}: {decision['question']}", buttons
     if notification.kind == "proposal":
         if not proposal or proposal["state"] != "open":
@@ -215,7 +220,9 @@ class Updates:
         if update.get("data"):
             return await self.acting(lambda conn, member: self.button(conn, member, str(update["data"])))
         if text == "/link":
-            query = urlencode({"group_id": self.chat[0], "user_id": self.chat[1], "sig": signature(self.values, *self.chat)})
+            query = urlencode(
+                {"group_id": self.chat[0], "user_id": self.chat[1], "sig": signature(self.values, *self.chat)}
+            )
             url = hub.web_url(hub.hub_config(self.request), f"{LINK_PATH}?{query}")
             return "link", f"Open {url} on the hub and confirm it."
         if text.startswith("/start "):
@@ -240,7 +247,9 @@ class Updates:
             session = await hub.redeem_link_code(conn, plugin(), KIND, code)
             if session is None:
                 return "link_failed", "That code did not work: make a new one on the hub."
-            member = await hub.link_channel(conn, plugin(), session, KIND, self.match, unique_on=("group_id", "user_id"))
+            member = await hub.link_channel(
+                conn, plugin(), session, KIND, self.match, unique_on=("group_id", "user_id")
+            )
         return "linked", f"Linked to the hub as {member.login}."
 
     async def acting(self, act) -> tuple[str, str | None]:
@@ -303,7 +312,9 @@ async def on_chat_message(params: dict, context: hub.Context) -> dict:
             return {}
         settings = await hub.plugin_config(conn, plugin(), context.config)
         try:
-            read = await hub.read_message(conn, member, payload["chat_id"], payload["message_id"], cleared(settings.values))
+            read = await hub.read_message(
+                conn, member, payload["chat_id"], payload["message_id"], cleared(settings.values)
+            )
             text = f"@{read.author}: {read.body}"
         except hub.Refused:
             text = f"An agent answered in your direct chat on the hub: chat {payload['chat_id']}"

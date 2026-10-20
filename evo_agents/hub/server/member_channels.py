@@ -208,7 +208,9 @@ async def new_link_code(conn: AsyncConnection, *, user_id: int, token_id: int, k
     day_ago = func.now() - timedelta(days=1)
     mine = and_(codes.c.user_id == user_id, codes.c.kind == kind)
     await conn.execute(
-        delete(codes).where(mine | (codes.c.expires_at < day_ago), codes.c.used_at.is_(None) | (codes.c.used_at < day_ago))
+        delete(codes).where(
+            mine | (codes.c.expires_at < day_ago), codes.c.used_at.is_(None) | (codes.c.used_at < day_ago)
+        )
     )
     code = telegram.new_code()
     made = (
