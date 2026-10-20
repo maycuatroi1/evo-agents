@@ -15,3 +15,14 @@ export async function updateWorker(api: ApiClient, id: number, body: WorkerUpdat
   const headers = await csrfHeaders(api);
   return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
 }
+
+/**
+ * Ask the worker's daemon to update itself to nightly now (`ask`), or withdraw that. The rights are those of drain; the
+ * page offers it to the owner only. 409 says why the hub refused: a locked version, a daemon too old, or nightly already.
+ */
+export async function setUpdateNow(api: ApiClient, id: number, ask: boolean): Promise<Worker> {
+  const headers = await csrfHeaders(api);
+  const params = { path: { worker_id: id } };
+  if (ask) return call(api.POST("/v1/workers/{worker_id}/update-now", { params, headers }));
+  return call(api.POST("/v1/workers/{worker_id}/update-now/cancel", { params, headers }));
+}
