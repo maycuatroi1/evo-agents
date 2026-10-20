@@ -120,9 +120,9 @@ def parse_code(text: str, state: str) -> str:
 
 
 class _CallbackServer(HTTPServer):
-    """On Windows SO_REUSEADDR lets a second socket bind a port that is in use, so the listener would sit on a port
-    another process owns and never be told it is taken; it keeps the default exclusive bind there."""
-
+    # HTTPServer sets SO_REUSEADDR, with which Windows lets a second socket bind a port another one listens on, so the
+    # answer of claude.ai, which holds the code, could reach the other socket. Without it the bind fails on Windows
+    # too, as it does on Linux and macOS.
     allow_reuse_address = sys.platform != "win32"
 
 

@@ -52,7 +52,6 @@ import {
   startRun,
   tool,
   uploadDiff,
-  pickTile,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -827,8 +826,13 @@ const PAGES: Entry[] = [
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
       await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
-      await dialog.getByTestId("dispatch-runtime-info").hover();
-      await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
+      // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
+      // click toggles it closed. Once the hover has shown it, a click keeps it shown.
+      const info = dialog.getByTestId("dispatch-runtime-info");
+      await info.hover();
+      await expect(info).toHaveAttribute("data-state", /open/);
+      await info.click();
+      await expect(info).toHaveAttribute("data-state", /open/);
       await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
   },
@@ -896,7 +900,7 @@ const PAGES: Entry[] = [
       const dialog = page.getByTestId("dispatch-dialog");
       await dialog.getByTestId("dispatch-step-4").click();
       await dialog.getByTestId("dispatch-agent-select").selectOption(handle);
-      await pickTile(dialog, /^Codex CLI/);
+      await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
       await expect(dialog.getByTestId("dispatch-agent-problem").first()).toBeVisible();
       await expect(dialog.getByTestId("dispatch-agent-blocked")).toBeVisible();
     },
@@ -924,7 +928,8 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "chats list");
       await page.locator("#main").getByTestId("chats-new").click();
       const dialog = page.getByTestId("new-chat-dialog");
-      await dialog.getByTestId("people-search").fill("not a login"); // the people picker replaced the login field
+      await dialog.getByTestId("people-search").fill("not a login");
+      await expect(dialog.getByTestId("people-empty")).toBeVisible();
       await dialog.getByTestId("new-chat-submit").click();
       await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
     },
