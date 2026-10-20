@@ -95,6 +95,7 @@ TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
 TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
+TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -169,15 +170,15 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_one_tables(hub_db):
-    assert len(TABLES) == 101  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_two_tables(hub_db):
+    assert len(TABLES) == 102  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0064)
+    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
@@ -1189,10 +1190,78 @@ def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_k
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0063") :]
 
 
-def test_0064_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
+def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_draft_again(hub_db):
     move_to(hub_db, "0063")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "author_id": ids["user"], "content_sha256": "a" * 64, "submitted_at": func.now()}
+        conn.execute(insert(s.versions).values(number=1, state="in_review", round=1, **version))
+        with pytest.raises(errors.CheckViolation):  # 0046 knows no withdrawn version
+            conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
     before = query(hub_db, SNAPSHOT)
     move_to(hub_db, "0064")
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # a withdrawn version carries the moment it was withdrawn
+            conn.execute(update(s.versions).values(state="withdrawn"))
+        conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
+    assert query(hub_db, select(s.versions.c.state)) == [("withdrawn",)]
+    move_to(hub_db, "0063", down=True)
+    assert query(hub_db, select(s.versions.c.state, s.versions.c.decided_at)) == [("draft", None)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+
+
+def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0064")
+    workers, nightly = hub_tables.workers, hub_tables.hub_nightly
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0065")
+    added = {"update_requested_at", "update_ended_at", "update_outcome", "update_reason"}
+    assert added <= columns(hub_db, "workers")
+    assert columns(hub_db, "hub_nightly") == {"id", "commit_sha", "read_at"}
+    shown = select(*(workers.c[name] for name in sorted(added))).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None, None, None, None)]
+    asked, ended = {"update_requested_at": func.now()}, {"update_ended_at": func.now()}
+    bad_requests = (
+        ended | {"update_outcome": "current"},  # an end without a request
+        asked | ended,  # an end without an outcome
+        asked | {"update_outcome": "current"},  # an outcome without an end
+        asked | ended | {"update_outcome": "stuck"},
+        asked | {"update_reason": "why"},  # a reason without an outcome
+    )
+    with live.connect(hub_db) as conn:
+        for bad in bad_requests:
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        conn.execute(update(workers).values(**asked).where(workers.c.id == worker))
+        done = ended | {"update_outcome": "failed", "update_reason": "pip exited 1"}
+        conn.execute(update(workers).values(**done).where(workers.c.id == worker))
+        for bad in ({"id": 2, "commit_sha": "a" * 40}, {"commit_sha": "ca3e9af"}, {"commit_sha": "A" * 40}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(nightly).values(read_at=func.now(), **bad))
+        conn.execute(insert(nightly).values(commit_sha="b" * 40, read_at=func.now()))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(nightly).values(commit_sha="c" * 64, read_at=func.now()))
+    assert query(hub_db, select(workers.c.update_outcome, workers.c.update_reason)) == [("failed", "pip exited 1")]
+    assert query(hub_db, select(nightly.c.id, nightly.c.commit_sha)) == [(1, "b" * 40)]
+    move_to(hub_db, "0064", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert not columns(hub_db, "hub_nightly")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+
+
+def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0065")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0066")
     accounts = hub_tables.accounts
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1214,9 +1283,9 @@ def test_0064_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_
         )
         with pytest.raises(errors.CheckViolation):  # a set is whole or absent
             conn.execute(update(accounts).values(oauth_sealed=None).where(accounts.c.secret_id == secret_id))
-    move_to(hub_db, "0063", down=True)
+    move_to(hub_db, "0065", down=True)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

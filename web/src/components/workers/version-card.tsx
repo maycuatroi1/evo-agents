@@ -1,5 +1,6 @@
 "use client";
 
+import { ClockAlert } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -10,8 +11,9 @@ import { Ago } from "./ago";
 import { Note } from "./note";
 import type { Worker } from "./queries";
 import { SectionCard } from "./section-card";
-import { commitUrl, shortCommit, type UpdateProblem, updateProblems, updateState } from "./self-update";
+import { commitUrl, shortCommit, staleNightly, type UpdateProblem, updateProblems, updateState } from "./self-update";
 import { UPDATE_LOOKS } from "./update-badge";
+import { UpdateNow } from "./update-now";
 
 /** A commit of evo-agents as a chip: its first 7 characters, a link to its page on GitHub, and a copy button. */
 function Commit({ sha, testId }: { sha: string; testId: string }) {
@@ -91,8 +93,40 @@ function Updates({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
 }
 
 /**
- * The evo-agents a worker runs: its release, the commit its install was built from (a link to GitHub), and where its
- * updates stand. Its owner and a hub admin see the same card; the owner locks the version in Settings.
+ * Where the tag nightly pointed when the hub last read it, the same for every worker. The hub reads it once a minute, so
+ * the line says more only when that read is over 10 minutes old: the hub has not reached GitHub since, in amber.
+ */
+function HubNightly({ nightly }: { nightly: Worker["nightly"] }) {
+  const t = useTranslations("workers.version");
+  const format = useFormatter();
+  const now = useNow(nightly !== null);
+  const stale = staleNightly(nightly, now);
+  if (!nightly) {
+    return (
+      <dd className="text-muted-foreground" data-testid="worker-hub-nightly">
+        {t("nightlyUnread")}
+      </dd>
+    );
+  }
+  return (
+    <dd className="min-w-0" data-testid="worker-hub-nightly" data-stale={stale ? "true" : undefined}>
+      <Commit sha={nightly.commit} testId="worker-hub-nightly-commit" />
+      {stale ? (
+        <span className="mt-1 flex items-start gap-1.5 text-xs text-attention" data-testid="worker-hub-nightly-stale">
+          <ClockAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          <span title={format.dateTime(new Date(stale.read_at), { dateStyle: "medium", timeStyle: "medium" })}>
+            {t("nightlyStale", { time: format.relativeTime(new Date(stale.read_at), now ?? undefined) })}
+          </span>
+        </span>
+      ) : null}
+    </dd>
+  );
+}
+
+/**
+ * The evo-agents a worker runs: its release, the commit its install was built from (a link to GitHub), the commit
+ * nightly points to as the hub read it, where its updates stand, and Update now. Its owner and a hub admin see the
+ * same card, but only the owner asks for Update now; the owner locks the version in Settings.
  */
 export function VersionCard({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.version");
@@ -116,7 +150,10 @@ export function VersionCard({ worker, isOwner }: { worker: Worker; isOwner: bool
         </dd>
         <dt className="text-muted-foreground">{t("updatesLabel")}</dt>
         <Updates worker={worker} isOwner={isOwner} />
+        <dt className="text-muted-foreground">{t("nightlyLabel")}</dt>
+        <HubNightly nightly={worker.nightly} />
       </dl>
+      <UpdateNow worker={worker} isOwner={isOwner} />
     </SectionCard>
   );
 }

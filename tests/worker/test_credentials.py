@@ -205,7 +205,9 @@ def test_the_git_configuration_resets_the_helpers_of_leased_origins_and_rewrites
         Lease.from_json(app_lease(3, "maycuatroi1", "c" * 20, 60)),
         Lease.from_json(env_lease(4, "CLAUDE_CODE_OAUTH_TOKEN", "d" * 20)),
     ]
-    assert credentials.covering(leases, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git").id == 2, "the longest prefix"
+    assert credentials.covering(leases, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git").id == 2, (
+        "the longest prefix"
+    )
     assert credentials.covering(leases, "https://gitlab.lumenops.example/fir-gb-lumen/other.git").id == 1
     assert credentials.covering(leases, "https://github.com/heron-team/lumen-identity.git") is None
     origins = [
@@ -215,7 +217,10 @@ def test_the_git_configuration_resets_the_helpers_of_leased_origins_and_rewrites
         "https://github.com/maycuatroi1/evo-agents.git",
     ]
     helper = "!evo-agents worker git-credential --run 7"
-    kb, evo = "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git", "https://github.com/maycuatroi1/evo-agents.git"
+    kb, evo = (
+        "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git",
+        "https://github.com/maycuatroi1/evo-agents.git",
+    )
     assert credentials.git_config(origins, leases, helper) == [
         (f"credential.{kb}.helper", ""),
         (f"credential.{kb}.helper", helper),
@@ -772,7 +777,11 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
         {
             "leases": [],
             "missing": [
-                {"repo": "kb", "origin": "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", "reason": "no git secret"},
+                {
+                    "repo": "kb",
+                    "origin": "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git",
+                    "reason": "no git secret",
+                },
                 {"repo": "notes", "origin": None, "reason": "the project registered no origin for it"},
             ],
         }
@@ -780,7 +789,9 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
 
     async def go():
         leases = machine.leases()
-        await leases.take(hub, {"kb": ["git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"], "app": ["/srv/app.git"]})
+        await leases.take(
+            hub, {"kb": ["git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"], "app": ["/srv/app.git"]}
+        )
         exists = credentials.socket_path(machine.worker, RUN).exists()
         await leases.release()
         return leases, exists
@@ -788,7 +799,9 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
     leases, exists = asyncio.run(go())
     texts = [text for text, _ in machine.notes]
     assert texts == [
-        MISSING_NOTE.format(origin="git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", reason="no git secret"),
+        MISSING_NOTE.format(
+            origin="git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", reason="no git secret"
+        ),
         MISSING_NOTE.format(origin="notes", reason="the project registered no origin for it"),
         MISSING_NOTE.format(origin="/srv/app.git", reason=credentials.NOT_COVERED),
     ]

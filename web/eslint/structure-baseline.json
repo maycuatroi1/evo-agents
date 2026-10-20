@@ -286,7 +286,6 @@
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/dispatch-dialog.tsx": [
-      "src/components/workers/model.ts",
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/dispatch-fields.tsx": [
@@ -305,7 +304,6 @@
     ],
     "src/components/runs/plan-run-dialog.tsx": [
       "src/components/plans/status.tsx",
-      "src/components/workers/model.ts",
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/plan-run.tsx": [

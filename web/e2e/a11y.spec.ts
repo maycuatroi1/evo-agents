@@ -824,10 +824,11 @@ const PAGES: Entry[] = [
       const dialog = page.getByTestId("dispatch-dialog");
       await dialog.getByTestId("dispatch-step-2").click();
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
-      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
-      await expectNoSeriousViolations(page, "dispatch, automatic match");
-      await dialog.getByTestId("dispatch-target-pin").click();
-      await expect(dialog.getByTestId("dispatch-pinned-worker")).toBeVisible();
+      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
+      await expectNoSeriousViolations(page, "dispatch, worker filled in");
+      await dialog.getByTestId("dispatch-runtime-info").click();
+      await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
+      await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
   },
   {
@@ -1245,8 +1246,9 @@ const PAGES: Entry[] = [
       await page.locator("#main").getByTestId("run-plan").click();
       const dialog = page.getByTestId("plan-run-dialog");
       await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
-      await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "run plan dialog");
+      await dialog.getByTestId("plan-run-model-select").selectOption({ label: "Another model…" });
       await dialog.getByTestId("plan-run-model-input").fill("sonnet");
       await expect(dialog.getByTestId("plan-run-model-error")).toBeVisible();
     },

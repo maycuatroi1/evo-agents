@@ -421,7 +421,7 @@ them), which only an env secret for `CLAUDE_CODE_OAUTH_TOKEN` may carry. `EVO_CL
 
 The hub seals the whole set (access token, refresh token, end of the access token, identity) as one JSON object under
 the associated data `account-oauth:{secret id}` and keeps it in the `oauth_sealed`, `oauth_nonce` and `oauth_key_id`
-columns of the account's `accounts` row (schema 0064); no column holds a token in the clear, and no response shows one.
+columns of the account's `accounts` row (schema 0066); no column holds a token in the clear, and no response shows one.
 `expires_at` of the secret is the end of the access token. An account shows `auth: oauth` in `account list|show`
 (`token` for any other); a write of the secret without `oauth`, or its deletion, drops the sealed set. Running the
 command again for an existing NAME replaces the tokens alone, as `account login` does: same secret id, so weight,

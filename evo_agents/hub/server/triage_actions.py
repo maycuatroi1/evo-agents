@@ -15,8 +15,9 @@ chat run does, and the hub checks the frame again on each call, so an agent that
   someone in it does not clear is the 409 of the hub. A refusal is said in the thread, in the agent's name, and invites
   no one; the call answers 409 with the same reason.
 - POST /v1/worker/runs/{id}/triage/plan: change the ``verify`` or narrow the ``what`` of a pending step of the failed
-  run's plan, as a new revision under the owner's name (``plans.write_plan``), only as ``triage_rules.edit_problems``
-  allows; with ``rerun`` the rerun follows in the same transaction, so a refused rerun leaves the plan as it was.
+  run's plan, or of several at once (``steps``), as one new revision under the owner's name (``plans.write_plan``) and
+  one ``Decision:`` line, only as ``triage_rules.edit_problems`` allows; with ``rerun`` the rerun follows in the same
+  transaction, so a refused rerun leaves the plan as it was.
 
 Each success posts a line that starts with ``Decision:`` in the thread, in the agent's name, and writes an audit row
 (``run.triage_rerun``, ``run.triage_plan_edit``) that names the failed run, the agent and the chat run. Nothing here
@@ -60,6 +61,9 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 
 REASON_CHARS = 600
 OLD_VALUE_CHARS = 300  # how much of the old verify or what the Decision line keeps, to undo the edit by
+OLD_VALUES_CHARS = 2400  # how much of them all it keeps when one call edits many steps, shared out among them
+MAX_EDITS = 50  # steps one call may edit
+STEP_REASON_CHARS = 300
 Reason = Annotated[str, Field(min_length=1, max_length=REASON_CHARS, description="why, for the Decision: line")]
 
 
@@ -81,19 +85,59 @@ class TriageRerunIn(RerunOptions):
     reason: Reason
 
 
-class TriagePlanIn(RerunOptions):
+class StepEdit(BaseModel):
     step: str = Field(min_length=1, max_length=100, description="the step's id, a step that is pending")
     verify: str | None = Field(None, max_length=MAX_VALUE_CHARS, description="the new verify: no command fewer")
     what: str | None = Field(None, max_length=MAX_VALUE_CHARS, description="the new what: shorter than the old one")
+    why: str | None = Field(
+        None, min_length=1, max_length=STEP_REASON_CHARS, description="why this step, when the call's reason is not all"
+    )
+
+    @model_validator(mode="after")
+    def _something(self) -> StepEdit:
+        if self.verify is None and self.what is None:
+            raise ValueError(f"step {self.step}: give verify, what, or both")
+        return self
+
+
+class TriagePlanIn(RerunOptions):
+    step: str | None = Field(
+        None, min_length=1, max_length=100, description="the step's id, a step that is pending; or give steps"
+    )
+    verify: str | None = Field(None, max_length=MAX_VALUE_CHARS, description="the new verify: no command fewer")
+    what: str | None = Field(None, max_length=MAX_VALUE_CHARS, description="the new what: shorter than the old one")
+    steps: list[StepEdit] | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_EDITS,
+        description="several steps edited at once, in one revision and one Decision line, instead of step, verify "
+        "and what",
+    )
     if_revision: int = Field(ge=1, description="the revision of the plan the edit was made against")
     reason: Reason
     rerun: bool = Field(False, description="run the failed step again once the plan is edited, in the same step")
 
     @model_validator(mode="after")
     def _something(self) -> TriagePlanIn:
-        if self.verify is None and self.what is None:
-            raise ValueError("give verify, what, or both")
+        if self.steps is None:
+            if self.step is None:
+                raise ValueError("give step, or steps")
+            if self.verify is None and self.what is None:
+                raise ValueError("give verify, what, or both")
+            return self
+        if self.step is not None or self.verify is not None or self.what is not None:
+            raise ValueError("give steps, or step with verify and what, not both")
+        keys = [edit.step for edit in self.steps]
+        twice = sorted({key for key in keys if keys.count(key) > 1})
+        if twice:
+            raise ValueError(f"step {', '.join(twice)} is edited twice: give each step once")
         return self
+
+    def edits(self) -> list[StepEdit]:
+        """The steps the call edits, in its order."""
+        if self.steps is not None:
+            return self.steps
+        return [StepEdit(step=self.step, verify=self.verify, what=self.what)]
 
 
 class TriageInviteIn(BaseModel):
@@ -349,31 +393,52 @@ async def rerun(request: Request, run_id: RunId, body: TriageRerunIn, user: Curr
     return TriageActed(message_id=message_id, run_id=new_id, plan_revision=None)
 
 
-def _edited(held_body: dict, key: str, body: TriagePlanIn) -> dict:
-    """The plan with the ``verify`` or ``what`` of step ``key`` set as the call says; nothing else differs."""
-    try:
-        index = step_index(held_body, key)
-    except PlanProblem as exc:
-        raise HTTPException(422, str(exc)) from None
+def _edited(held_body: dict, edits: list[StepEdit]) -> dict:
+    """The plan with the ``verify`` or ``what`` of each step of ``edits`` set as the call says; nothing else differs."""
     new = copy.deepcopy(held_body)
-    for name in triage_rules.EDITABLE:
-        value = getattr(body, name)
-        if value is not None:
-            new["steps"][index][name] = value
+    for edit in edits:
+        try:
+            index = step_index(held_body, edit.step)
+        except PlanProblem as exc:
+            raise HTTPException(422, str(exc)) from None
+        for name in triage_rules.EDITABLE:
+            value = getattr(edit, name)
+            if value is not None:
+                new["steps"][index][name] = value
     return new
 
 
-def _was(step: dict, body: TriagePlanIn) -> str:
+def _fields(edit: StepEdit) -> str:
+    return " and ".join(name for name in triage_rules.EDITABLE if getattr(edit, name) is not None)
+
+
+def _was(step: dict, edit: StepEdit, limit: int) -> str:
     parts = []
     for name in triage_rules.EDITABLE:
-        if getattr(body, name) is not None:
-            old = " ".join(str(step.get(name, "")).split())
-            parts.append(f"old {name}: {runs.clip(old, OLD_VALUE_CHARS)}")
+        if getattr(edit, name) is not None:
+            old = " ".join(str(step.get(name) or "").split())
+            parts.append(f"old {name}: {runs.clip(old, limit) if old else 'none'}")
     return "; ".join(parts)
 
 
-async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) -> tuple[int, int, str]:
-    """Write the edit as a revision under the owner's name: (the old revision, the new one, what the old step said)."""
+def _decision(plan_id: str, was: int, now: int, edits: list[StepEdit], old: list[str], reason: str, again: str) -> str:
+    """The ``Decision:`` line of a plan edit: one line for one step; for several, a line and then one item per step with
+    what it said before, last, so a line the thread clips loses old values only."""
+    undo = f"Undo: `evo-agents hub plan history` has revision {was}.{again}"
+    if len(edits) == 1:
+        (edit,) = edits
+        return (
+            f"Decision: changed {_fields(edit)} of step {edit.step} of plan {plan_id} (revision {was} to {now}): "
+            f"{reason} {edit.why + '; ' if edit.why else ''}{old[0]}. {undo}"
+        )
+    head = f"Decision: changed {len(edits)} steps of plan {plan_id} (revision {was} to {now}): {reason} {undo}"
+    items = [f"- step {e.step}: {e.why + '; ' if e.why else ''}{said}" for e, said in zip(edits, old, strict=True)]
+    return "\n".join([head, *items])
+
+
+async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) -> tuple[int, int, list[str]]:
+    """Write the edits as one revision under the owner's name: (the old revision, the new one, what each step edited
+    said before, in the order of the edits)."""
     failed = frame.failed
     if failed.plan_id is None:
         raise HTTPException(422, f"run {failed.id} has no plan to edit: it is a run that writes one; ask the owner")
@@ -382,15 +447,17 @@ async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) ->
     held = await plan_routes._visible(conn, frame.access, failed.plan_id, None, lock=True)
     if held.revision != body.if_revision:
         raise plan_routes._stale(frame.access, held, body.if_revision)
-    new = _edited(held.body, body.step, body)
+    edits = body.edits()
+    new = _edited(held.body, edits)
     problems = triage_rules.edit_problems(held.body, new, _repos(failed))
     if problems:
         raise plan_routes.PlanError(422, f"plan {held.plan_id}: {'; '.join(problems)}; nothing was written")
     plan_routes._schema_checked(new, held.plan_id)
     owner = Principal(frame.owner.user_id, frame.owner.login, False, frame.owner.token_id, MACHINE, "")
     written = await plan_routes.write_plan(conn, frame.access, owner, new, if_revision=held.revision)
-    old_step = held.body["steps"][step_index(held.body, body.step)]
-    return held.revision, written.revision, _was(old_step, body)
+    limit = min(OLD_VALUE_CHARS, OLD_VALUES_CHARS // len(edits))
+    old = [_was(held.body["steps"][step_index(held.body, edit.step)], edit, limit) for edit in edits]
+    return held.revision, written.revision, old
 
 
 @worker_router.post(
@@ -400,23 +467,21 @@ async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) ->
     responses={**REFUSALS, **plan_routes.REFUSALS},
 )
 async def edit_plan(request: Request, run_id: RunId, body: TriagePlanIn, user: CurrentUser):
-    """Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new
-    revision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run
-    again in the same transaction, and a refused rerun leaves the plan as it was."""
+    """Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or
+    several (``steps``), as one new revision under their name and one ``Decision:`` line, inside the frame
+    (``triage_rules.edit_problems``); with ``rerun`` the failed step is run again in the same transaction, and a refused
+    rerun leaves the plan as it was."""
     try:
         async with request.app.state.engine.begin() as conn:
             frame = await _frame(conn, user, run_id)
             was, now, old = await _edit_plan(conn, frame, body)
             new_id = await _rerun(conn, frame, body, edited=True) if body.rerun else None
-            fields = " and ".join(name for name in triage_rules.EDITABLE if getattr(body, name) is not None)
-            text = (
-                f"Decision: changed {fields} of step {body.step} of plan {frame.failed.plan_id} (revision {was} to "
-                f"{now}): {body.reason} {old}. Undo: `evo-agents hub plan history` has revision {was}."
-                + (f" Ran run #{frame.failed.id} again as run #{new_id}." if new_id else "")
-            )
+            again = f" Ran run #{frame.failed.id} again as run #{new_id}." if new_id else ""
+            text = _decision(frame.failed.plan_id, was, now, body.edits(), old, body.reason, again)
             message_id = await _said(conn, frame, text)
+            keys = ",".join(edit.step for edit in body.edits())
             tail = f" revision:{now}" + (f" rerun:{new_id}" if new_id else "")
-            await _audit(conn, frame, audit.RUN_TRIAGE_PLAN_EDIT, f" step:{body.step}{tail}")
+            await _audit(conn, frame, audit.RUN_TRIAGE_PLAN_EDIT, f" step:{keys}{tail}")
     except plan_routes.PlanError as exc:
         return plan_routes._refusal(request, exc)
     log.info("triage plan edit", extra={"run_id": frame.failed.id, "revision": now, "agent_run_id": run_id})

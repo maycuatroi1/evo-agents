@@ -17,9 +17,11 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents.hub import runs
+
 PACKAGE = "evo-ak"
-REPO_URL = "https://github.com/maycuatroi1/evo-agents"
-TAG = "nightly"
+REPO_URL = runs.NIGHTLY_REPO_URL  # the hub reads where its tag points from the same place
+TAG = runs.NIGHTLY_TAG
 COMMAND = "evo-agents"
 RECEIPT = "uv-receipt.toml"
 COMMIT = re.compile(r"^([0-9a-f]{40}|[0-9a-f]{64})$")  # OBJECT_NAME of the hub

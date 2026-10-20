@@ -7734,6 +7734,52 @@
         "schema": "SrsVersion"
       }
     },
+    "hub srs archive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SrsDocumentSummary"
+      }
+    },
     "hub srs export": {
       "positionals": [
         {
@@ -7887,6 +7933,14 @@
         },
         {
           "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -7910,6 +7964,68 @@
           "archived_at"
         ],
         "schema": "SrsDocumentSummary"
+      }
+    },
+    "hub srs retire": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "codes",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--summary"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "document",
+          "version",
+          "dry_run",
+          "dropped"
+        ],
+        "schema": "SrsRetireResult"
       }
     },
     "hub srs show": {
@@ -8022,6 +8138,113 @@
           ],
           "value": "string",
           "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "reviews"
+        ],
+        "schema": "SrsVersion"
+      }
+    },
+    "hub srs unarchive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SrsDocumentSummary"
+      }
+    },
+    "hub srs withdraw": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--comment"
+          ],
+          "value": "string",
+          "required": false,
           "repeatable": false
         },
         {
@@ -9472,11 +9695,19 @@
           "name": "step",
           "metavar": "STEP",
           "value": "string",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
       "options": [
+        {
+          "flags": [
+            "--edits"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
         {
           "flags": [
             "--if-revision"
@@ -9603,7 +9834,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.23.0"
+      "version": "0.24.0"
     },
     "paths": {
       "/v1/health": {
@@ -16496,6 +16727,176 @@
           "summary": "Undrain",
           "description": "Let a drained worker claim runs again; its owner only.",
           "operationId": "undrain_v1_workers__worker_id__undrain_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/update-now": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Ask Update Now",
+          "description": "Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates\nand claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already.",
+          "operationId": "ask_update_now_v1_workers__worker_id__update_now_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/update-now/cancel": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Cancel Update Now",
+          "description": "Withdraw the worker's open Update now; the daemon claims runs again.",
+          "operationId": "cancel_update_now_v1_workers__worker_id__update_now_cancel_post",
           "parameters": [
             {
               "name": "worker_id",
@@ -28340,7 +28741,7 @@
             "plugins"
           ],
           "summary": "List Documents",
-          "description": "The BA documents of the project the caller sees, by slug, each with its latest version.",
+          "description": "The BA documents of the project the caller sees, by slug, each with its latest version; the archived ones only\nwith ``all``.",
           "operationId": "list_documents_v1_x_srs__project__documents_get",
           "parameters": [
             {
@@ -28352,6 +28753,18 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
               }
+            },
+            {
+              "name": "all",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the archived documents too",
+                "default": false,
+                "title": "All"
+              },
+              "description": "the archived documents too"
             },
             {
               "name": "X-Evo-Sink",
@@ -29532,6 +29945,136 @@
           }
         }
       },
+      "/v1/x/srs/{project}/documents/{slug}/retire": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Retire Items",
+          "description": "Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the\ndocument's next version, a draft built on the latest through the same save as any other, so its checks hold and a\ncode dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no\nitem of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes\nnothing.",
+          "operationId": "retire_items_v1_x_srs__project__documents__slug__retire_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsRetireIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsRetireResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
         "post": {
           "tags": [
@@ -29735,6 +30278,393 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Withdraw Version",
+          "description": "Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a\ncomment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves\nit withdrawn. The agent of a run never withdraws one.",
+          "operationId": "withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SrsWithdrawIn"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/archive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Archive Document",
+          "description": "Archive a document, as an admin of the project: it leaves the list of documents (``all`` lists it), @ba's\nsearch and the knowledge graph, is still read by its slug, and takes no write until it is unarchived; its codes\nstay held and its slug taken. 409 when it is archived already.",
+          "operationId": "archive_document_v1_x_srs__project__documents__slug__archive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDocumentSummary"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/unarchive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Unarchive Document",
+          "description": "Open an archived document again, as an admin of the project. 409 when it is not archived.",
+          "operationId": "unarchive_document_v1_x_srs__project__documents__slug__unarchive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDocumentSummary"
                   }
                 }
               }
@@ -37185,7 +38115,7 @@
             "worker protocol"
           ],
           "summary": "Edit Plan",
-          "description": "Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new\nrevision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run\nagain in the same transaction, and a refused rerun leaves the plan as it was.",
+          "description": "Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or\nseveral (``steps``), as one new revision under their name and one ``Decision:`` line, inside the frame\n(``triage_rules.edit_problems``); with ``rerun`` the failed step is run again in the same transaction, and a refused\nrerun leaves the plan as it was.",
           "operationId": "edit_plan_v1_worker_runs__run_id__triage_plan_post",
           "parameters": [
             {
@@ -48941,6 +49871,28 @@
               "type": "array",
               "title": "Kg Sync",
               "description": "for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise"
+            },
+            "nightly": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NightlyRead"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065"
+            },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now"
             }
           },
           "type": "object",
@@ -52403,6 +53355,28 @@
           ],
           "title": "NightSummary",
           "description": "One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review."
+        },
+        "NightlyRead": {
+          "properties": {
+            "commit": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Commit"
+            },
+            "read_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Read At",
+              "description": "when the hub read it; the hub reads it once a minute"
+            }
+          },
+          "type": "object",
+          "required": [
+            "commit",
+            "read_at"
+          ],
+          "title": "NightlyRead",
+          "description": "Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly)."
         },
         "NodeDetail": {
           "properties": {
@@ -62365,6 +63339,17 @@
               ],
               "title": "Error At",
               "description": "when that attempt failed"
+            },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none"
             }
           },
           "type": "object",
@@ -63548,7 +64533,8 @@
                     "draft",
                     "in_review",
                     "approved",
-                    "superseded"
+                    "superseded",
+                    "withdrawn"
                   ]
                 },
                 {
@@ -63674,7 +64660,8 @@
                     "draft",
                     "in_review",
                     "approved",
-                    "superseded"
+                    "superseded",
+                    "withdrawn"
                   ]
                 },
                 {
@@ -64469,6 +65456,126 @@
           ],
           "title": "SrsRefIn"
         },
+        "SrsRetireIn": {
+          "properties": {
+            "codes": {
+              "items": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Codes",
+              "description": "the codes or aliases of the items to retire"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Summary",
+              "description": "the new version's; from the codes if left out",
+              "default": ""
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "codes"
+          ],
+          "title": "SrsRetireIn"
+        },
+        "SrsRetireResult": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version saved, a draft; null for a dry run"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "dropped": {
+              "items": {
+                "$ref": "#/components/schemas/SrsRetiredItem"
+              },
+              "type": "array",
+              "title": "Dropped",
+              "description": "every item the version drops: each one retired and the items under it, in document order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "version",
+            "dry_run",
+            "dropped"
+          ],
+          "title": "SrsRetireResult"
+        },
+        "SrsRetiredItem": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "kind",
+            "code",
+            "title"
+          ],
+          "title": "SrsRetiredItem"
+        },
         "SrsReview": {
           "properties": {
             "reviewer": {
@@ -64634,7 +65741,8 @@
                 "draft",
                 "in_review",
                 "approved",
-                "superseded"
+                "superseded",
+                "withdrawn"
               ],
               "title": "State"
             },
@@ -64741,7 +65849,8 @@
                 "draft",
                 "in_review",
                 "approved",
-                "superseded"
+                "superseded",
+                "withdrawn"
               ],
               "title": "State"
             },
@@ -64849,6 +65958,27 @@
           ],
           "title": "SrsVersionDetail",
           "description": "A version with its content and what is wrong with it."
+        },
+        "SrsWithdrawIn": {
+          "properties": {
+            "comment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comment",
+              "description": "why, kept as a comment on the version"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SrsWithdrawIn"
         },
         "StateCounts": {
           "properties": {
@@ -65131,6 +66261,62 @@
           ],
           "title": "SteadyWait",
           "description": "The worker a queued attempt waits for: the run before it was lost on that worker, which may take this one only\nonce it is steady, its heartbeats come for 120 seconds with none more than 30 seconds late (runs.STEADY_SECONDS,\nruns.STEADY_GAP_SECONDS)."
+        },
+        "StepEdit": {
+          "properties": {
+            "step": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Step",
+              "description": "the step's id, a step that is pending"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "the new verify: no command fewer"
+            },
+            "what": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "What",
+              "description": "the new what: shorter than the old one"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "why this step, when the call's reason is not all"
+            }
+          },
+          "type": "object",
+          "required": [
+            "step"
+          ],
+          "title": "StepEdit"
         },
         "StepReadiness": {
           "properties": {
@@ -68997,11 +70183,18 @@
               "default": false
             },
             "step": {
-              "type": "string",
-              "maxLength": 100,
-              "minLength": 1,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Step",
-              "description": "the step's id, a step that is pending"
+              "description": "the step's id, a step that is pending; or give steps"
             },
             "verify": {
               "anyOf": [
@@ -69029,6 +70222,23 @@
               "title": "What",
               "description": "the new what: shorter than the old one"
             },
+            "steps": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/StepEdit"
+                  },
+                  "type": "array",
+                  "maxItems": 50,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps",
+              "description": "several steps edited at once, in one revision and one Decision line, instead of step, verify and what"
+            },
             "if_revision": {
               "type": "integer",
               "minimum": 1.0,
@@ -69051,7 +70261,6 @@
           },
           "type": "object",
           "required": [
-            "step",
             "if_revision",
             "reason"
           ],
@@ -69142,6 +70351,51 @@
             "link"
           ],
           "title": "TriageThread"
+        },
+        "UpdateNowReport": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "the request it is about: requested_at of the answer's update_now"
+            },
+            "ended": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended",
+              "description": "null while the daemon carries it out; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with either, and with a value it does not know ends nothing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "UpdateNowReport",
+          "description": "Where the daemon stands with its owner's Update now (update_now of the heartbeat answer)."
+        },
+        "UpdateNowRequest": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when it was asked for; it names the request in self_update.update_now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "UpdateNowRequest",
+          "description": "An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends."
         },
         "UploadItem": {
           "properties": {
@@ -69834,6 +71088,28 @@
               ],
               "description": "what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it"
             },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkerUpdateNow"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the last Update now its owner or a hub admin asked for, open or ended; null when none was"
+            },
+            "nightly": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NightlyRead"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -69949,6 +71225,8 @@
             "plugins",
             "version_locked",
             "self_update",
+            "update_now",
+            "nightly",
             "projects",
             "runtimes",
             "checkouts",
@@ -70285,6 +71563,17 @@
               "title": "Error At",
               "description": "when that attempt failed"
             },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none"
+            },
             "since": {
               "anyOf": [
                 {
@@ -70440,6 +71729,68 @@
           "type": "object",
           "title": "WorkerUpdate",
           "description": "What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays."
+        },
+        "WorkerUpdateNow": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when its owner or a hub admin asked for it"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "when it ended; null while the daemon carries it out"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "cancelled",
+                    "failed",
+                    "impossible"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it failed or was impossible, as the daemon or the hub said"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at",
+            "ended_at",
+            "outcome",
+            "reason"
+          ],
+          "title": "WorkerUpdateNow",
+          "description": "The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now)."
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {

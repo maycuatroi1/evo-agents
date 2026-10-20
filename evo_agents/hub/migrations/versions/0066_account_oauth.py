@@ -1,7 +1,7 @@
 """Account OAuth: the sealed set of tokens of an account that signed in with OAuth.
 
-Revision ID: 0064
-Revises: 0063
+Revision ID: 0066
+Revises: 0065
 Create Date: 2026-10-20
 
 ``evo-agents hub account oauth-login`` puts the tokens Claude's OAuth gave a member on the hub: an access token, a
@@ -12,14 +12,14 @@ sealed set is an account of a token of ``claude setup-token``, or of any other e
 this revision: nothing that exists changes meaning. The three columns are all set or all null.
 
 Going back drops the three columns and the tokens with them: an OAuth account keeps the access token its secret holds,
-which is the schema that schema 0063 runs on.
+which is the schema that schema 0065 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0064"
-down_revision = "0063"
+revision = "0066"
+down_revision = "0065"
 branch_labels = None
 depends_on = None
 

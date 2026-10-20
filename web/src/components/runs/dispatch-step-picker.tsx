@@ -40,7 +40,7 @@ export function StepPicker({
   const allPicked = readyKeys.length > 0 && readyKeys.every((key) => selected.includes(key));
 
   return (
-    <Section legend={t("steps")} hint={t("stepsHint")} testId="dispatch-steps">
+    <Section legend={t("steps")} info={t("stepsHint")} testId="dispatch-steps">
       {state.isPending && steps.length === 0 ? (
         <div className="flex flex-col gap-2" aria-hidden="true">
           <Skeleton className="h-12 w-full" />

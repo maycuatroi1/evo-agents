@@ -32,11 +32,13 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
 
 - **A document** has a slug, unique in the project, a title, a kind (`srs` or `spec`), its template and a label, the
   project's unless an admin gives it another when the document is made. Every row of a document carries that label,
-  and a member reads the document only when the sink of their session clears it.
+  and a member reads the document only when the sink of their session clears it. An admin can archive a document
+  (`archived_at`, section Archiving a document).
 - **A version** is one save of a document, never changed after. A document's versions form one straight line, each
-  built on the one before it: `draft`, `in_review`, `approved`, and `superseded` once a newer version is approved.
-  Each version keeps its author, its summary, its review round and, for a version @ba drafted, the run that drafted it
-  (`drafted_by_run`).
+  built on the one before it: `draft`, `in_review`, `approved`, and `superseded` once a newer version is approved; or
+  `withdrawn`, when its author or an admin takes it out of review for good (section Approval). `superseded` and
+  `withdrawn` are last states. Each version keeps its author, its summary, its review round and, for a version @ba
+  drafted, the run that drafted it (`drafted_by_run`).
 - **An item** is a part of a version: a section, a use case, a business rule, a screen, a non-functional requirement
   (`nfr`), a common business rule (`cbr`), a glossary, the approval page or the revision history. The hub gives each
   item a key and keeps it across versions, so an item renamed, moved or renumbered is the same item. A use case keeps
@@ -54,7 +56,9 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
 
 Migration 0046 adds the nine tables, each with the plugin's prefix: `srs_documents`, `srs_versions`, `srs_texts` (each
 Markdown body once, by SHA-256), `srs_items`, `srs_codes`, `srs_item_versions`, `srs_refs`, `srs_reviews` and
-`srs_comments`. Going back to 0045 drops them.
+`srs_comments`. Going back to 0045 drops them. Migration 0064 lets `srs_versions.state` be `withdrawn`, which carries
+`decided_at`, the moment of the withdrawal; going back to 0063 makes every withdrawn version a draft again, without
+`decided_at`.
 
 ## Who does what
 
@@ -62,9 +66,10 @@ The routes answer a member with a grant on a project that enabled the plugin, an
 
 | Who | May |
 | --- | --- |
-| a reader | read the documents, their versions, items, comparisons, exports and comments |
-| a writer | import Markdown, save a version, submit a draft, review a version (section Approval), comment and close a thread |
-| an admin | what a writer may, plus drop a coded item and give a new document a label of its own |
+| a reader | read the documents, their versions, items, comparisons, exports and comments, archived documents included |
+| a writer | import Markdown, save a version, submit a draft, review a version (section Approval), withdraw a version of their own in review, comment and close a thread |
+| an admin | what a writer may, plus drop a coded item, retire items by their codes (`retire`), withdraw any version in review (`withdraw`), archive a document (`archive`) and open it again (`unarchive`), and give a new document a label of its own |
+| the agent of a run | what the tools of @ba allow (section @ba); never approve, return or withdraw a version, retire items, archive or unarchive a document |
 
 Reads go through the sink `X-Evo-Sink` names, else the project's hub sink. A refusal is the hub's error body, with the
 problems that refused it in `detail`; nothing is written.
@@ -85,6 +90,26 @@ texts of the item, and the member merges them by hand. Each save is checked:
   use case does not have, and what reading the Markdown noted (a heading that skips a level, one the template does not
   name, coded rows kept as text).
 
+### Retiring items by code
+
+An admin drops coded items by their codes, without a key and without importing the whole Markdown again:
+
+```sh
+evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run   # the items it would drop, nothing written
+evo-agents hub srs retire orders "UC ORD-1" "UC RET-1" --project evo-agents --summary "Out of this release"
+```
+
+Each code or alias names one item of the latest version, compared as codes are compared (`uc  ord-1` is `UC ORD-1`).
+The item leaves the next version with every item under it: retiring `UC ORD-1` drops `BR ORD1-1` and `BR ORD1-2` too,
+and naming one of them as well adds nothing. The next version is a draft built on the latest by the same save as any
+other, so every check of a save holds and a code retired is never given again; its summary is `Retired UC ORD-1`
+unless `--summary` gives one. It goes through submit and review as any version. The command prints the new version's
+number and each item dropped; `--dry-run` prints the items only and writes nothing.
+
+A code that no item of the latest version holds, one retired before included, refuses the whole request: a 422 that
+lists each such code as a `code_unknown` problem saying why (dropped in version N, a code of another document, or held
+by no item), and nothing is written. A writer who is not an admin, and the agent of a run, get 403.
+
 ## Approval
 
 A writer submits a draft that has no error; it goes to `in_review` and its round goes up by one. A writer then
@@ -100,8 +125,39 @@ approves it or asks for changes, with these rules:
   round. Without a policy, or one that requires no role, one approval is enough. Optional roles approve without being
   waited for.
 - A request for changes sends the version back to `draft`. Submitted again, it is a new round.
-- Approving a version supersedes every older one and, when the project has a knowledge config on the hub, queues a
-  build of its knowledge graph.
+- Approving a version supersedes every older one but a withdrawn one and, when the project has a knowledge config on
+  the hub, queues a build of its knowledge graph.
+
+**Withdrawing a version.** The author of a version in review, while they hold writer, or an admin of the project,
+takes it out of review for good:
+
+```sh
+evo-agents hub srs withdraw orders 2 --project evo-agents --comment "The payment gateway is not chosen yet"
+```
+
+The version becomes `withdrawn`, a last state: it is never submitted, reviewed or approved again, and approving a
+later version leaves it withdrawn. `--comment` keeps the reason as a comment on that version, in the same
+transaction. Another writer and the agent of a run get 403, and a version that is not in review 409. To change a
+withdrawn version, save a new one: the next version is built on the latest, withdrawn or not.
+
+## Archiving a document
+
+An admin of the project archives a document that is no longer in use, and opens it again; nothing is deleted:
+
+```sh
+evo-agents hub srs archive orders --project evo-agents
+evo-agents hub srs list --project evo-agents --all      # the archived documents too, with when each was archived
+evo-agents hub srs unarchive orders --project evo-agents
+```
+
+An archived document leaves `srs list` (`GET documents` without `all=true`), the documents `srs__read` lists, the hits
+of `srs__search` and the knowledge graph; archiving and unarchiving queue a build of the graph when the project has a
+knowledge config. Reading it by its slug still works: `show`, its versions, items, comparisons, exports and comments.
+It takes no write until it is unarchived: saving or importing a version, a dry run of an import, submit, review,
+withdraw, retire, comments and their resolve, and `srs__propose` and `srs__comment` answer 409 with the command that
+unarchives it. Its codes stay held in the project, so an import or a save in another document that uses one is
+refused as before, and its slug stays taken. Archiving an archived document, or unarchiving one that is not, is a
+409; a writer, a reader and the agent of a run get 403.
 
 ## Markdown: import and export
 
@@ -150,7 +206,13 @@ evo-agents hub srs show orders --project evo-agents --item "UC ORD-1" # one item
 evo-agents hub srs submit orders 2 --project evo-agents               # a draft to review
 evo-agents hub srs approve orders 2 --project evo-agents --role qa
 evo-agents hub srs approve orders 2 --project evo-agents --request-changes --comment "UC ORD-2 has no actor"
+evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # out of review for good
+evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # what retiring would drop
+evo-agents hub srs retire orders "UC ORD-1" --project evo-agents      # the next version, a draft, without it
 evo-agents hub srs export orders --project evo-agents --version 2 --output orders-v2.md
+evo-agents hub srs archive orders --project evo-agents                # out of list, search and the graph
+evo-agents hub srs list --project evo-agents --all                    # archived documents too
+evo-agents hub srs unarchive orders --project evo-agents
 ```
 
 ## Routes
@@ -159,7 +221,7 @@ Under `/v1/x/srs/{project}/`:
 
 | Route | What |
 | --- | --- |
-| `GET documents` | the documents the caller sees, each with its latest and approved versions |
+| `GET documents` (`?all=true`) | the documents the caller sees, each with its latest and approved versions; the archived ones only with `all` |
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
 | `GET documents/{slug}/versions/{number}` | a version whole: its items and its problems |
@@ -170,6 +232,9 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/versions` | changes made on `base_version` as the next version (201), 409 on a conflict |
 | `POST documents/{slug}/versions/{number}/submit` | a draft to review |
 | `POST documents/{slug}/versions/{number}/reviews` | `{"decision": "approve" \| "request_changes", "role", "body"}` |
+| `POST documents/{slug}/versions/{number}/withdraw` | `{"comment"}`, optional: a version in review out of review for good |
+| `POST documents/{slug}/retire` | `{"codes", "summary", "dry_run"}`: the next version without those items; `dropped` lists each item |
+| `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |
 | `GET` and `POST documents/{slug}/comments`, `POST .../comments/{id}/resolve` | threads on a document, a version or an item |
 
 The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,
@@ -180,13 +245,13 @@ documents.
 ## The knowledge graph
 
 The plugin is a source of the project's knowledge graph (extension point `kg_sources`, `docs/plugins.md`): the version
-of each document approved last, never a draft or a version in review. A document is a Document node, each heading a
-Section, a use case a UseCase node (`usecase:UC ORD-1`) and a business rule, an NFR or a common business rule a
-Requirement node (`requirement:BR ORD1-2`), with the id a mention of the code anywhere in the graph gets, so a plan
-step or a document that names the code reaches the node. A section `defines` its coded items, a business rule is
-`child_of` its use case, and a use case `mentions` the section of each screen it uses. A task of the plugin tasks that
-links an item `implements` it, so the graph traces a use case to its tasks, their plan steps and the commits of those
-steps (`docs/kg.md`).
+of each document approved last, never a draft or a version in review, and nothing of an archived document. A document is
+a Document node, each heading a Section, a use case a UseCase node (`usecase:UC ORD-1`) and a business rule, an NFR or a
+common business rule a Requirement node (`requirement:BR ORD1-2`), with the id a mention of the code anywhere in the
+graph gets, so a plan step or a document that names the code reaches the node. A section `defines` its coded items, a
+business rule is `child_of` its use case, and a use case `mentions` the section of each screen it uses. A task of the
+plugin tasks that links an item `implements` it, so the graph traces a use case to its tasks, their plan steps and the
+commits of those steps (`docs/kg.md`).
 
 ## @ba
 
@@ -244,5 +309,6 @@ again. When the type is off, `run_as` no longer holds writer, or the type's runs
 hours, the version goes to review without @ba's review and the hub's log says why. The audit log keeps
 `task.dispatch`, with `run_as` as its actor.
 
-**What @ba never does**: approve or return a version, drop an item, change or give again a code, archive a document,
-change the plugin's config, or change the files of the repositories its run checks out.
+**What @ba never does**: approve, return or withdraw a version, drop or retire an item, change or give again a code,
+archive or unarchive a document, change the plugin's config, or change the files of the repositories its run checks
+out.

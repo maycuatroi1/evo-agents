@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
 import { agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
@@ -18,20 +17,20 @@ import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
-import { AccountField } from "./account-field";
-import { accountField, BY_RULES } from "./account-model";
+import { AccountField, useAccountChoice } from "./account-field";
+import { accountField } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
-import { Choice, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
+import { Outlook, Section, Tile, WorkerField, type WorkerChoice } from "./dispatch-fields";
+import { FieldLabel } from "./field-label";
 import { StepPicker } from "./dispatch-step-picker";
 import { readySelection, selectedRepos } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { dispatchOutlook, dispatchWorkers } from "./model";
+import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, outlookFine, runtimeCount } from "./model";
 import {
   type Approval,
   APPROVALS,
   DEFAULT_TIMEOUT,
   MAX_DISPATCH_STEPS,
-  MODES,
   readyStepsQuery,
   type RequestedRuntime,
   type Run,
@@ -39,6 +38,7 @@ import {
   RUNTIMES,
   TIMEOUT_CHOICES,
 } from "./queries";
+import { ModeField, RuntimeField } from "./runtime-field";
 
 type Props = {
   project: string;
@@ -55,8 +55,9 @@ type Props = {
 
 /**
  * Dispatching runs: the ready steps of an active plan, each one queued as a run that a worker of the visitor claims.
- * Steps that are not ready are listed with the reason and cannot be picked. The footer says which of the visitor's
- * workers could take the runs now. The content mounts each time the dialog opens, so it starts from the defaults.
+ * Steps that are not ready are listed with the reason and cannot be picked. The dialog fills the worker and the account
+ * with the ones it finds for the runs, which the visitor may change; what a field means shows from its info icon. The
+ * content mounts each time the dialog opens, so it starts from the defaults.
  */
 export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step, onCloseAutoFocus }: Props) {
   const write = useDispatch(project);
@@ -128,20 +129,20 @@ function DispatchForm({
 
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [mode, setMode] = useState<RunMode>("headless");
-  const [target, setTarget] = useState<Target>("auto");
-  const [pinnedChoice, setPinnedChoice] = useState<number | null>(null);
+  const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
-  const [account, setAccount] = useState(BY_RULES);
   const agents = useAgentChoice(project);
 
-  // The workers of the visitor's for the project, then those the agent lets claim the runs.
+  // The workers of the visitor's for the project, then those the agent lets claim the runs, and the one found for them.
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
   const problems = agentProblems(agents.agent, { runtime, workers: own });
-  const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
-  const repos = selectedRepos(selected, steps);
-  const outlook = dispatchOutlook(selected.length, mine, { project, runtime, repos }, pinned);
+  const request = { project, runtime, repos: selectedRepos(selected, steps) };
+  const pinned = chosenWorker(mine, request, workerPick, Math.max(selected.length, 1));
+  const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
+  const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
+  const outlook = dispatchOutlook(selected.length, mine, request, pinned);
   const tooMany = selected.length > MAX_DISPATCH_STEPS;
   const pending = write.isPending;
 
@@ -191,7 +192,7 @@ function DispatchForm({
             <Send className="size-5 text-muted-foreground" aria-hidden="true" />
             {t("title")}
           </DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
+          <DialogDescription className="sr-only">{t("description")}</DialogDescription>
         </div>
         <DialogClose asChild>
           <Button type="button" variant="ghost" size="icon-lg" className="-mt-1 -mr-1 shrink-0" aria-label={t("close")} disabled={pending}>
@@ -233,15 +234,12 @@ function DispatchForm({
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">
-              {t("timeout")}
-            </label>
+            <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="dispatch-timeout-info" />
             <NativeSelect
               id={`${ids}-timeout`}
               value={String(timeout)}
               onChange={(event) => setTimeoutMinutes(Number(event.target.value))}
               className="w-full md:[&_select]:h-9"
-              aria-describedby={`${ids}-timeout-hint`}
               data-testid="dispatch-timeout"
             >
               {TIMEOUT_CHOICES.map((minutes) => (
@@ -250,9 +248,6 @@ function DispatchForm({
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-            <p id={`${ids}-timeout-hint`} className="text-xs text-muted-foreground">
-              {t("timeoutHint")}
-            </p>
           </div>
         </div>
 
@@ -270,67 +265,38 @@ function DispatchForm({
 
         <AgentField choice={agents} problems={problems} disabled={pending} />
 
-        <Section legend={t("runtime")} testId="dispatch-runtime">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(["any", ...RUNTIMES] as const).map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="runtime"
-                value={value}
-                checked={runtime === value}
-                onChange={() => setRuntime(value)}
-                title={value === "any" ? t("runtimeAny") : KNOWN_RUNTIMES[value]}
-                hint={<RuntimeHint runtime={value} workers={mine} loaded={workersState.isSuccess} />}
-              />
-            ))}
-          </div>
-        </Section>
+        <RuntimeField value={runtime} onChange={setRuntime} reach={reach} />
 
-        <Section legend={t("mode")} testId="dispatch-mode">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {MODES.map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="mode"
-                value={value}
-                checked={mode === value}
-                onChange={() => setMode(value)}
-                title={t(`modes.${value}`)}
-                hint={t(`modes.${value}Hint`)}
-              />
-            ))}
-          </div>
-        </Section>
-
-        <WorkerPicker
-          project={project}
-          workers={mine}
-          registered={own.length}
-          loading={workersState.isPending || me.isPending}
-          target={target}
-          pinned={pinned}
-          onTarget={setTarget}
-          onPinned={setPinnedChoice}
-        />
-
-        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
-
-        <Section legend={t("approval")} testId="dispatch-approval">
-          {APPROVALS.map((value) => (
-            <Choice
-              key={value}
-              type="radio"
-              name="approval"
-              value={value}
-              checked={approval === value}
-              onChange={() => setApproval(value)}
-              title={t(`approvals.${value}`)}
-              hint={t(`approvals.${value}Hint`)}
-            />
-          ))}
-        </Section>
+        <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+          <WorkerField
+            project={project}
+            fits={mine.map((worker) => fitWorker(worker, request))}
+            value={pinned}
+            onChange={setWorkerPick}
+            loading={workersState.isPending || me.isPending}
+            registered={own.length}
+            subject="runs"
+            note={outlookFine(outlook) || outlook.kind === "noWorker" ? null : <Outlook outlook={outlook} project={project} className="text-xs" />}
+            disabled={pending}
+          />
+          <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+          <ModeField value={mode} onChange={setMode} />
+          <Section legend={t("approval")} info={t("approvalInfo")} testId="dispatch-approval">
+            <div className="grid grid-cols-2 gap-2">
+              {APPROVALS.map((value) => (
+                <Tile
+                  key={value}
+                  name="approval"
+                  value={value}
+                  checked={approval === value}
+                  onChange={() => setApproval(value)}
+                  title={t(`approvals.${value}`)}
+                  testId={`dispatch-approval-${value}`}
+                />
+              ))}
+            </div>
+          </Section>
+        </div>
 
         {tooMany ? (
           <p className="text-sm font-medium text-danger" role="alert">
@@ -340,8 +306,8 @@ function DispatchForm({
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
-      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} />}
+      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button
