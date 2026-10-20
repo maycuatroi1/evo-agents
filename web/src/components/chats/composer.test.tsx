@@ -39,8 +39,8 @@ const CHAT = {
   created_by: "octo",
   created_at: "2026-10-14T08:00:00Z",
   people: [
-    { login: "octo", added_by: "octo", added_at: "2026-10-14T08:00:00Z" },
-    { login: "mai", added_by: "octo", added_at: "2026-10-14T08:00:00Z" },
+    { login: "octo", added_by: "octo", added_at: "2026-10-14T08:00:00Z", avatar_url: null },
+    { login: "mai", added_by: "octo", added_at: "2026-10-14T08:00:00Z", avatar_url: null },
   ],
   agents: [agent("reviewer", { name: "Code reviewer" }), agent("fixer", { name: "Fixer" }), agent("demo", { name: "Demo", is_default: true })],
   label: [],
@@ -48,6 +48,8 @@ const CHAT = {
   last_seq: 3,
   last_read_seq: 3,
   budget_usd: 5,
+  kind: "group",
+  image_url: null,
 } satisfies Chat;
 
 function setup(onSent = vi.fn()) {
@@ -120,6 +122,46 @@ describe("ChatComposer", () => {
     await user.click(screen.getByTestId("chat-composer-send"));
     expect(await screen.findByRole("alert")).toHaveTextContent("Hub báo: @reviewer is not in this chat");
     expect(box).toHaveValue("lần nữa");
+  });
+});
+
+describe("ChatComposer answering one message", () => {
+  it("says which message it answers, sends the reply to it, and Escape or Cancel the reply leaves it", async () => {
+    const sent: GroupMessage = { id: 10, chat_id: 7, seq: 5, thread_root_id: 8, reply_count: 0, author: { kind: "person", login: "octo", name: "octo", deleted: false }, run_id: null, body: "còn retries?", mentions: [], reactions: [], label: [], created_at: "2026-10-14T09:01:00Z" };
+    api.answer = () => Response.json(sent, { status: 201 });
+    const onCancel = vi.fn();
+    const onSent = vi.fn();
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    renderVi(
+      <QueryClientProvider client={client}>
+        <ChatComposer
+          chat={{ ...CHAT, kind: "direct" }}
+          me="octo"
+          replyTo={9}
+          onSent={onSent}
+          label="Tin"
+          placeholder="Nhắn cho Code reviewer"
+          hint="Đi tiếp cùng session"
+          testId="chat-composer"
+          replying={{ name: "Code reviewer", text: "Đã sửa wait test.", onCancel }}
+        />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    const box = screen.getByTestId("chat-composer-text");
+    expect(screen.getByTestId("chat-composer-replying")).toHaveTextContent("Đang trả lời Code reviewer Đã sửa wait test.");
+    expect(box).toHaveAccessibleDescription("Đang trả lời Code reviewer Đã sửa wait test. Đi tiếp cùng session");
+    await user.type(box, "còn retries?");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(onSent).toHaveBeenCalledWith(sent));
+    expect(JSON.parse(api.seen.find((call) => call.method === "POST")?.body ?? "{}")).toEqual({ body: "còn retries?", reply_to: 9 });
+
+    await user.click(box);
+    await user.keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Huỷ trả lời" }));
+    expect(onCancel).toHaveBeenCalledTimes(2);
+    expect(box).toHaveFocus();
   });
 });
 

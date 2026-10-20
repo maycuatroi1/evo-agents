@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import access, tables, telegram
+from evo_agents.hub import access, chats, tables, telegram
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.security import Principal
 
@@ -108,6 +108,7 @@ class ChatAccess:
     user_id: int
     login: str
     projects: tuple[LabelProject, ...]
+    kind: str = chats.GROUP  # chats.CHAT_KINDS: a direct chat's members never change
 
     @property
     def label(self) -> list[dict]:
@@ -245,6 +246,7 @@ def _membership(chat_id: int, user_id: int):
             c.c.event_seq,
             m.c.id.label("member_id"),
             m.c.last_read_seq,
+            c.c.kind,
         )
         .select_from(c.join(m, member).join(u, u.c.id == c.c.created_by))
         .where(c.c.id == chat_id)
@@ -273,6 +275,7 @@ async def chat_access(conn: AsyncConnection, user: Principal, chat_id: int, *, l
         user_id=user.user_id,
         login=user.login,
         projects=projects,
+        kind=row.kind,
     )
     grants = await grants_of(conn, [user.user_id], [p.id for p in projects])
     why = LabelReader(user.user_id, {p.name: p for p in projects}, grants).why_not(found.label)

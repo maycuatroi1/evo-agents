@@ -16,13 +16,6 @@ export function useMe(): string | null {
   return data?.login ?? null;
 }
 
-/** The projects where the visitor may add agents to a chat: those they write to (the writer or admin role). */
-export function useWriterProjects(): string[] | null {
-  const { data } = useQuery(whoamiQuery(browserApi));
-  if (!data) return null;
-  return data.grants.filter((grant) => grant.role === "writer" || grant.role === "admin").map((grant) => grant.project);
-}
-
 /**
  * What to tell the visitor when a write of a chat fails. A chat's refusals say exactly what to change (who is not
  * signed in to the hub, whose grant does not clear the chat's label, which agent is not in it), so the hub's own

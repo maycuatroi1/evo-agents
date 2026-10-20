@@ -559,16 +559,13 @@ async def agent_access(conn: AsyncConnection, chat_id: int, profile: Profile, di
     @handle, as the notices name the sender; None when the agent is not in the chat."""
     c, m, u = tables.chats, tables.chat_members, tables.users
     member = (m.c.chat_id == c.c.id) & (m.c.profile_id == profile.id) & m.c.removed_at.is_(None)
-    query = (
-        select(c.c.id, c.c.title, c.c.created_by, u.c.login, c.c.created_at, c.c.event_seq, m.c.id, m.c.last_read_seq)
-        .select_from(c.join(m, member).join(u, u.c.id == c.c.created_by))
-        .where(c.c.id == chat_id)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    head = (c.c.id, c.c.title, c.c.created_by, u.c.login, c.c.created_at, c.c.event_seq, m.c.id, m.c.last_read_seq)
+    query = select(*head, c.c.kind).select_from(c.join(m, member).join(u, u.c.id == c.c.created_by))
+    row = (await conn.execute(query.where(c.c.id == chat_id))).one_or_none()
     if row is None:
         return None
     projects = await agent_projects(conn, chat_id)
-    return ChatAccess(*row, user_id=dispatcher_id, login=f"@{profile.handle}", projects=projects)
+    return ChatAccess(*row[:-1], user_id=dispatcher_id, login=f"@{profile.handle}", projects=projects, kind=row.kind)
 
 
 async def post_agent(
@@ -648,13 +645,13 @@ async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int, text: str
     c, u = tables.chats, tables.users
     row = (
         await conn.execute(
-            select(c.c.title, c.c.created_by, u.c.login, c.c.created_at, c.c.event_seq)
+            select(c.c.title, c.c.created_by, u.c.login, c.c.created_at, c.c.event_seq, c.c.kind)
             .join_from(c, u, u.c.id == c.c.created_by)
             .where(c.c.id == chat_id)
         )
     ).one()
     chat = ChatAccess(
-        chat_id, row.title, row.created_by, row.login, row.created_at, row.event_seq, 0, 0, 0, "hub", projects
+        chat_id, row.title, row.created_by, row.login, row.created_at, row.event_seq, 0, 0, 0, "hub", projects, row.kind
     )
     message_id, _ = await insert_message(conn, chat, runs.clip(text, chats.MAX_MESSAGE_BYTES), thread_root_id=root_id)
     return message_id
@@ -752,21 +749,29 @@ async def chat_prompt(
     conn: AsyncConnection, run_id: int, branch: str | None, repos: list, features: tuple[str, ...] = ()
 ) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
-    the messages its dispatcher clears the label of, and the member whose worker runs it too. On a daemon that lists
-    ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke it or a
-    message of the thread the prompt shows names before the others not open (``_listing``)."""
+    the messages its dispatcher clears the label of, and the member whose worker runs it too. Before the thread it
+    shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``). On a daemon
+    that lists ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke
+    it or a message of the thread the prompt shows names before the others not open (``_listing``)."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
     profile = await _run_profile(conn, run_id)
-    cm = tables.chat_messages
-    root_id = found.root_id
+    c, cm = tables.chats, tables.chat_messages
+    title, kind = (await conn.execute(select(c.c.title, c.c.kind).where(c.c.id == found.chat_id))).one()
+    direct, root_id = kind == chats.DIRECT, found.root_id
     thread = message_select().where(
         cm.c.chat_id == found.chat_id, or_(cm.c.id == root_id, cm.c.thread_root_id == root_id)
     )
-    before = message_select().where(cm.c.chat_id == found.chat_id, cm.c.thread_root_id.is_(None), cm.c.id < root_id)
-    before = before.order_by(cm.c.id.desc()).limit(rules.BEFORE_MESSAGES + 1)
-    rows = [*reversed((await conn.execute(before)).all()), *(await conn.execute(thread.order_by(cm.c.seq))).all()]
+    if direct:  # the latest turns: the messages of the threads before this one, the agent's answers in them too
+        earlier = func.coalesce(cm.c.thread_root_id, cm.c.id) < root_id
+    else:  # the chat before the thread: the messages that start no thread
+        earlier = cm.c.thread_root_id.is_(None) & (cm.c.id < root_id)
+    limit = rules.DIRECT_MESSAGES if direct else rules.BEFORE_MESSAGES
+    before = message_select().where(cm.c.chat_id == found.chat_id, earlier).order_by(cm.c.id.desc()).limit(limit + 1)
+    before_rows = list(reversed((await conn.execute(before)).all()))
+    thread_rows = (await conn.execute(thread.order_by(cm.c.seq))).all()
+    rows = [*before_rows, *thread_rows]
     # the dispatcher clears what the prompt shows, and so does the member whose worker runs it, when another
     readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
     authors = await profiles_by_id(conn, [row.author_profile_id for row in rows if row.author_profile_id])
@@ -776,13 +781,12 @@ async def chat_prompt(
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(
         root,
-        [shown[row.id] for row in rows if row.id in shown and row.thread_root_id == root_id],
-        [shown[row.id] for row in rows if row.id in shown and row.thread_root_id is None],
+        [shown[row.id] for row in thread_rows if row.id in shown and row.thread_root_id == root_id],
+        [shown[row.id] for row in before_rows if row.id in shown],
+        direct=direct,
     )
     people, agents = await _member_names(conn, found.chat_id)
     _, budget = await chat_spend(conn, found.chat_id)
-    c = tables.chats
-    title = (await conn.execute(select(c.c.title).where(c.c.id == found.chat_id))).scalar_one()
     listing, harness = None, None
     if runs.LAZY_CHAT_REPOS in features:
         listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
@@ -793,7 +797,7 @@ async def chat_prompt(
             "project": profile.project,
             "description": profile.description,
         },
-        chat={"id": found.chat_id, "title": title, "people": people, "agents": agents},
+        chat={"id": found.chat_id, "title": title, "people": people, "agents": agents, "kind": kind},
         trigger=trigger,
         login=found.dispatcher,
         hop=found.hop,

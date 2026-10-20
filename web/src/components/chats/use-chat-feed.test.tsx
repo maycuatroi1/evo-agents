@@ -73,11 +73,13 @@ function message(id: number, seq: number, overrides: Partial<GroupMessage> = {})
 
 const PAGE: ChatPage = { chat: { id: 3, title: "Release", last_seq: 4, last_read_seq: 2 } as Chat, messages: [message(1, 1), message(2, 4)], more: false };
 
-function setup(onMembers = vi.fn()) {
+function setup(onMembers = vi.fn(), onImage = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  const hook = renderHook(() => useChatFeed({ chatId: 3, page: PAGE, me: "octo", onMembers, openSource: (url) => new FakeSource(url) as unknown as EventSource }), { wrapper });
-  return { ...hook, onMembers };
+  const hook = renderHook(() => useChatFeed({ chatId: 3, page: PAGE, me: "octo", onMembers, onImage, openSource: (url) => new FakeSource(url) as unknown as EventSource }), {
+    wrapper,
+  });
+  return { ...hook, onMembers, onImage };
 }
 
 beforeEach(() => {
@@ -114,6 +116,24 @@ describe("useChatFeed", () => {
     });
     const read = api.seen.find((call) => call.url.endsWith("/v1/chats/3/read"));
     expect(JSON.parse(read?.body ?? "{}")).toEqual({ seq: 6 });
+  });
+
+  it("hands the chat's image to the page when a member changes it, once per batch, with the latest", () => {
+    const { onImage, onMembers } = setup();
+    const [source] = FakeSource.made;
+    act(() => source.open());
+    act(() => {
+      source.send({ seq: 5, kind: "image_changed", created_at: "2026-10-14T08:01:00Z", image: { image_url: "/v1/chats/3/image?v=aaaa", by: "mai" } } as ChatEvent);
+      source.send({ seq: 6, kind: "image_changed", created_at: "2026-10-14T08:01:01Z", image: { image_url: "/v1/chats/3/image?v=bbbb", by: "mai" } } as ChatEvent);
+      vi.advanceTimersByTime(60);
+    });
+    expect(onImage.mock.calls).toEqual([["/v1/chats/3/image?v=bbbb"]]);
+    act(() => {
+      source.send({ seq: 7, kind: "image_changed", created_at: "2026-10-14T08:02:00Z", image: { image_url: null, by: "octo" } } as ChatEvent);
+      vi.advanceTimersByTime(60);
+    });
+    expect(onImage).toHaveBeenLastCalledWith(null);
+    expect(onMembers).not.toHaveBeenCalled();
   });
 
   it("reads events instead once the stream fails for good, and stops with the hub's reason when the stream ends", async () => {

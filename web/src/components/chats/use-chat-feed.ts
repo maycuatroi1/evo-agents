@@ -67,6 +67,7 @@ export function useChatFeed({
   page,
   me,
   onMembers,
+  onImage,
   openSource = defaultSource,
 }: {
   chatId: number;
@@ -74,6 +75,8 @@ export function useChatFeed({
   me: string | null;
   /** A member was added or removed: the chat's people and agents are read again. */
   onMembers: () => void;
+  /** A member changed the chat's image (`image_url`, null once taken off): the page shows it without a read. */
+  onImage?: (imageUrl: string | null) => void;
   openSource?: (url: string) => EventSource;
 }): ChatFeed {
   const queryClient = useQueryClient();
@@ -86,9 +89,9 @@ export function useChatFeed({
   // The feed itself: every change goes through it, then to the state that renders it, so changes that arrive before a
   // render build on one another.
   const feedRef = useRef(feed);
-  const live = useRef({ me, onMembers, openSource });
+  const live = useRef({ me, onMembers, onImage, openSource });
   useEffect(() => {
-    live.current = { me, onMembers, openSource };
+    live.current = { me, onMembers, onImage, openSource };
   });
 
   const apply = useCallback((events: readonly ChatEvent[], progress: readonly ChatProgress[] | null = null) => {
@@ -99,6 +102,7 @@ export function useChatFeed({
     setFeed(next);
     setUpdatedAt(Date.now());
     if (result.members) live.current.onMembers();
+    if (result.image) live.current.onImage?.(result.image.image_url);
   }, []);
 
   useEffect(() => {
