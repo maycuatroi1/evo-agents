@@ -57,6 +57,7 @@ class FakeHub:
     def __init__(self):
         self.calls: list[tuple[str, str, dict | None]] = []
         self.down = False
+        self.failing: tuple[int, bytes] | None = None  # what the proxy in front of the hub answers instead of it
         self.state = "running"
         self.run_id = 7
         self.registered = False
@@ -68,6 +69,8 @@ class FakeHub:
         self.calls.append((method, path, body))
         if self.down:
             raise Unreachable(f"the hub at {URL} did not answer")
+        if self.failing:
+            return self.failing
         base = "/v1/projects/demo/local-runs"
         if method == "PUT" and path.startswith(base + "/"):
             status = 200 if self.registered else 201
@@ -81,7 +84,7 @@ class FakeHub:
                 if event["seq"] == len(self.events) + 1:
                     self.events.append(event)
             return 200, self._json({"ack_seq": len(self.events), "stored": len(body["events"])})
-        return 404, self._json({"message": f"no route {method} {path}"})
+        return 404, self._json({"error": "not_found", "message": f"no route {method} {path}"})
 
     @staticmethod
     def _json(value) -> bytes:
@@ -314,6 +317,120 @@ def test_a_hub_that_refuses_the_session_is_left_alone_for_a_while(own_home, monk
     for n in (1, 2, 3):
         assert fire("local-tool", tool_data(own_home, n), monkeypatch, capsys) == (0, "", "")
     assert calls == ["PUT"]
+
+
+def test_a_hub_being_redeployed_refuses_nothing_and_the_stop_after_it_sends_idle(own_home, fake, monkeypatch, capsys):
+    """The proxy in front of a hub that is redeployed answers 502, or 404 with a page of its own, for a moment: the
+    session is not left alone for REFUSAL_COOLDOWN (the Stop that ends the turn would send nothing, and the run would
+    stay running), the hub is, for COOLDOWN, and a 404 not the hub's own registers nothing again."""
+    no_throttle(monkeypatch)
+    monkeypatch.setattr(local_sync, "COOLDOWN", 0.0)  # the Stop comes after it
+    fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
+    for n, failing in enumerate(((502, b"<html>502 Bad Gateway</html>"), (404, b"404 page not found")), start=1):
+        fake.failing = failing
+        assert fire("local-tool", tool_data(own_home, n), monkeypatch, capsys) == (0, "", "")
+        assert session_file(own_home)["refused_at"] is None
+        assert hooks.HookState(own_home / ".evo" / "hub").down_since(URL, time.time()) is not None
+    fake.failing = (404, b"404 page not found")
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert fake.state == "running" and len(fake.of("PUT", f"/local-runs/{SESSION}")) == 1
+    assert session_file(own_home)["refused_at"] is None
+
+    fake.failing = None
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert fake.state == "idle" and [e["seq"] for e in fake.events] == [1, 2, 3, 4]
+    assert session_file(own_home)["events"] == []
+
+
+OTHER = "0199a3c1-0000-7000-8000-0000000000d4"
+
+
+class Runs:
+    """A hub with a run per session (register, state, events), behind a proxy that answers 502 while ``failing``."""
+
+    def __init__(self):
+        self.failing = False
+        self.ids: dict[str, int] = {}
+        self.runs: dict[int, dict] = {}
+        self.calls: list[tuple[str, str]] = []
+
+    def send(self, method, url, headers, data, timeout):
+        path = url.removeprefix(URL + "/v1/projects/demo/local-runs/")
+        self.calls.append((method, path))
+        if self.failing:
+            return 502, b"<html>502 Bad Gateway</html>"
+        body = json.loads(data) if data else None
+        if method == "PUT":
+            run = self.ids.setdefault(path, 7 + len(self.ids))
+            self.runs[run] = {"state": "running", "events": []}
+            return 201, json.dumps({"id": run, "state": "running", "last_seq": 0}).encode()
+        run, _, what = path.partition("/")
+        held = self.runs.get(int(run)) if run.isdigit() else None
+        if held is not None and what == "state":
+            held["state"] = body["state"]
+            return 200, json.dumps({"id": int(run), "state": body["state"]}).encode()
+        if held is not None and what == "events":
+            held["events"] += body["events"]
+            return 200, json.dumps({"ack_seq": body["events"][-1]["seq"]}).encode()
+        return 404, json.dumps({"error": "not_found", "message": f"no route {method} {path}"}).encode()
+
+    def run_of(self, session: str) -> dict:
+        return self.runs[self.ids[session]]
+
+
+@pytest.fixture
+def runs(monkeypatch) -> Runs:
+    hub = Runs()
+    monkeypatch.setattr(hub_client, "_send", hub.send)
+    monkeypatch.setattr(MemorySync, "project_of", lambda self, where=None: "demo")
+    monkeypatch.setattr(local_sync, "COOLDOWN", 0.0)
+    no_throttle(monkeypatch)
+    return hub
+
+
+def test_a_stop_that_reaches_the_hub_sends_what_another_session_left_waiting(own_home, runs, monkeypatch, capsys):
+    earlier = {"session_id": OTHER, "cwd": str(own_home / "other")}
+    fire("user-prompt", {**earlier, "prompt": "go"}, monkeypatch, capsys)
+    runs.failing = True  # the hub is redeployed as that turn ends: no hook of that session comes after its Stop
+    fire("local-tool", {**tool_data(own_home, 1), **earlier}, monkeypatch, capsys)
+    fire("stop", earlier, monkeypatch, capsys)
+    assert runs.run_of(OTHER) == {"state": "running", "events": []}
+
+    runs.failing = False
+    fire("user-prompt", payload(own_home, prompt="next"), monkeypatch, capsys)
+    assert runs.run_of(OTHER)["state"] == "running"  # a prompt sweeps nothing: it would hold the person's message
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.run_of(SESSION)["state"] == "idle" and runs.run_of(OTHER)["state"] == "idle"
+    assert [e["kind"] for e in runs.run_of(OTHER)["events"]] == ["tool_call", "tool_call_update"]
+    left = json.loads((own_home / ".evo" / "hub" / "local" / f"{OTHER}.json").read_text(encoding="utf-8"))
+    assert left["events"] == [] and left["sent"] == "idle"
+    sent = len(runs.calls)
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.calls[sent:] == []  # nothing waits any more, and this session is idle already
+
+
+def test_the_sweep_leaves_alone_a_session_refused_lately_one_too_old_and_one_whose_hook_holds_it(
+    own_home, runs, monkeypatch, capsys
+):
+    now = time.time()
+    left = own_home / ".evo" / "hub" / "local"
+    left.mkdir(parents=True, exist_ok=True)
+    sessions = {
+        "0199a3c1-0000-7000-8000-0000000000e1": {"run_id": 51, "refused_at": now - 60},
+        "0199a3c1-0000-7000-8000-0000000000e2": {"run_id": 52, "touched": now - local_sync.SWEEP_HOURS * 3600 - 60},
+        "0199a3c1-0000-7000-8000-0000000000e3": {"run_id": 53},
+    }
+    for sid, fields in sessions.items():
+        rec = local_sync.Store(sid, URL).fresh(str(own_home / "x"))
+        rec |= {"project": "demo", "resolved": True, "sent": "running", "wanted": "idle", "touched": now, **fields}
+        (left / f"{sid}.json").write_text(json.dumps(rec), encoding="utf-8")
+    held = local_sync.Store("0199a3c1-0000-7000-8000-0000000000e3", URL).lock
+    with local_sync.locked(held, 0.0) as got:
+        assert got
+        fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
+        fire("stop", payload(own_home), monkeypatch, capsys)
+    assert runs.run_of(SESSION)["state"] == "idle"
+    assert not [path for _, path in runs.calls if path.split("/")[0] in ("51", "52", "53")]
 
 
 def test_a_run_the_hub_ended_registers_again_at_the_next_prompt(own_home, fake, monkeypatch, capsys):
