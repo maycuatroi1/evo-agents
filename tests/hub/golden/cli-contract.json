@@ -24955,6 +24955,108 @@
           }
         }
       },
+      "/v1/projects/{project}/releases/cycles": {
+        "get": {
+          "tags": [
+            "releases"
+          ],
+          "summary": "Ended Cycles",
+          "description": "The project's release cycles that ended, published or closed, newest first, each with its runs and tags.",
+          "operationId": "ended_cycles_v1_projects__project__releases_cycles_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "description": "the cycles of one page",
+                "default": 20,
+                "title": "Limit"
+              },
+              "description": "the cycles of one page"
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 10000,
+                "minimum": 0,
+                "description": "the cycles before the page",
+                "default": 0,
+                "title": "Offset"
+              },
+              "description": "the cycles before the page"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseCycleList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/releases/schedule": {
         "put": {
           "tags": [
@@ -60022,6 +60124,44 @@
             "tags"
           ],
           "title": "ReleaseCycle"
+        },
+        "ReleaseCycleList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "cycles": {
+              "items": {
+                "$ref": "#/components/schemas/ReleaseCycle"
+              },
+              "type": "array",
+              "title": "Cycles",
+              "description": "the cycles that ended, published or closed, newest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "the cycles that ended, on every page"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "cycles",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "ReleaseCycleList"
         },
         "ReleaseCycleRun": {
           "properties": {
