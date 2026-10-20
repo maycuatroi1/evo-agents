@@ -10,8 +10,11 @@ A turn, in order:
    may not update itself goes on as it is.
 4. Turned off on this machine (EVO_WORKER_SELF_UPDATE=off), not run by launchd or systemd, or no uv: ``unsupported``.
 5. The hub has not said whether the worker's version is locked: ``waiting``. Locked: ``locked``.
-6. Where nightly points, read at the first turn, then hourly (after a failure, in 15 minutes): unknown, ``waiting``;
-   the commit it runs, ``current``.
+6. Where nightly points: the commit the hub read, which the heartbeat answer carries (``nightly``), when the hub read
+   it less than 10 minutes ago and after this daemon started (a read before it may predate the install it runs).
+   Else the daemon reads the tag itself, at the first turn, then hourly (after a failure, in 15 minutes), on a clock
+   that counts the time the machine sleeps (``power.clock_through_sleep``). Unknown, ``waiting``; the commit it runs,
+   ``current``. Whatever the hub says, the daemon installs the tag nightly from GitHub, never a commit the hub names.
 7. It holds runs or agents of a previous daemon, a daemon of the install is not ready (runs, a lock, run by hand),
    another one updates the install, or the update to that commit failed less than an hour ago: ``waiting``.
 8. Else ``updating``: it closes the gate, waits until no daemon of the install claims, installs nightly
@@ -19,6 +22,16 @@ A turn, in order:
    ``error`` and the daemon goes on with the code it runs.
 
 Each change of state is one log line, "self-update: <state>", with the reason.
+
+Its owner's Update now (``update_now`` of the heartbeat answer, named by its ``requested_at``): the daemon claims no
+new run, and neither do the other daemons of its install (it says ``update_now`` in its state of ``peers``), until
+the request ends; it reads the tag at once when the hub's read is unknown or old, and an update that failed less than
+an hour ago does not hold it back. The runs held go on to their end, then the turn updates as above. The daemon ends
+the request itself when the update failed (``failed``, self_update.error says how) or cannot happen (``impossible``:
+its version is locked, it cannot update itself, or a daemon of its install is locked or cannot update itself;
+self_update.reason says why), and says so in self_update.update_now until the hub's answer no longer carries the
+request; the hub ends it when the daemon runs nightly's commit or its owner cancels it. A daemon that starts again
+takes the request from the next answer.
 """
 
 from __future__ import annotations
@@ -28,14 +41,14 @@ import contextlib
 import functools
 import logging
 import sys
-import time
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from evo_agents.hub import runs
 from evo_agents.worker.home import WorkerHome
-from evo_agents.worker.selfupdate.install import Install, find_uv, read_install
+from evo_agents.worker.power import clock_through_sleep
+from evo_agents.worker.selfupdate.install import COMMIT, Install, find_uv, read_install
 from evo_agents.worker.selfupdate.installer import Installer, Outcome, nightly_commit
 from evo_agents.worker.selfupdate.peers import Peers, root_of
 from evo_agents.worker.selfupdate.supervisor import BY_HAND, Supervision, detect
@@ -47,6 +60,7 @@ OFF_VALUES = ("off", "0", "false", "no")
 CHECK_EVERY = 3600.0  # seconds between two reads of where nightly points
 LOOKUP_RETRY = 900.0  # after a read that failed
 INSTALL_RETRY = 3600.0  # before trying again an update to the commit whose update failed
+HUB_READ_FRESH = timedelta(minutes=10)  # a read of nightly by the hub older than this, the daemon reads the tag itself
 IDLE_WAIT = 75.0  # seconds the updater waits for the claims of the install's daemons to end (a claim waits 25 + 20)
 LOCK_UNKNOWN = "the hub has not said whether this worker's version is locked"
 UV_MISSING = "uv is neither on the service's PATH nor in ~/.local/bin, ~/.cargo/bin, /opt/homebrew/bin, /usr/local/bin"
@@ -60,6 +74,21 @@ def _clip(text: str | None, most: int) -> str | None:
     return text[:most] if text else None
 
 
+def _hub_read(value) -> tuple[str, datetime] | None:
+    """The commit and the time of the hub's read of nightly in a heartbeat answer, or None when it has none this
+    daemon can read."""
+    if not isinstance(value, dict):
+        return None
+    commit, read_at = value.get("commit"), value.get("read_at")
+    if not isinstance(commit, str) or not COMMIT.match(commit) or not isinstance(read_at, str):
+        return None
+    try:
+        at = datetime.fromisoformat(read_at)
+    except ValueError:
+        return None
+    return commit, at if at.tzinfo else at.replace(tzinfo=UTC)
+
+
 class SelfUpdate:
     def __init__(
         self,
@@ -70,7 +99,7 @@ class SelfUpdate:
         installer: Installer | None = None,
         lookup: Callable[[], Awaitable[str]] | None = None,
         off: bool = False,
-        clock: Callable[[], float] = time.monotonic,
+        clock: Callable[[], float] = clock_through_sleep,
         check_every: float = CHECK_EVERY,
         lookup_retry: float = LOOKUP_RETRY,
         install_retry: float = INSTALL_RETRY,
@@ -98,6 +127,11 @@ class SelfUpdate:
         self._task: asyncio.Future | None = None
         self._said: tuple | None = None
         self._change_said = False
+        self.started_at = datetime.now(UTC)
+        self.hub_nightly: tuple[str, datetime] | None = None  # the hub's read of nightly, as the last answer carried it
+        self.request: str | None = None  # requested_at of the owner's Update now the last answer carried
+        self.request_ended: str | None = None  # failed or impossible, once this daemon ended that request
+        self._current_seen = False  # a turn since that request found the daemon runs nightly's commit
 
     @classmethod
     def here(cls, home: WorkerHome, env: Mapping[str, str]) -> SelfUpdate:
@@ -141,6 +175,8 @@ class SelfUpdate:
             "error": _clip(self.error, runs.SELF_UPDATE_ERROR_CHARS),
             "error_at": self.error_at,
         }
+        if self.request is not None:
+            found["update_now"] = {"requested_at": self.request, "ended": self.request_ended}
         return {key: value for key, value in found.items() if value is not None}
 
     def heartbeat_fields(self) -> dict:
@@ -150,6 +186,36 @@ class SelfUpdate:
         """The lock the hub sent in a heartbeat answer's settings; None for an answer without it."""
         self.locked = value if isinstance(value, bool) else None
 
+    def hear_answer(self, nightly, update_now) -> None:
+        """The hub's read of nightly and its owner's Update now, as a heartbeat answer carries them; None for an
+        answer without them (a hub before schema 0052, no read yet, no request open)."""
+        self.hub_nightly = _hub_read(nightly)
+        requested = update_now.get("requested_at") if isinstance(update_now, dict) else None
+        requested = requested if isinstance(requested, str) and requested else None
+        if requested == self.request:
+            return
+        self.request, self.request_ended, self._current_seen = requested, None, False
+        if requested is None:
+            log.info("self-update: the update now ended; claiming again")
+            return
+        log.info("self-update: update now asked; no new claims until it ends", extra={"requested_at": requested})
+        if self._fresh_hub_read() is None:
+            self._next_lookup = float("-inf")  # read the tag at the next turn
+
+    def _active(self) -> bool:
+        """An Update now is open, and this daemon has not ended it."""
+        return self.request is not None and self.request_ended is None
+
+    def _holds_claims(self) -> bool:
+        """This daemon claims no new run for its owner's Update now: one is open, the daemon may carry it out, and
+        no turn since found it runs nightly's commit already."""
+        return self._active() and self.static is None and not self._current_seen
+
+    def _end_request(self, outcome: str) -> None:
+        if self._active():
+            self.request_ended = outcome
+            log.info("self-update: the update now cannot be carried out; claiming again", extra={"ended": outcome})
+
     # Claims
 
     def may_claim(self) -> bool:
@@ -158,6 +224,8 @@ class SelfUpdate:
         if self.peers is None:
             return True
         if self._changed() and self._may_restart():
+            return False
+        if self._holds_claims() or any(peer.get("update_now") for peer in self.peers.others()):
             return False
         return self.peers.enter()
 
@@ -185,6 +253,8 @@ class SelfUpdate:
         why = self._why_not(held, orphans)
         if self.peers is not None:
             state = {"worker": worker, "commit": self.install.commit, "ready": why is None, "why": why}
+            # stuck: it never may until a person acts; update_now: the others of the install claim no new run
+            state.update(stuck=self.static is not None or self.locked is True, update_now=self._holds_claims())
             try:
                 self.peers.publish({**state, "runs": held, "orphans": orphans})
             except OSError as exc:
@@ -194,23 +264,27 @@ class SelfUpdate:
     async def turn(self, *, held: int, orphans: int, worker: str) -> bool:
         """One turn of the daemon; True when it should stop now and exit EXIT_UPDATED."""
         if self.peers is None:
+            self._end_request("impossible")
             return False
         why = self.publish(held=held, orphans=orphans, worker=worker)
         if self._changed():
             return self._restart_on_change(held == 0 and orphans == 0)
         if self.static:
             self._say("unsupported", self.static)
+            self._end_request("impossible")
             return False
         if self.locked is None or self.locked:
             self._say("waiting" if self.locked is None else "locked", why)
+            if self.locked:
+                self._end_request("impossible")
             return False
-        if self.clock() >= self._next_lookup:
-            await self._look_up()
+        await self._find_nightly()
         target = self.nightly
         if target is None:
             self._say("waiting", "where nightly points is not known yet")
             return False
         if target == self.install.commit:
+            self._current_seen = True
             if not self._error_of_lookup:
                 self.error = self.error_at = None
             self._say("current", None)
@@ -297,6 +371,31 @@ class SelfUpdate:
         log.info("self-update: the install was updated; restarting on it", extra={"commit": now.commit})
         return True
 
+    def _fresh_hub_read(self) -> tuple[str, datetime] | None:
+        """The hub's read of nightly when it is less than HUB_READ_FRESH old and later than this daemon's start."""
+        if self.hub_nightly is None:
+            return None
+        read_at = self.hub_nightly[1]
+        if read_at < self.started_at or datetime.now(UTC) - read_at > HUB_READ_FRESH:
+            return None
+        return self.hub_nightly
+
+    async def _find_nightly(self) -> None:
+        """Where nightly points: the hub's read while it is fresh, else the daemon's own reads on their schedule."""
+        found = self._fresh_hub_read()
+        if found is None:
+            if self.clock() >= self._next_lookup:
+                await self._look_up()
+            return
+        commit, read_at = found
+        self.checked_at = read_at.isoformat()
+        if self._error_of_lookup:
+            self.error = self.error_at = None
+            self._error_of_lookup = False
+        if commit != self.nightly:
+            log.info("self-update: nightly read by the hub", extra={"nightly": commit, "commit": self.install.commit})
+        self.nightly = commit
+
     async def _look_up(self) -> str | None:
         try:
             commit = await self.lookup()
@@ -323,11 +422,13 @@ class SelfUpdate:
 
     def _blocker(self, target: str) -> str | None:
         retry = self._retry.get(target)
-        if retry is not None and self.clock() < retry:
+        if retry is not None and self.clock() < retry and not self._active():  # an Update now tries again at once
             return f"the update to {target[:12]} failed; it is tried again later"
-        found = self._peer_blocker()
-        if found:
-            return found
+        for peer in self.peers.others():
+            if not peer.get("ready"):
+                if peer.get("stuck"):
+                    self._end_request("impossible")
+                return f"worker {peer.get('worker')} on the same install: {peer.get('why')}"
         if not self.peers.gate_open():
             return "another daemon of this install is updating it"
         return None
@@ -371,6 +472,8 @@ class SelfUpdate:
             return outcome
         self.error, self.error_at, self._error_of_lookup = outcome.error, _now(), False
         self._retry[target] = self.clock() + self.install_retry
+        if self._active():
+            self.request_ended = "failed"
         self._say("waiting", f"the update to {target[:12]} failed; it is tried again later")
         log.error(
             "self-update: the update failed" + ("; the install may not start" if outcome.broken else ""),
