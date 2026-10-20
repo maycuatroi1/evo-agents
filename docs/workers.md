@@ -634,7 +634,9 @@ and the branch. A chat run that asks nothing ends after its turn.
 
 When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
 the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
-(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent). The agent reads
+(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent, and neither does a
+run the hub stopped on a usage limit or a refused login while no account of its owner for that variable is ready: the
+thread says when the first is ready again). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
@@ -926,7 +928,7 @@ those plugins in the projects the worker serves (`plugin_runtimes`, empty for an
 lists `kg_sync`, the projects whose graph it keeps fresh, `[{"project", "received_at"}]`, `received_at` being when the
 hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon); `nightly`, the
 commit the tag nightly pointed to when the hub last read it (every minute, `hub.read_nightly`) and when, left out until
-the hub read it once and by a hub before schema 0064; and for a daemon that lists `update_now`, the owner's open
+the hub read it once and by a hub before schema 0065; and for a daemon that lists `update_now`, the owner's open
 Update now (`update_now`, `{"requested_at"}`), left out when none is open. The hub ends the request on the heartbeat
 that shows it ended: `current` when `agent_commit` is nightly's commit, `failed` or `impossible` as `self_update.update_now`
 says for this `requested_at`, and `impossible` too when the worker is locked, `self_update.state` is `locked` or
@@ -2480,7 +2482,7 @@ that read, `nightly` `{commit, read_at}`. The daemon takes it at its next turn w
 by the machine's clock (`HUB_READ_FRESH`) and later than the daemon's start; it then reports the hub's `commit` and
 `read_at` as `nightly_commit` and `checked_at`, and a fresh read clears an error of reading the tag. An idle daemon that
 may update thus starts within a turn (15 seconds) of the answer that brings a new commit, about a minute after the tag
-moved. When the answer has no `nightly` (a hub before schema 0064, or one that has not read the tag yet) or its read
+moved. When the answer has no `nightly` (a hub before schema 0065, or one that has not read the tag yet) or its read
 is older than that, the daemon reads the tag itself with `git ls-remote` of the repository, and with the GitHub API
 when git fails: at its first turn once the hub said it is not locked, then every hour, and 15 minutes after a read that
 failed. That schedule, and the hour it waits after an update that failed, run on a clock that counts the time the

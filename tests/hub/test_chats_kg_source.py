@@ -36,6 +36,7 @@ from sqlalchemy.pool import NullPool
 from evo_agents.core_plugins.chats import kg as chats_kg
 from evo_agents.hub import kg_sources, plugin_calls, tables
 from evo_agents.hub.kg_build import worker_project
+from evo_agents.hub.server import chat_graph  # the label rule of chats, which the plugin asks the hub for
 from evo_agents.hub.server.chat_access import LabelProject
 from evo_agents.kg.build import build_project
 from evo_agents.plugins import core
@@ -232,11 +233,11 @@ def test_chats_message_label_reads_other_projects_as_label_reader_does():
     ladder = {name: LabelProject(1, name, LEVELS, ["any"], {"level": "internal"}, None) for name in ("alpha", "beta")}
     part = {"level": "internal", "projects": ["alpha"]}
     off_ladder = [part, {"level": "top-secret", "projects": ["beta"]}]
-    assert chats_kg.message_label(off_ladder, 4, "alpha", ladder)["audience"] == ["chat:4", "grant:beta:secret"]
-    assert chats_kg.message_label([part, {"level": "public", "projects": ["gone"]}], 4, "alpha", ladder) is None
-    assert chats_kg.message_label([{"level": "public", "projects": ["beta"]}], 4, "alpha", ladder) is None
-    assert chats_kg.message_label([], 4, "alpha", ladder) is None
-    joined = chats_kg.join(
+    assert chat_graph.message_label(off_ladder, 4, "alpha", ladder)["audience"] == ["chat:4", "grant:beta:secret"]
+    assert chat_graph.message_label([part, {"level": "public", "projects": ["gone"]}], 4, "alpha", ladder) is None
+    assert chat_graph.message_label([{"level": "public", "projects": ["beta"]}], 4, "alpha", ladder) is None
+    assert chat_graph.message_label([], 4, "alpha", ladder) is None
+    joined = chat_graph.join(
         [
             {"level": "internal", "integrity": "T", "audience": ["chat:4"]},
             {"level": "customer", "location": "any", "integrity": "U", "audience": ["chat:4", "grant:beta:public"]},

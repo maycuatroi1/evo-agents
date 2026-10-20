@@ -188,7 +188,7 @@ class SelfUpdate:
 
     def hear_answer(self, nightly, update_now) -> None:
         """The hub's read of nightly and its owner's Update now, as a heartbeat answer carries them; None for an
-        answer without them (a hub before schema 0064, no read yet, no request open)."""
+        answer without them (a hub before schema 0065, no read yet, no request open)."""
         self.hub_nightly = _hub_read(nightly)
         requested = update_now.get("requested_at") if isinstance(update_now, dict) else None
         requested = requested if isinstance(requested, str) and requested else None

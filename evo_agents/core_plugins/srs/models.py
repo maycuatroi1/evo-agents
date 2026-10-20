@@ -5,7 +5,7 @@ an item become an answer. Every model is named ``Srs...`` in the hub's OpenAPI d
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -228,6 +228,40 @@ class SrsReviewIn(BaseModel):
     body: str = Field("", max_length=MAX_REVIEW_CHARS)
 
 
+class SrsWithdrawIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = Field(
+        None, min_length=1, max_length=MAX_COMMENT_CHARS, description="why, kept as a comment on the version"
+    )
+
+
+class SrsRetireIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    codes: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        min_length=1, max_length=MAX_CHANGES, description="the codes or aliases of the items to retire"
+    )
+    summary: str = Field("", max_length=MAX_SUMMARY_CHARS, description="the new version's; from the codes if left out")
+    dry_run: bool = False
+
+
+class SrsRetiredItem(BaseModel):
+    key: str
+    kind: Literal[ITEM_KINDS]
+    code: str | None
+    title: str
+
+
+class SrsRetireResult(BaseModel):
+    document: str
+    version: int | None = Field(description="the version saved, a draft; null for a dry run")
+    dry_run: bool
+    dropped: list[SrsRetiredItem] = Field(
+        description="every item the version drops: each one retired and the items under it, in document order"
+    )
+
+
 class SrsDiffItem(BaseModel):
     key: str
     kind: Literal[ITEM_KINDS]
@@ -360,6 +394,11 @@ def preview_model(preview: Preview) -> SrsPreview:
 def diff_model(slug: str, low: int, high: int, preamble: list[str], changes: list[ItemChange]) -> SrsDiff:
     items = [SrsDiffItem(**change.__dict__) for change in changes]
     return SrsDiff(document=slug, from_version=low, to_version=high, preamble=preamble, items=items)
+
+
+def retire_model(slug: str, number: int | None, dry_run: bool, dropped: list[Item]) -> SrsRetireResult:
+    items = [SrsRetiredItem(key=item.key or "", kind=item.kind, code=item.code, title=item.title) for item in dropped]
+    return SrsRetireResult(document=slug, version=number, dry_run=dry_run, dropped=items)
 
 
 def comment_model(row: CommentRow) -> SrsComment:

@@ -887,7 +887,7 @@ class HeartbeatAnswer(BaseModel):
         None,
         exclude_if=_absent,
         description="the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it "
-        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0064",
+        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065",
     )
     update_now: UpdateNowRequest | None = Field(
         None,

@@ -19,6 +19,7 @@ export const chatKeys = {
   list: ["chats", "list"] as const,
   one: (id: number) => ["chats", "one", id] as const,
   page: (id: number) => ["chats", "one", id, "page"] as const,
+  people: (agents: readonly string[]) => ["chats", "people", ...agents] as const,
 };
 
 /** How often the list is read while a Chats page shows it, and while only the sidebar counts its unread messages. */

@@ -97,11 +97,11 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
-| srs | `/v1/x/srs/{project}/documents`, `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit` and `/reviews`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
+| srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -447,6 +447,13 @@ P needs the writer role on P, and a deleted agent is refused. A person leaves, o
 any member takes an agent out. A chat holds at most 50 people and 10 agents, and never a person and an agent of the same
 name, so that `@name` names one member.
 
+**Whom to add.** `GET /v1/chats/people` (`evo_agents/hub/server/chat_people.py`) lists the people a caller may pick
+for a chat without typing a login: everyone who holds a grant on a project the caller holds one on, and everyone in a
+chat the caller is in, the caller left out, by login, at most 500. Given the handles of a chat's agents (`agents`,
+repeated), each says why they could not be in it (`why`, the words of the hub's refusal; null when they could); a
+handle of no agent, or of one whose project the caller holds no grant on, counts for nothing. Someone outside the list
+who signed in once is still added by login. The web's New chat and Members search this list.
+
 **Label.** A chat's label is the labels of the projects of its agents: for each project, its default label, the one
 its runs on no plan read as. Every person in the chat holds a grant on each of those projects whose max level reaches
 that project's label, on the project's own ladder: adding an agent that would take the label past someone in the chat
@@ -612,6 +619,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
 | `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
+| `GET /v1/chats/people` (`agents`, repeated): whom they may add, each with why they could not be in a chat with those agents | | anyone: the people they share a project or a chat with |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
@@ -823,11 +831,12 @@ Shared workers), false for every worker there is and every new one; going back t
 takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's `channel_link_codes`, the one-time
 codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
 is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
-name. Schema 0064 adds `hub_nightly`, one row: the commit the tag `nightly` pointed to when the job `hub.read_nightly`
-last read it, and when (`read_at`); and `workers.update_requested_at`, `update_ended_at`, `update_outcome` (`current`,
-`cancelled`, `failed` or `impossible`) and `update_reason`, an owner's last Update now of the worker (`docs/workers.md`,
-Updating itself to nightly); going back to 0063 drops the table and the four columns, and the hub then reads no
-nightly and takes no Update now.
+name. Schema 0064 lets a version of a BA document be `withdrawn` (`docs/srs-plugin.md`, Approval); going back to 0063
+makes every withdrawn version a draft again. Schema 0065 adds `hub_nightly`, one row: the commit the tag `nightly`
+pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); and `workers.update_requested_at`,
+`update_ended_at`, `update_outcome` (`current`, `cancelled`, `failed` or `impossible`) and `update_reason`, an owner's
+last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
+the four columns, and the hub then reads no nightly and takes no Update now.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2009,6 +2018,12 @@ evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
 evo-agents hub srs approve orders 1 --project evo-agents                # by a writer who wrote no version since
 evo-agents hub srs export orders --project evo-agents --output orders.md
+evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin
+evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # an admin; the items it would drop
+evo-agents hub srs retire orders "UC ORD-1" --project evo-agents        # the next version, a draft
+evo-agents hub srs archive orders --project evo-agents                  # an admin; out of list, search and the graph
+evo-agents hub srs list --project evo-agents --all                      # archived documents too
+evo-agents hub srs unarchive orders --project evo-agents
 evo-agents hub plugin enable tasks --project evo-agents                 # asks for plans:read
 evo-agents hub task import tasks.json --project evo-agents --dry-run    # evo-tasks/1 JSON, once
 evo-agents hub task create --project evo-agents --title "Place an order" --use-case "UC ORD-1" --step rollout#2

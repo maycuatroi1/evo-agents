@@ -8,7 +8,7 @@ another leaves the plugin out with that reason. ``server`` holds its channel, it
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 0)  # the version of the API this plugin is written for
+API = (1, 1)  # the version of the API this plugin is written for
 SERVER = "northwind_chat.server"
 KIND = "northwind"
 
@@ -25,7 +25,11 @@ MANIFEST = {
     "config": {
         "type": "object",
         "properties": {
-            "api_url": {"type": "string", "title": "Northwind Chat's API", "default": "https://chat.northwind.test/api"},
+            "api_url": {
+                "type": "string",
+                "title": "Northwind Chat's API",
+                "default": "https://chat.northwind.test/api",
+            },
             "token": {"type": "string", "title": "The bot's token", "x-secret": True},
             "webhook_secret": {"type": "string", "title": "The secret of the webhook", "x-secret": True},
             "clearance": {

@@ -154,7 +154,7 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   await expect(page.getByTestId("nav-chats")).toHaveAttribute("aria-current", "page");
   await expect(main(page).getByTestId("chats-empty")).toBeVisible();
 
-  // New chat: a title, the agent of the project the member writes to, and a person typed by login.
+  // New chat: a title, the agent of the project the member writes to, and a person searched and picked.
   await main(page).getByTestId("chats-empty-new").click();
   const dialog = page.getByTestId("new-chat-dialog");
   await expect(dialog.getByRole("heading", { name: "New chat" })).toBeVisible();
@@ -163,8 +163,9 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   await dialog.getByTestId("new-chat-title").fill("Release talk");
   await dialog.locator(`[data-testid="new-chat-agent"][data-handle="${handle}"]`).check();
   await expect(dialog.getByTestId("new-chat-agents-count")).toHaveText("1 picked, of at most 10");
-  await dialog.getByTestId("new-chat-login").fill(mai.login);
-  await dialog.getByTestId("new-chat-add-person").click();
+  await dialog.getByTestId("people-search").fill(mai.login.slice(0, -2));
+  await dialog.locator(`[data-testid="people-option"][data-login="${mai.login}"]`).getByTestId("people-option-check").check();
+  await expect(dialog.getByTestId("new-chat-people-count")).toHaveText("1 picked, of at most 49");
   await expect(dialog.getByTestId("new-chat-people-list")).toContainText(mai.login);
   await dialog.getByTestId("new-chat-submit").click();
   await page.waitForURL(/\/chats\/[0-9]+$/);
@@ -345,11 +346,11 @@ test("members: add an agent and a person, take the agent out, change the budget 
   await expect(toast(page, `@${handle} added to the chat`)).toBeVisible();
   await expect(sheet.locator(`[data-testid="chat-member-agent"][data-handle="${handle}"]`)).toContainText("Helper");
 
-  await sheet.getByTestId("chat-add-person-login").fill("not a login");
-  await sheet.getByTestId("chat-add-person-submit").click();
-  await expect(sheet.getByTestId("chat-add-person-hint")).toContainText("A GitHub login is letters, digits and dashes");
-  await sheet.getByTestId("chat-add-person-login").fill(lan.login);
-  await sheet.getByTestId("chat-add-person-submit").click();
+  const adding = sheet.getByTestId("chat-add-person");
+  await adding.getByTestId("people-search").fill("not a login");
+  await expect(adding.getByTestId("people-empty")).toHaveText("Nobody you share a project or a chat with matches not a login.");
+  await adding.getByTestId("people-search").fill(lan.login);
+  await adding.locator(`[data-testid="people-option"][data-login="${lan.login}"]`).getByTestId("people-option-add").click();
   await expect(sheet.locator(`[data-testid="chat-member-person"][data-login="${lan.login}"]`)).toBeVisible();
 
   await sheet.locator(`[data-testid="chat-member-agent"][data-handle="${handle}"]`).getByTestId("chat-remove-agent").click();
@@ -455,7 +456,7 @@ test("the row of agents opens the member's direct chat with an agent, its compos
   const sheet = page.getByTestId("chat-members");
   await expect(sheet.getByRole("heading", { name: "Details" })).toBeVisible();
   await expect(sheet.getByTestId("chat-direct-note")).toContainText("start a group chat with New chat");
-  for (const control of ["chat-add-agent-select", "chat-add-person-login", "chat-remove-agent", "chat-remove-person", "chat-leave"]) {
+  for (const control of ["chat-add-agent-select", "chat-add-person", "chat-remove-agent", "chat-remove-person", "chat-leave"]) {
     await expect(sheet.getByTestId(control)).toHaveCount(0);
   }
   await expect(sheet.getByTestId("chat-budget-input")).toBeVisible();

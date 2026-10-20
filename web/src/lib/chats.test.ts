@@ -11,7 +11,6 @@ import {
   handedAgents,
   insertMention,
   isMine,
-  knownPeople,
   listTime,
   mentionAt,
   mentionNames,
@@ -97,7 +96,7 @@ describe("chat helpers", () => {
     expect(pullLinks("https://gitlab.com/a/b/pull/1")).toEqual([]);
   });
 
-  it("adds the unread messages, filters chats by title or member, and suggests the people of other chats", () => {
+  it("adds the unread messages and filters chats by title or member", () => {
     const chats = [
       { title: "Release", unread: 2, people: ["octo", "Mai"], agents: ["reviewer"] },
       { title: "Docs", unread: 0, people: ["octo", "lan"], agents: [] },
@@ -107,7 +106,6 @@ describe("chat helpers", () => {
     expect(filterChats(chats, "@review").map((chat) => chat.title)).toEqual(["Release"]);
     expect(filterChats(chats, "LAN").map((chat) => chat.title)).toEqual(["Docs"]);
     expect(filterChats(chats, " ")).toHaveLength(2);
-    expect(knownPeople(chats, "octo", ["mai"])).toEqual(["lan"]);
   });
 
   it("checks a title as the hub does: one line of 1 to 120 characters", () => {
