@@ -1,10 +1,12 @@
 """The members' channels of a core plugin through the API: finding the member a channel speaks for, linking and
-unlinking it, one-time link codes, the state a channel keeps, and what a channel's class sends of a notification.
-Private to ``core_plugin_api``; ``evo_agents.hub.server.member_channels`` holds the queries."""
+unlinking it, where a member's link stands, one-time link codes, the state a channel keeps, and what a channel's class
+sends of a notification. Private to ``core_plugin_api``; ``evo_agents.hub.server.member_channels`` holds the
+queries."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any, Literal
 
 from sqlalchemy import select
@@ -15,11 +17,13 @@ from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
     Clearance,
     LinkCode,
+    LinkedChannel,
     Member,
     NotificationRef,
     Plugin,
     Refused,
     Session,
+    Unlinked,
     admin_session,
     issue_member,
     issue_session,
@@ -31,10 +35,11 @@ from evo_agents.hub.server.core_plugin_api._types import (
     refusing,
 )
 from evo_agents.hub.server.member_channels import FROM_SESSION, MAX_CONFIG_BYTES, RESERVED_KEYS
-from evo_agents.hub.server.notifications import Outgoing
+from evo_agents.hub.server.notifications import SESSION_ENDED, Outgoing
 
 MAX_MATCH_KEYS = 8
 UNLINKED = "this channel is not linked any more: its member links it again"
+TURNED_OFF = "turned off"  # the reason of a channel turned off without one
 
 
 def _member(plugin: Plugin, kind: str, found: member_channels.Found) -> Member:
@@ -127,6 +132,39 @@ async def unlink_channel(
     )
 
 
+async def unlink_by_login(conn: AsyncConnection, plugin: Plugin, kind: str, login: str, *, actor: Session) -> Unlinked:
+    """A hub admin, ``actor`` from ``HubAdmin``, unlinks the channel of ``kind`` of the member named ``login`` (in any
+    case), whatever its session, as ``unlink_channel`` by admin does: 404 when the hub has no such user."""
+    own_kind(own_plugin(plugin), kind)
+    admin_session(actor)
+    if not isinstance(login, str):
+        raise ValueError("a login is a string")
+    with refusing():
+        found = await member_channels.user_named(conn, login)
+    gone = await member_channels.unlink(
+        conn, user_id=found.id, kind=kind, by="admin", actor_id=actor.user_id, actor_token_id=actor.token_id
+    )
+    return Unlinked(found.login, gone)
+
+
+async def linked_channel(conn: AsyncConnection, plugin: Plugin, session: Session, kind: str) -> LinkedChannel | None:
+    """Where the session's member's channel of ``kind`` stands, for any credential of theirs: its config, when it was
+    linked, whether the hub sends to it and why not (what turned it off, or SESSION_ENDED once the web session that
+    linked it ended); None when there is none."""
+    own_kind(own_plugin(plugin), kind)
+    own_session(session)
+    row = await member_channels.linked(conn, session.user_id, kind)
+    if row is None:
+        return None
+    config = dict(row.config or {})
+    reason = None
+    if not row.enabled:
+        reason = str(config.get("disabled_reason") or TURNED_OFF)
+    elif not row.session_live:
+        reason = SESSION_ENDED
+    return LinkedChannel(MappingProxyType(config), row.created_at, reason is None, reason)
+
+
 async def set_channel_state(conn: AsyncConnection, member: Member, state: Mapping[str, Any]) -> None:
     """Keep ``state`` (a JSON object of at most 16 KiB) as the ``state`` of the member's channel's config, in place of
     the one it had, its row locked: what the plugin remembers, such as the ids of the messages it sent. 404 when the
@@ -165,7 +203,7 @@ async def prepare(conn: AsyncConnection, notification: Outgoing, cleared: Cleara
     if not isinstance(notification, Outgoing):
         raise ValueError("prepare takes the Outgoing a channel's prepare is given")
     own_clearance(cleared)
-    return await member_channels.prepare(conn, notification, cleared.level, cleared.location)
+    return await member_channels.prepare(conn, notification, cleared.level, cleared.location, cleared.below)
 
 
 async def link_code(conn: AsyncConnection, plugin: Plugin, session: Session, kind: str) -> LinkCode:

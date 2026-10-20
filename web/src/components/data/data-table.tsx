@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type Cell,
   createColumnHelper,
   createSortedRowModel,
   metaHelper,
@@ -116,6 +117,16 @@ export function CellMain({
 }
 
 /**
+ * A cell's content, from its column's `cell`. FlexRender mounts that function as a component of its own, so columns
+ * rebuilt around fresh data (a page that refreshes its runs every 5 seconds) would remount every cell and drop what it
+ * holds, such as an open Run plan dialog. Called inside this one component, the cell keeps its state across rebuilds.
+ */
+function CellContent<TData extends RowData>({ cell }: { cell: Cell<DataTableFeatures, TData> }) {
+  const render = cell.column.columnDef.cell;
+  return typeof render === "function" ? render(cell.getContext()) : (render ?? null);
+}
+
+/**
  * The kit's table, accessible: real <table> markup with a caption, aria-sort on sorted headers and sort buttons
  * reachable by keyboard. The header sits on `surface-sunken` in 12 px `fg-muted`; rows are 44 px (36 px `compact`)
  * with cells in `fg-muted` and the title cell in `fg`; numbers line up on the right in tabular figures; the actions
@@ -182,10 +193,10 @@ export function DataTable<TData extends RowData>({
         >
           {meta?.actions ? (
             <div className="row-actions flex items-center justify-end gap-1">
-              <table.FlexRender cell={cell} />
+              <CellContent cell={cell} />
             </div>
           ) : (
-            <table.FlexRender cell={cell} />
+            <CellContent cell={cell} />
           )}
         </TableCell>
       );

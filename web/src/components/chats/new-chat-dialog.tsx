@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessagesSquare, Plus, X } from "lucide-react";
+import { MessagesSquare, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
@@ -14,11 +14,13 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
-import { chatKeys, chatsQuery, createChat } from "@/lib/chat-queries";
-import { type ChatCreate, chatHref, knownPeople, LOGIN, MAX_AGENTS, MAX_PEOPLE, MAX_TITLE_CHARS, titleProblem } from "@/lib/chats";
+import { chatKeys, chatPeopleQuery, createChat } from "@/lib/chat-queries";
+import { type ChatCreate, chatHref, MAX_AGENTS, MAX_PEOPLE, MAX_TITLE_CHARS, titleProblem } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
+import { PersonAvatar } from "./faces";
 import { useChatFailure, useMe } from "./hooks";
+import { PeoplePicker } from "./people-picker";
 import { useAddableAgents } from "./use-addable-agents";
 
 /** A filter shows over the agents once there are more than this many. */
@@ -26,7 +28,8 @@ const FILTER_FROM = 8;
 
 /**
  * New chat (web/DESIGN.md, Chats): a title, the agents it starts with (of the projects the visitor writes to, by
- * project) and the people (logins, those of the visitor's other chats suggested). The visitor is in it anyway. The form
+ * project) and the people, searched and picked (`PeoplePicker`), each saying when they could not be in a chat with the
+ * agents picked. The visitor is in it anyway. The form
  * repeats the hub's limits; the hub's own refusal (a person not signed in, a grant that does not clear the agents'
  * projects) stays in the dialog with its words. Created, the chat opens.
  */
@@ -58,12 +61,10 @@ function NewChatForm({ onPending, onClose }: { onPending: (pending: boolean) => 
   const failure = useChatFailure();
   const me = useMe();
   const addable = useAddableAgents();
-  const list = useQuery(chatsQuery(browserApi));
   const [title, setTitle] = useState("");
   const [agents, setAgents] = useState<string[]>([]);
   const [people, setPeople] = useState<string[]>([]);
-  const [login, setLogin] = useState("");
-  const [loginProblem, setLoginProblem] = useState<"bad" | "full" | null>(null);
+  const candidates = useQuery(chatPeopleQuery(browserApi, agents));
   const [filter, setFilter] = useState("");
   const [tried, setTried] = useState(false);
   const [error, setError] = useState<WriteFailure | null>(null);
@@ -90,41 +91,19 @@ function NewChatForm({ onPending, onClose }: { onPending: (pending: boolean) => 
   const wanted = filter.trim().toLowerCase();
   const shown = wanted ? choices.filter((agent) => agent.handle.includes(wanted) || agent.name.toLowerCase().includes(wanted) || agent.project.includes(wanted)) : choices;
   const projects = [...new Set(shown.map((agent) => agent.project))];
-  const suggestions = knownPeople(list.data ?? [], me, people);
+  const full = people.length >= MAX_PEOPLE - 1;
+  const faces = new Map((candidates.data ?? []).map((person) => [person.login.toLowerCase(), person.avatar_url]));
 
-  /** The people with the login typed in the field, once it is one; null when it is not (the field says why). */
-  const withTyped = (): string[] | null => {
-    const value = login.trim().replace(/^@/, "");
-    if (!value) return people;
-    if (!LOGIN.test(value)) {
-      setLoginProblem("bad");
-      return null;
-    }
-    const known = value.toLowerCase() === me?.toLowerCase() || people.some((person) => person.toLowerCase() === value.toLowerCase());
-    if (known) return people;
-    if (people.length >= MAX_PEOPLE - 1) {
-      setLoginProblem("full");
-      return null;
-    }
-    return [...people, value];
-  };
-
-  const addPerson = () => {
-    const next = withTyped();
-    if (next === null) return;
-    setLoginProblem(null);
-    setPeople(next);
-    setLogin("");
+  const togglePerson = (login: string, on: boolean) => {
+    const others = people.filter((person) => person.toLowerCase() !== login.toLowerCase());
+    setPeople(on && !full && login.toLowerCase() !== me?.toLowerCase() ? [...others, login] : others);
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTried(true);
-    const everyone = withTyped();
-    if (problem || everyone === null || create.isPending) return;
-    setPeople(everyone);
-    setLogin("");
-    create.mutate({ title: title.trim(), agents, people: everyone });
+    if (problem || create.isPending) return;
+    create.mutate({ title: title.trim(), agents, people });
   };
 
   return (
@@ -218,55 +197,29 @@ function NewChatForm({ onPending, onClose }: { onPending: (pending: boolean) => 
           </p>
         </fieldset>
 
-        <div className="flex flex-col gap-1.5" data-testid="new-chat-people">
-          <label htmlFor={`${ids}-login`} className="text-[13px] font-medium">
-            {t("peopleLabel")}
-          </label>
-          <div className="flex items-start gap-2">
-            <Input
-              id={`${ids}-login`}
-              value={login}
-              list={`${ids}-known`}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t("loginPlaceholder")}
-              onChange={(event) => {
-                setLogin(event.target.value);
-                setLoginProblem(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === ",") {
-                  event.preventDefault();
-                  addPerson();
-                }
-              }}
-              aria-invalid={loginProblem !== null || undefined}
-              aria-describedby={`${ids}-login-hint`}
-              className="min-w-0 flex-1"
-              data-testid="new-chat-login"
-            />
-            <datalist id={`${ids}-known`}>
-              {suggestions.map((person) => (
-                <option key={person} value={person} />
-              ))}
-            </datalist>
-            <Button type="button" variant="outline" onClick={addPerson} disabled={!login.trim()} data-testid="new-chat-add-person">
-              <Plus aria-hidden="true" />
-              {t("addPerson")}
-            </Button>
+        <div className="flex min-w-0 flex-col gap-1.5" data-testid="new-chat-people">
+          <div className="flex items-baseline justify-between gap-2">
+            <label htmlFor={`${ids}-people`} className="text-[13px] font-medium">
+              {t("peopleLabel")}
+            </label>
+            <span className="text-xs text-fg-subtle tabular-nums" data-testid="new-chat-people-count">
+              {t("picked", { count: people.length, max: MAX_PEOPLE - 1 })}
+            </span>
           </div>
-          <p id={`${ids}-login-hint`} className={loginProblem ? "text-xs font-medium text-danger" : "text-xs text-pretty text-fg-subtle"}>
-            {loginProblem === "bad" ? t("badLogin") : loginProblem === "full" ? t("peopleFull", { max: MAX_PEOPLE }) : t("peopleHint")}
+          <PeoplePicker id={`${ids}-people`} mode="pick" agents={agents} picked={people} full={full} describedBy={`${ids}-people-hint`} onPick={togglePerson} />
+          <p id={`${ids}-people-hint`} className="text-xs text-pretty text-fg-subtle" data-testid="new-chat-people-hint">
+            {full ? t("peopleFull", { max: MAX_PEOPLE }) : t("peopleHint")}
           </p>
           {people.length ? (
             <ul className="flex flex-wrap gap-1.5" aria-label={t("peopleList")} data-testid="new-chat-people-list">
               {people.map((person) => (
-                <li key={person} className="inline-flex h-7 items-center gap-1 rounded-xs border bg-card pr-0.5 pl-2 text-[13px] max-md:h-9">
+                <li key={person} className="inline-flex h-7 items-center gap-1.5 rounded-xs border bg-card pr-0.5 pl-1 text-[13px] max-md:h-9" data-login={person}>
+                  <PersonAvatar login={person} src={faces.get(person.toLowerCase())} size="sm" className="size-5" />
                   {person}
                   <button
                     type="button"
                     aria-label={t("removePerson", { login: person })}
-                    onClick={() => setPeople(people.filter((item) => item !== person))}
+                    onClick={() => togglePerson(person, false)}
                     className="grid size-6 cursor-pointer place-items-center rounded-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:size-8"
                   >
                     <X className="size-3.5" aria-hidden="true" />

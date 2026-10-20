@@ -13,6 +13,7 @@ Northwind Chat itself is ``tests/plugins/fake_northwind.py``. What the plugin ma
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import secrets
@@ -487,6 +488,25 @@ def test_a_member_handle_session_or_plugin_the_api_did_not_make_is_refused(north
     on_hub(client, forge)
 
 
+def test_a_plugins_audit_row_is_of_its_own_family_and_one_line(northwind):
+    from evo_agents.hub.server.core_plugin_api._types import issue_session
+
+    mine, actor = hub.plugin("northwind_chat"), issue_session(1, OWNER, 1, True)
+    refused = (
+        ("decision.answer", "x"),  # another family
+        ("kg.build", "x"),
+        ("northwind-chat", "x"),  # no word
+        ("northwind.Sent", "x"),
+        ("northwind.sent", "one\ntwo"),
+        ("northwind.sent", "x" * 1025),
+    )
+    for action, target in refused:
+        with pytest.raises(ValueError):
+            asyncio.run(hub.audit(None, mine, actor, action, target))
+    with pytest.raises(ValueError, match="Session comes from"):
+        asyncio.run(hub.audit(None, mine, hub.Session(1, OWNER, 1), "northwind.sent", "x"))
+
+
 def test_a_channel_class_that_does_not_load_fails_its_own_deliveries_alone(northwind, monkeypatch):
     client, db = northwind.client, northwind.db
     installing(monkeypatch, LUMEN, NORTHWIND, BROKEN)
@@ -531,12 +551,12 @@ def test_a_plugin_written_for_another_api_version_is_left_out_with_the_reason(mo
     sample = importlib.import_module("northwind_chat")
     installing(monkeypatch, NORTHWIND)
     assert [plugin.manifest.id for plugin in core_plugins()] == [PLUGIN]
-    monkeypatch.setattr(sample, "API", (1, 1))
+    monkeypatch.setattr(sample, "API", (1, 2))
     with caplog.at_level(logging.WARNING, logger=core.__name__):
         assert core_plugins() == []
     (record,) = [record for record in caplog.records if record.getMessage() == "core plugin not loaded"]
     assert record.entry_point == PLUGIN
-    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.1; this hub serves 1.0"
+    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.2; this hub serves 1.1"
     plugin_calls.core_registry.cache_clear()
 
 

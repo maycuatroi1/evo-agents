@@ -8,7 +8,7 @@ another leaves the plugin out with that reason. ``server`` holds its channel, it
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 0)  # the version of the API this plugin is written for
+API = (1, 1)  # the version of the API this plugin is written for
 SERVER = "northwind_chat.server"
 KIND = "northwind"
 
