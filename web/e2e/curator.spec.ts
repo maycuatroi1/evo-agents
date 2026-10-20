@@ -62,8 +62,10 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   await form.getByTestId("charter-add-goal").click();
   await form.getByTestId("charter-goal-id").fill("faster-runs");
   await form.getByTestId("charter-goal-what").fill("Plan runs finish within an hour.");
-  await form.getByTestId("charter-window-start").fill(hourAround(-2));
-  await form.getByTestId("charter-window-end").fill(hourAround(3));
+  // Read once: the view is checked against these, and the hour can turn between the form and the view.
+  const [windowStart, windowEnd] = [hourAround(-2), hourAround(3)];
+  await form.getByTestId("charter-window-start").fill(windowStart);
+  await form.getByTestId("charter-window-end").fill(windowEnd);
   await form.getByTestId("charter-timezone").fill("UTC");
   await form.getByTestId("charter-run-budget").fill("0.5");
   await form.getByTestId("charter-max-runs").fill("4");
@@ -78,7 +80,7 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   await expect(page).toHaveURL(new RegExp(`/p/${project}/curator/charter$`));
   const view = main(page).getByTestId("charter-view");
   await expect(view).toHaveAttribute("data-revision", "1");
-  await expect(view.getByTestId("charter-window")).toHaveText(`${hourAround(-2)} to ${hourAround(3)}, UTC`);
+  await expect(view.getByTestId("charter-window")).toHaveText(`${windowStart} to ${windowEnd}, UTC`);
   await expect(view.getByTestId("charter-worker-name")).toHaveText(live.worker.name);
   await expect(view.getByTestId("charter-night-budget-value")).toHaveText("$2.00");
   await expect(view.getByTestId("charter-protected-value")).toHaveText("deploy/**.github/workflows/**");
