@@ -9,13 +9,15 @@ run_as; the agent of any other run for the member who dispatched it; anyone else
 when that person sees it through the session's sink and, when the run's worker is another member's, when that member
 does too: what a tool answers reaches the machine the agent runs on.
 
-- ``read``, ``search`` and ``diff`` answer anyone with a grant on the project. An archived document is out of
-  ``read``'s list of documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
+- ``read``, ``search`` and ``diff`` answer anyone with a grant on the project. ``search`` reads the latest version of
+  each document, a draft or a version in review included. ``read`` of a version lists the open findings of its
+  document, which @ba's review goes over (``auto_review``). An archived document is out of ``read``'s list of
+  documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
 - ``propose`` answers the agent of a chat run of @ba alone (the profile of the project's agent type ``ba``, while it
   is on). Its changes, checked as a save is, become the document's next version, written as the person and drafted by
   the run, and go to review at once; the person, its author, never approves it. Its schema takes no drop, and a code
   an item holds never changes (``writes.store_problems``). A version it sends to review is reviewed by @ba in turn
-  (``auto_review``).
+  (``auto_review``), as every version is each time it enters review.
 - ``comment`` answers the agent of a run of @ba: a chat run, or the review run of ``auto_review``. The comment is the
   person's, drafted by the run (``srs_comments.run_id``).
 - ``finding`` answers the agent of a run of @ba too, whatever the role of the person it acts for: a reader who wakes
@@ -62,6 +64,7 @@ log = logging.getLogger(__name__)
 
 MAX_HITS = 50  # of a search
 SHOWN_PROBLEMS = 10
+SHOWN_FINDINGS = 50  # the open findings srs__read prints whole; the others by id
 CHANGES = TypeAdapter(list[SrsChange])
 RACE = "another save in the project took a code or a version number at the same moment: nothing was written; try again"
 
@@ -225,6 +228,20 @@ def _item_text(doc: store.DocumentRow, row: store.VersionRow, content: Document,
     return "\n".join(lines)
 
 
+def _open_lines(slug: str, rows: list[findings.FindingRow]) -> list[str]:
+    """The open findings of document ``slug``, each on one line, the first SHOWN_FINDINGS of them whole."""
+    if not rows:
+        return []
+    lines = [f"Open findings of {slug} ({len(rows)}):"]
+    for row in rows[:SHOWN_FINDINGS]:
+        about = f", {row.item_code or row.item}" if row.item else ""
+        sources = "; ".join(str(findings.Source(**source)) for source in row.sources)
+        lines.append(f"- #{row.id} {row.level} {row.kind}, on version {row.version}{about}: {row.summary} [{sources}]")
+    if len(rows) > SHOWN_FINDINGS:
+        lines.append("- also open: " + ", ".join(f"#{row.id}" for row in rows[SHOWN_FINDINGS:]))
+    return lines
+
+
 async def _read(conn: AsyncConnection, who: Acting, args: dict) -> str:
     if not args.get("document"):
         return await _documents(conn, who)
@@ -238,6 +255,7 @@ async def _read(conn: AsyncConnection, who: Acting, args: dict) -> str:
     if problems:
         lines.append(f"Problems ({len(problems)}):")
         lines += [f"- {p.level}: {p.message}" for p in problems[:SHOWN_PROBLEMS]]
+    lines += _open_lines(doc.slug, await findings.findings(conn, doc, findings.OPEN))
     lines += ["", markdown.render(snap.doc)]
     return "\n".join(lines)
 
@@ -341,7 +359,10 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
         f"Compare it with version {since}: {compare_path(access.name, slug, since, made)}",
     ]
     if review is not None:
-        said.append(f"@{BA} reviews it in run #{review}; its comments are advice and block no approval.")
+        said.append(
+            f"@{BA} reviews it in run #{review}; its comments are advice and block no approval, and an open finding "
+            "of level decide it records holds approval until members settle it."
+        )
     return "\n".join([*said, "", _changes_text(slug, since, made, latest.doc, new.doc)])
 
 

@@ -347,6 +347,7 @@ def test_srs_approval_gate_holds_a_version_while_a_decide_finding_is_open_and_na
     returned = review(client, hub["other"], 1, "request_changes", body="Settle the retries first")
     assert returned.status_code == 200 and returned.json()["state"] == "draft", returned.text
     submitted(client, hub["chi"], 1)
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Round 2, the same.")
     assert review(client, hub["other"], 1).status_code == 409
     # settled in chat and reopened, the 409 names the chat
     chat = ba_in_chat(client, hub, studio)
@@ -380,7 +381,7 @@ def test_srs_approval_gate_waits_for_the_review_run_of_the_round_unless_it_faile
     assert f"while @ba's review of its round 1 (run #{run_id}) is running" in held.json()["message"], held.text
     moved(client, studio, run_id, "failed", error="the model was down")
     assert review(client, hub["other"], 1).json()["state"] == "approved", "a failed review holds nothing"
-    # version 2: its first round's run is queued; a request for changes goes through, and the next round has no run
+    # version 2: its first round's run is queued; a request for changes goes through, and the next round has its own
     cart = item(client, hub["chi"], "BR ORD1-1")
     saved(client, hub["chi"], 1, {"key": cart["key"], "body": "- A cart holds at most 40 lines."})
     submitted(client, hub["chi"], 2)
@@ -394,8 +395,13 @@ def test_srs_approval_gate_waits_for_the_review_run_of_the_round_unless_it_faile
     returned = review(client, hub["other"], 2, "request_changes", body="Say why 40")
     assert returned.status_code == 200 and returned.json()["state"] == "draft", returned.text
     assert submitted(client, hub["chi"], 2)["round"] == 2
-    assert sql(hub_db, select(v.c.review_run_id).where(v.c.number == 2)) == [(None,)]
-    assert review(client, hub["other"], 2).json()["state"] == "approved", "round 2 was handed no review"
+    ((again,),) = sql(hub_db, select(v.c.review_run_id).where(v.c.number == 2))
+    assert again not in (None, second)
+    held = review(client, hub["other"], 2)
+    assert held.status_code == 409 and f"round 2 (run #{again}) is queued" in held.json()["message"], held.text
+    for _ in (second, again):
+        moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
+    assert review(client, hub["other"], 2).json()["state"] == "approved", "round 2's review ended"
     # version 3: its review run is cancelled
     stock = item(client, hub["chi"], "BR ORD1-2")
     saved(client, hub["chi"], 2, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})

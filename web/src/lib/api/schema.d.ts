@@ -3656,8 +3656,9 @@ export interface paths {
         put?: never;
         /**
          * Submit Version
-         * @description Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
-         *     project enabled the agent type ba; its comments block nothing.
+         * @description Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
+         *     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
+         *     records holds approval.
          */
         post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
         delete?: never;

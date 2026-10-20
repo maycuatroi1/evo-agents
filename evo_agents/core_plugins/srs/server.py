@@ -2,8 +2,8 @@
 (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
-between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
-version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
+between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (each
+submit, in every round, hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
 the one approved last) and comment; dropping a coded item takes an admin. An admin also retires items by their codes
 (POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the next version, a draft saved as any other,
 without those items and their subtrees. The author of a version in review, or an admin, withdraws it (POST
@@ -337,8 +337,9 @@ async def retire_items(
 async def submit_version(
     request: Request, project: ProjectName, slug: Slug, number: Number, user: CurrentUser, sink: Sink = None
 ):
-    """Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
-    project enabled the agent type ba; its comments block nothing."""
+    """Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
+    when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
+    records holds approval."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
