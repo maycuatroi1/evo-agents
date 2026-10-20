@@ -27,15 +27,31 @@ export function isSendShortcut(event: Pick<KeyboardEvent, "key" | "metaKey" | "c
   return event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !event.isComposing;
 }
 
-/**
- * A key of a shortcut as the registry writes it: `mod` is Command on Apple devices and Ctrl elsewhere, `enter` and
- * `esc` are those keys, anything else is the character on the key.
- */
-export type KeyPart = "mod" | "enter" | "esc" | (string & {});
+/** The key code of a key an input method takes, which Safari gives the Enter that ends a composition. */
+const IME_KEY_CODE = 229;
 
-/** One key as a `kbd` shows it: ⌘ or Ctrl, ↵, Esc, a letter in capitals. */
+/**
+ * Whether a key press sends a chat message, as messenger apps take it: Enter alone (Shift with Enter adds a line) or
+ * the send shortcut. Never while an input method composes, as Telex does until Enter picks its word (Safari says so
+ * only with key code 229). On a touch screen's keyboard (`touch`) Enter adds a line, as there is no Shift with it, and
+ * Send sends.
+ */
+export function isChatSend(event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing" | "keyCode">, touch: boolean): boolean {
+  if (event.isComposing || event.keyCode === IME_KEY_CODE) return false;
+  if (isSendShortcut(event)) return true;
+  return !touch && event.key === "Enter" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey;
+}
+
+/**
+ * A key of a shortcut as the registry writes it: `mod` is Command on Apple devices and Ctrl elsewhere, `shift`,
+ * `enter` and `esc` are those keys, anything else is the character on the key.
+ */
+export type KeyPart = "mod" | "shift" | "enter" | "esc" | (string & {});
+
+/** One key as a `kbd` shows it: ⌘ or Ctrl, ⇧ or Shift, ↵, Esc, a letter in capitals. */
 export function keyText(part: KeyPart, modifier: ModifierKey | null): string {
   if (part === "mod") return modifier === "meta" ? "⌘" : "Ctrl";
+  if (part === "shift") return modifier === "meta" ? "⇧" : "Shift";
   if (part === "enter") return "↵";
   if (part === "esc") return "Esc";
   return part.toUpperCase();

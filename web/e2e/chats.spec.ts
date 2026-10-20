@@ -52,6 +52,29 @@ function messageOf(page: Page, text: string) {
   return main(page).getByTestId("chat-log").getByTestId("chat-message").filter({ has: page.getByTestId("message-body").filter({ hasText: text }) });
 }
 
+test("Enter sends a chat message and Shift Enter adds a line to it, as in messenger apps", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const chat = await createChatByApi(me, { title: uniqueName("Keys talk") });
+  await open(page, chatPath(chat.id));
+  const box = main(page).getByTestId("chat-composer-text");
+  await expect(box).toHaveAttribute("aria-keyshortcuts", "Enter Meta+Enter Control+Enter");
+  await expect(main(page).getByTestId("chat-composer-send").locator("kbd")).toHaveText("↵");
+  await box.pressSequentially("The nightly build is red.");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("Since Tuesday.");
+  await expect(box).toHaveValue("The nightly build is red.\nSince Tuesday.");
+  await box.press("Enter");
+  await expect(box).toHaveValue("");
+  await expect(messageOf(page, "The nightly build is red.")).toHaveCount(1);
+  expect((await chatPageOf(me, chat.id)).messages.map((item) => item.body)).toEqual(["The nightly build is red.\nSince Tuesday."]);
+  // Enter on a blank box sends nothing and says why; Cmd or Ctrl with Enter still sends.
+  await box.press("Enter");
+  await expect(main(page).getByTestId("chat-composer-problem")).toBeVisible();
+  await box.fill("And the release notes.");
+  await box.press("Control+Enter");
+  await expect(messageOf(page, "And the release notes.")).toHaveCount(1);
+});
+
 test("under a mention the thread says at once that the agent got it, then each step of its run's setup, until its reply", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
