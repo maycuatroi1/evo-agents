@@ -25,7 +25,7 @@ export function RuntimeField({
   const tRuntime = useTranslations("runs.runtime");
   return (
     <Section legend={t("runtime")} info={t("runtimeInfo")} testId="dispatch-runtime">
-      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {(["any", ...RUNTIMES] as const).map((runtime) => (
           <Tile
             key={runtime}
