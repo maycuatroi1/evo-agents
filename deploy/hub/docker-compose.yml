@@ -55,10 +55,17 @@ x-hub-environment: &hub-environment
   EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
   EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
 
-# api and worker run one image, built from one definition.
+# api, worker and plugins run one image, built from one definition. Beside the core plugins deploy/hub/core-plugins.txt
+# pins, the build installs a hub's own: the requirements of EVO_HUB_EXTRA_CORE_PLUGINS, from the index of
+# EVO_HUB_CORE_PLUGIN_INDEX_URL, else PyPI (docs/hub-deployment.md, section Core plugins in the image). The index URL
+# may hold a credential, so it reaches the build as the secret core_plugin_index alone, never an argument (which
+# `docker history` shows) nor the environment of a service; neither variable is in x-hub-environment.
 x-hub-build: &hub-build
   context: ../..
   dockerfile: deploy/hub/Dockerfile
+  args:
+    EVO_HUB_EXTRA_CORE_PLUGINS: ${EVO_HUB_EXTRA_CORE_PLUGINS:-}
+  secrets: [core_plugin_index]
 
 x-hardening: &hardening
   init: true
@@ -201,6 +208,12 @@ volumes:
   api-cache:
   worker-cache:
   plugins-cache:
+
+# The build's only secret, from the environment compose reads (the platform's, or .env next to this file); unset, the
+# build finds no secret and pip uses PyPI.
+secrets:
+  core_plugin_index:
+    environment: EVO_HUB_CORE_PLUGIN_INDEX_URL
 
 networks:
   # Where the database is: on Dokploy, the shared network its databases join. Services without a domain (the
