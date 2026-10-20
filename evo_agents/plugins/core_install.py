@@ -239,7 +239,7 @@ def check_problems(points: list) -> tuple[list[str], list[str]]:
         names.setdefault(point.name, []).append(point)
     for name, declared in sorted(names.items()):
         if len(declared) > 1:
-            each = "; ".join(f"{_source(point)} ({point.value})" for point in declared)
+            each = "; ".join(f"{_source(point)} ({point.value})" for point in sorted(declared, key=_source))
             problems.append(f"entry point {name} is declared by {len(declared)} distributions: {each}")
     found = {(plugin.entry_point, plugin.value) for plugin in loaded}
     for point in points:
