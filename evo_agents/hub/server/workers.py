@@ -44,10 +44,15 @@ worker 409. Giving the values it has changes nothing and is not audited. The dae
 answer to its next heartbeat (``settings``), and the hub's claim counts the runs a worker holds against its slots as
 they are now. A worker shows what its last heartbeat said of its daemon's install: agent_commit, the commit of
 evo-agents it was built from, and self_update, what the daemon found of updating itself (``runs.SELF_UPDATE_STATES``),
-with since, when the hub first got that state.
+with since, when the hub first got that state; update_now, its last Update now (``update_now``); and nightly, where
+the tag nightly pointed when the hub last read it.
 
-Every pairing, join, registration, drain, undrain, change of dispatch_from or of settings and revocation adds an audit
-row naming the pairing or worker, never the code or the token, and neither ever reaches a log line.
+POST /v1/workers/{id}/update-now asks the worker's daemon to update itself to nightly now, and POST
+/v1/workers/{id}/update-now/cancel withdraws that, with the rights and refusals of drain (``update_now``).
+
+Every pairing, join, registration, drain, undrain, Update now and its cancel, change of dispatch_from or of settings
+and revocation adds an audit row naming the pairing or worker, never the code or the token, and neither ever reaches
+a log line.
 """
 
 from __future__ import annotations
@@ -70,7 +75,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit, credentials
+from evo_agents.hub.server import audit, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -249,6 +254,8 @@ def _listed(*where):
             w.c.version_locked,
             w.c.self_update,
             w.c.self_update_since,
+            *update_now.update_columns(),
+            *update_now.nightly_columns(),
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
             w.c.runtimes,
             w.c.checkouts,
@@ -275,6 +282,7 @@ def _worker(row) -> Worker:
     fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
     report, since = fields.pop("self_update"), fields.pop("self_update_since")
     fields["self_update"] = None if report is None else {**report, "since": since}
+    update_now.shown(fields)
     status = runs.worker_status(
         last_heartbeat_at=fields["last_heartbeat_at"],
         drained_at=fields["drained_at"],
@@ -744,6 +752,28 @@ async def drain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Wor
 async def undrain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Let a drained worker claim runs again; its owner only."""
     return await _set_drain(request, user, worker_id, False)
+
+
+async def _set_update_now(request: Request, user: Principal, worker_id: int, open_it: bool) -> Worker:
+    async with request.app.state.engine.begin() as conn:
+        _, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        if revoked_at is not None:
+            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
+        await update_now.set_request(conn, user, worker_id, _target(worker_id, name, owner), open_it=open_it)
+        return await _one_worker(conn, worker_id)
+
+
+@router.post("/{worker_id}/update-now", response_model=Worker, responses=REFUSALS)
+async def ask_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
+    """Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
+    and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already."""
+    return await _set_update_now(request, user, worker_id, True)
+
+
+@router.post("/{worker_id}/update-now/cancel", response_model=Worker, responses=REFUSALS)
+async def cancel_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
+    """Withdraw the worker's open Update now; the daemon claims runs again."""
+    return await _set_update_now(request, user, worker_id, False)
 
 
 DISPATCH_FROM_SESSION = (

@@ -39,6 +39,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
 - ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
   again with a backoff (``evo_agents.hub.plugin_events``).
+- ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
+  whatever its number of workers, kept in hub_nightly with the time of the read for the api to hand every daemon in
+  its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
@@ -274,6 +277,14 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
 
     found = hub(context)
     return await deliver(found.engine, config=found.config)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.READ_NIGHTLY, pass_context=True, queueing_lock=jobs.READ_NIGHTLY)
+async def read_nightly(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.nightly import refresh
+
+    return await refresh(hub(context).engine)
 
 
 @queue.periodic(cron="13 4 * * *")

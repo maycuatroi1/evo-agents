@@ -1,7 +1,8 @@
 """What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, the commit its daemon
 runs and what the daemon found of updating itself, extends the leases of the runs it holds and answers what to do
-with each, the worker's settings (its version lock among them) and, for a daemon that runs them, the runtimes of the
-plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
+with each, the worker's settings (its version lock among them), where the tag nightly pointed when the hub last read it, the
+owner's open Update now (``evo_agents.hub.server.update_now``, which the heartbeat may end) and, for a daemon that runs
+them, the runtimes of the plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
 /v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.server import update_now
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
     NOT_HELD,
@@ -122,6 +124,8 @@ async def record_heartbeat(
             .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
         )
         settings = WorkerSettings(**held.one()._mapping)
+        nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
+        asked = await update_now.settle(conn, worker_id, body, nightly)
         declared = []
         if runs.PLUGIN_RUNTIMES in (body.features or ()):
             declared = [
@@ -175,7 +179,14 @@ async def record_heartbeat(
             )
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
-    return HeartbeatAnswer(drain=drained_at is not None, runs=controls, settings=settings, plugin_runtimes=declared)
+    return HeartbeatAnswer(
+        drain=drained_at is not None,
+        runs=controls,
+        settings=settings,
+        plugin_runtimes=declared,
+        nightly=nightly,
+        update_now=asked,
+    )
 
 
 SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set

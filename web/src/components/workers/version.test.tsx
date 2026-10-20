@@ -51,6 +51,8 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     plugins: [],
     version_locked: false,
     self_update: { state: "current", nightly_commit: SHA, checked_at: new Date().toISOString(), since: new Date().toISOString() },
+    update_now: null,
+    nightly: null,
     projects: ["demo"],
     runtimes: {},
     checkouts: {},

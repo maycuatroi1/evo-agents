@@ -15352,6 +15352,176 @@
           }
         }
       },
+      "/v1/workers/{worker_id}/update-now": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Ask Update Now",
+          "description": "Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates\nand claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already.",
+          "operationId": "ask_update_now_v1_workers__worker_id__update_now_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/workers/{worker_id}/update-now/cancel": {
+        "post": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Cancel Update Now",
+          "description": "Withdraw the worker's open Update now; the daemon claims runs again.",
+          "operationId": "cancel_update_now_v1_workers__worker_id__update_now_cancel_post",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/workers/{worker_id}/dispatch-from": {
         "post": {
           "tags": [
@@ -43527,6 +43697,28 @@
               "type": "array",
               "title": "Plugin Runtimes",
               "description": "for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise"
+            },
+            "nightly": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NightlyRead"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0052"
+            },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now"
             }
           },
           "type": "object",
@@ -45471,6 +45663,28 @@
           ],
           "title": "NightSummary",
           "description": "One night of a project's night shift: what it queued, how those runs ended, what they cost, and its review."
+        },
+        "NightlyRead": {
+          "properties": {
+            "commit": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Commit"
+            },
+            "read_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Read At",
+              "description": "when the hub read it; the hub reads it once a minute"
+            }
+          },
+          "type": "object",
+          "required": [
+            "commit",
+            "read_at"
+          ],
+          "title": "NightlyRead",
+          "description": "Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly)."
         },
         "NodeDetail": {
           "properties": {
@@ -54458,6 +54672,17 @@
               ],
               "title": "Error At",
               "description": "when that attempt failed"
+            },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none"
             }
           },
           "type": "object",
@@ -60578,6 +60803,51 @@
           ],
           "title": "TriageThread"
         },
+        "UpdateNowReport": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "the request it is about: requested_at of the answer's update_now"
+            },
+            "ended": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended",
+              "description": "null while the daemon carries it out; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with either, and with a value it does not know ends nothing"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "UpdateNowReport",
+          "description": "Where the daemon stands with its owner's Update now (update_now of the heartbeat answer)."
+        },
+        "UpdateNowRequest": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when it was asked for; it names the request in self_update.update_now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at"
+          ],
+          "title": "UpdateNowRequest",
+          "description": "An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends."
+        },
         "UploadItem": {
           "properties": {
             "sha256": {
@@ -61225,6 +61495,28 @@
               ],
               "description": "what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does"
             },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkerUpdateNow"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the last Update now its owner or a hub admin asked for, open or ended; null when none was"
+            },
+            "nightly": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NightlyRead"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -61340,6 +61632,8 @@
             "plugins",
             "version_locked",
             "self_update",
+            "update_now",
+            "nightly",
             "projects",
             "runtimes",
             "checkouts",
@@ -61664,6 +61958,17 @@
               "title": "Error At",
               "description": "when that attempt failed"
             },
+            "update_now": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/UpdateNowReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none"
+            },
             "since": {
               "anyOf": [
                 {
@@ -61807,6 +62112,68 @@
           "type": "object",
           "title": "WorkerUpdate",
           "description": "What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays."
+        },
+        "WorkerUpdateNow": {
+          "properties": {
+            "requested_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Requested At",
+              "description": "when its owner or a hub admin asked for it"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "when it ended; null while the daemon carries it out"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "cancelled",
+                    "failed",
+                    "impossible"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it failed or was impossible, as the daemon or the hub said"
+            }
+          },
+          "type": "object",
+          "required": [
+            "requested_at",
+            "ended_at",
+            "outcome",
+            "reason"
+          ],
+          "title": "WorkerUpdateNow",
+          "description": "The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now)."
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {

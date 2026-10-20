@@ -105,6 +105,8 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     agent_commit: null,
     version_locked: false,
     self_update: null,
+    update_now: null,
+    nightly: null,
     projects: ["demo"],
     runtimes: { "claude-code": { available: true, version: "2.1.289" }, codex: { available: false, reason: "not found" } },
     checkouts: { "demo/api": { path: "~/github/api", branch: "main" } },
