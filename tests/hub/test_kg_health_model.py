@@ -16,6 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the hub's graph health needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import kg_build, kg_coverage, kg_health_eval, ledger, review
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache
 from evo_agents.hub.server import kg_health

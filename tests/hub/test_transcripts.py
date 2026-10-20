@@ -38,7 +38,9 @@ def own_home(tmp_path, monkeypatch) -> Path:
 
 def lines_of(path: Path, lines: list) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join((json.dumps(line) if isinstance(line, dict) else line) + "\n" for line in lines))
+    path.write_text(
+        "".join((json.dumps(line) if isinstance(line, dict) else line) + "\n" for line in lines), newline="\n"
+    )
     return path
 
 

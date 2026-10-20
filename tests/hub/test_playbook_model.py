@@ -9,6 +9,8 @@ from datetime import date
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the Reviewer's playbook needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import ledger, playbook, review
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
 from evo_agents.hub.server import earlier
