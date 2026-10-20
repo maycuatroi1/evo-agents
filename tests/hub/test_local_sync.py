@@ -409,6 +409,9 @@ def test_a_stop_that_reaches_the_hub_sends_what_another_session_left_waiting(own
     assert runs.calls[sent:] == []  # nothing waits any more, and this session is idle already
 
 
+@pytest.mark.skipif(
+    local_sync.fcntl is None, reason="without fcntl (Windows) a session file is never locked, so none is held"
+)
 def test_the_sweep_leaves_alone_a_session_refused_lately_one_too_old_and_one_whose_hook_holds_it(
     own_home, runs, monkeypatch, capsys
 ):
