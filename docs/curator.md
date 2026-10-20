@@ -280,7 +280,7 @@ it names no path) is dropped, unless its evidence counts at least twice the reje
 | | Reviewer | Builder | Judge |
 | --- | --- | --- | --- |
 | run | a run of kind `review`, one a night, first | a plan run of a plan the Curator made | a run of kind `judge`, one per pull request |
-| reads | the night's figures, the whole history (sessions, transcripts, run logs, the owner's local runs, clusters), digests, traces, decisions, earlier findings, the playbook, the project's code at the default branch's commit | its plan and its repo | the proposal, the diff, the plan's verify, the hidden checks |
+| reads | the night's figures, the whole history (sessions, transcripts, run logs, the owner's local runs and group chats, clusters), digests, traces, decisions, earlier findings, the playbook, the project's code at the default branch's commit | its plan and its repo | the proposal, the diff, the plan's verify, the hidden checks |
 | writes | findings, proposals and deltas of the playbook (`evo-agents worker finding`, `propose`, `playbook`) | commits on `curator/<proposal>-<slug>` | a verdict, `{"verdict": "pass" or "fail", "reasons": "..."}` |
 | GitHub token | the Curator's App, read only | the Curator's App, `contents: write` | the Curator's App, read only |
 | runtime | `reviewer` of the charter | `builder` of the charter | Codex when the policy clears it, else Claude Code with a model other than the Builder's |
@@ -453,14 +453,17 @@ evo-agents hub curator history clusters --project demo   # the clusters of 3 ses
 What the Reviewer reads besides the night's figures is the project's whole history, on the hub and in Postgres alone
 (`docs/hub.md`, "The project's history"): the sessions and runs of the facets, with their numbers, by time, member,
 runtime, outcome or cluster; the words of every transcript part and every run that ended, which the job
-`hub.index_history` indexes once for Postgres full-text search, the local runs of the charter's owner among them; and
-the lines of a transcript around one. A finding cites a line as `transcript:ID:LINE`. The prompt asks for two tiers: the
+`hub.index_history` indexes once for Postgres full-text search, the local runs of the charter's owner among them, and of
+the group chats the charter's owner is in; and the lines of a transcript around one. A finding cites a line as `transcript:ID:LINE`. The prompt asks for two tiers: the
 numbers to find where something goes wrong often or costs much, then the words there alone.
 
-The Reviewer reads no group chat, though a member searches the chats they are in with the same command. What the agent
-of a run reads lands in its run's events, which every reader of the project reads, and in its findings: a chat's
-messages are for the chat's members alone. For the same reason no agent of a run reads a replay run, and only the
-Reviewer reads a local run, its owner's.
+The Reviewer searches the group chats of the charter's owner, as the owner does with the same command, through the
+sink: a chat's message is no evidence, so a finding cites the transcript line or the run event it leads to. What the
+agent of a run reads lands in its run's events, which every reader of the project reads, and in its findings, so the
+words of a chat the Reviewer reads can reach readers who are not in the chat. That is a known debt, kept so the
+Reviewer reads the whole history; its prompt asks it to quote no chat. No other agent of a run searches a chat (a chat
+run's reply would carry one chat's words into another), no agent of a run reads a replay run, and only the Reviewer
+reads a local run, its owner's.
 
 ```sh
 evo-agents hub curator history sessions --project demo --outcome failed   # the numbers first

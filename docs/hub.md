@@ -1248,10 +1248,12 @@ of a plan the caller may read); a group chat's message when the caller is in the
 the message names the project with a part of its label visible through that sink.
 
 The agent of a run, which calls the MCP tools with its run's scope, reads less than its owner: what it reads lands in
-its run's events, which the project's readers read, and in what it writes. It searches no group chat (the default
-sources are the transcripts and the runs, and asking for the chats is 403), reads no replay run, and reads a local run
-only in a review run, whose Reviewer reads the local sessions of the charter's owner; `run_events` refuses it the same
-runs.
+its run's events, which the project's readers read, and in what it writes. It reads no replay run, and a group chat or
+a local run only in a review run, whose Reviewer reads the chats and the local sessions of the charter's owner, the
+chats through the sink as the owner does; `run_events` refuses it the same runs. Any other agent searches no group
+chat (its default sources are the transcripts and the runs, and asking for the chats is 403). What the Reviewer reads
+of a chat can reach its run's events and its findings, which readers who are not in the chat read: a known debt, kept
+so the Reviewer reads the whole history (`docs/curator.md`, "The whole history").
 
 - `GET /v1/projects/{p}/curator/history/sessions` lists the sessions and runs of the project's facets, the latest
   first, by `kind`, `since` and `until` (UTC days), `login`, `runtime`, `outcome` (what the cheap model wrote of it,
