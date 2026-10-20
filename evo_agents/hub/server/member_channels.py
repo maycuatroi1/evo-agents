@@ -10,8 +10,8 @@ member's web session, neither revoked nor expired (``live_session``). Linking ta
 member's channel of that kind; ``unique_on`` names the config keys that identify a chat, so a chat speaks for one
 member and another member's link to it goes. Unlinking deletes the channel, whose deliveries go with it.
 
-These rules came from the Telegram channel (``evo_agents.core_plugins.telegram``), which reaches them through the API
-like any other core plugin.
+These rules came from the Telegram channel (the core plugin telegram, ``evo_core_plugins.telegram`` of
+evo-agents-core-plugins), which reaches them through the API like any other core plugin.
 """
 
 from __future__ import annotations

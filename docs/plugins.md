@@ -321,15 +321,31 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins in `evo_agents.core_plugins`, declared in its own entry points, so every install has
-them, the hub's image among them. No package of evo_agents imports them (import-linter contract
-core-plugins-by-entry-point): the hub reaches them through their manifests. The first is **telegram**, the hub's
-Telegram channel (`docs/notifications.md`), which left the core as it was: its channel of kind `telegram`, its routes at
-the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its link codes the rows of kind
-`telegram` of the hub's `channel_link_codes` (migrations 0015 and 0063). Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
-Plugins show it as a core plugin installed with the image, and no project enables it. telegram and chats import
-nothing of evo_agents but the core plugin API (below), as a plugin of another repository would:
-`tests/plugins/test_core_plugin_imports.py` reads their packages with the samples'.
+evo-ak ships its core plugins builder, srs and tasks in `evo_agents.core_plugins`, declared in its own entry points, so
+every install has them, the hub's image among them. No package of evo_agents imports them (import-linter contract
+core-plugins-by-entry-point): the hub reaches them through their manifests.
+
+telegram and chats are core plugins of another repository,
+[maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
+the distribution `evo-agents-core-plugins` (package `evo_core_plugins`). `deploy/hub/core-plugins.txt` pins the release
+of it that matches the API of each commit of evo-agents, by version and wheel hash, and the hub's image installs it
+(`docs/hub-deployment.md`, section Core plugins in the image). They import nothing of evo_agents but the core plugin
+API (below); that repository checks it with a copy of `tests/plugins/test_core_plugin_imports.py`, and runs their tests
+against the commit of evo-agents its `evo-agents.lock` names and, every night, against main. The tests of evo-agents
+run with the pinned file installed after evo-ak (`uv pip install --no-deps --require-hashes -r
+deploy/hub/core-plugins.txt`), as CI's jobs test, web-check and web-e2e install it: the OpenAPI document, the golden
+copy of the CLI contract, `web/src/lib/api/schema.d.ts` and `web/e2e/telegram.spec.ts` keep Telegram's routes. CI's job
+core-plugins-suite checks that repository out at the tag the pinned line names and runs its tests against the checkout
+of evo-agents CI runs on, so a change of the hub that breaks them without changing the API's version shows in
+evo-agents' own CI, not only in that repository's nightly run.
+
+The first is **telegram**, the hub's Telegram channel (`docs/notifications.md`), which left the core as it was: its
+channel of kind `telegram`, its routes at the paths they had (the empty `prefix`: its routers carry their own under
+`/v1`), its link codes the rows of kind `telegram` of the hub's `channel_link_codes` (migrations 0015 and 0063). Nothing
+of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration, Plugins show it as a core
+plugin installed with the image, and no project enables it. The Inbox's Telegram dialog, `hub admin telegram`, the
+variables `EVO_HUB_TELEGRAM_*`, `telegram_missing` of `/v1/health` and the part of `evo_agents/hub/telegram.py` the hub
+uses stay in evo-agents.
 
 ### Builder
 
@@ -402,8 +418,9 @@ imports the other, and tasks reads the items of srs through the hub's tables (`e
 
 ### Chat history
 
-**chats** (`evo_agents/core_plugins/chats`) puts the history of the hub's group chats into the knowledge graph of each
-project that enables it, granting what it asks for, `chats:read`. Its only contribution is a source of the graph
+**chats** (`evo_core_plugins/chats` of evo-agents-core-plugins, section Core plugins) puts the history of the hub's
+group chats into the knowledge graph of each project that enables it, granting what it asks for, `chats:read`. Its
+only contribution is a source of the graph
 (`kg_sources`). Each build of the project's graph on the hub holds every message whose label has a part of the
 project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<id> <login or @handle> <UTC
 time>`, by the id `chat_message` and `chat show` call it by, with the chat, the thread, the author, the time and, for
@@ -416,7 +433,8 @@ project, so a member sees it only while they are in the chat and could read the 
 message sent while its chat had no agent is in no graph. A new message queues a build of each project its label names
 whose graph holds its chats, which joins one that waits; a build of such a project shows no totals in `GET
 /v1/kg/{project}/builds`, since they count messages most members may not read, and kg_status names the newest message
-the build read. Import-linter keeps it in its own package (contract chats-plugin-own-package).
+the build read. The ids `plugin.chats:...` are the hub's to know: `chat_message`, `chat_thread`, `chat show` and the
+weights of search read them.
 
 ## The core plugin API
 

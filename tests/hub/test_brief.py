@@ -1,7 +1,8 @@
 """The Curator's morning brief (``evo_agents.hub.server.brief``) and schemas 0015 and 0016.
 
 The checks step 5 of the curator-agent plan names for a6: at the charter's brief_at, in the charter's time zone, the
-owner of the night shift's schedule gets a notice curator_brief, once a day, on the web and on Telegram; it holds the
+owner of the night shift's schedule gets a notice curator_brief, once a day, on the web and on a channel of theirs (the
+sample core plugin northwind-chat, ``tests.hub.northwind_channel``); it holds the
 night's runs, the merges into a default branch and the runs waiting for approval, the cost against the budget, the
 decisions and proposals waiting, and the last heartbeat of the worker on duty, so a worker that stopped shows; and
 `evo-agents hub curator status --json` names the last brief under ``last_brief``, which steps 13 and 15 and a16 read.
@@ -13,7 +14,7 @@ from functools import partial
 
 import pytest
 
-from tests.hub import live, pg
+from tests.hub import pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
@@ -22,15 +23,20 @@ import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, insert, select, update
 
-from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import curator, jobs, tables
-from evo_agents.hub.server import notifications
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.brief import send_briefs
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
-from tests.hub.fake_telegram import SECRET, TOKEN, FakeTelegram
 from tests.hub.live import sql
+from tests.hub.northwind_channel import (
+    cleared,
+    deliver,
+    hub_config,
+    linked,
+    northwind,  # noqa: F401 (a fixture)
+    set_up,
+)
 from tests.hub.test_curator import (
     NIGHT,
     OWNER,
@@ -63,35 +69,14 @@ BRIEFS = tables.curator_briefs
 
 
 @pytest.fixture
-def bot(monkeypatch):
-    fake = FakeTelegram()
-    monkeypatch.setattr(server_telegram, "TRANSPORT", fake.transport())
-    monkeypatch.setenv(server_telegram.TOKEN_VARIABLE, TOKEN)  # where the plugin reads the bot's variables
-    monkeypatch.setenv(server_telegram.SECRET_VARIABLE, SECRET)
-
-    async def pause(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr(server_telegram, "pause", pause)
-    return fake
-
-
-@pytest.fixture
-def web_client(hub_db, tmp_path, github, bot):
-    """The hub test_curator's fixtures build on, with the Telegram channel on (a fake Bot API)."""
-    values = {"telegram_bot_token": TOKEN, "telegram_webhook_secret": SECRET}
-    config = live.hub_config(hub_db, tmp_path, github, **live.web_changes(github), **values)
-    with TestClient(create_app(config), base_url="https://hub.test") as client:
+def web_client(hub_db, tmp_path, github, northwind):  # noqa: F811
+    """The hub test_curator's fixtures build on, with the sample core plugin northwind-chat installed."""
+    with TestClient(create_app(hub_config(hub_db, tmp_path, github)), base_url="https://hub.test") as client:
         yield client
 
 
 def briefed(client, now: datetime) -> dict:
     return client.portal.call(partial(send_briefs, client.app.state.engine, now=now))
-
-
-def deliver(client) -> dict:
-    engine, config = client.app.state.engine, client.app.state.config
-    return client.portal.call(partial(notifications.deliver_notifications, engine, config=config))
 
 
 def briefs_of(client, headers) -> list[dict]:
@@ -107,13 +92,6 @@ def body_of(db, day: date = THE_DAY) -> dict:
 
 def user_id(db, login: str) -> int:
     return sql(db, select(tables.users.c.id).where(tables.users.c.login == login))[0][0]
-
-
-def telegram_channel(db, login: str = OWNER, chat_id: int = 7001) -> None:
-    """A Telegram chat of ``login`` linked from a live web session, written straight into the database."""
-    _, session = live.web_session(db, login)
-    channel = {"user_id": user_id(db, login), "kind": "telegram", "config": {"chat_id": chat_id}, "token_id": session}
-    sql(db, insert(tables.notification_channels).values(**channel))
 
 
 def test_brief_due_from_brief_at_for_three_hours_of_the_local_day():
@@ -213,7 +191,7 @@ def test_the_brief_holds_the_nights_runs_merges_cost_decisions_and_the_workers_l
     assert note["details"]["worker_online"] is False and note["details"]["open_decisions"] == 1
 
 
-def test_the_brief_names_the_review_run_and_the_proposals_waiting(review, bot):  # noqa: F811
+def test_the_brief_names_the_review_run_and_the_proposals_waiting(review):  # noqa: F811
     client, worker, db, headers = review.client, review.worker, review.db, review.headers
     run_id = held_review(review)
     made = proposed(client, worker, run_id, kind="feature", title="A wait helper instead of sleep and tail")
@@ -233,29 +211,31 @@ def test_the_brief_names_the_review_run_and_the_proposals_waiting(review, bot): 
     assert "Proposals waiting for an answer: 1, 1 of them in your Inbox." in note["body"]
 
 
-def test_the_brief_goes_to_the_owners_telegram_chat_and_a_restricted_project_gets_the_link_only(night, hub_db, bot):  # noqa: F811
+def test_the_brief_goes_to_the_owners_channel_and_a_restricted_project_gets_the_link_only(
+    night,  # noqa: F811
+    hub_db,
+    northwind,  # noqa: F811
+):
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())
-    sinks = tables.project_sinks
-    internal = {"level": "internal", "location": "any"}
-    sql(hub_db, update(sinks).values(clearance=internal).where(sinks.c.kind == "hub"))
-    telegram_channel(hub_db)
+    set_up(client, headers["admin"])
+    cleared(hub_db)
+    linked(hub_db, OWNER)
     assert briefed(client, BRIEF) == {"brief": 1}
-    assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}
-    (message,) = bot.sent()
-    assert message["chat_id"] == 7001 and message["text"].startswith(
-        f"<b>Morning brief</b> in {PROJECT}\nMorning brief"
-    )
-    assert "Night of 2026-10-08" in message["text"]
-    assert message["reply_markup"] == {
-        "inline_keyboard": [[{"text": "Open on the hub", "url": f"https://hub.test/p/{PROJECT}/curator"}]]
-    }
+    assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}  # the web's, and the channel's
+    link = f"/p/{PROJECT}/curator"
+    url = f"https://hub.test{link}"
+    (sent,) = northwind.outgoing
+    assert (sent.login, sent.notice_kind, sent.project, sent.link) == (OWNER, "curator_brief", PROJECT, link)
+    assert sent.extra == {"restricted": False} and "Night of 2026-10-08" in sent.body
+    (message,) = northwind.chat.messages
+    assert message["text"].startswith(f"Morning brief of {PROJECT}") and message["text"] == f"{sent.title}: {url}"
 
-    sql(hub_db, update(sinks).values(clearance={"level": "customer"}).where(sinks.c.kind == "hub"))
+    cleared(hub_db, {"level": "customer"})
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
     deliver(client)
-    url = f"https://hub.test/p/{PROJECT}/curator"
-    assert bot.sent()[-1]["text"] == f"<b>{PROJECT}</b>: Morning brief.\n\n{url}"
+    assert northwind.outgoing[-1].extra == {"restricted": True}
+    assert northwind.chat.last()["text"] == f"Something of {PROJECT} waits for you: {url}"
 
 
 def test_no_brief_goes_to_an_owner_without_a_grant_and_the_job_runs_every_minute(night, hub_db):  # noqa: F811
@@ -331,12 +311,13 @@ def test_the_columns_of_0015_hold_together(night, hub_db):  # noqa: F811
         sql(hub_db, update(d).values(external_id=""))
 
 
-def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, bot):  # noqa: F811
+def test_migration_0015_goes_down_to_0014_and_up_again(night, hub_db, northwind):  # noqa: F811
     client, headers = night.client, night.headers
     written(client, headers["owner"], charter_body())
     owner = user_id(hub_db, OWNER)
     channels = tables.notification_channels
-    telegram_channel(hub_db)
+    set_up(client, headers["admin"])
+    linked(hub_db, OWNER)
     sql(
         hub_db,
         insert(tables.channel_link_codes).values(
