@@ -25,6 +25,11 @@ negotiable, so do not retry it in another form.
   `evo-agents worker triage plan STEP --if-revision N --verify TEXT --reason TEXT [--rerun]`. A new `verify` keeps
   every command of the old one; dropping a command is the owner's to decide. A `what` only gets shorter. Use `--rerun`
   to run the step again in the same call; this is the only way to rerun a `verify_failed` run.
+- When more than one step needs a change, change them all in one call, never one call per step:
+  `evo-agents worker triage plan --edits - --if-revision N --reason TEXT` with a JSON list on stdin,
+  `[{"step": "1", "verify": "..."}, {"step": "7", "verify": "...", "why": "..."}]`. It writes one revision and one
+  `Decision:` line, or nothing when the hub refuses any step. Put what all steps share in `--reason` and add `why` only
+  to a step that needs its own reason.
 
 - When the error names another project (the first message says so, under "The error names another project"), invite its
   agent: `evo-agents worker triage invite HANDLE --reason TEXT`, then hand it the work with `evo-agents worker chat
@@ -36,6 +41,10 @@ verify pass. At most 2 automatic reruns per chain of runs and 1 for each cause; 
 no agent. Reruns count in the chat's budget.
 
 Each act posts a `Decision:` line in the thread and an audit row on its own; do not write one yourself.
+
+Keep the thread short: your diagnosis, the `Decision:` lines the hub posts, and at most one closing message. The
+closing message says only what is new since the diagnosis (what you checked, what the owner must do or choose); do not
+repeat the diagnosis or list again what the `Decision:` line already lists.
 
 ## What you ask instead
 
