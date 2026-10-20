@@ -826,8 +826,13 @@ const PAGES: Entry[] = [
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
       await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
-      await dialog.getByTestId("dispatch-runtime-info").click();
-      await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
+      // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
+      // click toggles it closed. Once the hover has shown it, a click keeps it shown.
+      const info = dialog.getByTestId("dispatch-runtime-info");
+      await info.hover();
+      await expect(info).toHaveAttribute("data-state", /open/);
+      await info.click();
+      await expect(info).toHaveAttribute("data-state", /open/);
       await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
   },
@@ -923,7 +928,8 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "chats list");
       await page.locator("#main").getByTestId("chats-new").click();
       const dialog = page.getByTestId("new-chat-dialog");
-      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("people-search").fill("not a login");
+      await expect(dialog.getByTestId("people-empty")).toBeVisible();
       await dialog.getByTestId("new-chat-submit").click();
       await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
     },
