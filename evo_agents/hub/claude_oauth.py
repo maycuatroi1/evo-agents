@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -118,6 +119,13 @@ def parse_code(text: str, state: str) -> str:
     return code
 
 
+class _CallbackServer(HTTPServer):
+    """On Windows SO_REUSEADDR lets a second socket bind a port that is in use, so the listener would sit on a port
+    another process owns and never be told it is taken; it keeps the default exclusive bind there."""
+
+    allow_reuse_address = sys.platform != "win32"
+
+
 def wait_for_callback(state: str, timeout: float = WAIT_S, port: int = CALLBACK_PORT) -> str:
     """Listen on localhost for claude.ai's redirect and give its code; OAuthError when the port is taken, the answer
     is another sign-in's or refused, or ``timeout`` seconds pass. Needs a browser on this machine."""
@@ -146,7 +154,7 @@ def wait_for_callback(state: str, timeout: float = WAIT_S, port: int = CALLBACK_
             return
 
     try:
-        server = HTTPServer((CALLBACK_HOST, port), Handler)
+        server = _CallbackServer((CALLBACK_HOST, port), Handler)
     except OSError as exc:
         raise ListenError(f"cannot listen on localhost:{port} for the answer of claude.ai: {exc.strerror}") from None
     server.timeout = 0.5
