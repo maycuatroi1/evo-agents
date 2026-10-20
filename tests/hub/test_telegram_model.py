@@ -128,6 +128,31 @@ def test_below_customer_and_domestic_only_on_the_ladder_is_not_restricted(cleara
     assert telegram.restricted(clearance, levels, locations) is False
 
 
+# A channel of any clearance (restricted_for, the API of core plugins' restricted and prepare)
+
+
+@pytest.mark.parametrize(
+    ("clearance", "level", "location", "kept"),
+    [
+        ({"level": "internal", "location": "any"}, "internal", None, False),
+        ({"level": "public"}, "internal", "any", True),  # a sink without a location may receive any: above any
+        ({"level": "internal", "location": "domestic-only"}, "internal", None, False),  # None receives any location
+        ({"level": "internal", "location": "domestic-only"}, "internal", "any", True),
+        ({"level": "customer", "location": "any"}, "internal", None, True),  # above the channel's level
+        ({"level": "customer", "location": "any"}, "customer", None, False),
+        ({"level": "secret"}, "secret", None, False),
+        (None, "secret", None, True),  # no hub sink
+        ({"location": "any"}, "secret", None, True),  # a sink without a level
+        ({"level": "galaxy"}, "secret", None, True),  # a level the ladder lacks
+        ({"level": "internal"}, "galaxy", None, True),  # a channel's level the ladder lacks
+        ({"level": "internal", "location": "moon"}, "internal", None, True),
+        ({"level": "internal", "location": "any"}, "internal", "moon", True),
+    ],
+)
+def test_restricted_for_keeps_a_sink_above_the_channels_clearance_and_fails_closed(clearance, level, location, kept):
+    assert telegram.restricted_for(clearance, LEVELS, DOMESTIC, level, location) is kept
+
+
 def test_a_restricted_message_holds_the_project_the_kind_and_the_link_only():
     url = "https://hub.test/inbox?decision=5"
     message = telegram.minimal_message("northwind", "decision", None, url, "/inbox?decision=5")

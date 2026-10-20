@@ -58,6 +58,7 @@ from tests.hub.test_runs import OTHER, OWNER, PROJECT, STRANGER, audit_rows, mem
 
 OWNER_CHAT, OTHER_CHAT = 7001, 7002
 CHANNELS = tables.notification_channels
+LINKS = tables.channel_link_codes  # telegram_links before schema 0063: Telegram's codes are its rows
 DELIVERIES = tables.notification_deliveries
 updates = itertools.count(1)
 
@@ -199,7 +200,7 @@ def test_a_member_links_a_private_chat_with_a_one_time_code_that_lives_ten_minut
     made = response.json()
     code = made["url"].rpartition("=")[2]
     assert made["bot"] == BOT and model.LINK_CODE.fullmatch(code)
-    links = tables.telegram_links
+    links = LINKS
     ((stored, lives),) = sql(
         hub_db, select(links.c.code_hash, extract("epoch", links.c.expires_at - links.c.created_at))
     )
@@ -646,7 +647,7 @@ def test_a_member_whose_grant_went_gets_nothing_of_that_project_on_telegram(clie
 def test_a_chat_is_linked_from_a_web_session_only(client, hub, hub_db, bot):
     refused = client.post("/v1/me/telegram/link", headers=hub["owner"])  # a machine token
     assert refused.status_code == 403 and "linked from a web session only" in refused.text
-    assert sql(hub_db, select(func.count()).select_from(tables.telegram_links)) == [(0,)]
+    assert sql(hub_db, select(func.count()).select_from(LINKS)) == [(0,)]
     # A code whose session signed out before Start links nothing.
     session = web(client, hub_db, OWNER)
     code = new_link(client, session)
@@ -657,7 +658,7 @@ def test_a_chat_is_linked_from_a_web_session_only(client, hub, hub_db, bot):
     token, session_id = live.web_session(hub_db, OWNER)
     linked(client, session_headers(client, token))
     assert sql(hub_db, select(CHANNELS.c.token_id)) == [(session_id,)]
-    links = tables.telegram_links
+    links = LINKS
     assert sql(hub_db, select(links.c.token_id).where(links.c.used_at.is_not(None))) == [(session_id,)]
 
 

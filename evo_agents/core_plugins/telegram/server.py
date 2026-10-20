@@ -346,7 +346,7 @@ class TelegramLink(BaseModel):
 
 
 def _live_session(channel_or_link):
-    """The web session ``channel_or_link`` (a row of notification_channels or telegram_links) is bound to is live: of
+    """The web session ``channel_or_link`` (a row of notification_channels or channel_link_codes) is bound to is live: of
     the same member, neither revoked nor expired."""
     t = tables.tokens
     return exists().where(
@@ -409,10 +409,11 @@ async def make_link(request: Request, user: CurrentUser) -> TelegramLink:
         raise HTTPException(403, LINK_FROM_SESSION)
     bot = await bot_username(request.app)
     code = telegram.new_code()
-    links = tables.telegram_links
+    links = tables.channel_link_codes
     async with request.app.state.engine.begin() as conn:
         await conn.execute(
             delete(links).where(
+                links.c.kind == KIND,
                 (links.c.user_id == user.user_id) | (links.c.expires_at < func.now() - timedelta(days=1)),
                 links.c.used_at.is_(None) | (links.c.used_at < func.now() - timedelta(days=1)),
             )
@@ -421,6 +422,7 @@ async def make_link(request: Request, user: CurrentUser) -> TelegramLink:
             insert(links)
             .values(
                 user_id=user.user_id,
+                kind=KIND,
                 code_hash=telegram.code_hash(code),
                 expires_at=func.now() + timedelta(seconds=telegram.LINK_SECONDS),
                 token_id=user.token_id,
@@ -567,12 +569,13 @@ async def _link(conn: AsyncConnection, code: str, chat: dict, sender: dict) -> M
     """Use link code ``code`` for ``chat``: the member it was made for, now linked, or None when it does not link."""
     if chat.get("type") != "private" or not isinstance(sender.get("id"), int):
         return None
-    links, users, channels = tables.telegram_links, tables.users, tables.notification_channels
+    links, users, channels = tables.channel_link_codes, tables.users, tables.notification_channels
     query = (
         select(links.c.id, links.c.user_id, links.c.token_id, users.c.login)
         .join_from(links, users, users.c.id == links.c.user_id)
         .where(
             links.c.code_hash == telegram.code_hash(code),
+            links.c.kind == KIND,
             links.c.used_at.is_(None),
             links.c.expires_at > func.now(),
             _live_session(links),  # the web session that made the code still lives

@@ -62,8 +62,9 @@ A request carries one of three credentials:
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
 webhook (its secret header is the credential), the hub's branding, which the sign-in page shows (`GET /v1/branding`,
-`/v1/branding/logo`, `/v1/branding/favicon`), and the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
-in the path is the credential, answer without one. A route added later needs a credential unless it is added to
+`/v1/branding/logo`, `/v1/branding/favicon`), the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
+in the path is the credential, and the webhooks of core plugins under `/v1/hooks/<plugin>/`, which check a secret of
+their plugin's (`docs/plugins.md`, The core plugin API), answer without one. A route added later needs a credential unless it is added to
 `PUBLIC_PATHS` or `PUBLIC_PREFIXES` in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
 expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
 client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
@@ -819,7 +820,10 @@ tables, and the job indexes the history again. Schema 0061 adds the lenses `runt
 `findings` and `proposals` (The Curator's review, below); going back to 0060 deletes their findings and proposals.
 Schema 0062 adds `workers.shared`, whether its owner shares the worker with the writers of its projects (`docs/workers.md`,
 Shared workers), false for every worker there is and every new one; going back to 0061 drops it, and a shared worker
-takes its owner's runs alone again.
+takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's `channel_link_codes`, the one-time
+codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
+is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
+name.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

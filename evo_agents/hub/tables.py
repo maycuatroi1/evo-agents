@@ -942,7 +942,7 @@ Index(
     postgresql_where=proposals.c.inbox_at.is_not(None),
 )
 
-# The Curator's morning briefs, and the one-time codes that link a Telegram chat (0015)
+# The Curator's morning briefs (0015)
 
 curator_briefs = Table(
     "curator_briefs",
@@ -964,8 +964,8 @@ curator_briefs = Table(
     UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
 )
 
-telegram_links = Table(
-    "telegram_links",
+channel_link_codes = Table(  # the one-time codes that link a member's channel: telegram_links until 0063
+    "channel_link_codes",
     metadata,
     _id(),
     Column("user_id", BigInteger, nullable=False),
@@ -974,11 +974,12 @@ telegram_links = Table(
     Column("expires_at", DateTime(timezone=True), nullable=False),
     _when("used_at"),
     Column("token_id", BigInteger),  # the web session that made the code (0016)
-    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="telegram_links_token_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="telegram_links_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="telegram_links_pkey"),
-    UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),
-    Index("telegram_links_user_idx", "user_id"),
+    Column("kind", Text, nullable=False),  # the kind of members' channel it links (0063)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="channel_link_codes_token_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="channel_link_codes_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="channel_link_codes_pkey"),
+    UniqueConstraint("code_hash", name="channel_link_codes_code_hash_key"),
+    Index("channel_link_codes_user_idx", "user_id"),
 )
 
 accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
