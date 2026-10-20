@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.0: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.1: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -9,17 +9,21 @@ code the web route that does the same goes through, with its checks; what the hu
 status and the words of that route. A mistake of the plugin's (a kind of channel it does not contribute, a config too
 large, a handle it made itself) is a ValueError.
 
-- The ground: ``require``, ``plugin``, the callers of the plugin's routes (``WebSession``, ``HubAdmin``),
-  ``begin``, ``hub_config``, ``web_url``, ``Context`` and ``transaction`` for its jobs, events, tools and sources,
-  ``plugin_environment``, and the class and errors of the extension point channels.
-- A member's channel: ``find_member``, ``link_channel``, ``unlink_channel``, ``link_code``, ``redeem_link_code``,
-  ``direct_chat_member``, ``set_channel_state``, ``delivered_notification``, and ``prepare`` with ``restricted`` for
-  what a ``Clearance`` keeps out.
-- What a member does from it: ``answer_decision``, ``answer_proposal``, ``agents``, ``open_direct_chat``,
+- The ground: ``require``, ``plugin``, the callers of the plugin's routes (``WebSession``, ``Caller``,
+  ``HubAdmin``), ``begin``, ``hub_config``, ``web_url``, ``Context`` and ``transaction`` for its jobs, events, tools
+  and sources, ``plugin_environment``, and the class and errors of the extension point channels.
+- A member's channel: ``find_member``, ``link_channel``, ``unlink_channel``, ``unlink_by_login``, ``linked_channel``,
+  ``link_code``, ``redeem_link_code``, ``direct_chat_member``, ``set_channel_state``, ``delivered_notification``, and
+  ``prepare`` with ``restricted`` for what a ``Clearance`` keeps out.
+- What a member does from it: ``answer_decision``, ``answer_proposal`` (refused with ``NOT_YOURS`` or
+  ``RESTRICTED_ANSWER`` before anything of the decision or proposal is read), ``agents``, ``open_direct_chat``,
   ``send_message``, ``read_message``; the chat functions need the project of each agent to grant the plugin
   ``chats:write`` or ``chats:read``.
-- The plugin's own: ``plugin_config`` (its effective config, x-secret fields unsealed), ``granted``, and
+- The plugin's own: ``plugin_config`` (its effective config, x-secret fields unsealed), ``granted``, ``audit``, and
   ``chat_history_items`` for a source of the knowledge graph.
+
+Version 1.1 added ``Caller``, ``linked_channel``, ``unlink_by_login``, ``audit``, ``Clearance.below``, ``NOT_YOURS``
+and ``RESTRICTED_ANSWER``, what the core plugin telegram needed to run on this module alone.
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
@@ -47,7 +51,9 @@ from evo_agents.hub.server.core_plugin_api._acts import (
 )
 from evo_agents.hub.server.core_plugin_api._base import (
     Context,
+    audit,
     begin,
+    caller,
     granted,
     hub_admin,
     hub_config,
@@ -65,9 +71,11 @@ from evo_agents.hub.server.core_plugin_api._channels import (
     find_member,
     link_channel,
     link_code,
+    linked_channel,
     prepare,
     redeem_link_code,
     set_channel_state,
+    unlink_by_login,
     unlink_channel,
 )
 from evo_agents.hub.server.core_plugin_api._types import (
@@ -78,6 +86,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     DirectChat,
     KgSourceAnswer,
     LinkCode,
+    LinkedChannel,
     Member,
     NotACorePlugin,
     NotificationRef,
@@ -87,9 +96,11 @@ from evo_agents.hub.server.core_plugin_api._types import (
     Refused,
     SentMessage,
     Session,
+    Unlinked,
     UnsupportedApi,
 )
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.member_channels import NOT_YOURS, RESTRICTED_ANSWER
 from evo_agents.hub.server.notifications import (
     SESSION_ENDED,
     Channel,
@@ -99,9 +110,10 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 0)
+API_VERSION: tuple[int, int] = (1, 1)
 
 WebSession = Annotated[Session, Depends(web_session)]
+Caller = Annotated[Session, Depends(caller)]
 HubAdmin = Annotated[Session, Depends(hub_admin)]
 
 
@@ -118,8 +130,11 @@ def require(major: int, minor: int) -> None:
 
 __all__ = [
     "API_VERSION",
+    "NOT_YOURS",
+    "RESTRICTED_ANSWER",
     "SESSION_ENDED",
     "AgentRef",
+    "Caller",
     "Channel",
     "ChannelGone",
     "ChatMessage",
@@ -131,6 +146,7 @@ __all__ = [
     "HubAdmin",
     "KgSourceAnswer",
     "LinkCode",
+    "LinkedChannel",
     "Login",
     "Member",
     "NotACorePlugin",
@@ -144,11 +160,13 @@ __all__ = [
     "SentMessage",
     "Session",
     "Undeliverable",
+    "Unlinked",
     "UnsupportedApi",
     "WebSession",
     "agents",
     "answer_decision",
     "answer_proposal",
+    "audit",
     "begin",
     "chat_history_items",
     "delivered_notification",
@@ -158,6 +176,7 @@ __all__ = [
     "hub_config",
     "link_channel",
     "link_code",
+    "linked_channel",
     "open_direct_chat",
     "plugin",
     "plugin_config",
@@ -170,6 +189,7 @@ __all__ = [
     "send_message",
     "set_channel_state",
     "transaction",
+    "unlink_by_login",
     "unlink_channel",
     "web_url",
 ]
