@@ -2014,6 +2014,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/kg/{project}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description The runs the hub holds of the project, or of one of its sources.
+         */
+        get: operations["list_runs_v1_worker_kg__project__runs_get"];
+        put?: never;
+        /**
+         * Push Run
+         * @description Check the log of a run of the worker's and keep it, as POST /v1/kg/{project}/runs does.
+         */
+        post: operations["push_run_v1_worker_kg__project__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/runs/{run_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Log
+         * @description Where to fetch the log of an ingested run of the project.
+         */
+        get: operations["run_log_v1_worker_kg__project__runs__run_id__log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/runs/{run_id}/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Run
+         * @description Make a run of the worker's part of the project's corpus and queue a build, as for a member's run.
+         */
+        post: operations["commit_run_v1_worker_kg__project__runs__run_id__commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/blobs/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Blobs
+         * @description The hashes of ``sha256`` the project does not hold.
+         */
+        post: operations["check_blobs_v1_worker_kg__project__blobs_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/blobs/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Uploads
+         * @description Presigned PUT URLs for the blobs of a run of the worker's that the project does not hold yet.
+         */
+        post: operations["request_uploads_v1_worker_kg__project__blobs_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/blobs/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Blobs
+         * @description Check the uploads of the items of a run of the worker's and record the blobs in the project.
+         */
+        post: operations["commit_blobs_v1_worker_kg__project__blobs_commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/decisions": {
         parameters: {
             query?: never;
@@ -2803,6 +2927,398 @@ export interface paths {
         get: operations["list_digests_v1_projects__project__digests_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/parts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put Parts
+         * @description Commit the uploads of the request, then record each part that continues its transcript.
+         */
+        post: operations["put_parts_v1_projects__project__transcripts_parts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Held Transcripts
+         * @description How far the hub holds each of the caller's own transcripts of these sessions.
+         */
+        post: operations["held_transcripts_v1_projects__project__transcripts_held_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Transcripts
+         * @description The transcripts of the project the caller may read, the latest updated first.
+         */
+        get: operations["list_transcripts_v1_projects__project__transcripts_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project Transcripts
+         * @description Delete the content of every transcript of the project; an admin of the project only.
+         */
+        delete: operations["delete_project_transcripts_v1_projects__project__transcripts_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Transcript Usage
+         * @description What the project's transcripts come to in the blob store, per member, with the retention: for a reader who
+         *     reads the project's default label through the sink (the project's hub sink by default), as the night's figures
+         *     are.
+         */
+        get: operations["transcript_usage_v1_projects__project__transcripts_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Session
+         * @description The transcripts of session ``session_id`` the caller may read, with their parts.
+         */
+        get: operations["show_session_v1_projects__project__transcripts__session_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Session
+         * @description Delete the content of the transcripts of session ``session_id``; an admin of the project only.
+         */
+        delete: operations["delete_session_v1_projects__project__transcripts__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/kg-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Kg Health
+         * @description The health of the project's knowledge graph over time: its latest measures and its successful builds with what
+         *     each covers, for a reader whose grant reaches the project's default label through the sink (the hub sink by
+         *     default), as the night's figures are.
+         */
+        get: operations["show_kg_health_v1_projects__project__curator_kg_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/replay/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description The project's suite of replay tasks, in the order they came in, of the plans the caller may read.
+         */
+        get: operations["list_tasks_v1_projects__project__curator_replay_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/changes/{change_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Change Replay
+         * @description A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found.
+         */
+        get: operations["show_change_replay_v1_projects__project__curator_changes__change_id__replay_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Replay
+         * @description One arm's result of the replay run this worker holds, or why it cannot replay its task; with the run's key.
+         */
+        post: operations["report_replay_v1_worker_runs__run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History Status
+         * @description Where the project's history run stands: its cap and model, the facets of the model, its latest runs.
+         */
+        get: operations["history_status_v1_projects__project__curator_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/history/clusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clusters
+         * @description The clusters of the project's facets of MIN_CLUSTER_SESSIONS sessions or more, as the hub last counted them.
+         */
+        get: operations["list_clusters_v1_projects__project__curator_history_clusters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/history/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Next Batch
+         * @description The next batch of the history run this worker holds, with the run's key (see the module's docstring).
+         */
+        post: operations["next_batch_v1_worker_runs__run_id__history_next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/history/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report History
+         * @description The facets the model wrote and the names it gave, of the history run this worker holds, with the run's key.
+         */
+        post: operations["report_history_v1_worker_runs__run_id__history_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/history/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History Sessions
+         * @description The sessions and runs of the project's whole history, the latest first, with the numbers of their facets.
+         */
+        get: operations["history_sessions_v1_projects__project__curator_history_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/history/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History Search
+         * @description The words of the query in the project's transcripts, run logs and group chats, best first.
+         */
+        get: operations["history_search_v1_projects__project__curator_history_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/{session_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Lines
+         * @description The lines of a transcript around ``line``, each as its entries.
+         */
+        get: operations["show_lines_v1_projects__project__transcripts__session_id__lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/earlier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Earlier
+         * @description What earlier review nights found, newest first, with what became of it, and the proposals rejected lately.
+         */
+        get: operations["show_earlier_v1_projects__project__curator_earlier_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/playbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Playbook
+         * @description The project's playbook of the Curator, the most helpful first.
+         */
+        get: operations["show_playbook_v1_projects__project__curator_playbook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/playbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Delta
+         * @description One delta of the playbook from the agent of the review run this worker holds.
+         */
+        post: operations["record_delta_v1_worker_runs__run_id__playbook_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5758,6 +6274,61 @@ export interface components {
              */
             text?: string | null;
         };
+        /**
+         * ArmResult
+         * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
+         */
+        ArmResult: {
+            /**
+             * Passed
+             * @description every verify command exited 0
+             */
+            passed: boolean;
+            /**
+             * Harness Sha
+             * @description the commit of the change's repo the arm's harness is at
+             */
+            harness_sha: string;
+            /**
+             * Harness Paths
+             * @description the files of the change the arm ran with
+             */
+            harness_paths?: string[];
+            /** Verify */
+            verify?: components["schemas"]["VerifyRun"][];
+            /**
+             * Cost Usd
+             * @description the agent's session; null when its runtime names none
+             */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Tool Calls
+             * @default 0
+             */
+            tool_calls: number;
+            /**
+             * Tool Errors
+             * @description the tool calls that failed
+             * @default 0
+             */
+            tool_errors: number;
+            /** Peak Context Tokens */
+            peak_context_tokens?: number | null;
+            /**
+             * Duration Ms
+             * @description the agent's time
+             */
+            duration_ms: number;
+            /**
+             * Agent Error
+             * @description why its turn did not end
+             */
+            agent_error?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
         /** AudienceIn */
         AudienceIn: {
             /**
@@ -6320,6 +6891,34 @@ export interface components {
              */
             changes: components["schemas"]["Change"][];
         };
+        /** ChangeReplay */
+        ChangeReplay: {
+            /** Project */
+            project: string;
+            /** Change Id */
+            change_id: number;
+            /**
+             * Tasks
+             * @description the tasks each change is replayed on, as the charter says now
+             */
+            tasks: number;
+            /** Replays */
+            replays: components["schemas"]["Replay"][];
+            /**
+             * Arms
+             * @description replay.compare: per arm the replays, passed, cost, turns, tool errors, context
+             */
+            arms: {
+                [key: string]: unknown;
+            };
+            /**
+             * Verdict
+             * @description replay.verdict at the head of the change's pull request: whether its replays won, and why
+             */
+            verdict: {
+                [key: string]: unknown;
+            };
+        };
         /** Charter */
         Charter: {
             /**
@@ -6394,6 +6993,8 @@ export interface components {
              */
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
+            replay?: components["schemas"]["ReplaySettings"];
+            history?: components["schemas"]["HistorySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -6522,6 +7123,8 @@ export interface components {
              */
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
+            replay?: components["schemas"]["ReplaySettings"];
+            history?: components["schemas"]["HistorySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -7386,15 +7989,17 @@ export interface components {
         /**
          * CuratorSpec
          * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
-         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
-         *     branch, its forge and its pull request; for a Judge the commit to judge.
+         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
+         *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
+         *     head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
+         *     key (``evo_agents.hub.server.history``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -7429,6 +8034,20 @@ export interface components {
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
              */
             judge_key?: string | null;
+            /** @description a replay run's replay and task; null for any other run */
+            replay?: components["schemas"]["ReplaySpec"] | null;
+            /**
+             * Replay Key
+             * @description a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge run's
+             */
+            replay_key?: string | null;
+            /** @description a history run's batches; null for any other run */
+            history?: components["schemas"]["HistorySpec"] | null;
+            /**
+             * History Key
+             * @description a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's
+             */
+            history_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -7797,6 +8416,91 @@ export interface components {
              */
             value: "any" | "web";
         };
+        /** EarlierFinding */
+        EarlierFinding: {
+            /** Id */
+            id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Night
+             * @description the night of the review run that found it
+             */
+            night: string | null;
+            /** Lens */
+            lens: string;
+            /** Severity */
+            severity: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "proposed" | "rejected" | "merged" | "kept" | "reverted";
+            /**
+             * Closed
+             * @description kept, merged or rejected: not recorded again without new evidence
+             */
+            closed: boolean;
+            /** Proposals */
+            proposals: components["schemas"]["EarlierProposal"][];
+            /**
+             * Evidence
+             * @description its evidence, as the command line writes it
+             */
+            evidence: string[];
+        };
+        /** EarlierProposal */
+        EarlierProposal: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Tier */
+            tier: number;
+            /**
+             * State
+             * @description the proposal's state
+             */
+            state: string;
+            /**
+             * Change State
+             * @description the state of the change accepting it made, if any
+             */
+            change_state: string | null;
+            /**
+             * Outcome
+             * @description the ledger's outcome of its merged change: keep, revert or unclear
+             */
+            outcome: string | null;
+            /**
+             * Status
+             * @description what it says of the findings it names
+             * @enum {string}
+             */
+            status: "open" | "proposed" | "rejected" | "merged" | "kept" | "reverted";
+            /**
+             * Note
+             * @description the owner's note with the answer
+             */
+            note: string | null;
+        };
+        /** EarlierView */
+        EarlierView: {
+            /** Project */
+            project: string;
+            /**
+             * Findings
+             * @description newest first
+             */
+            findings: components["schemas"]["EarlierFinding"][];
+            /**
+             * Rejected
+             * @description rejected in the last 30 days, newest first
+             */
+            rejected: components["schemas"]["RejectedProposal"][];
+        };
         /**
          * EffectiveConfig
          * @description The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer.
@@ -7926,12 +8630,17 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "session" | "run" | "code";
+            kind: "session" | "transcript" | "run" | "code";
             /**
              * Session Id
-             * @description session: the digest's session
+             * @description session, transcript: the session
              */
             session_id?: string | null;
+            /**
+             * File
+             * @description transcript: its file
+             */
+            file?: string | null;
             /**
              * Field
              * @description session: the list of the digest
@@ -7964,7 +8673,7 @@ export interface components {
             path?: string | null;
             /**
              * Line
-             * @description code: the line
+             * @description code, transcript: the line
              */
             line?: number | null;
             /**
@@ -7972,6 +8681,83 @@ export interface components {
              * @description code: the commit the worktree was at
              */
             commit?: string | null;
+        };
+        /** FacetCluster */
+        FacetCluster: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Named
+             * @description whether the model named it; else its name is its key in words
+             */
+            named: boolean;
+            /** Description */
+            description: string | null;
+            /** Task Type */
+            task_type: string;
+            /** Failure Mode */
+            failure_mode: string;
+            /**
+             * Sessions
+             * @description its sessions, a run counting as one
+             */
+            sessions: number;
+            /** Runs */
+            runs: number;
+            /** Members */
+            members: number;
+            /**
+             * Representative
+             * @description its latest session, as evidence names it
+             */
+            representative: string | null;
+            /** Examples */
+            examples: string[];
+            /**
+             * Keys
+             * @description the groups it holds: its own and those the model joined to it
+             */
+            keys: string[];
+        };
+        /** FacetClusterList */
+        FacetClusterList: {
+            /** Project */
+            project: string;
+            /** Min Sessions */
+            min_sessions: number;
+            /** Clusters */
+            clusters: components["schemas"]["FacetCluster"][];
+            /**
+             * Hidden
+             * @description clusters of fewer sessions, left out
+             */
+            hidden: number;
+            /** Counted At */
+            counted_at: string | null;
+        };
+        /** FacetReport */
+        FacetReport: {
+            /**
+             * Item
+             * @description session:ID or run:ID
+             */
+            item: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Facet
+             * @description the facet the model wrote (history.clean_facet)
+             */
+            facet?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Error
+             * @description why there is none
+             */
+            error?: string | null;
         };
         /** FailedBuildCounts */
         FailedBuildCounts: {
@@ -8054,7 +8840,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Severity
              * @default medium
@@ -8331,6 +9117,13 @@ export interface components {
              */
             progress?: components["schemas"]["ChatProgress"][];
         };
+        /** GroupSample */
+        GroupSample: {
+            /** Summary */
+            summary: string;
+            /** Friction */
+            friction: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -8404,6 +9197,11 @@ export interface components {
              * @description for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise
              */
             plugin_runtimes?: components["schemas"]["PluginRuntime"][];
+            /**
+             * Kg Sync
+             * @description for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise
+             */
+            kg_sync?: components["schemas"]["KgDuty"][];
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -8447,6 +9245,16 @@ export interface components {
             agent_commit?: string | null;
             /** @description what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the hub shows, so a daemon sends it every time once it has one */
             self_update?: components["schemas"]["SelfUpdateReport"] | null;
+            /** @description for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off */
+            kg_sync?: components["schemas"]["KgSyncReport"] | null;
+        };
+        /** HeldAnswer */
+        HeldAnswer: {
+            /**
+             * Transcripts
+             * @description the caller's transcripts of those sessions
+             */
+            transcripts: components["schemas"]["HeldTranscript"][];
         };
         /** HeldBy */
         HeldBy: {
@@ -8456,6 +9264,31 @@ export interface components {
             project: string;
             /** State */
             state: string;
+        };
+        /** HeldRequest */
+        HeldRequest: {
+            /** Session Ids */
+            session_ids: string[];
+        };
+        /** HeldTranscript */
+        HeldTranscript: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /** Source Bytes */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Deleted
+             * @description its content was deleted; the hub takes no more of it
+             */
+            deleted: boolean;
         };
         /** HiddenResult */
         HiddenResult: {
@@ -8468,6 +9301,406 @@ export interface components {
             exit_code: number;
             /** Duration Ms */
             duration_ms?: number | null;
+        };
+        /** HistoryBatch */
+        HistoryBatch: {
+            /**
+             * Items
+             * @description the next batch, the latest first; none once nothing waits
+             */
+            items: components["schemas"]["HistoryItem"][];
+            /**
+             * Waiting
+             * @description the items without a facet of the model, this batch's included
+             */
+            waiting: number;
+            /**
+             * Groups
+             * @description with clusters: the groups of facets that have no name yet
+             */
+            groups: components["schemas"]["HistoryGroup"][];
+            /**
+             * Named
+             * @description with clusters: the groups named before
+             */
+            named: components["schemas"]["NamedGroup"][];
+        };
+        /** HistoryGroup */
+        HistoryGroup: {
+            /** Key */
+            key: string;
+            /**
+             * Label
+             * @description its kind of task and failure mode, in words
+             */
+            label: string;
+            /** Sessions */
+            sessions: number;
+            /** Samples */
+            samples: components["schemas"]["GroupSample"][];
+        };
+        /** HistoryHit */
+        HistoryHit: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "transcript" | "run" | "chat";
+            /** At */
+            at: string | null;
+            /**
+             * Role
+             * @description who: user, agent, call TOOL, TOOL result or failed, an error; for a chat, the author
+             */
+            role: string;
+            /**
+             * Text
+             * @description the words around the match, the matched ones between « and »
+             */
+            text: string;
+            /** Rank */
+            rank: number;
+            /**
+             * Evidence
+             * @description how a finding cites it; null for a chat message
+             */
+            evidence: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** File */
+            file: string | null;
+            /**
+             * Line
+             * @description the line of the transcript, or the seq of the run's event
+             */
+            line: number | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Run Kind */
+            run_kind: string | null;
+            /** Chat Id */
+            chat_id: number | null;
+            /**
+             * Chat
+             * @description the chat's title
+             */
+            chat: string | null;
+            /**
+             * Login
+             * @description the member whose session or run it is, or the chat message's author
+             */
+            login: string | null;
+            /** Runtime */
+            runtime: string | null;
+        };
+        /** HistoryItem */
+        HistoryItem: {
+            /**
+             * Item
+             * @description session:ID or run:ID
+             */
+            item: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Source
+             * @description what it is, in words
+             */
+            source: string;
+            /**
+             * Fingerprint
+             * @description the content it was read at; the report names it back
+             */
+            fingerprint: string;
+            /**
+             * Lines
+             * @description the entries of its transcript
+             */
+            lines: number;
+            /**
+             * Anchors
+             * @description its errors and corrections
+             */
+            anchors: number;
+            /**
+             * Cut
+             * @description whether the excerpt leaves part of it out
+             */
+            cut: boolean;
+            /** Excerpt */
+            excerpt: string;
+        };
+        /** HistoryNext */
+        HistoryNext: {
+            /**
+             * Clusters
+             * @description group the facets again and add the groups that have no name yet
+             * @default false
+             */
+            clusters: boolean;
+        };
+        /** HistoryReport */
+        HistoryReport: {
+            /** Facets */
+            facets?: components["schemas"]["FacetReport"][];
+            /** Names */
+            names?: components["schemas"]["NameReport"][];
+        };
+        /** HistoryReported */
+        HistoryReported: {
+            /**
+             * Stored
+             * @description facets kept
+             */
+            stored: number;
+            /**
+             * Stale
+             * @description facets of content that changed since, or of an item gone, left
+             */
+            stale: number;
+            /**
+             * Failed
+             * @description items the model gave none, which wait
+             */
+            failed: number;
+            /**
+             * Named
+             * @description groups that got their name
+             */
+            named: number;
+            /**
+             * Waiting
+             * @description the items without a facet of the model now
+             */
+            waiting: number;
+        };
+        /** HistoryRunView */
+        HistoryRunView: {
+            /** Id */
+            id: number;
+            /** Night */
+            night: string | null;
+            /** State */
+            state: string;
+            /** Model */
+            model: string | null;
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Analyzed */
+            analyzed: number;
+            /** Failed */
+            failed: number;
+            /** Stale */
+            stale: number;
+            /** Named */
+            named: number;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** HistorySearch */
+        HistorySearch: {
+            /** Project */
+            project: string;
+            /** Query */
+            query: string;
+            /** Sources */
+            sources: string[];
+            /**
+             * Hits
+             * @description best first
+             */
+            hits: components["schemas"]["HistoryHit"][];
+            /**
+             * Total
+             * @description hits found, at most SCAN_HITS of each source
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** HistorySessionItem */
+        HistorySessionItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "session" | "run";
+            /**
+             * Session Id
+             * @description a session's id; for a run, the session its agent ran in, if known
+             */
+            session_id: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Run Kind
+             * @description the kind of a run
+             */
+            run_kind: string | null;
+            /**
+             * State
+             * @description the state of a run
+             */
+            state: string | null;
+            /** Plan Id */
+            plan_id: string | null;
+            /**
+             * Login
+             * @description the member whose session or run it is
+             */
+            login: string | null;
+            /** Runtime */
+            runtime: string | null;
+            /**
+             * At
+             * @description when it ended, or its last message
+             */
+            at: string | null;
+            /**
+             * Source
+             * @description what its facet was made from: transcript, digest, run_log or events
+             */
+            source: string | null;
+            /**
+             * Numbers
+             * @description the numbers of its facet: messages, tool errors, corrections, tokens, cost
+             */
+            numbers: {
+                [key: string]: unknown;
+            };
+            /**
+             * Summary
+             * @description what the cheap model wrote of it
+             */
+            summary: string | null;
+            /**
+             * Outcome
+             * @description the outcome the model wrote
+             */
+            outcome: string | null;
+            /** Failure Modes */
+            failure_modes: string[];
+            /**
+             * Cluster
+             * @description the key of the cluster it counts in
+             */
+            cluster: string | null;
+            /**
+             * Evidence
+             * @description how a finding cites it
+             */
+            evidence: string;
+            /**
+             * Transcript
+             * @description the hub holds its transcript: transcript_lines reads it
+             */
+            transcript: boolean;
+        };
+        /** HistorySessions */
+        HistorySessions: {
+            /** Project */
+            project: string;
+            /**
+             * Items
+             * @description the latest first
+             */
+            items: components["schemas"]["HistorySessionItem"][];
+            /**
+             * Total
+             * @description those that match, of the facets examined
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * HistorySettings
+         * @description How the night's history run reads the project's sessions and runs with a cheap model
+         *     (``evo_agents.hub.history``).
+         */
+        HistorySettings: {
+            /**
+             * Budget Usd
+             * @description the most the night's history run may cost; null: the smaller of 1 USD and 0.25 of night_budget_usd; 0: no history run
+             */
+            budget_usd?: number | null;
+            /**
+             * Model
+             * @description the model of the reviewer's runtime it runs on; null: the cheapest the worker on duty reports for that runtime (haiku on Claude Code)
+             */
+            model?: string | null;
+        };
+        /**
+         * HistorySpec
+         * @description What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
+         *     history in batches.
+         */
+        HistorySpec: {
+            /**
+             * Batch Items
+             * @description items one batch reads at most
+             */
+            batch_items: number;
+            /**
+             * Batch Chars
+             * @description characters of excerpts one batch reads at most
+             */
+            batch_chars: number;
+            /**
+             * Batch Turns
+             * @description turns of the agent on one batch
+             */
+            batch_turns: number;
+            /**
+             * Naming Share
+             * @description the share of the run's caps kept for naming the clusters
+             */
+            naming_share: number;
+        };
+        /** HistoryStatus */
+        HistoryStatus: {
+            /** Project */
+            project: string;
+            /**
+             * Budget Usd
+             * @description the night's cap of the history run; null without a charter
+             */
+            budget_usd: number | null;
+            /**
+             * Runtime
+             * @description the reviewer's runtime it runs on
+             */
+            runtime: string | null;
+            /**
+             * Model
+             * @description the charter's history.model; null: the cheapest the worker reports
+             */
+            model: string | null;
+            llm: components["schemas"]["LlmCoverage"];
+            /**
+             * Runs
+             * @description the latest history runs, newest first
+             */
+            runs: components["schemas"]["HistoryRunView"][];
+            /**
+             * Clusters
+             * @description clusters in the night's figures
+             */
+            clusters: number;
+            /**
+             * Hidden
+             * @description smaller clusters, which stay out of them
+             */
+            hidden: number;
         };
         /** Inbox */
         Inbox: {
@@ -8592,6 +9825,35 @@ export interface components {
              * @description commands run in the worktree; never logged, never shown
              */
             hidden_checks: string[];
+            /**
+             * Knowledge
+             * @description a change of kind kg_source whose pull request changed knowledge.yaml: its files, the sources it edits and the checks the worker runs for it besides the verify (harness validate, a trial sync of each source), whose results the verdict's verify carries under those names; null for any other change
+             */
+            knowledge?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** KgBuildCoverage */
+        KgBuildCoverage: {
+            /** Id */
+            id: number;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /**
+             * Changed
+             * @description false when an earlier build had the same content
+             */
+            changed: boolean;
+            /**
+             * Coverage
+             * @description what the build covers (kg_builds.coverage); null before schema 0055
+             */
+            coverage: {
+                [key: string]: unknown;
+            } | null;
         };
         /** KgConfig */
         KgConfig: {
@@ -8607,6 +9869,73 @@ export interface components {
              * @description the ontology extension knowledge.yaml points at, if any
              */
             ontology?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * KgDuty
+         * @description A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it.
+         */
+        KgDuty: {
+            /** Project */
+            project: string;
+            /**
+             * Received At
+             * @description when the hub last took a run of the project's graph, from any machine: a daemon that saw an earlier time merges the hub's runs and looks at the project's sources again; null when it holds none
+             */
+            received_at: string | null;
+        };
+        /** KgHealthView */
+        KgHealthView: {
+            /** Project */
+            project: string;
+            /**
+             * Measures
+             * @description newest first
+             */
+            measures: components["schemas"]["KgMeasure"][];
+            /**
+             * Builds
+             * @description the successful builds, newest first
+             */
+            builds: components["schemas"]["KgBuildCoverage"][];
+        };
+        /** KgMeasure */
+        KgMeasure: {
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            measured_at: string;
+            /**
+             * Build Id
+             * @description the build whose graph the measure read
+             */
+            build_id: number | null;
+            /**
+             * Error
+             * @description why the measure failed; null when it did not
+             */
+            error: string | null;
+            /**
+             * Build
+             * @description that build: id, content_hash, finished_at
+             */
+            build: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Sources
+             * @description each git source: the commit it read, its default branch and head, the commits behind and the hours the oldest waited, the files missing, stale and deleted with samples and evidence, and why for what was not read
+             */
+            sources: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Eval
+             * @description the retrieval evaluation of the build's graph, or why there is none
+             */
+            eval: {
                 [key: string]: unknown;
             } | null;
         };
@@ -8653,6 +9982,95 @@ export interface components {
              * @description blobs whose object still waits to be deleted; the next prune tries again
              */
             pending: number;
+        };
+        /**
+         * KgSyncProject
+         * @description What the daemon last did for one project whose night shift it is on duty for.
+         */
+        KgSyncProject: {
+            /** Project */
+            project: string;
+            /**
+             * Checked At
+             * Format: date-time
+             * @description when the daemon last looked at the project
+             */
+            checked_at: string;
+            /**
+             * Error
+             * @description what stopped the look before any source: no checkout of the harness here, a knowledge.yaml that does not load, or a hub that refused the push
+             */
+            error?: string | null;
+            /** Sources */
+            sources?: components["schemas"]["KgSyncSource"][];
+        };
+        /**
+         * KgSyncReport
+         * @description What a daemon of feature kg_sync last did to keep the graphs of the projects it is on duty for fresh.
+         */
+        KgSyncReport: {
+            /** Projects */
+            projects?: components["schemas"]["KgSyncProject"][];
+        };
+        /**
+         * KgSyncSource
+         * @description What the daemon last did for one git source of a project whose night shift it is on duty for.
+         */
+        KgSyncSource: {
+            /**
+             * Source
+             * @description the source's id in knowledge.yaml
+             */
+            source: string;
+            /**
+             * Status
+             * @description ok, the source was read, or found at the commit it read last, and every run of it is on the hub; failed, reading it, merging the hub's runs of it or pushing went wrong (error says how); skipped, the worker does not read it (error says why). A status this hub does not know is kept as named (runs.KG_SYNC_STATES)
+             */
+            status: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Ref
+             * @description the ref it reads
+             */
+            ref?: string | null;
+            /**
+             * Commit
+             * @description the commit its last ok read read
+             */
+            commit?: string | null;
+            /**
+             * Behind
+             * @description commits of the remote's default branch that commit lacked when it was read
+             */
+            behind?: number | null;
+            /**
+             * Checked At
+             * @description when the daemon last looked at the source
+             */
+            checked_at?: string | null;
+            /**
+             * Read At
+             * @description when the commit it holds was last read
+             */
+            read_at?: string | null;
+            /**
+             * Pushed At
+             * @description when it last pushed a run of the source
+             */
+            pushed_at?: string | null;
+            /**
+             * Pulled
+             * @description runs of other machines the last look merged from the hub
+             * @default 0
+             */
+            pulled: number;
+            /**
+             * Pushed
+             * @description runs the last look pushed
+             * @default 0
+             */
+            pushed: number;
         };
         /** KindCount */
         KindCount: {
@@ -8712,7 +10130,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome";
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release";
             /**
              * Actor
              * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
@@ -8791,6 +10209,28 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** LlmCoverage */
+        LlmCoverage: {
+            /** Version */
+            version: number;
+            /**
+             * Items
+             * @description sessions and runs the model reads, as the reader may read them
+             */
+            items: number;
+            /**
+             * Analyzed
+             * @description those with a facet of the model of their content now
+             */
+            analyzed: number;
+            /** Waiting */
+            waiting: number;
+            /**
+             * Failed
+             * @description those whose last attempt failed
+             */
+            failed: number;
         };
         /** LocalDecisionAsk */
         LocalDecisionAsk: {
@@ -8889,6 +10329,17 @@ export interface components {
             not_signed_in: number;
             /** Active Days */
             active_days: number;
+        };
+        /** MemberUsage */
+        MemberUsage: {
+            /** Login */
+            login: string;
+            /** Sessions */
+            sessions: number;
+            /** Transcripts */
+            transcripts: number;
+            /** Bytes */
+            bytes: number;
         };
         /** Memory */
         Memory: {
@@ -9087,6 +10538,32 @@ export interface components {
              * @description messages of the model that name it
              */
             messages: number;
+        };
+        /** NameReport */
+        NameReport: {
+            /**
+             * Key
+             * @description <task_type>/<failure mode or none>
+             */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Same As
+             * @description the group it is the same as, which it counts in
+             */
+            same_as?: string | null;
+        };
+        /** NamedGroup */
+        NamedGroup: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
         };
         /** Neighbourhood */
         Neighbourhood: {
@@ -9675,7 +11152,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -9880,6 +11357,130 @@ export interface components {
              * @description the worker the pairing made, once a machine joined with it
              */
             worker_id: number | null;
+        };
+        /**
+         * PartIn
+         * @description One part of a transcript, as ``evo_agents.hub.transcripts.Part.wire`` sends it.
+         */
+        PartIn: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * File
+             * @description main for the session's own transcript, subagents/... for a subagent's
+             */
+            file: string;
+            /**
+             * Runtime
+             * @enum {string}
+             */
+            runtime: "claude-code" | "codex";
+            /**
+             * Machine
+             * @description the machine, as its hooks name it
+             */
+            machine: string;
+            /**
+             * Cwd
+             * @description the session's directory
+             */
+            cwd?: string | null;
+            /**
+             * Start
+             * @description the byte of the file on the machine the part starts at
+             */
+            start: number;
+            /**
+             * End
+             * @description the byte after its last
+             */
+            end: number;
+            /**
+             * First Line
+             * @description the number of its first line in the file
+             */
+            first_line: number;
+            /** Lines */
+            lines: number;
+            /**
+             * Sha256
+             * @description the blob of kind transcript that holds its lines, gzipped
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes of that blob
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines before gzip
+             */
+            raw_size: number;
+            /**
+             * Started At
+             * @description the earliest timestamp of its lines
+             */
+            started_at?: string | null;
+            /**
+             * Ended At
+             * @description the latest
+             */
+            ended_at?: string | null;
+        };
+        /** PartOutcome */
+        PartOutcome: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "stored" | "held" | "conflict" | "missing" | "refused" | "deleted";
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds now
+             */
+            source_bytes: number;
+            /**
+             * Lines
+             * @description lines of it the hub holds now
+             */
+            lines: number;
+        };
+        /** PartsAnswer */
+        PartsAnswer: {
+            /**
+             * Parts
+             * @description in the order of the files and their bytes
+             */
+            parts: components["schemas"]["PartOutcome"][];
+            /**
+             * Stored
+             * @description parts this request recorded
+             */
+            stored: number;
+            /**
+             * Bytes
+             * @description bytes of the blobs of those parts
+             */
+            bytes: number;
+        };
+        /** PartsRequest */
+        PartsRequest: {
+            /**
+             * Upload Ids
+             * @description uploads of kind transcript to commit first
+             */
+            upload_ids?: string[];
+            /** Parts */
+            parts: components["schemas"]["PartIn"][];
         };
         /** PathIn */
         PathIn: {
@@ -10212,6 +11813,99 @@ export interface components {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+        };
+        /**
+         * PlaybookDelta
+         * @description One delta of the playbook (``evo_agents.hub.playbook.OPS``).
+         */
+        PlaybookDelta: {
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "add" | "helpful" | "harmful" | "retire";
+            /**
+             * Entry Id
+             * @description helpful, harmful, retire: the entry
+             */
+            entry_id?: number | null;
+            /**
+             * Lens
+             * @description add: the lens it is for; none: every lens
+             */
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+            /**
+             * Text
+             * @description add: the lesson
+             */
+            text?: string | null;
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceIn"][];
+            /**
+             * Note
+             * @description retire: why
+             */
+            note?: string | null;
+        };
+        /** PlaybookEntry */
+        PlaybookEntry: {
+            /** Id */
+            id: number;
+            /**
+             * Ref
+             * @description pb-<id>, as the prompt and the command line write it
+             */
+            ref: string;
+            /** Lens */
+            lens: string | null;
+            /** Text */
+            text: string;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /** Helpful */
+            helpful: number;
+            /** Harmful */
+            harmful: number;
+            /** Created Run Id */
+            created_run_id: number | null;
+            /** Updated Run Id */
+            updated_run_id: number | null;
+            /** Retired */
+            retired: boolean;
+            /** Retired Note */
+            retired_note: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PlaybookView */
+        PlaybookView: {
+            /** Project */
+            project: string;
+            /**
+             * Entries
+             * @description the most helpful less harmful first
+             */
+            entries: components["schemas"]["PlaybookEntry"][];
+            /**
+             * Live
+             * @description live entries the caller may read
+             */
+            live: number;
+            /**
+             * Retired
+             * @description retired entries the caller may read
+             */
+            retired: number;
         };
         /** Plugin */
         Plugin: {
@@ -10966,13 +12660,13 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
              * @enum {string}
              */
-            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
             /** Title */
             title: string;
             /**
@@ -11360,6 +13054,21 @@ export interface components {
             repos?: components["schemas"]["Repo"][];
             harness: components["schemas"]["Harness"];
         };
+        /** RejectedProposal */
+        RejectedProposal: {
+            /** Id */
+            id: number;
+            /** Lens */
+            lens: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Note */
+            note: string | null;
+            /** Answered At */
+            answered_at: string | null;
+        };
         /** Relation */
         Relation: {
             /** Rel */
@@ -11374,6 +13083,141 @@ export interface components {
             status: string;
             /** Conf */
             conf: number | null;
+        };
+        /** Replay */
+        Replay: {
+            /** Id */
+            id: number;
+            /** Change Id */
+            change_id: number;
+            /** Task Id */
+            task_id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /**
+             * Split
+             * @enum {string}
+             */
+            split: "select" | "holdout";
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /** Attempts */
+            attempts: number;
+            /** Base Sha */
+            base_sha: string | null;
+            /**
+             * A
+             * @description arm a, the harness of the default branch: ArmResult
+             */
+            a: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * B
+             * @description arm b, the harness of the change's branch: ArmResult
+             */
+            b: {
+                [key: string]: unknown;
+            } | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ReplayReport
+         * @description One arm's result with the task's base commit; or why the worker cannot replay the task at all.
+         */
+        ReplayReport: {
+            /** Arm */
+            arm?: ("a" | "b") | null;
+            /**
+             * Base Sha
+             * @description the task's base commit the arm started at
+             */
+            base_sha?: string | null;
+            result?: components["schemas"]["ArmResult"] | null;
+            /** Refused */
+            refused?: string | null;
+            /**
+             * Task Unusable
+             * @description with refused: no replay can run the task, whatever the change
+             * @default false
+             */
+            task_unusable: boolean;
+        };
+        /**
+         * ReplaySettings
+         * @description How the night shift replays the Curator's changes of a skill, an AGENTS.md or a CLAUDE.md on tasks of the
+         *     project's own history (``evo_agents.hub.replay``).
+         */
+        ReplaySettings: {
+            /**
+             * Tasks
+             * @description tasks of the holdout split each change is replayed on
+             * @default 3
+             */
+            tasks: number;
+            /**
+             * Budget Usd
+             * @description the most a night's replay runs cost; null: no replay
+             */
+            budget_usd?: number | null;
+        };
+        /**
+         * ReplaySpec
+         * @description What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the
+         *     change's repo, whose harness files the two arms run with.
+         */
+        ReplaySpec: {
+            /** Replay Id */
+            replay_id: number;
+            task: components["schemas"]["evo_agents__hub__server__runs__models__ReplayTask"];
+            /**
+             * Repo
+             * @description the change's repo
+             */
+            repo: string;
+        };
+        /** ReplayTaskList */
+        ReplayTaskList: {
+            /** Project */
+            project: string;
+            /** Split */
+            split: ("select" | "holdout") | null;
+            /**
+             * Tasks
+             * @description in the order they came into the suite
+             */
+            tasks: components["schemas"]["evo_agents__hub__server__replays__ReplayTask"][];
+            /** Total */
+            total: number;
+            /**
+             * Counts
+             * @description the tasks of each split the caller may read
+             */
+            counts: {
+                [key: string]: number;
+            };
         };
         /** Repo */
         Repo: {
@@ -11677,7 +13521,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
             /** Project */
             project: string;
             /**
@@ -12501,6 +14345,22 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** RunLog */
+        RunLog: {
+            /** Run Id */
+            run_id: string;
+            /** Source */
+            source: string;
+            /** Log Sha256 */
+            log_sha256: string;
+            /** Log Size */
+            log_size: number;
+            /**
+             * Url
+             * @description presigned GET of the log, as the corpus that ran it wrote it (jsonl.gz)
+             */
+            url: string;
+        };
         /**
          * RunMount
          * @description A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``).
@@ -12689,7 +14549,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history";
             /** Project */
             project: string;
             /**
@@ -13351,6 +15211,18 @@ export interface components {
              */
             spool_reads?: number | null;
         };
+        /** SessionTranscripts */
+        SessionTranscripts: {
+            /** Project */
+            project: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Transcripts
+             * @description the session's own (main) first, then its subagents'
+             */
+            transcripts: components["schemas"]["TranscriptFile"][];
+        };
         /**
          * SettingsLayer
          * @description One layer of a setting at one version.
@@ -13430,7 +15302,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught";
+            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught" | "instruction_weakened";
             /** Path */
             path: string;
             /** Line */
@@ -15587,6 +17459,319 @@ export interface components {
              */
             duration_ms: number;
         };
+        /** TranscriptFile */
+        TranscriptFile: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Login
+             * @description the member who uploaded it
+             */
+            login: string;
+            /** Machine */
+            machine: string;
+            /** Cwd */
+            cwd: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds
+             */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Size
+             * @description bytes of its parts in the blob store, gzipped
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines
+             */
+            raw_size: number;
+            /**
+             * Sha256
+             * @description the chain of its parts' hashes (evo_agents.hub.transcripts.chain)
+             */
+            sha256: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first part
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest part, or its deletion
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when its content was deleted; null while the hub holds it
+             */
+            deleted_at: string | null;
+            /**
+             * Part List
+             * @description its parts in order
+             */
+            part_list: components["schemas"]["TranscriptPart"][];
+        };
+        /** TranscriptLine */
+        TranscriptLine: {
+            /** Line */
+            line: number;
+            /** Role */
+            role: string;
+            /** Text */
+            text: string;
+        };
+        /** TranscriptLines */
+        TranscriptLines: {
+            /** Project */
+            project: string;
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /** Login */
+            login: string;
+            /**
+             * Lines
+             * @description lines of the file the hub holds
+             */
+            lines: number;
+            /**
+             * Asked
+             * @description the line asked for
+             */
+            asked: number;
+            /**
+             * First
+             * @description the first line read
+             */
+            first: number;
+            /**
+             * Last
+             * @description the last line read
+             */
+            last: number;
+            /**
+             * Entries
+             * @description each entry of the lines read, in order
+             */
+            entries: components["schemas"]["TranscriptLine"][];
+            /**
+             * Evidence
+             * @description how a finding cites the line asked for
+             */
+            evidence: string;
+        };
+        /** TranscriptList */
+        TranscriptList: {
+            /**
+             * Transcripts
+             * @description the latest updated first
+             */
+            transcripts: components["schemas"]["TranscriptSummary"][];
+            /**
+             * Total
+             * @description transcripts the caller may read that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** TranscriptPart */
+        TranscriptPart: {
+            /** Seq */
+            seq: number;
+            /** Source Start */
+            source_start: number;
+            /** Source End */
+            source_end: number;
+            /** First Line */
+            first_line: number;
+            /** Lines */
+            lines: number;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Raw Size */
+            raw_size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** TranscriptSummary */
+        TranscriptSummary: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Login
+             * @description the member who uploaded it
+             */
+            login: string;
+            /** Machine */
+            machine: string;
+            /** Cwd */
+            cwd: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds
+             */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Size
+             * @description bytes of its parts in the blob store, gzipped
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines
+             */
+            raw_size: number;
+            /**
+             * Sha256
+             * @description the chain of its parts' hashes (evo_agents.hub.transcripts.chain)
+             */
+            sha256: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first part
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest part, or its deletion
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when its content was deleted; null while the hub holds it
+             */
+            deleted_at: string | null;
+        };
+        /** TranscriptUsage */
+        TranscriptUsage: {
+            /** Project */
+            project: string;
+            /**
+             * Sessions
+             * @description sessions whose transcripts the hub holds
+             */
+            sessions: number;
+            /**
+             * Transcripts
+             * @description their transcript files, subagents' included
+             */
+            transcripts: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Bytes
+             * @description bytes of their parts in the blob store, gzipped
+             */
+            bytes: number;
+            /**
+             * Raw Bytes
+             * @description bytes of their redacted lines
+             */
+            raw_bytes: number;
+            /**
+             * Source Bytes
+             * @description bytes of the files on the machines they came from
+             */
+            source_bytes: number;
+            /**
+             * Blob Bytes
+             * @description bytes of the distinct blobs of kind transcript the project holds
+             */
+            blob_bytes: number;
+            /**
+             * Deleted
+             * @description transcripts whose content was deleted; their rows stay
+             */
+            deleted: number;
+            /**
+             * First At
+             * @description the earliest first part
+             */
+            first_at: string | null;
+            /**
+             * Last At
+             * @description the latest part
+             */
+            last_at: string | null;
+            /**
+             * Retention Days
+             * @description days a transcript stays after its latest part (EVO_HUB_TRANSCRIPT_DAYS)
+             */
+            retention_days: number;
+            /**
+             * Members
+             * @description per member who uploaded, the most bytes first
+             */
+            members: components["schemas"]["MemberUsage"][];
+        };
+        /** TranscriptsDeleted */
+        TranscriptsDeleted: {
+            /** Project */
+            project: string;
+            /**
+             * Session Id
+             * @description the session; null when every transcript of the project went
+             */
+            session_id: string | null;
+            /**
+             * Transcripts
+             * @description transcripts whose content was deleted
+             */
+            transcripts: number;
+            /** Parts */
+            parts: number;
+            /** Bytes */
+            bytes: number;
+        };
         /** TriageActed */
         TriageActed: {
             /**
@@ -15748,7 +17933,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -15887,6 +18072,13 @@ export interface components {
             /** Duration Ms */
             duration_ms?: number | null;
         };
+        /** VerifyRun */
+        VerifyRun: {
+            /** Exit Code */
+            exit_code: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
         /** Version */
         Version: {
             /** Version */
@@ -15998,6 +18190,8 @@ export interface components {
             version_locked: boolean;
             /** @description what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does */
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
+            /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
+            kg_sync?: components["schemas"]["KgSyncReport"] | null;
             /** Projects */
             projects: string[];
             /**
@@ -16395,6 +18589,84 @@ export interface components {
              * @description what plan_semantics found; the plan was stored anyway
              */
             warnings: components["schemas"]["Problem"][];
+        };
+        /** ReplayTask */
+        evo_agents__hub__server__replays__ReplayTask: {
+            /** Id */
+            id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /** What */
+            what: string;
+            /** Verify */
+            verify: string;
+            /** Commits */
+            commits: string[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "evidence" | "run";
+            /**
+             * Split
+             * @enum {string}
+             */
+            split: "select" | "holdout";
+            /**
+             * Base Sha
+             * @description the first parent of the oldest of its commits, once a replay read it
+             */
+            base_sha: string | null;
+            /**
+             * Unusable
+             * @description why no replay can run it
+             */
+            unusable: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ReplayTask
+         * @description The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its
+         *     base commit (null until a replay of it read it from its commits).
+         */
+        evo_agents__hub__server__runs__models__ReplayTask: {
+            /** Id */
+            id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /** What */
+            what: string;
+            /**
+             * Verify
+             * @description the step's verify, one shell line: the worker runs it on each arm's work
+             */
+            verify: string[];
+            /**
+             * Commits
+             * @description the commits the step made, as its evidence or a run of it named them
+             */
+            commits: string[];
+            /**
+             * Base Sha
+             * @description the first parent of the oldest of its commits; null: the worker finds it
+             */
+            base_sha: string | null;
         };
     };
     responses: never;
@@ -21338,7 +23610,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -23389,6 +25661,568 @@ export interface operations {
             };
         };
     };
+    list_runs_v1_worker_kg__project__runs_get: {
+        parameters: {
+            query?: {
+                /** @description only the runs of this source */
+                source?: string | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Runs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    push_run_v1_worker_kg__project__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunPush"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_log_v1_worker_kg__project__runs__run_id__log_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the connector run, as its log file is named */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunLog"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    commit_run_v1_worker_kg__project__runs__run_id__commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the connector run, as its log file is named */
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunCommitted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_blobs_v1_worker_kg__project__blobs_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlobCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissingBlobs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_uploads_v1_worker_kg__project__blobs_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Uploads"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    commit_blobs_v1_worker_kg__project__blobs_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Committed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_decisions_v1_projects__project__decisions_get: {
         parameters: {
             query?: {
@@ -24849,7 +27683,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -24978,7 +27812,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -26070,6 +28904,1452 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_parts_v1_projects__project__transcripts_parts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartsAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    held_transcripts_v1_projects__project__transcripts_held_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transcripts_v1_projects__project__transcripts_get: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                /** @description uploaded by this member */
+                login?: string | null;
+                machine?: string | null;
+                runtime?: ("claude-code" | "codex") | null;
+                /** @description updated at or after this time */
+                since?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_transcripts_v1_projects__project__transcripts_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptsDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcript_usage_v1_projects__project__transcripts_usage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptUsage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_session_v1_projects__project__transcripts__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTranscripts"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_v1_projects__project__transcripts__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptsDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_kg_health_v1_projects__project__curator_kg_health_get: {
+        parameters: {
+            query?: {
+                /** @description measures and builds to list */
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgHealthView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_v1_projects__project__curator_replay_tasks_get: {
+        parameters: {
+            query?: {
+                /** @description the tasks of this split alone */
+                split?: ("select" | "holdout") | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayTaskList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_change_replay_v1_projects__project__curator_changes__change_id__replay_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeReplay"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_replay_v1_worker_runs__run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the replay run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Replay-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Replay"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_status_v1_projects__project__curator_history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clusters_v1_projects__project__curator_history_clusters_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacetClusterList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    next_batch_v1_worker_runs__run_id__history_next_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the history run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-History-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryNext"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryBatch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_history_v1_worker_runs__run_id__history_report_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the history run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-History-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryReported"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_sessions_v1_projects__project__curator_history_sessions_get: {
+        parameters: {
+            query?: {
+                kind?: ("session" | "run") | null;
+                /** @description a UTC day, YYYY-MM-DD */
+                since?: string | null;
+                /** @description a UTC day, YYYY-MM-DD */
+                until?: string | null;
+                /** @description of this member */
+                login?: string | null;
+                runtime?: ("claude-code" | "codex") | null;
+                /** @description an outcome, or a run's state */
+                outcome?: string | null;
+                /** @description a cluster's key */
+                cluster?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorySessions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    history_search_v1_projects__project__curator_history_search_get: {
+        parameters: {
+            query: {
+                /** @description words, "a phrase", or -excluded */
+                q: string;
+                /** @description these sources alone; repeat it */
+                source?: ("transcript" | "run" | "chat")[];
+                /** @description a UTC day, YYYY-MM-DD */
+                since?: string | null;
+                /** @description a UTC day, YYYY-MM-DD */
+                until?: string | null;
+                /** @description of this member */
+                login?: string | null;
+                runtime?: ("claude-code" | "codex") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorySearch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_lines_v1_projects__project__transcripts__session_id__lines_get: {
+        parameters: {
+            query: {
+                /** @description the line to read around */
+                line: number;
+                file?: string;
+                before?: number;
+                after?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptLines"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_earlier_v1_projects__project__curator_earlier_get: {
+        parameters: {
+            query?: {
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarlierView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_playbook_v1_projects__project__curator_playbook_get: {
+        parameters: {
+            query?: {
+                /** @description its entries and those of no lens */
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                /** @description the retired entries too, after the live ones */
+                retired?: boolean;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_delta_v1_worker_runs__run_id__playbook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookDelta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

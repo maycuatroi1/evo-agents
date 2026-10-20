@@ -89,6 +89,12 @@ TABLES |= pg.BUILDER_TABLES  # migration 0043
 TABLES |= pg.TRIAGE_TABLES  # migration 0044
 TABLES |= pg.SRS_TABLES  # migration 0046
 TABLES |= pg.TASKS_TABLES  # migration 0047
+TABLES |= pg.TRANSCRIPT_TABLES  # migration 0052
+TABLES |= pg.FACET_TABLES  # migration 0054
+TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
+TABLES |= pg.REPLAY_TABLES  # migration 0056
+TABLES |= pg.HISTORY_TABLES  # migration 0059
+TABLES |= pg.SEARCH_TABLES  # migration 0060
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -163,8 +169,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_eighty_eight_tables(hub_db):
-    assert len(TABLES) == 88  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_one_tables(hub_db):
+    assert len(TABLES) == 101  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1106,6 +1112,31 @@ def test_0049_gives_every_run_an_empty_seen_audience_and_going_back_drops_it(hub
     move_to(hub_db, "0048", down=True)
     assert "seen_audience" not in columns(hub_db, "runs")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0049") :]
+
+
+def test_0053_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0052")
+    workers = hub_tables.workers
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="5" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0053")
+    assert "kg_sync" in columns(hub_db, "workers")
+    shown = select(workers.c.kg_sync).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None,)]
+    report = {"projects": [{"project": "demo", "checked_at": "2026-10-19T00:00:00+00:00", "sources": []}]}
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(update(workers).values(kg_sync=["demo"]).where(workers.c.id == worker))
+    with live.connect(hub_db) as conn:
+        conn.execute(update(workers).values(kg_sync=report).where(workers.c.id == worker))
+    assert query(hub_db, shown) == [(report,)]
+    move_to(hub_db, "0052", down=True)
+    assert "kg_sync" not in columns(hub_db, "workers")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0053") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

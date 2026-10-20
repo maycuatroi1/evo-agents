@@ -46,6 +46,13 @@ Stop prints nothing when all went well. A conflict, which a person has to merge,
 any other failure is one line on stderr, the first one met, which Claude Code shows in its transcript view, so a hub
 that is down does not interrupt every turn. Standard library and PyYAML only, like the rest of the client.
 
+Stop and SessionEnd also queue the session's transcript and start ``evo-agents hub sessions sync`` in the background
+(``evo_agents.hub.transcripts.on_turn``), which sends the transcript's new lines, the subagents' with them, to the hub
+in parts, whatever the number of messages; SessionStart starts one when sessions wait in the queue or the machine's
+last sync was an hour ago or more. The hook only writes the queue and starts the process, detached from its output, so
+it waits for none of it.
+EVO_HUB_TRANSCRIPTS=0 (or ``off``) turns that off, and a worker run sends none, since its log is on the hub already.
+
 A session of a hub project is also a run of kind local on the hub (``evo_agents.hub.local_sync``): UserPromptSubmit
 registers it and reports running, a second PostToolUse hook adds the agent's words and the tool that ran to its log,
 Stop (here) sends the last words and reports idle before it pushes memories, SessionEnd reports ended.
@@ -367,6 +374,8 @@ def session_start(payload: dict, line: Line) -> None:
     except HubError as exc:
         line.add(str(exc), trouble=True)
         return
+    if run_id is None:
+        _start_transcripts()
     hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
     line.hub = hub.url
     where = session_dir(payload)
@@ -413,6 +422,7 @@ def stop(payload: dict, outcome: Outcome) -> None:
     nothing in a worker run, whose SessionStart line says so."""
     if worker_run() is not None:
         return
+    queue_transcript(payload)
     _local_stop(payload)
     try:
         credentials = load_credentials()
@@ -426,6 +436,21 @@ def stop(payload: dict, outcome: Outcome) -> None:
     state = HookState(hub_dir())
     _push_memories(hub, credentials.login, where, state, outcome, payload)
     _push_digests(hub, credentials.login, payload, where, state, outcome)
+
+
+def queue_transcript(payload: dict, ended: bool = False) -> None:
+    """Queue the session's transcript and start a sync in the background (``transcripts.on_turn``); never raises."""
+    from evo_agents.hub import transcripts
+
+    with contextlib.suppress(Exception):
+        transcripts.on_turn(payload, ended=ended)
+
+
+def _start_transcripts() -> None:
+    from evo_agents.hub import transcripts
+
+    with contextlib.suppress(Exception):
+        transcripts.on_session_start()
 
 
 def _local_stop(payload: dict) -> None:
@@ -635,8 +660,8 @@ def register_hooks(hsub) -> None:
     ).set_defaults(func=cmd_hook_session_start)
     ksub.add_parser(
         "stop",
-        help="push the memory files of the session's directory that changed since the last sync, and the session's "
-        "digest",
+        help="push the memory files of the session's directory that changed since the last sync and the session's "
+        "digest, and queue its transcript for the hub",
     ).set_defaults(func=cmd_hook_stop)
     ksub.add_parser(
         "post-tool-use",
@@ -652,7 +677,9 @@ def register_hooks(hsub) -> None:
         "local-tool",
         help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
     ).set_defaults(func=cmd_hook_local_tool)
-    ksub.add_parser("session-end", help="report the session's local run ended").set_defaults(func=cmd_hook_session_end)
+    ksub.add_parser(
+        "session-end", help="report the session's local run ended, and queue its transcript for the hub"
+    ).set_defaults(func=cmd_hook_session_end)
     ksub.add_parser(
         "local-ask",
         help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "

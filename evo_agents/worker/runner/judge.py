@@ -11,7 +11,10 @@ of score hacking in it (``evo_agents.hub.judge.hack_signs``; a diff longer than 
 runs the hidden checks, then the verify commands, in the worktree as code it does not trust
 (``evo_agents.worker.untrusted``): each one on the standard input of ``/bin/sh -s``, in a session of its own, with an
 environment that holds neither the worker's home nor the run's id nor a credential, the worktree put back at the
-commit judged before it, and every process it left killed after it. It then starts the Judge's agent, unless a sign
+commit judged before it, and every process it left killed after it. For a change of knowledge.yaml the inputs name
+(``knowledge``), it then runs harness validate and a trial sync of each source the change edits
+(``evo_agents.worker.runner.judge_knowledge``), their results among the verify results. It then starts the Judge's
+agent, unless a sign
 already fails the change, on the worktree put back again, the hub's prompt and what it ran (exit codes alone for the
 hidden checks). The agent's verdict is the JSON object that ends its last message (``judge.verdict_from_message``),
 which reaches the worker from the agent's own output: no file the code under test could write. The worker posts the
@@ -21,21 +24,19 @@ committing and pushing nothing.
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import judge, runs
-from evo_agents.worker import credentials, gitops, untrusted
+from evo_agents.hub import judge, knowledge_diff, runs
+from evo_agents.worker import gitops, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
-from evo_agents.worker.runner import access, origin
-from evo_agents.worker.runner.common import RunFailed, Stopped, cut, log
+from evo_agents.worker.runner import access, judge_knowledge, origin, verify
+from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
-from evo_agents.worker.runner.verify import read_tail, verify_event
+from evo_agents.worker.runner.verify import verify_event
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -78,8 +79,10 @@ class JudgeRun:
         hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
         verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
         protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
+        knowledge = judge_knowledge.wanted(inputs)
+        needed = verify_commands + ([knowledge_diff.JUDGE_VALIDATE] if knowledge is not None else [])
         try:  # a program missing fails the run, not the change: it is judged again elsewhere (JUDGE_ATTEMPTS)
-            await access.check(run, [name], path=self.run_path(), verify=verify_commands, hidden=hidden)
+            await access.check(run, [name], path=self.run_path(), verify=needed, hidden=hidden)
         except RunFailed:
             hidden.clear()
             inputs.clear()
@@ -93,6 +96,8 @@ class JudgeRun:
         hidden.clear()  # the commands go: only their exit codes stay
         inputs.clear()
         checks = await self.run_checks(workspace.worktree, verify_commands)
+        if knowledge is not None:  # a change of knowledge.yaml: harness validate, a trial sync of each source
+            checks += await judge_knowledge.run_checks(self, workspace.worktree, knowledge)
         verdict, reasons = await self.ask_judge(cls, workspace.worktree, checks, results, signs)
         body = {
             "verdict": verdict,
@@ -252,41 +257,10 @@ class JudgeRun:
             raise RunFailed(f"the worktree {cwd} could not be put back at {self.head[:12]}: {exc}") from None
 
     async def run_untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
-        """(exit code, the end of its output) of ``command``, code of the change the worker does not trust
-        (``evo_agents.worker.untrusted``): in the worktree put back at the commit judged, on the standard input of
-        ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential, and every process
-        it left killed once it ends; Stopped when the run is asked to stop or runs out of time first."""
-        run = self.run
+        """(exit code, the end of its output) of ``command``, code of the change the worker does not trust, in the
+        worktree put back at the commit judged (``verify.run_untrusted``)."""
         await self.restore(cwd)
-        marker = untrusted.new_marker()
-        env = untrusted.scrubbed_env(run.daemon.env, credentials.held_values())
-        proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
-        tail = bytearray()
-        reader = asyncio.create_task(read_tail(proc, tail))
-        waiter = asyncio.create_task(proc.wait())
-        stopper = asyncio.create_task(run.stop_event.wait())
-        try:
-            done, _ = await asyncio.wait(
-                {waiter, stopper},
-                timeout=max(0.0, run.deadline - run.loop.time()),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        finally:
-            stopper.cancel()
-            killed = await untrusted.kill_leftovers(proc.pid, marker)
-            if not waiter.done():
-                await waiter
-        if killed:
-            log.info("processes a judged command left were killed", extra={"run_id": run.id, "killed": killed})
-        if waiter not in done:
-            reader.cancel()
-            if run.stop_reason is None:
-                run.stop_reason = "timeout"
-            raise Stopped(run.stop_reason)
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(reader, 5)
-        reader.cancel()
-        return proc.returncode, tail.decode(errors="replace")
+        return await verify.run_untrusted(self.run, command, cwd)
 
     async def run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
         """Run each verify command of the plan in the worktree, as code the worker does not trust: each one's exit

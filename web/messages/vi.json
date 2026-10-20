@@ -54,6 +54,9 @@
     "agents": "Agent",
     "chats": "Chat",
     "curatorProposals": "Đề xuất",
+    "curatorHistory": "Lịch sử",
+    "curatorGraph": "Sức khoẻ graph",
+    "curatorRuntime": "Runtime",
     "curatorCharter": "Charter",
     "plugins": "Plugin"
   },
@@ -4500,7 +4503,11 @@
       "overview": "Tổng quan",
       "proposals": "Đề xuất",
       "charter": "Charter",
-      "waiting": "{count} đề xuất chờ trả lời"
+      "waiting": "{count} đề xuất chờ trả lời",
+      "history": "Lịch sử",
+      "graph": "Sức khoẻ graph",
+      "runtime": "Runtime",
+      "syncFailed": "worker không giữ graph tươi được"
     },
     "sub": {
       "duty": "Ca đêm trên <worker></worker> với tư cách {owner}, từ {start} đến {end} {timezone}",
@@ -4678,18 +4685,22 @@
       "environment": "Môi trường",
       "corrections": "Lần sửa lưng",
       "failed_runs": "Run lỗi",
+      "runtime": "Runtime",
       "tech_debt": "Nợ kỹ thuật",
       "code_health": "Sức khoẻ code",
       "docs_drift": "Tài liệu lệch",
+      "harness": "Harness",
       "skills_memory": "Skill và memory",
       "cost": "Chi phí",
       "security": "Bảo mật",
-      "product_goals": "Mục tiêu sản phẩm"
+      "product_goals": "Mục tiêu sản phẩm",
+      "kg_health": "Sức khoẻ graph"
     },
     "kinds": {
       "docs": "Tài liệu",
       "memory": "Memory",
       "test_add": "Thêm test",
+      "kg_source": "Nguồn graph",
       "fix": "Sửa lỗi",
       "refactor": "Refactor",
       "lint": "Luật lint",
@@ -4745,7 +4756,9 @@
         "pullPlain": "Mở pull request",
         "newTab": "(mở trong tab mới)",
         "moved": "Cập nhật lần cuối",
-        "reasonTitle": "{state, select, planned {Vì sao còn chờ} open {Vì sao để mở} closed {Vì sao đã đóng} other {Vì sao còn chờ}}"
+        "reasonTitle": "{state, select, planned {Vì sao còn chờ} open {Vì sao để mở} closed {Vì sao đã đóng} other {Vì sao còn chờ}}",
+        "tier": "Merge ở",
+        "tierValue": "Tầng {tier}"
       },
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
@@ -4779,7 +4792,8 @@
         "merged": "Đã merge",
         "left_open": "Để mở",
         "closed": "Đã đóng",
-        "outcome": "Kết quả"
+        "outcome": "Kết quả",
+        "skill_release": "Phát hành skill"
       },
       "outcome": {
         "keep": "Giữ",
@@ -4814,7 +4828,22 @@
       },
       "counted": "Số phiên và run đã đếm: {before} trước khi merge, {after} sau",
       "revertProposed": "Hub đã đề xuất revert nó: <link>đề xuất #{id}</link>.",
-      "outcomeDue": "Hub đếm lại số liệu của nó từ <at></at>."
+      "outcomeDue": "Hub đếm lại số liệu của nó từ <at></at>.",
+      "replay": {
+        "won": "Replay thắng",
+        "notWon": "Replay không thắng",
+        "arms": "{tasks} tác vụ giữ lại: A đạt {a}, B đạt {b}",
+        "means": "Trung bình: A {a}; B {b}",
+        "turns": "{turns} lượt"
+      },
+      "release": {
+        "published": "Đã phát hành",
+        "republished": "Phát hành lại",
+        "nothing": "Không phát hành",
+        "version": "bản {version}",
+        "kept": "bản {version} vẫn được giữ",
+        "after": "sau bản {version}"
+      }
     },
     "finding": {
       "title": "{count, plural, other {# phát hiện làm căn cứ}}",
@@ -4837,12 +4866,22 @@
       "digestGone": "Digest không còn (hub giữ digest 90 ngày) hoặc vượt quá quyền của bạn.",
       "digestFailed": "Không đọc được digest.",
       "entryMissing": "Digest không còn mục này.",
+      "transcriptLine": "Dòng {line} của {file}",
+      "showLines": "Xem các dòng",
+      "hideLines": "Ẩn các dòng",
+      "loadingLines": "Đang đọc các dòng của transcript",
+      "linesGone": "Transcript không còn (admin hoặc hạn giữ đã xoá) hoặc vượt quá quyền của bạn.",
+      "linesFailed": "Không đọc được transcript.",
+      "noLines": "Các dòng này không có chữ.",
       "opensElsewhere": "(mở trang mã nguồn ở thẻ mới)",
       "resolved": {
         "digest": "Tìm thấy trong digest của phiên",
+        "facet": "Tìm thấy trong facet của phiên",
         "run_event": "Tìm thấy trong log của run",
         "repo": "Một file trong repo của dự án",
-        "graph": "Một file trong knowledge graph của dự án"
+        "graph": "Một file trong knowledge graph của dự án",
+        "unmatched": "Một file trong repo của dự án mà knowledge graph chưa có",
+        "transcript": "Một dòng của transcript hub đang giữ"
       }
     },
     "draft": {
@@ -4955,7 +4994,8 @@
         "budget": "Ngân sách và giới hạn",
         "scope": "Được làm gì",
         "review": "Review",
-        "roles": "Vai trò"
+        "roles": "Vai trò",
+        "nightRuns": "Replay và lịch sử"
       },
       "groupHints": {
         "goals": "Mục tiêu của sản phẩm, quan trọng nhất trước.",
@@ -4963,7 +5003,8 @@
         "budget": "Một đêm và mỗi run được tốn bao nhiêu. Hub ngừng xếp run ở giới hạn đầu tiên chạm tới.",
         "scope": "Plan được chạy, số quyết định mỗi ngày, thứ được merge và thứ không bao giờ đụng.",
         "review": "Review run hằng đêm: nhìn qua bao nhiêu lăng kính và đếm lùi bao xa.",
-        "roles": "Runtime và model của Reviewer, Builder và Judge."
+        "roles": "Runtime và model của Reviewer, Builder và Judge.",
+        "nightRuns": "Các run của đêm ngoài review: replay đo một thay đổi của skill, AGENTS.md hay CLAUDE.md trên lịch sử của chính dự án, và run lịch sử đọc các phiên bằng model rẻ."
       },
       "roles": {
         "reviewer": "Reviewer",
@@ -4997,7 +5038,11 @@
         "runtime": "Runtime",
         "model": "Model",
         "hiddenChecks": "Check ẩn của Judge",
-        "outcomeDays": "Số ngày trước khi đếm lại số liệu"
+        "outcomeDays": "Số ngày trước khi đếm lại số liệu",
+        "replayTasks": "Số tác vụ replay mỗi thay đổi",
+        "replayBudget": "Ngân sách replay mỗi đêm, USD",
+        "historyBudget": "Ngân sách run lịch sử, USD",
+        "historyModel": "Model của run lịch sử"
       },
       "hints": {
         "windowEnd": "Nếu sớm hơn giờ mở, cửa sổ kéo qua nửa đêm.",
@@ -5017,10 +5062,15 @@
         "reviewBudget": "Để trống: như mọi run trong đêm.",
         "model": "Để trống: runtime tự chọn.",
         "hiddenChecks": "Mỗi dòng một lệnh. Judge chạy chúng; Builder không thấy.",
-        "outcomeDays": "Sau khi merge, hub đếm lại số liệu đã kích hoạt đề xuất trong ngần ấy ngày, từ 1 đến 90, và đề xuất revert khi số liệu xấu đi."
+        "outcomeDays": "Sau khi merge, hub đếm lại số liệu đã kích hoạt đề xuất trong ngần ấy ngày, từ 1 đến 90, và đề xuất revert khi số liệu xấu đi.",
+        "replayTasks": "Số tác vụ giữ lại mà mỗi thay đổi được replay, từ {min} đến {max}. Cần 6 tác vụ thì replay mới có thể thắng.",
+        "replayBudget": "Để trống: không chạy replay.",
+        "historyBudget": "Để trống: số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm. 0: không chạy run lịch sử.",
+        "historyModel": "Để trống: model rẻ nhất mà worker trực báo cho runtime của Reviewer."
       },
       "placeholders": {
-        "model": "mặc định của runtime"
+        "model": "mặc định của runtime",
+        "historyModel": "rẻ nhất"
       },
       "errors": {
         "required": "Hãy điền ô này.",
@@ -5038,7 +5088,8 @@
         "planId": "Dòng {line} không phải id plan.",
         "lineTooLong": "Dòng {line} dài quá {max} ký tự.",
         "control": "Dòng {line} có ký tự điều khiển.",
-        "model": "Một dòng, tối đa {max} ký tự."
+        "model": "Một dòng, tối đa {max} ký tự.",
+        "moneyOrZero": "Từ 0 trở lên, tối đa {max} USD."
       },
       "revisions": {
         "title": "Các bản",
@@ -5047,7 +5098,439 @@
         "number": "Bản {revision}",
         "worker": "trên {worker}"
       },
-      "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}"
+      "outcomeDaysValue": "{count, plural, other {# ngày sau khi merge}}",
+      "replayBudgetNone": "Không có: không chạy replay",
+      "historyBudgetDefault": "Số nhỏ hơn giữa 1 USD và một phần tư ngân sách đêm",
+      "historyBudgetOff": "Không có: không chạy run lịch sử",
+      "historyModelDefault": "model rẻ nhất worker báo"
+    },
+    "metaHistory": "Lịch sử của {project}",
+    "metaGraph": "Sức khoẻ graph của {project}",
+    "metaRuntime": "Runtime của {project}",
+    "pages": {
+      "label": "Phân trang {what}",
+      "loading": "Đang tải trang…",
+      "range": "{first} đến {last} trong {total}",
+      "previous": "Trước",
+      "next": "Sau"
+    },
+    "trend": {
+      "none": "Không có",
+      "total": "Tổng",
+      "legend": "Chú giải của {chart}",
+      "caption": "{chart}, mới nhất trước",
+      "when": "Thời điểm",
+      "tableRegion": "{chart}, dạng bảng",
+      "view": "Xem {chart} dạng",
+      "chart": "Biểu đồ",
+      "table": "Bảng",
+      "chartKeys": "{chart}. Dùng phím mũi tên trái và phải để đọc từng điểm."
+    },
+    "replay": {
+      "title": "Replay",
+      "sub": "{count} replay; charter yêu cầu {tasks} tác vụ giữ lại mỗi thay đổi",
+      "unreadable": "Không đọc được replay.",
+      "retry": "Thử lại",
+      "none": "Chưa replay. Ca đêm chỉ replay thay đổi của skill, AGENTS.md hay CLAUDE.md, trên {tasks} tác vụ giữ lại từ lịch sử của chính dự án, khi charter cho replay một ngân sách.",
+      "won": "Replay thắng",
+      "notWon": "Chưa thắng",
+      "holdout": "{tasks} trên {needed} tác vụ giữ lại cần để thắng",
+      "tierZero": "Replay đã thắng nên thay đổi được merge ở tầng 0 thay vì tầng {tier} của đề xuất.",
+      "armsCaption": "A, harness của nhánh mặc định, so với B, harness của thay đổi này",
+      "arm": {
+        "a": "A, nhánh mặc định",
+        "b": "B, thay đổi này"
+      },
+      "armHead": {
+        "a": "A",
+        "b": "B"
+      },
+      "armsNote": "A chạy với harness của nhánh mặc định, B với harness của thay đổi này.",
+      "measure": "Số đo",
+      "rows": {
+        "passed": "Tác vụ đạt, trên {tasks}",
+        "cost": "Chi phí trung bình",
+        "turns": "Số lượt trung bình",
+        "errors": "Lỗi tool",
+        "time": "Thời gian của agent",
+        "peak": "Context lớn nhất, token"
+      },
+      "lower": "thấp hơn {share}",
+      "higher": "cao hơn {share}",
+      "tasks": "Tác vụ đã replay",
+      "split": {
+        "select": "Tập chọn",
+        "holdout": "Tập giữ lại"
+      },
+      "passed": "Đạt",
+      "failed": "Trượt",
+      "pending": "Chưa báo",
+      "replayFailed": "Replay bị lỗi",
+      "openRun": "Mở run #{id}"
+    },
+    "history": {
+      "coverage": {
+        "label": "Mức hub giữ lịch sử",
+        "transcripts": "Transcript trên hub",
+        "transcriptsMeta": "{share} trong {reported} phiên đã báo",
+        "transcriptsNone": "Chưa có phiên nào được báo",
+        "backfill": "Chờ backfill",
+        "backfillMeta": "Chỉ có digest trên hub",
+        "backfillNone": "Mọi phiên đã báo đều có transcript",
+        "facets": "Facet",
+        "facetsMeta": "Đếm không dùng model",
+        "facetsFailed": "{count} lỗi ở lần thử cuối",
+        "of": "trên {total}",
+        "model": "Model đã đọc",
+        "modelMeta": "{waiting} chờ, {failed} lỗi",
+        "when": "Transcript và facet theo số liệu đêm {night}; phần model đã đọc là số lúc này.",
+        "noFigures": "Số liệu đêm, nơi đếm các phiên máy đã báo, chưa được tính."
+      },
+      "backfill": {
+        "title": "{count} phiên các máy đã báo chưa có transcript trên hub",
+        "text": "Hub chỉ giữ digest của chúng. Chạy <command></command> trên máy đã chạy các phiên đó: lệnh gửi phần hub còn thiếu, chạy lần hai không gửi gì."
+      },
+      "failed": {
+        "title": "{count} facet bị lỗi ở lần thử cuối",
+        "text": "Hub tự thử lại, mỗi lần lỗi thì chờ lâu hơn."
+      },
+      "members": {
+        "title": "Transcript theo thành viên",
+        "caption": "Transcript trên hub, theo thành viên đã tải lên",
+        "member": "Thành viên",
+        "sessions": "Phiên",
+        "transcripts": "Transcript",
+        "size": "Dung lượng",
+        "kept": "Giữ {days} ngày sau phần mới nhất.",
+        "stored": "{size} trong blob store, từ {source} trên các máy.",
+        "since": "Phần đầu tiên lúc {at}.",
+        "deleted": "{count} transcript đã bị admin hoặc hạn giữ xoá.",
+        "hidden": "Chỉ thành viên đọc được nhãn mặc định của dự án qua hub sink mới xem được dung lượng transcript.",
+        "empty": "Hub chưa có transcript nào. Plugin evo-hub gửi transcript của mỗi phiên trong vòng một giờ sau khi phiên kết thúc."
+      },
+      "runs": {
+        "title": "Run lịch sử",
+        "open": "Mở run #{id}",
+        "read": "{analyzed} đã đọc, {failed} lỗi, {named} cụm được đặt tên",
+        "empty": "Chưa có run lịch sử. Ca đêm xếp một run mỗi đêm, sau review run.",
+        "cheapest": "model rẻ nhất",
+        "cap": "Tối đa {budget} mỗi đêm, trên {model}, {runtime}",
+        "off": "Tắt: charter không cho run lịch sử ngân sách",
+        "noCharter": "Không có charter thì không có run lịch sử"
+      },
+      "search": {
+        "title": "Tìm trong lịch sử",
+        "description": "Mọi transcript hub giữ, mọi log của run và các group chat bạn tham gia, khớp nhất trước.",
+        "label": "Tìm trong lịch sử của dự án",
+        "placeholder": "Từ, \"cụm từ\" hoặc -loại trừ",
+        "clear": "Xoá ô tìm",
+        "sources": "Nguồn",
+        "allSources": "Tất cả",
+        "source": {
+          "transcript": "Transcript",
+          "run": "Log của run",
+          "chat": "Group chat"
+        },
+        "kind": {
+          "transcript": "Transcript",
+          "run": "Log của run",
+          "chat": "Group chat"
+        },
+        "hitCount": "{count} kết quả",
+        "total": "{count, plural, =0 {Không có kết quả} other {# kết quả}}",
+        "idle": "Gõ từ để tìm. Cụm từ đặt trong ngoặc kép, từ đứng sau dấu gạch ngang thì bị loại.",
+        "none": "Không có gì khớp",
+        "filterWords": "Tìm",
+        "filterSource": "Nguồn",
+        "hits": "Kết quả cho {q}",
+        "showLines": "Xem các dòng",
+        "hideLines": "Ẩn các dòng",
+        "openRun": "Mở log của run #{id}",
+        "openChat": "Mở chat",
+        "copyEvidence": "Sao chép bằng chứng {evidence}"
+      },
+      "excerpt": {
+        "loading": "Đang tải các dòng của transcript",
+        "gone": "Transcript không còn (admin hoặc hạn giữ đã xoá) hoặc nằm ngoài quyền của bạn.",
+        "failed": "Không đọc được transcript.",
+        "retry": "Thử lại",
+        "span": "Dòng {first} đến {last} trong {lines} dòng của {file}",
+        "copyEvidence": "Sao chép bằng chứng {evidence}",
+        "earlier": "Các dòng trước",
+        "later": "Các dòng sau",
+        "empty": "Các dòng này không có chữ.",
+        "label": "Các dòng của phiên {session}",
+        "asked": "Dòng tìm thấy:"
+      },
+      "clusters": {
+        "title": "Cụm",
+        "counted": "Đếm lúc {at}.",
+        "notCounted": "Chưa đếm.",
+        "hidden": "{count} cụm ít hơn {min} phiên không được liệt kê.",
+        "empty": "Chưa có cụm. Run lịch sử nhóm các phiên đã đọc theo loại việc và kiểu lỗi đầu tiên, và chỉ liệt kê nhóm có từ {min} phiên.",
+        "show": "Xem các phiên",
+        "shown": "Đang xem các phiên",
+        "noMode": "Không lỗi",
+        "counts": "{sessions} phiên, {runs} run, {members} thành viên",
+        "unnamed": "Chưa đặt tên"
+      },
+      "sessions": {
+        "title": "Phiên và run",
+        "description": "Toàn bộ lịch sử hub có facet, mới nhất trước, kèm những gì model rẻ viết về từng mục.",
+        "label": "Lọc phiên và run",
+        "total": "{count, plural, =0 {Không có} other {# phiên và run}}",
+        "kind": "Loại",
+        "kinds": {
+          "all": "Tất cả",
+          "session": "Phiên",
+          "run": "Run"
+        },
+        "outcome": "Kết quả",
+        "allOutcomes": "Mọi kết quả",
+        "cluster": "Cụm",
+        "removeCluster": "Xem phiên của mọi cụm, không chỉ {name}",
+        "none": "Không phiên hay run nào khớp",
+        "empty": "Chưa có facet. Hub tạo facet cho mỗi transcript và mỗi run đã kết thúc, khoảng mười phút sau khi chúng không còn thay đổi.",
+        "notRead": "Model chưa đọc.",
+        "messages": "{count} tin",
+        "toolErrors": "{count} lỗi tool",
+        "corrections": "{count} lần sửa lưng",
+        "openRun": "Mở log của run #{id}",
+        "openRunPage": "Mở run #{id}",
+        "readTranscript": "Đọc transcript",
+        "hideTranscript": "Ẩn transcript"
+      },
+      "outcome": {
+        "achieved": "Đạt",
+        "partial": "Một phần",
+        "failed": "Thất bại",
+        "abandoned": "Bỏ dở",
+        "unclear": "Chưa rõ"
+      },
+      "task": {
+        "feature": "Tính năng",
+        "fix": "Sửa lỗi",
+        "debug": "Gỡ lỗi",
+        "refactor": "Refactor",
+        "test": "Test",
+        "docs": "Tài liệu",
+        "review": "Review",
+        "plan": "Lập plan",
+        "ops": "Vận hành",
+        "research": "Tìm hiểu",
+        "config": "Cấu hình",
+        "other": "Khác"
+      },
+      "mast": {
+        "FM-1_1": "Không theo đặc tả của việc",
+        "FM-1_2": "Không theo vai trò",
+        "FM-1_3": "Lặp lại một bước",
+        "FM-1_4": "Quên lịch sử hội thoại",
+        "FM-1_5": "Không biết khi nào dừng",
+        "FM-2_1": "Bắt đầu lại hội thoại",
+        "FM-2_2": "Không hỏi lại cho rõ",
+        "FM-2_3": "Lạc khỏi việc",
+        "FM-2_4": "Giữ lại thông tin",
+        "FM-2_5": "Bỏ qua ý của bên khác",
+        "FM-2_6": "Nói một đằng làm một nẻo",
+        "FM-3_1": "Kết thúc quá sớm",
+        "FM-3_2": "Không kiểm hoặc kiểm thiếu",
+        "FM-3_3": "Kiểm sai"
+      }
+    },
+    "graph": {
+      "empty": {
+        "title": "Chưa có số đo nào của graph",
+        "description": "Cứ sáu giờ, hub đo knowledge graph của dự án có ca đêm và cấu hình knowledge trên hub: mỗi nguồn git chậm bao xa so với nhánh mặc định, graph thiếu hay giữ bản cũ của file nào, và graph trả lời các bước plan của chính dự án tốt đến đâu.",
+        "cli": "Từ terminal: <command></command>."
+      },
+      "hidden": {
+        "title": "Bạn không đọc được sức khoẻ của graph",
+        "description": "Chỉ thành viên có quyền đọc nhãn mặc định của dự án qua hub sink mới xem được, như số liệu đêm."
+      },
+      "strip": {
+        "label": "Sức khoẻ graph lúc này",
+        "behind": "Commit bị chậm",
+        "behindMeta": "Commit cũ nhất đã chờ {hours}",
+        "behindNone": "Mọi nguồn đều mới nhất",
+        "behindSeries": "Số commit bị chậm qua từng lần đo",
+        "off": "File lệch",
+        "offMeta": "Thiếu, cũ hoặc đã xoá",
+        "offSeries": "Số file lệch qua từng lần đo",
+        "resolved": "Tham chiếu đã giải",
+        "resolvedMeta": "{ambiguous} mơ hồ, {dangling} treo",
+        "resolvedSeries": "Tỉ lệ tham chiếu đã giải qua từng build",
+        "noBuild": "Chưa có build thành công",
+        "recall": "Recall tại 5",
+        "recallMeta": "{questions} câu hỏi, MRR {mrr}",
+        "recallSeries": "Recall tại 5 qua từng lần đo",
+        "recallNone": "Chưa đánh giá"
+      },
+      "measured": "Lần đọc graph gần nhất lúc {at}; liệt kê {count} lần đo.",
+      "notMeasured": "Chưa lần đo nào đọc được graph.",
+      "build": "Build #{id}.",
+      "measureFailed": "Lần đo lúc {at} bị lỗi",
+      "sources": {
+        "title": "Các nguồn so với nhánh mặc định",
+        "sub": "Mỗi nguồn git ở lần đo mới nhất: commit graph đã đọc, đầu nhánh, và các file khác nhau giữa hai bên.",
+        "caption": "Các nguồn git của graph",
+        "empty": "Cấu hình knowledge không có nguồn git nào.",
+        "source": "Nguồn",
+        "commits": "Đã đọc, rồi đầu nhánh",
+        "behind": "Chậm",
+        "missing": "Thiếu",
+        "stale": "Cũ",
+        "deleted": "Đã xoá",
+        "samples": "Một số file",
+        "copyRead": "Sao chép commit {source} đã đọc",
+        "copyHead": "Sao chép đầu nhánh của {source}",
+        "then": "rồi đầu nhánh {branch}",
+        "waited": "đã chờ {hours}"
+      },
+      "trend": {
+        "freshTitle": "Chậm so với nhánh mặc định",
+        "freshHeadline": "Số commit graph thiếu và số file lệch, qua {count} lần đo.",
+        "freshEmpty": "Chưa lần đo nào so graph với forge.",
+        "behind": "Commit chậm",
+        "off": "File lệch",
+        "coverageTitle": "Mỗi build giải được bao nhiêu",
+        "coverageHeadline": "Tỉ lệ tham chiếu, qua {count} build.",
+        "coverageEmpty": "Chưa build thành công nào lưu độ phủ.",
+        "resolved": "Đã giải",
+        "ambiguous": "Mơ hồ",
+        "dangling": "Treo",
+        "evalTitle": "Đánh giá truy hồi",
+        "evalHeadline": "kg_search trên các bước plan của chính dự án: recall tại 5 và MRR.",
+        "evalEmpty": "Chưa lần đo nào đánh giá graph.",
+        "recall5": "Recall tại 5",
+        "mrr": "MRR"
+      },
+      "retrieval": {
+        "title": "Agent lấy được gì từ graph",
+        "sub": "Từ trace của các phiên và run trong số liệu đêm.",
+        "empty": "Không phiên hay run nào trong số liệu đêm gọi graph.",
+        "used": "Phiên và run đã gọi graph",
+        "lookups": "Lượt tra",
+        "emptyLookups": "Lượt tra rỗng",
+        "fallbacks": "Quay về tìm kiếm",
+        "inTop": "File đã sửa nằm trong top 5",
+        "ofLookups": "{rate} số lượt tra ({count})",
+        "ofEmpty": "{rate} số lượt rỗng ({count})",
+        "ofEdited": "{rate}: {count} trên {edited}",
+        "noRate": "không có để tính",
+        "worst": "Nhiều lượt rỗng và quay về tìm kiếm nhất"
+      },
+      "sync": {
+        "title": "Worker giữ graph tươi",
+        "sub": "{worker} xem lần cuối lúc {at}.",
+        "never": "chưa bao giờ",
+        "none": "Worker không đọc nguồn nào của dự án.",
+        "failedTitle": "{worker} không giữ graph tươi được: {count} nguồn lỗi",
+        "noReason": "không có lý do",
+        "behind": "chậm {count} commit",
+        "status": {
+          "ok": "Đã đọc",
+          "failed": "Lỗi",
+          "skipped": "Bỏ qua"
+        }
+      }
+    },
+    "runtime": {
+      "range": {
+        "label": "Số đêm hiển thị",
+        "nights": "{nights} đêm",
+        "window": "Mỗi đêm đếm {days} ngày trước đó."
+      },
+      "empty": {
+        "title": "Chưa có số liệu đêm nào",
+        "description": "Ca đêm đếm runtime và harness cùng số liệu mỗi đêm, trước review run.",
+        "olderFigures": "Các đêm trong khoảng này được đếm trước khi hub đếm runtime và harness."
+      },
+      "unread": "{count} đêm không đọc được.",
+      "detailTitle": "Chi tiết đêm {night}",
+      "strip": {
+        "label": "Đêm mới nhất",
+        "fixed": "Context cố định mỗi phiên",
+        "fixedMeta": "Token trên {sessions} phiên",
+        "fixedNone": "Chưa đọc transcript Claude Code nào",
+        "cache": "Tỉ lệ đọc từ cache",
+        "cacheMeta": "Phiên; run {runs}",
+        "cacheNoRuns": "Phiên",
+        "cost": "Chi phí mỗi phiên",
+        "costMeta": "Run {run}, PR đã merge {pr}",
+        "hook": "Hook chậm nhất, p95",
+        "hookNone": "Chưa đo hook nào"
+      },
+      "trend": {
+        "contextTitle": "Context theo nguồn",
+        "contextHeadline": "Token trung bình mỗi nguồn đưa vào một phiên Claude Code, ước tính {chars} ký tự một token.",
+        "contextEmpty": "Không có transcript Claude Code nào được đọc trong các đêm này.",
+        "source": {
+          "always_loaded": "File luôn nạp",
+          "mcp_instructions": "Hướng dẫn MCP",
+          "skills": "Danh sách skill",
+          "hooks": "Hook",
+          "tool_output": "Output của tool"
+        },
+        "cacheTitle": "Cache",
+        "cacheHeadline": "Tỉ lệ phần model đọc lấy từ cache.",
+        "cacheEmpty": "Không phiên hay run nào báo token.",
+        "sessions": "Phiên",
+        "runs": "Run",
+        "costTitle": "Chi phí",
+        "costHeadline": "Mỗi phiên, mỗi run và mỗi pull request đã merge.",
+        "costEmpty": "Không mục nào ghi chi phí.",
+        "perSession": "Mỗi phiên",
+        "perRun": "Mỗi run",
+        "perPr": "Mỗi PR đã merge",
+        "hooksTitle": "Hook chậm nhất",
+        "hooksHeadline": "Phân vị 95 và trung vị của hook chậm nhất mỗi đêm.",
+        "hooksEmpty": "Không hook nào được đo.",
+        "p95": "p95",
+        "p50": "Trung vị",
+        "peakTitle": "Context lớn nhất",
+        "peakHeadline": "Context lớn nhất của các phiên, tính bằng token: phân vị 95 và trung vị.",
+        "peakEmpty": "Không phiên nào báo context."
+      },
+      "tables": {
+        "hook": "Hook",
+        "tool": "Tool",
+        "timed": "Lần đo",
+        "p50": "p50",
+        "p95": "p95",
+        "max": "Lâu nhất",
+        "failed": "Lỗi",
+        "failures": "{failed} lỗi, {timedOut} quá giờ",
+        "hooksTitle": "Hook",
+        "hooksSub": "Mỗi hook và lệnh của nó, chậm nhất trước, đêm {night}.",
+        "hooksEmpty": "Không hook nào được đo.",
+        "toolsTitle": "Tool chậm nhất",
+        "toolsSub": "Tool theo phân vị 95, đêm {night}.",
+        "toolsEmpty": "Không tool nào được đo.",
+        "loadedTitle": "File luôn nạp",
+        "loadedSub": "{files} file, {tokens} token, theo repo.",
+        "loadedEmpty": "Không thấy file luôn nạp nào.",
+        "folder": "thư mục",
+        "tokens": "{count} token",
+        "fileLine": "{tokens} token, {sessions} phiên",
+        "outputTitle": "Output tool lớn nhất",
+        "outputSub": "Phần tool trả lại vào context, tính bằng token.",
+        "outputEmpty": "Không đếm được output tool nào.",
+        "tokensHead": "Token",
+        "sessions": "Phiên",
+        "mcp": "MCP",
+        "heaviestTitle": "Phiên nặng nhất",
+        "heaviestSub": "Theo lượng đọc từ cache.",
+        "heaviestEmpty": "Không phiên nào báo token.",
+        "heavyLine": "{tokens} token, {cache} từ cache",
+        "peak": "context lớn nhất {tokens}",
+        "kindsTitle": "Run theo loại",
+        "kindsSub": "{runs} run báo token.",
+        "kindsEmpty": "Không run nào kết thúc trong những ngày này.",
+        "kind": "Loại",
+        "runs": "Run",
+        "cost": "Chi phí"
+      }
     }
   },
   "monitor": {

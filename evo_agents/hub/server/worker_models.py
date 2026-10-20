@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from evo_agents.hub import runs
 from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.runs.models import SelfUpdateReport
+from evo_agents.hub.server.runs.models import KgSyncReport, SelfUpdateReport
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
@@ -110,6 +110,12 @@ class Worker(BaseModel):
     self_update: WorkerSelfUpdate | None = Field(
         description="what its daemon last said of updating itself to the tag nightly; null when its last heartbeat "
         "said nothing of it, as an older daemon does"
+    )
+    kg_sync: KgSyncReport | None = Field(
+        None,
+        description="what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on "
+        "duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat "
+        "said nothing of it",
     )
     projects: list[str]
     runtimes: dict = Field(
