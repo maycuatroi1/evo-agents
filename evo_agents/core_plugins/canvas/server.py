@@ -5,8 +5,10 @@ Readers read the canvases, a canvas whole with its nine cells, a claim whole wit
 and its evidence, the diff of two revs, what judging runs of @strategist had for a claim with each verdict and why,
 the proposals, and the export. Writers make a canvas, edit its claims (each
 named with the rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and
-withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, and import
-``evo-canvas/1``. The agent of a run gets none of these routes: it works through the plugin's tools (``agent``). Admins give a new canvas a label of its own, and
+withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, import
+``evo-canvas/1``, read the baselines and decide their items (never one they changed the status of), and open a
+baseline of one claim at once. The agent of a run gets none of these routes: it works through the plugin's tools
+(``agent``), and a run's token is refused on every decision. Admins give a new canvas a label of its own, and
 archive a canvas or unarchive it. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal
 is the hub's error body, with the claims of a conflict or the problems of an import in ``detail``; nothing is written.
 """
@@ -16,10 +18,19 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import judging, proposals, store, transfer, writes
+from evo_agents.core_plugins.canvas import baselines, decisions, judging, notices, proposals, store, transfer, writes
+from evo_agents.core_plugins.canvas.baseline_models import (
+    CanvasBaseline,
+    CanvasBaselineDecisionIn,
+    CanvasBaselineOpenIn,
+    CanvasBaselineSummary,
+    CanvasSnapshotClaim,
+    item_model,
+)
+from evo_agents.core_plugins.canvas.baseline_models import summary_values as baseline_values
 from evo_agents.core_plugins.canvas.brainstorm import hand_brainstorm
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.models import (
@@ -64,12 +75,15 @@ from evo_agents.hub.tables_canvas import PROPOSAL_STATUSES, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 UNIQUE_VIOLATION = "23505"  # the SQLSTATE of a unique key two writes took at once
+DEADLOCK = "40P01"  # two writes of a project that waited on each other (a claim's number, the project's events)
+RACES = (UNIQUE_VIOLATION, DEADLOCK)
 RACE = "another write in the project took a claim's number or a canvas's slug at the same moment: try again"
 ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 Slug = Annotated[str, Path(pattern=SLUG, description="the canvas's slug")]
 Ref = Annotated[str, Path(min_length=1, max_length=20, description="the claim's code, as CL-3 or 3")]
 EvidenceId = Annotated[int, Path(ge=1)]
 ProposalId = Annotated[int, Path(ge=1)]
+BaselineNumber = Annotated[int, Path(ge=1, description="the baseline's number in the canvas")]
 Sink = Annotated[str | None, Header(alias=store.SINK_HEADER)]
 Archived = Annotated[bool, Query(description="archived ones too")]
 
@@ -83,8 +97,8 @@ async def _answer(request: Request, work):
             return await work(conn)
     except CanvasError as exc:
         return error_response(request, exc.status, exc.message, detail=exc.detail)
-    except IntegrityError as exc:
-        if getattr(exc.orig, "sqlstate", None) != UNIQUE_VIOLATION:
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) not in RACES:
             raise
         return error_response(request, 409, RACE)
 
@@ -501,6 +515,116 @@ async def import_canvas(
         label = _label(access, body.label)
         report = await transfer.run_import(conn, writer, body.data, label=label, dry_run=body.dry_run)
         return import_model(report, body.dry_run)
+
+    return await _answer(request, work)
+
+
+# Baselines
+
+
+def _no_run(user, what: str) -> None:
+    if user.scope is not None:
+        raise CanvasError(403, f"the agent of a run never {what}: a member of the project does")
+
+
+def _may_decide(access: ProjectAccess, user_id: int, row: baselines.BaselineRow, item: baselines.ItemRow) -> list[str]:
+    if row.status != "proposed" or not item.waiting or user_id in item.proposers:
+        return []
+    return list(baselines.DECIDES[item.kind]) if has_role(access.role, "writer") else []
+
+
+async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, row, sink) -> CanvasBaseline:
+    found = await baselines.items(conn, row.id)
+    evidence = await store.evidence(conn, [item.claim_id for item in found])
+    names = await baselines.logins(conn, [user_id for item in found for user_id in item.proposers])
+    models = []
+    for item in found:
+        wanted = set(item.evidence_ids) | {piece.id for piece in evidence[item.claim_id] if piece.withdrawn_at is None}
+        pieces = [piece for piece in evidence[item.claim_id] if piece.id in wanted]
+        shown = [piece for piece in pieces if store.visible(access, piece.label, sink)]
+        decides = _may_decide(access, user.user_id, row, item) if user.scope is None else []
+        models.append(item_model(item, shown, len(pieces) - len(shown), names, decides))
+    snapshot = [CanvasSnapshotClaim(**entry) for entry in row.snapshot] if row.snapshot is not None else None
+    approved_by = sorted({item.decided_by for item in found if item.decided_by}) if row.status == "approved" else []
+    return CanvasBaseline(
+        **baseline_values(row, found), canvas=canvas.slug, items=models, approved_by=approved_by, snapshot=snapshot
+    )
+
+
+@router.get("/{project}/canvases/{slug}/baselines", response_model=list[CanvasBaselineSummary])
+async def list_baselines(request: Request, project: ProjectName, slug: Slug, user: CurrentUser, sink: Sink = None):
+    """The baselines of a canvas, newest first: weekly ones and those a writer opened at once, each proposed, approved
+    or expired, with how many items wait for a member."""
+
+    async def work(conn):
+        access = await _opened(conn, user, project)
+        canvas = await store.canvas(conn, access, slug, sink)
+        rows = await baselines.baselines(conn, canvas)
+        return [CanvasBaselineSummary(**baseline_values(row, await baselines.items(conn, row.id))) for row in rows]
+
+    return await _answer(request, work)
+
+
+@router.get("/{project}/canvases/{slug}/baselines/{number}", response_model=CanvasBaseline)
+async def show_baseline(
+    request: Request, project: ProjectName, slug: Slug, number: BaselineNumber, user: CurrentUser, sink: Sink = None
+):
+    """A baseline whole: what it asks of each claim with the claim's evidence and the decision on it, what the caller
+    may decide, and once approved its snapshot (each claim's rev, the status in effect and the SHA-256 of its
+    content), which never changes."""
+
+    async def work(conn):
+        access = await _opened(conn, user, project)
+        canvas = await store.canvas(conn, access, slug, sink)
+        row = await baselines.baseline(conn, canvas, number)
+        return await _baseline_model(conn, access, user, canvas, row, sink)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/canvases/{slug}/baselines", response_model=CanvasBaseline, status_code=201)
+async def open_baseline(
+    request: Request, project: ProjectName, slug: Slug, body: CanvasBaselineOpenIn, user: CurrentUser, sink: Sink = None
+):
+    """Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's
+    proposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the
+    claim asks nothing of a baseline, or a baseline still proposed holds it."""
+
+    async def work(conn):
+        _no_run(user, "opens a baseline")
+        access, canvas, _ = await _writing(conn, user, project, slug, sink, "opening a baseline")
+        claim = await store.claim(conn, access, canvas, number_of(body.claim), lock=True)
+        today = await baselines.today(conn)
+        row = await baselines.open_now(conn, access.project_id, canvas, claim, user.user_id, today)
+        if row.status == "proposed":
+            await notices.tell_writers(conn, access.project_id, canvas, row, await baselines.items(conn, row.id))
+        return await _baseline_model(conn, access, user, canvas, row, sink)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/canvases/{slug}/baselines/{number}/items/{ref}/decide", response_model=CanvasBaseline)
+async def decide_item(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    number: BaselineNumber,
+    ref: Ref,
+    body: CanvasBaselineDecisionIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend
+    (with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller
+    changed or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind
+    baseline. Once no item waits, the baseline is approved and its snapshot taken."""
+
+    async def work(conn):
+        _no_run(user, "decides an item of a baseline")
+        access, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding an item of a baseline")
+        decision = decisions.Decision(ref, body.decision, body.deadline, body.reason)
+        row = await decisions.decide(conn, writer, canvas, number, decision, await baselines.today(conn))
+        return await _baseline_model(conn, access, user, canvas, row, sink)
 
     return await _answer(request, work)
 

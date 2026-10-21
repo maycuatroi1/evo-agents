@@ -100,6 +100,7 @@ TABLES |= pg.CANVAS_TABLES  # migration 0067
 TABLES |= pg.SIGNAL_TABLES  # migration 0068
 TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0069
 TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0070
+TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0071
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -174,8 +175,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_eleven_tables(hub_db):
-    assert len(TABLES) == 111  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_fourteen_tables(hub_db):
+    assert len(TABLES) == 114  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1468,6 +1469,86 @@ def test_0070_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_
     assert not {"basis", "rests_on_run"} & columns(hub_db, "canvas_evidence")
     assert "evidence_id" not in columns(hub_db, "canvas_proposals")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+
+
+def test_0071_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0071")
+    k, t = hub_tables.canvas, hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind="canvas.claim", payload={"v": 1}))
+        for bad in ({"kind": "Canvas.Claim"}, {"kind": "canvas"}, {"payload": [1]}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(
+                    insert(t.hub_events).values({"project_id": ids["project"], "kind": "a.b", "payload": {}} | bad)
+                )
+        weekly = {"canvas_id": canvas, "number": 1, "kind": "weekly", "week": "2026-W43", "label": {}}
+        weekly |= {"due_at": func.now(), "time_zone": "UTC"}
+        baseline = one(conn, insert(k.baselines).values(weekly).returning(k.baselines.c.id))
+        pushed = {"canvas_id": canvas, "number": 2, "kind": "push", "label": {}, "created_by": ids["user"]}
+        conn.execute(insert(k.baselines).values(pushed))
+        for bad in (
+            {"week": None},  # a weekly one names its week
+            {"kind": "push"},  # one opened at once has no week, and names who opened it
+            {"week": "2026-43"},
+            {"status": "approved"},  # approved holds when and its snapshot
+            {"status": "approved", "approved_at": func.now(), "snapshot": {"CL-1": 1}},
+            {"status": "expired"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.baselines).values({**weekly, "number": 9, "week": "2026-W44"} | bad))
+        with pytest.raises(errors.UniqueViolation):  # once a week per canvas
+            conn.execute(insert(k.baselines).values({**weekly, "number": 9}))
+        item = {"baseline_id": baseline, "claim_id": claim_id, "kind": "status", "from_status": "assumption"}
+        item |= {
+            "at_status": "testing",
+            "to_status": "testing",
+            "claim_rev": 2,
+            "label": {},
+            "proposers": [ids["user"]],
+        }
+        conn.execute(insert(k.baseline_items).values(item))
+        decided = {"decision": "accepted", "decided_by": ids["user"], "decided_at": func.now()}
+        for bad in (
+            {"to_status": None},  # a change of status names the status it asks
+            {"kind": "overdue"},  # an overdue card names its deadline and asks no status
+            {"kind": "new", "to_status": "testing"},
+            {"proposal_id": 1},  # only the value check's names a proposal
+            {"decision": "extended", "decided_by": ids["user"], "decided_at": func.now()},  # an overdue card's
+            {"decision": "accepted"},  # a member's decision says who and when
+            {"kind": "new", "to_status": "assumption", **decided},  # a new claim is the hub's to include
+            {**decided, "new_deadline": "2026-12-01"},  # only an extension gives a deadline
+            {"reason": "x"},  # a reason goes with a decision
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.baseline_items).values({**item, "baseline_id": baseline} | bad))
+        rev = {"claim_id": claim_id, "rev": 1, "content": {}, "change": "edit", "actor": "hub"}
+        with pytest.raises(errors.CheckViolation):  # only a baseline's decision names one
+            conn.execute(insert(k.revs).values({**rev, "baseline_id": baseline}))
+        conn.execute(insert(k.revs).values({**rev, "change": "baseline", "baseline_id": baseline}))
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "permissions": ["runs:read", "canvas:read"]}
+        conn.execute(insert(t.project_plugins).values(granted | {"enabled_by": ids["user"], "granted_by": ids["user"]}))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+        for kind in ("canvas.claim", "canvas.baseline", "signal.posted", "run.state"):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+        notice = {"user_id": ids["user"], "kind": "notice", "project_id": ids["project"], "title": "Baseline 1"}
+        conn.execute(insert(t.notifications).values({**notice, "notice_kind": "canvas_baseline"}))
+    move_to(hub_db, "0070", down=True)
+    assert not pg.CANVAS_BASELINE_TABLES & tables(hub_db)
+    assert "baseline_id" not in columns(hub_db, "canvas_claim_revs")
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
+    assert query(hub_db, select(t.notifications.c.id)) == []
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

@@ -1,5 +1,5 @@
-"""The tables of the core plugin canvas (0067, 0069, 0070), which ``evo_agents.hub.tables`` adds to its metadata as
-``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
+"""The tables of the core plugin canvas (0067, 0069, 0070, 0071), which ``evo_agents.hub.tables`` adds to its metadata
+as ``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
 ``evo_agents.core_plugins.canvas``; the hub owns the tables because its one chain of migrations creates them
 (``docs/plugins.md``, Core plugins).
 
@@ -29,6 +29,19 @@
 The value check (0070) also writes evidence: ``basis`` says what a piece the hub wrote rests on (the figures of a check
 of the test card, or the item judged), and ``rests_on_run`` marks one that rests on signals the agent of a run pushed,
 which never validates a claim.
+
+- canvas_baselines (0071): the baselines of a canvas, numbered 1 and up within it: a weekly one the plugin's job
+  proposes (its ISO week, unique in the canvas, the moment it was due and the time zone it was due in) or one a writer
+  opens for a claim at once (``push``, by whom); proposed, approved once every item has a decision, or expired when the
+  next week's came first; and once approved its snapshot, never changed: each claim not archived with its code, its
+  rev, the status in effect and the SHA-256 of its content.
+- canvas_baseline_items (0071): one claim of a baseline and what it asks: a change of status members made since the
+  status in effect (``status``), a status the value check proposed (``value_check``, its proposal), a test card past
+  its deadline without real evidence (``overdue``, extended or retired), or a new claim at assumption, included as it is
+  (``new``); the status in effect, the status the claim was at, the one asked, its rev, its evidence, the members who
+  changed its status since and so may not decide it, and the decision: who, when, why, a new deadline, the rev it wrote.
+
+canvas_claim_revs.baseline_id (0071) names the baseline whose decision wrote a rev (change ``baseline``).
 """
 
 from __future__ import annotations
@@ -53,7 +66,7 @@ from sqlalchemy import (
     false,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 CELLS = (  # canvas_claims.cell: the nine cells of a Lean Canvas, in the order a canvas shows them
     "problem",
@@ -94,6 +107,19 @@ VERDICTS = ("supports", "contradicts", "irrelevant")  # canvas_judgings.verdict
 JUDGED_SOURCES = ("signal", "evidence")  # canvas_judgings.source: a piece of feedback, or a claim's evidence
 JUDGED_EVIDENCE_KINDS = ("interview", "experiment", "market")  # the neutral evidence a judging run judges
 MAX_JUDGED_TEXT_CHARS = 4_096  # of what a judging run reads of an item: feedback is at most 4 KiB in UTF-8
+BASELINE_KINDS = ("weekly", "push")  # canvas_baselines.kind: the job's, or a writer's for one claim at once
+BASELINE_STATUSES = ("proposed", "approved", "expired")  # canvas_baselines.status
+ITEM_KINDS = ("status", "value_check", "overdue", "new")  # canvas_baseline_items.kind
+DECISIONS = (  # canvas_baseline_items.decision
+    "accepted",  # the status asked takes effect (status, value_check)
+    "rejected",  # the status in effect stays, the claim goes back to it (status, value_check)
+    "deferred",  # to the next baseline (any item a member decides)
+    "extended",  # an overdue test card gets a new deadline (overdue)
+    "retired",  # an overdue claim goes to retired (overdue)
+    "included",  # a new claim at assumption, as it is, with no member deciding (new)
+)
+WEEK = r"^[0-9]{4}-W[0-9]{2}$"  # canvas_baselines.week: an ISO week, as 2026-W43
+MAX_TIME_ZONE_CHARS = 64  # of canvas_baselines.time_zone, an IANA zone
 
 
 @dataclass(frozen=True)
@@ -106,6 +132,8 @@ class CanvasTables:
     evidence: Table
     proposals: Table
     judgings: Table
+    baselines: Table
+    baseline_items: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
@@ -185,10 +213,12 @@ def _revs(metadata: MetaData) -> Table:
         Column("chat_message_id", BigInteger),
         Column("reason", Text, nullable=False, server_default=""),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("baseline_id", BigInteger),
         _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
         _key(name, "user_id", "users", ondelete="RESTRICT"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
         _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
+        _key(name, "baseline_id", "canvas_baselines", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="canvas_claim_revs_pkey"),
         UniqueConstraint("claim_id", "rev", name="canvas_claim_revs_rev_key"),
     )
@@ -310,6 +340,68 @@ def _judgings(metadata: MetaData) -> Table:
     )
 
 
+def _baselines(metadata: MetaData) -> Table:
+    name = "canvas_baselines"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("canvas_id", BigInteger, nullable=False),
+        Column("number", Integer, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("week", Text),
+        Column("due_at", DateTime(timezone=True)),
+        Column("time_zone", Text),
+        Column("status", Text, nullable=False, server_default="proposed"),
+        Column("label", JSONB, nullable=False),
+        Column("created_by", BigInteger),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("approved_at", DateTime(timezone=True)),
+        Column("expired_at", DateTime(timezone=True)),
+        Column("snapshot", JSONB),
+        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="canvas_baselines_pkey"),
+        UniqueConstraint("canvas_id", "number", name="canvas_baselines_number_key"),
+        UniqueConstraint("canvas_id", "week", name="canvas_baselines_week_key"),
+        Index("canvas_baselines_status_idx", "canvas_id", "status"),
+    )
+
+
+def _baseline_items(metadata: MetaData) -> Table:
+    name = "canvas_baseline_items"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("baseline_id", BigInteger, nullable=False),
+        Column("claim_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("from_status", Text, nullable=False),
+        Column("at_status", Text, nullable=False),
+        Column("to_status", Text),
+        Column("claim_rev", Integer, nullable=False),
+        Column("proposal_id", BigInteger),
+        Column("deadline", Date),
+        Column("evidence_ids", ARRAY(BigInteger), nullable=False, server_default="{}"),
+        Column("proposers", ARRAY(BigInteger), nullable=False, server_default="{}"),
+        Column("label", JSONB, nullable=False),
+        Column("decision", Text),
+        Column("decided_by", BigInteger),
+        Column("decided_at", DateTime(timezone=True)),
+        Column("new_deadline", Date),
+        Column("reason", Text),
+        Column("rev", Integer),
+        _key(name, "baseline_id", "canvas_baselines", ondelete="CASCADE"),
+        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        _key(name, "proposal_id", "canvas_proposals", ondelete="SET NULL"),
+        _key(name, "decided_by", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="canvas_baseline_items_pkey"),
+        UniqueConstraint("baseline_id", "claim_id", name="canvas_baseline_items_claim_key"),
+        Index("canvas_baseline_items_claim_idx", "claim_id"),
+    )
+
+
 def canvas_tables(metadata: MetaData) -> CanvasTables:
     """The tables of the core plugin canvas, added to ``metadata`` (which holds projects, users, runs and
     chat_messages already; signal_keys and signals, which canvas_judgings names, are added after them)."""
@@ -320,4 +412,6 @@ def canvas_tables(metadata: MetaData) -> CanvasTables:
         evidence=_evidence(metadata),
         proposals=_proposals(metadata),
         judgings=_judgings(metadata),
+        baselines=_baselines(metadata),
+        baseline_items=_baseline_items(metadata),
     )
