@@ -2,7 +2,7 @@
 run the job queues for a merge request whose gates 0 to 3 passed, what its claim and its prompt hold, what it reads,
 and its verdict. ``evo_agents.hub.merge_gate`` holds the rules, ``evo_agents.hub.server.merge_gate`` the job.
 
-A judge run of the queue is a run of kind ``judge`` on no plan and no schedule (schema 0075), which the merge request
+A judge run of the queue is a run of kind ``judge`` on no plan and no schedule (schema 0081), which the merge request
 it judges names (merge_queue.judge_run_id). The admin who wrote the policy's newest revision dispatches it, so it
 reads the repo with that admin's git secret and the project's graph as them; it is pinned to the policy's
 ``judge.worker``, else to the worker on duty of the project's charter, whose daemon must say it judges merge requests

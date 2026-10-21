@@ -61,6 +61,24 @@ def test_plugin_protocol_params_schema_accepts_the_smallest_calls():
     assert protocol.params_problems("event", {"event": "e", "project": "p", "payload": {}}) == []
 
 
+def test_plugin_protocol_events_name_the_kinds_of_canvas_and_signals_beside_the_old_ones():
+    """plan living-lean-canvas adds three kinds, only adding: the four before keep their names."""
+    assert protocol.EVENT_KINDS == (
+        "run.state",
+        "chat.message",
+        "plan.step",
+        "task.result",
+        "canvas.claim",
+        "canvas.baseline",
+        "signal.posted",
+    )
+    for kind in protocol.EVENT_KINDS:
+        params = {"event": "e", "project": "p", "payload": {"v": 1}, "kind": kind, "delivery": 3}
+        assert protocol.params_problems("event", params) == []
+    unknown = {"event": "e", "project": "p", "payload": {}, "kind": "canvas.deleted"}
+    assert protocol.params_problems("event", unknown)
+
+
 def test_plugin_protocol_params_schema_names_a_missing_field():
     problems = protocol.params_problems("initialize", {"protocol": protocol.PROTOCOL})
     assert problems and any("plugin" in p for p in problems)

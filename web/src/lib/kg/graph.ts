@@ -21,7 +21,10 @@ export type Shape =
 
 export type KindStyle = { tone: Tone; shape: Shape };
 
-/** Prose in blue, code in emerald, plans in violet, requirements and tickets in amber, the rest in slate. */
+/**
+ * Prose in blue, code in emerald, plans in violet, requirements, tickets and a canvas's claims in amber, the rest in
+ * slate (a signal key among them, a measure from outside like a source).
+ */
 const KIND_STYLES: Record<string, KindStyle> = {
   Document: { tone: 1, shape: "round-rectangle" },
   Section: { tone: 1, shape: "ellipse" },
@@ -36,8 +39,10 @@ const KIND_STYLES: Record<string, KindStyle> = {
   Requirement: { tone: 2, shape: "diamond" },
   UseCase: { tone: 2, shape: "pentagon" },
   Ticket: { tone: 2, shape: "tag" },
+  Claim: { tone: 2, shape: "hexagon" },
   Source: { tone: 5, shape: "hexagon" },
   Person: { tone: 5, shape: "triangle" },
+  SignalKey: { tone: 5, shape: "diamond" },
 };
 const OTHER_KIND: KindStyle = { tone: 5, shape: "ellipse" };
 

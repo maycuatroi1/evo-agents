@@ -1,20 +1,20 @@
 """The tables of the hub's merge queue on GitLab, which ``evo_agents.hub.tables`` adds to its metadata and exposes as
 its own attributes (``tables.merge_queue``, ``tables.merge_events``): queries name them there.
 
-merge_queue (0075) holds one row for each merge request the queue took or the hub opened for a run: the project, the
+merge_queue (0081) holds one row for each merge request the queue took or the hub opened for a run: the project, the
 repo and the merge request's iid, where it comes from (``merge_gate.SOURCES``: the run, the plan and its steps in the
 repo, the Curator's change, the Builder's agent profile and model), where it stands (``merge_gate.STATES``) and why,
 the head the gates last read and when the hub first saw it, the patch the Judge judged (``merge_gate.
 patch_fingerprint``), the Judges' verdicts, the risk, the judge run in flight and its own key (a SHA-256), and what the
 queue and what follows a merge fill in later (the time it became ready, the merge and the commits around it, its
-rebases since its gates last passed, 0076; the merge request a revert of the hub undoes, the results of its own UAT
+rebases since its gates last passed, 0082; the merge request a revert of the hub undoes, the results of its own UAT
 and PROD checks with when each passed, since when the hub waits for what it watches, and what it follows on GitLab,
-0077). One merge request of a target branch has the turn at a time (merge_queue_turn_key, 0076).
-merge_events (0075) is its ledger, only ever added to: each gate passed or not with its reason, each verdict, and
+0083). One merge request of a target branch has the turn at a time (merge_queue_turn_key, 0082).
+merge_events (0081) is its ledger, only ever added to: each gate passed or not with its reason, each verdict, and
 what the queue, the release and the breaker do later (``merge_gate.EVENT_KINDS``).
-merge_samples (0077) holds the merge requests drawn for an audit sample, one each, and an admin's answer
+merge_samples (0083) holds the merge requests drawn for an audit sample, one each, and an admin's answer
 (``post_merge.SAMPLE_RESULTS``) with a note.
-merge_breakers (0078) holds the breaker of each repo of a project the queue passed over: armed or tripped
+merge_breakers (0084) holds the breaker of each repo of a project the queue passed over: armed or tripped
 (``merge_breaker.STATES``), what tripped it last and why, when, how often, who reset it last and when, and since when
 the hub has seen its target branch red.
 """
@@ -90,14 +90,14 @@ def _queue(metadata: MetaData) -> Table:
         Column("after_sha", Text),
         _stamp("created_at"),
         _stamp("updated_at"),
-        Column("rebases", SmallInteger, nullable=False, server_default="0"),  # since its gates last passed (0076)
-        Column("reverts_id", BigInteger),  # a revert's: the merge request it undoes (0077)
-        Column("uat_result", Text),  # its own UAT check: passed, failed or none (0077)
-        _when("uat_at"),  # its UAT check passed, or a later merge's cleared it (0077)
-        Column("prod_result", Text),  # its own PROD check (0077)
+        Column("rebases", SmallInteger, nullable=False, server_default="0"),  # since its gates last passed (0082)
+        Column("reverts_id", BigInteger),  # a revert's: the merge request it undoes (0083)
+        Column("uat_result", Text),  # its own UAT check: passed, failed or none (0083)
+        _when("uat_at"),  # its UAT check passed, or a later merge's cleared it (0083)
+        Column("prod_result", Text),  # its own PROD check (0083)
         _when("prod_at"),
-        _when("waits_since"),  # the hub waits for the job or pipeline it watches since then (0077)
-        Column("follow", JSONB, nullable=False, server_default="{}"),  # what the hub follows on GitLab (0077)
+        _when("waits_since"),  # the hub waits for the job or pipeline it watches since then (0083)
+        Column("follow", JSONB, nullable=False, server_default="{}"),  # what the hub follows on GitLab (0083)
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_queue_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_queue_run_id_fkey"),
         ForeignKeyConstraint(
@@ -122,7 +122,7 @@ def _queue(metadata: MetaData) -> Table:
         unique=True,
         postgresql_where=table.c.source == "plan",
     )
-    Index(  # one merge request of a target branch has the turn (0076)
+    Index(  # one merge request of a target branch has the turn (0082)
         "merge_queue_turn_key",
         table.c.project_id,
         table.c.repo,
@@ -205,5 +205,5 @@ def _breakers(metadata: MetaData) -> Table:
 
 
 def merge_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
-    """merge_queue and merge_events (0075), merge_samples (0077) and merge_breakers (0078), added to ``metadata``."""
+    """merge_queue and merge_events (0081), merge_samples (0083) and merge_breakers (0084), added to ``metadata``."""
     return _queue(metadata), _events(metadata), _samples(metadata), _breakers(metadata)

@@ -101,10 +101,15 @@ TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
 TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
 TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
 TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
-TABLES |= pg.POLICY_TABLES  # migration 0073
-TABLES |= pg.MERGE_TABLES  # migration 0075
-TABLES |= pg.SAMPLE_TABLES  # migration 0077
-TABLES |= pg.BREAKER_TABLES  # migration 0078
+TABLES |= pg.CANVAS_TABLES  # migration 0073
+TABLES |= pg.SIGNAL_TABLES  # migration 0074
+TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0075
+TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0076
+TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0077
+TABLES |= pg.POLICY_TABLES  # migration 0079
+TABLES |= pg.MERGE_TABLES  # migration 0081
+TABLES |= pg.SAMPLE_TABLES  # migration 0083
+TABLES |= pg.BREAKER_TABLES  # migration 0084
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -179,8 +184,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_sixteen_tables(hub_db):
-    assert len(TABLES) == 116  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_twenty_eight_tables(hub_db):
+    assert len(TABLES) == 128  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1470,8 +1475,290 @@ def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
 
 
-def test_0073_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0072")
+def test_0073_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0073")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        with pytest.raises(errors.UniqueViolation):  # a claim's number is the project's, never given twice
+            conn.execute(insert(k.claims).values(**{**claim, "cell": "solution"}))
+        with pytest.raises(errors.CheckViolation):  # nine cells, no tenth
+            conn.execute(insert(k.claims).values(**{**claim, "number": 2, "cell": "moon"}))
+        rev = {"claim_id": claim_id, "rev": 1, "content": {"cell": "problem"}, "change": "create", "actor": "person"}
+        conn.execute(insert(k.revs).values(**rev, user_id=ids["user"]))
+        with pytest.raises(errors.CheckViolation):  # a person's rev names the person
+            conn.execute(insert(k.revs).values(**{**rev, "rev": 2}))
+        piece = {"claim_id": claim_id, "kind": "simulation", "direction": "supports", "summary": "x", "label": {}}
+        with pytest.raises(errors.CheckViolation):  # a simulation is synthetic
+            conn.execute(insert(k.evidence).values(**piece, actor="hub"))
+        conn.execute(insert(k.evidence).values(**piece, actor="hub", synthetic=True))
+    move_to(hub_db, "0072", down=True)
+    assert not pg.CANVAS_TABLES & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
+
+
+def test_0074_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0074")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        key = one(
+            conn,
+            insert(t.signal_keys).values(name="kb.search.hits", kind="number", **owner).returning(t.signal_keys.c.id),
+        )
+        with pytest.raises(errors.CheckViolation):  # a key's name has two to six dotted parts
+            conn.execute(insert(t.signal_keys).values(name="hits", kind="number", **owner))
+        ingest = {"name": "northwind-kb", "token_hash": "b" * 64, "max_level": "internal", **owner}
+        ingest_id = one(conn, insert(t.signal_ingest_keys).values(**ingest).returning(t.signal_ingest_keys.c.id))
+        with pytest.raises(errors.UniqueViolation):  # one live key of a name in a project
+            conn.execute(insert(t.signal_ingest_keys).values(**{**ingest, "token_hash": "c" * 64}))
+        signal = {
+            "project_id": ids["project"],
+            "key_id": key,
+            "value": 0.25,
+            "measured_at": func.now(),
+            "label": {"level": "internal"},
+            "via": "ingest",
+            "ingest_key_id": ingest_id,
+            "batch_id": UUID(int=1),
+            "external_id": "a-1",
+        }
+        conn.execute(insert(t.signals).values(**signal))
+        with pytest.raises(errors.UniqueViolation):  # an ingest key sends an external id once
+            conn.execute(insert(t.signals).values(**signal))
+        with pytest.raises(errors.CheckViolation):  # a number or a text, never both
+            conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-2", "text": "slow"}))
+        with pytest.raises(errors.CheckViolation):  # pushed by an ingest key names no member
+            conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-3", "user_id": ids["user"]}))
+    move_to(hub_db, "0073", down=True)
+    assert not pg.SIGNAL_TABLES & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
+
+
+def test_0075_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0075")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        made = {"canvas_id": canvas, "fields": {"cell": "problem"}, "reason": "brainstorm", "label": {}}
+        agent = {"actor": "agent", "user_id": ids["user"]}
+        conn.execute(insert(k.proposals).values(kind="create", **made, **agent))
+        conn.execute(insert(k.proposals).values(kind="change", claim_id=claim_id, base_rev=1, **made, **agent))
+        decided = {"decided_by": ids["user"], "decided_at": func.now()}
+        conn.execute(insert(k.proposals).values(kind="create", status="rejected", **made, **agent, **decided))
+        for bad in (
+            {"kind": "change", **agent},  # a change names its claim and base rev
+            {"kind": "create", "base_rev": 1, **agent},  # a new claim has no base rev
+            {"kind": "create", "actor": "agent"},  # an agent's proposal names the member it was for
+            {"kind": "create", "status": "accepted", **agent, **decided},  # accepted names the claim and the rev
+            {"kind": "create", "status": "rejected", **agent},  # rejected names who decided
+            {"kind": "create", "status": "done", **agent},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.proposals).values(**{**made, **bad}))
+        accepted = {"status": "accepted", "claim_id": claim_id, "rev": 1, **decided}
+        conn.execute(insert(k.proposals).values(kind="create", **made, **agent, **accepted))
+    move_to(hub_db, "0074", down=True)
+    assert not pg.CANVAS_PROPOSAL_TABLES & tables(hub_db)
+    assert pg.CANVAS_TABLES <= tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
+
+
+def test_0076_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0076")
+    k, t = hub_tables.canvas, hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        key_id = one(
+            conn,
+            insert(t.signal_keys)
+            .values(name="pantry.feedback", kind="feedback", **owner)
+            .returning(t.signal_keys.c.id),
+        )
+        piece = {"claim_id": claim_id, "kind": "signal", "direction": "supports", "summary": "met", "label": {}}
+        checked = {"check": "number", "value": 0.4, "samples": 3, "result": "met"}
+        evidence_id = one(
+            conn,
+            insert(k.evidence)
+            .values(**piece, actor="hub", basis=checked, rests_on_run=True)
+            .returning(k.evidence.c.id),
+        )
+        person = {**piece, "kind": "interview", "actor": "person", "user_id": ids["user"]}
+        for bad in (
+            {**piece, "actor": "hub", "basis": [1, 2]},  # a basis is an object
+            {**person, "basis": checked},  # only the hub says what evidence rests on
+            {**person, "rests_on_run": True},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.evidence).values(**bad))
+        made = {"canvas_id": canvas, "kind": "change", "claim_id": claim_id, "base_rev": 1, "label": {}}
+        conn.execute(
+            insert(k.proposals).values(
+                **made, fields={"status": "validated"}, reason="value check", actor="hub", evidence_id=evidence_id
+            )
+        )
+        item = {
+            "canvas_id": canvas,
+            "claim_id": claim_id,
+            "source": "signal",
+            "kind": "feedback",
+            "key_id": key_id,
+            "text": "We reorder every Monday",
+            "label": {"level": "internal"},
+            "measured_at": func.now(),
+        }
+        conn.execute(insert(k.judgings).values(**item))
+        judged = {"verdict": "supports", "reason": "a shop owner says so", "judged_at": func.now()}
+        conn.execute(insert(k.judgings).values(**item, **judged))
+        evidence = {**item, "source": "evidence", "kind": "interview", "key_id": None, "evidence_id": evidence_id}
+        conn.execute(insert(k.judgings).values(**evidence, **judged, verdict_evidence_id=evidence_id))
+        for bad in (
+            {"key_id": None},  # feedback names its key
+            {"kind": "interview"},  # a signal judged is feedback
+            {**evidence, "kind": "doc"},  # evidence judged is an interview, an experiment or a market figure
+            {"verdict": "maybe", "reason": "x", "judged_at": func.now()},
+            {"verdict": "supports"},  # a verdict says why and when
+            {"reason": "x"},
+            {"verdict_evidence_id": evidence_id},  # only a verdict writes evidence
+            {"text": ""},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.judgings).values(**{**item, **bad}))
+    move_to(hub_db, "0075", down=True)
+    assert not pg.CANVAS_JUDGING_TABLES & tables(hub_db)
+    assert not {"basis", "rests_on_run"} & columns(hub_db, "canvas_evidence")
+    assert "evidence_id" not in columns(hub_db, "canvas_proposals")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
+
+
+def test_0077_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0077")
+    k, t = hub_tables.canvas, hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind="canvas.claim", payload={"v": 1}))
+        for bad in ({"kind": "Canvas.Claim"}, {"kind": "canvas"}, {"payload": [1]}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(
+                    insert(t.hub_events).values({"project_id": ids["project"], "kind": "a.b", "payload": {}} | bad)
+                )
+        weekly = {"canvas_id": canvas, "number": 1, "kind": "weekly", "week": "2026-W43", "label": {}}
+        weekly |= {"due_at": func.now(), "time_zone": "UTC"}
+        baseline = one(conn, insert(k.baselines).values(weekly).returning(k.baselines.c.id))
+        pushed = {"canvas_id": canvas, "number": 2, "kind": "push", "label": {}, "created_by": ids["user"]}
+        conn.execute(insert(k.baselines).values(pushed))
+        for bad in (
+            {"week": None},  # a weekly one names its week
+            {"kind": "push"},  # one opened at once has no week, and names who opened it
+            {"week": "2026-43"},
+            {"status": "approved"},  # approved holds when and its snapshot
+            {"status": "approved", "approved_at": func.now(), "snapshot": {"CL-1": 1}},
+            {"status": "expired"},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.baselines).values({**weekly, "number": 9, "week": "2026-W44"} | bad))
+        with pytest.raises(errors.UniqueViolation):  # once a week per canvas
+            conn.execute(insert(k.baselines).values({**weekly, "number": 9}))
+        item = {"baseline_id": baseline, "claim_id": claim_id, "kind": "status", "from_status": "assumption"}
+        item |= {
+            "at_status": "testing",
+            "to_status": "testing",
+            "claim_rev": 2,
+            "label": {},
+            "proposers": [ids["user"]],
+        }
+        conn.execute(insert(k.baseline_items).values(item))
+        decided = {"decision": "accepted", "decided_by": ids["user"], "decided_at": func.now()}
+        for bad in (
+            {"to_status": None},  # a change of status names the status it asks
+            {"kind": "overdue"},  # an overdue card names its deadline and asks no status
+            {"kind": "new", "to_status": "testing"},
+            {"proposal_id": 1},  # only the value check's names a proposal
+            {"decision": "extended", "decided_by": ids["user"], "decided_at": func.now()},  # an overdue card's
+            {"decision": "accepted"},  # a member's decision says who and when
+            {"kind": "new", "to_status": "assumption", **decided},  # a new claim is the hub's to include
+            {**decided, "new_deadline": "2026-12-01"},  # only an extension gives a deadline
+            {"reason": "x"},  # a reason goes with a decision
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.baseline_items).values({**item, "baseline_id": baseline} | bad))
+        rev = {"claim_id": claim_id, "rev": 1, "content": {}, "change": "edit", "actor": "hub"}
+        with pytest.raises(errors.CheckViolation):  # only a baseline's decision names one
+            conn.execute(insert(k.revs).values({**rev, "baseline_id": baseline}))
+        conn.execute(insert(k.revs).values({**rev, "change": "baseline", "baseline_id": baseline}))
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "permissions": ["runs:read", "canvas:read"]}
+        conn.execute(insert(t.project_plugins).values(granted | {"enabled_by": ids["user"], "granted_by": ids["user"]}))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+        for kind in ("canvas.claim", "canvas.baseline", "signal.posted", "run.state"):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+        notice = {"user_id": ids["user"], "kind": "notice", "project_id": ids["project"], "title": "Baseline 1"}
+        conn.execute(insert(t.notifications).values({**notice, "notice_kind": "canvas_baseline"}))
+    move_to(hub_db, "0076", down=True)
+    assert not pg.CANVAS_BASELINE_TABLES & tables(hub_db)
+    assert "baseline_id" not in columns(hub_db, "canvas_claim_revs")
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
+    assert query(hub_db, select(t.notifications.c.id)) == []
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
+
+
+def test_0078_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0078")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "cell": "solution", "text": "One tap reorders", "label": {}, **owner}
+        conn.execute(insert(k.claims).values(number=1, **claim))  # links nothing by default
+        linked = {"use_cases": ["UC ORD-1"], "signal_keys": ["pantry.stock.outs_per_week"]}
+        conn.execute(insert(k.claims).values(number=2, **claim, **linked))
+        for bad in ({"use_cases": [f"UC ORD-{n}" for n in range(21)]}, {"signal_keys": [f"a.b{n}" for n in range(21)]}):
+            with pytest.raises(errors.CheckViolation):  # at most 20 of each
+                conn.execute(insert(k.claims).values(number=3, **claim, **bad))
+    held = select(k.claims.c.number, k.claims.c.use_cases, k.claims.c.signal_keys).order_by(k.claims.c.number)
+    assert query(hub_db, held) == [(1, [], []), (2, ["UC ORD-1"], ["pantry.stock.outs_per_week"])]
+    move_to(hub_db, "0077", down=True)
+    assert not {"use_cases", "signal_keys"} & columns(hub_db, "canvas_claims")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
+
+
+def test_0079_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0078")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1480,7 +1767,7 @@ def test_0073_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0043 knows no policy proposal
         conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0073")
+    move_to(hub_db, "0079")
     assert columns(hub_db, "autonomy_policies") == {
         "project_id",
         "revision",
@@ -1515,7 +1802,7 @@ def test_0073_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
         (2,),
     ]
     # Going back drops the policies, and the proposals of a change of one with their notices.
-    move_to(hub_db, "0072", down=True)
+    move_to(hub_db, "0078", down=True)
     assert "autonomy_policies" not in tables(hub_db)
     assert query(hub_db, select(p.c.kind)) == [("agent",)]
     assert query(hub_db, select(n.c.details["kind"].as_string())) == [("agent",)]
@@ -1523,11 +1810,11 @@ def test_0073_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
         conn.execute(delete(n))
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0079") :]
 
 
-def test_0074_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0073")
+def test_0080_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0079")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1541,7 +1828,7 @@ def test_0074_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
         with pytest.raises(errors.CheckViolation):  # 0011 knows env and git alone
             conn.execute(insert(t.secrets).values(forge))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0074")
+    move_to(hub_db, "0080")
     with live.connect(hub_db) as conn:
         forge_id = one(conn, insert(t.secrets).values(forge).returning(t.secrets.c.id))
         conn.execute(insert(t.secret_bindings).values(secret_id=forge_id, project_id=ids["project"]))
@@ -1560,15 +1847,15 @@ def test_0074_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
         ("gitlab-push", "git"),
     ]
     # Going back deletes the forge secrets and their bindings, and the checks of 0011 hold again.
-    move_to(hub_db, "0073", down=True)
+    move_to(hub_db, "0079", down=True)
     assert query(hub_db, select(s.c.name, s.c.kind)) == [("gitlab-push", "git")]
     assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0080") :]
 
 
-def test_0075_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0074")
+def test_0081_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0080")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1588,7 +1875,7 @@ def test_0075_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
         with pytest.raises(errors.CheckViolation):  # 0067 and 0017: a judge run is on a plan and a schedule
             conn.execute(insert(t.runs).values(judge_run))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0075")
+    move_to(hub_db, "0081")
     q, e = t.merge_queue, t.merge_events
     row = {
         "project_id": ids["project"],
@@ -1621,15 +1908,15 @@ def test_0075_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
         conn.execute(insert(q).values({**row, "iid": 7, "source": "label", "plan_id": None}))
     assert query(hub_db, select(func.count()).select_from(e)) == [(1,)]
     # Going back drops the queue, deletes the judge runs on no plan and puts the checks of 0067 and 0017 back.
-    move_to(hub_db, "0074", down=True)
+    move_to(hub_db, "0080", down=True)
     assert {"merge_queue", "merge_events"}.isdisjoint(tables(hub_db))
     assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "judge")) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0081") :]
 
 
-def test_0076_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0075")
+def test_0082_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0081")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1639,7 +1926,7 @@ def test_0076_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "testing"}))
         conn.execute(insert(q).values({**row, "iid": 2, "source_branch": "fix/b", "state": "ready"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0076")
+    move_to(hub_db, "0082")
     rows = select(q.c.iid, q.c.state, q.c.rebases).order_by(q.c.iid)
     assert query(hub_db, rows) == [(1, "testing", 0), (2, "ready", 0)]
     second = q.c.iid == 2
@@ -1655,15 +1942,15 @@ def test_0076_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
         conn.execute(update(q).values(state="rebasing", rebases=1).where(second))  # !1 merged: the turn is !2's
     assert query(hub_db, rows) == [(1, "merged", 0), (2, "rebasing", 1), (3, "merging", 0)]
     # Going back drops the index and the column and keeps the rows.
-    move_to(hub_db, "0075", down=True)
+    move_to(hub_db, "0081", down=True)
     assert query(hub_db, SNAPSHOT) == before
     kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
     assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0082") :]
 
 
-def test_0077_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0076")
+def test_0083_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0082")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1672,7 +1959,7 @@ def test_0077_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
     with live.connect(hub_db) as conn:
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "merged"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0077")
+    move_to(hub_db, "0083")
     rows = select(q.c.iid, q.c.state, q.c.uat_result, q.c.follow, q.c.reverts_id)
     assert query(hub_db, rows) == [(1, "merged", None, {}, None)]
     culprit = query(hub_db, select(q.c.id).where(q.c.iid == 1))[0][0]
@@ -1695,14 +1982,14 @@ def test_0077_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
         conn.execute(update(s).values(result="faulty", answered_at=func.now(), note="It drops the totals."))
     assert query(hub_db, select(s.c.result, s.c.note)) == [("faulty", "It drops the totals.")]
     # Going back drops the samples, the reverts the hub opened and the columns, and keeps the other rows.
-    move_to(hub_db, "0076", down=True)
+    move_to(hub_db, "0082", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0083") :]
 
 
-def test_0078_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0077")
+def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0083")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1711,7 +1998,7 @@ def test_0078_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     with live.connect(hub_db) as conn:
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "ready"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0078")
+    move_to(hub_db, "0084")
     breaker = {"project_id": ids["project"], "repo": "lumen"}
     with live.connect(hub_db) as conn:
         conn.execute(insert(b).values(breaker))
@@ -1736,11 +2023,11 @@ def test_0078_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
         conn.execute(update(b).values(state="armed", resumed_by=ids["user"], resumed_at=func.now()))
     assert query(hub_db, select(b.c.state, b.c.cause, b.c.trips)) == [("armed", "uat_check", 1)]
     # Going back drops the breakers and the notices, and puts the merge request the breaker paused back in line.
-    move_to(hub_db, "0077", down=True)
+    move_to(hub_db, "0083", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

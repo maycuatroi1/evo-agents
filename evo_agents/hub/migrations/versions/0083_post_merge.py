@@ -1,7 +1,7 @@
 """What follows a merge of the hub's merge queue: its checks, PROD, the revert of a culprit, and the audit samples.
 
-Revision ID: 0077
-Revises: 0076
+Revision ID: 0083
+Revises: 0082
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_merge``, ``evo_agents.hub.merge_gate`` and
@@ -15,24 +15,24 @@ revert of the hub undoes (``reverts_id``, the source ``revert`` and no other has
 PROD checks (RESULTS) with when each passed, since when the hub waits for the job it watches, and what it follows on
 GitLab (``follow``: the pipeline and the jobs it played, retried or watches, an object). merge_samples holds the merge
 requests drawn for an audit sample, one each, and an admin's answer (SAMPLE_RESULTS) with a note. No column of a
-table older than 0075 changes.
+table older than 0081 changes.
 
 Going back drops merge_samples, deletes the rows of the reverts the hub opened, drops the columns and puts the check
-of 0075 back: the hub of 0076 follows no merge after it.
+of 0081 back: the hub of 0082 follows no merge after it.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0077"
-down_revision = "0076"
+revision = "0083"
+down_revision = "0082"
 branch_labels = None
 depends_on = None
 
-SOURCES_0075 = ("plan", "task", "builder", "label")
+SOURCES_0081 = ("plan", "task", "builder", "label")
 REVERT = "revert"
-SOURCES = (*SOURCES_0075, REVERT)  # evo_agents.hub.merge_gate.SOURCES
+SOURCES = (*SOURCES_0081, REVERT)  # evo_agents.hub.merge_gate.SOURCES
 STATES = (  # evo_agents.hub.merge_gate.STATES
     "gating",
     "judging",
@@ -62,7 +62,7 @@ col = sa.column
 
 
 def _queue_check(sources) -> None:
-    """The check of merge_queue as 0075 wrote it, its source one of ``sources``."""
+    """The check of merge_queue as 0081 wrote it, its source one of ``sources``."""
     op.drop_constraint(CHECK, "merge_queue", type_="check")
     op.create_check_constraint(
         CHECK,
@@ -152,4 +152,4 @@ def downgrade() -> None:
     op.drop_constraint("merge_queue_reverts_id_fkey", "merge_queue", type_="foreignkey")
     for name in ("follow", "waits_since", "prod_at", "prod_result", "uat_at", "uat_result", "reverts_id"):
         op.drop_column("merge_queue", name)
-    _queue_check(SOURCES_0075)
+    _queue_check(SOURCES_0081)

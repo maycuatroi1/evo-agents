@@ -356,6 +356,8 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits,
         run_leases,
         secrets,
+        signal_keys,
+        signals,
         task_dispatch,
         triage_actions,
     )
@@ -392,6 +394,9 @@ def create_app(config: HubConfig) -> FastAPI:
         branding.admin_router,
         features.router,
         features.admin_router,
+        signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
+        signals.router,
+        signal_keys.router,
         autonomy_policies.router,
         merge_view.router,
         merge_judge.worker_router,

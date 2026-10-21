@@ -1,7 +1,7 @@
 """The turn of the hub's merge queue: one merge request of a target branch at a time, and its rebases in a row.
 
-Revision ID: 0076
-Revises: 0075
+Revision ID: 0082
+Revises: 0081
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.merge_gate`` as of this revision, never imports, so a later change to
@@ -12,16 +12,16 @@ turn at a time: rebased onto the branch, its pipeline at the new head, merged wi
 criterion a5). The unique index merge_queue_turn_key holds that whatever moves the queue: a second merge request of
 the same project, repo and target branch in a turn state (TURN_STATES) is refused. merge_queue.rebases counts the
 rebases of a merge request since it last passed its gates; the queue blocks one the target branch moved under too
-many times in a row. No column of a table older than 0075 changes.
+many times in a row. No column of a table older than 0081 changes.
 
-Going back drops the index and the column: the hub of 0075 moves no merge request past ready.
+Going back drops the index and the column: the hub of 0081 moves no merge request past ready.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0076"
-down_revision = "0075"
+revision = "0082"
+down_revision = "0081"
 branch_labels = None
 depends_on = None
 

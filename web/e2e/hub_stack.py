@@ -39,6 +39,11 @@ every minute: in each charter's window it counts the night's figures and queues 
 /curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
 on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
+The canvas specs need the value check without the hub's worker: POST /canvas/value-check {project} runs one pass of the
+core plugin canvas's job value_check for that project alone (``evo_agents.core_plugins.canvas.value_check``), as the
+worker does on each batch of its signals: each test card against the signals of its metric, as evidence the hub writes
+and proposals of a change of status.
+
 The SRS specs need the settle chat a review of @ba opens without waiting for the hub's worker: POST /plugins/deliver
 {project} runs one pass of the job hub.deliver_plugin_events (``evo_agents.hub.plugin_events``) over that project's
 pending deliveries alone, so other specs' deliveries stay as they expect. The stack has no plugin host, so only a core
@@ -355,6 +360,26 @@ def collect_curator(dsn: str) -> dict:
         engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
         try:
             return await collect(engine)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
+def value_check(dsn: str, body: dict) -> dict:
+    """One pass of the value check over the canvases of one project, as the hub's worker runs it on a batch of the
+    project's signals; what it did, counted. Other specs' projects are left alone."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.core_plugins.canvas.value_check import check_project
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            return await check_project(engine, None, str(body["project"]))
         finally:
             await engine.dispose()
 
@@ -722,6 +747,11 @@ def control_server(
             elif self.path == "/merge-queue/seed":
                 try:
                     self._reply(200, seed_merge_queue(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/canvas/value-check":
+                try:
+                    self._reply(200, value_check(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/plugins/deliver":

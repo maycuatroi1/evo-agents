@@ -8,6 +8,12 @@ is still waiting is not queued twice and a slow one does not pile up. hub.plugin
 its contribution (``plugin_calls.call``, method ``job`` of plugin/1) with the projects that enable it, within
 JOB_TIMEOUT. A cron that does not read is logged and never fires.
 
+A job named SIGNAL_JOB (``value_check``, the core plugin canvas's) also runs at once for one project when a batch of
+the project's signals stored any (``evo_agents.hub.signals.push``): the batch defers hub.value_check for the project,
+which calls each such job of the plugins the project enables with that project alone (``run_on_signals``), besides
+their cron. Its lock and queueing lock are the project's (``jobs.value_check_lock``): one runs at a time, at most one
+waits, and the batches that come meanwhile join it.
+
 Outside ``evo_agents.hub.server``: the job worker imports it.
 """
 
@@ -16,15 +22,16 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import jobs, tables
-from evo_agents.hub.plugin_calls import CoreContext, PluginHostClient, call, enabled_query
+from evo_agents.hub.plugin_calls import CoreContext, PluginHostClient, call, enabled_plugins, enabled_query
 
 log = logging.getLogger(__name__)
 
 DEFAULT_CRON = "0 * * * *"
 JOB_TIMEOUT = 120.0  # seconds one run of a plugin's job may take, the plugin host's own bound
+SIGNAL_JOB = "value_check"  # a job that also runs for a project on each batch of its signals
 
 
 def lock(plugin: str, job: str) -> str:
@@ -101,3 +108,47 @@ async def run_job(engine: AsyncEngine, config, plugin: str, job: str, *, host=No
             await host.aclose()
     log.info("plugin job ran", extra={"contribution": f"{plugin}:{job}", "projects": len(projects)})
     return {"plugin": plugin, "job": job, "projects": projects, "result": result}
+
+
+# On a batch of signals
+
+
+def _signal_jobs(rows) -> list[tuple]:
+    """(row, job) of each job named SIGNAL_JOB of the plugins of ``rows`` (of ``enabled_query``)."""
+    return [
+        (row, item)
+        for row in rows
+        for item in (row.manifest.get("contributes") or {}).get("jobs") or []
+        if item.get("name") == SIGNAL_JOB
+    ]
+
+
+async def defer_on_signals(conn: AsyncConnection, project_id: int) -> int | None:
+    """Queue hub.value_check for project ``project_id`` in ``conn``'s transaction, when a plugin it enables has a job
+    named SIGNAL_JOB; the job's id, or None when there is none or one waits already."""
+    if not _signal_jobs(await enabled_plugins(conn, project_id)):
+        return None
+    key = jobs.value_check_lock(project_id)
+    return await jobs.JobQueue.in_transaction().defer(
+        jobs.VALUE_CHECK, lock=key, queueing_lock=key, connection=conn, project_id=project_id
+    )
+
+
+async def run_on_signals(engine: AsyncEngine, config, project_id: int, *, host=None) -> dict:
+    """Run each job named SIGNAL_JOB of the plugins project ``project_id`` enables, for that project alone."""
+    async with engine.begin() as conn:
+        found = _signal_jobs(await enabled_plugins(conn, project_id))
+    ran = {}
+    own = host is None and config is not None and any(row.tier != "core" for row, _ in found)
+    if own:
+        host = PluginHostClient(config.plugin_host_url, config.plugin_host_token)
+    try:
+        for row, item in found:
+            params = {"job": item["name"], "projects": [row.project]}
+            context = CoreContext(row.name, engine, config)
+            ran[row.name] = await call(host, row.name, row.tier, "jobs", item, params, context, JOB_TIMEOUT)
+    finally:
+        if own:
+            await host.aclose()
+    log.info("signal jobs ran", extra={"project_id": project_id, "plugins": sorted(ran)})
+    return {"project_id": project_id, "results": ran}

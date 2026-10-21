@@ -22,7 +22,7 @@ pipeline of GitLab Premium is used.
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
 | the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli_merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
-| the tables (schema 0073 to 0078) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`) |
+| the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`) |
 
 Everything runs in the job `hub.merge_queue` of the hub's worker, every minute, one pass at a time on all the hub's job
 workers (`docs/hub.md`, Worker and queue).
