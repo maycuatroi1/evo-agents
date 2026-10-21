@@ -148,6 +148,7 @@ def test_a_service_account_shows_no_cost(capsys):
     assert "  Runs: 2 in 24 hours, 3 in 7 days.\n" in out and "$" not in out
 
 
+@needs_pg
 def test_list_set_pause_and_policy_without_ever_printing_a_value(hub, monkeypatch, capsys):
     owner, other = hub.homes["owner"], hub.homes["other"]
     values = {name: sample(f"{name}-") for name in ("claude-a", "claude-b")}
