@@ -8,16 +8,19 @@ A tick, in order, each step in a transaction of its own that first takes the pro
    came; not while the Loop's breaker is tripped, so the cursor stands and no event is lost;
 2. the engine's ``scheduled``: a goal's new revision, the weekly look at each goal;
 3. the engine's ``reconcile`` of each work item not finished: what it waits on read again, stale ones cancelled;
-4. when the tick ended.
+4. admission (``admit``, criterion a5): each queued work item checked against the breaker, the caps of concurrency of
+   its cycle and its repos, the rate of hand-outs and the worker, its run handed out by ``dispatch`` when it passes,
+   else its reason written; then when the tick ended.
 
 The engine (``model.Engine``, ``rules.RULES`` in this release) reads and never writes; this module writes what it
 returns. A work item is made with INSERT ... ON CONFLICT (project, key) DO NOTHING, so the same delta read twice, an
 event replayed included, makes nothing more; a transition moves only a work item not finished; a result is noted in a
 claim's chain once by its key. Each write adds its row to the work item's ledger (loop_item_events) in the same
 transaction. A tick of a project whose Loop is off does nothing; one with nothing new reads and writes no work item,
-and no tick hands out a run or calls a model (runs are handed out by the admission of step 5 of the plan).
+and nothing but ``dispatch`` hands out a run; no tick calls a model.
 
-Handing out runs and counting work items against the breaker come with the plan's steps 5 and 6.
+The hand-out of each kind of work item (``dispatch``) and counting work items against the breaker come with the plan's
+step 6; until then a work item that passes admission stays queued.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
+from evo_agents.hub.server.loop.admit import Dispatch, admit
 from evo_agents.hub.server.loop.model import (
     CREATED,
     CYCLE_OF,
@@ -208,8 +212,12 @@ async def _clock_and_reconcile(conn: AsyncConnection, project_id: int, rules: En
             report["changed"] += await apply(conn, project_id, move, None, rules.name)
 
 
-async def tick(engine: AsyncEngine, project_id: int, *, rules: Engine = RULES) -> dict:
-    """One tick of project ``project_id``'s Loop with ``rules`` (see the module): what it read and changed."""
+async def tick(
+    engine: AsyncEngine, project_id: int, *, rules: Engine = RULES, dispatch: Dispatch | None = None
+) -> dict:
+    """One tick of project ``project_id``'s Loop with ``rules``, handing out runs with ``dispatch`` (see the module):
+    what it read and changed, the runs it handed out (``dispatched``) and the queued work items whose reason changed
+    (``waiting``) when there are any."""
     report: Counter = Counter()
     if not await _events(engine, project_id, rules, report):
         return {"off": 1}
@@ -218,11 +226,17 @@ async def tick(engine: AsyncEngine, project_id: int, *, rules: Engine = RULES) -
         if state is None or not state.enabled:
             return {"off": 1}
         await _clock_and_reconcile(conn, project_id, rules, report)
+    async with engine.begin() as conn:
+        state = await _state(conn, project_id)
+        if state is None or not state.enabled:
+            return {"off": 1}
+        admitted = await admit(conn, project_id, await load(conn, project_id), dispatch, tripped=state.breaker != ARMED)
         s = tables.loop_states
         await conn.execute(update(s).where(s.c.project_id == project_id).values(ticked_at=func.now()))
     found = {"events": report["events"], "changed": report["changed"]}
     if report["breaker"]:
         found["breaker"] = 1
+    found.update({key: count for key, count in sorted(admitted.items()) if count})
     log.info("loop tick", extra={"project_id": project_id, **found})
     return found
 

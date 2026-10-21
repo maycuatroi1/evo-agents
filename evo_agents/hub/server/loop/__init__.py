@@ -5,6 +5,10 @@ into work items with ancestors and a key, and moves them on.
 - ``rules``: the engine of this release, ``rules/1``, the table of rules of the report's section Loop;
 - ``view``: what a tick reads of a project for the engine;
 - ``tick``: the job ``hub.loop_tick``, which writes what the engine returns;
+- ``admit``: the last step of a tick, which checks each queued work item against the breaker, the caps of concurrency,
+  the rate of hand-outs and the worker before a run is handed out for it (criterion a5);
+- ``caps``: what a run the Loop hands out may use: the turns and minutes of ``loop.caps`` for an author or a plan run,
+  the agent type's daily cap for a task run;
 - ``state``: the Loop turned on and off with the revision of the policy that sets ``loop.enabled``.
 
 The Loop's rows are tables loop_states, loop_items and loop_item_events (``evo_agents.hub.tables_loop``); its keys are
