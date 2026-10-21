@@ -109,8 +109,9 @@ def policy(client, hub, loop: dict) -> dict:
 
 
 def ticked(client, db) -> dict:
-    """One tick of the project's Loop, as the worker runs hub.loop_tick for it."""
-    return client.portal.call(partial(tick, client.app.state.engine, project_id(db)))
+    """One tick of the project's Loop as the worker runs hub.loop_tick for it, with no hand-out: the runs are
+    ``tests.hub.test_loop_dispatch``'s."""
+    return client.portal.call(partial(tick, client.app.state.engine, project_id(db), dispatch=None))
 
 
 def state(db) -> tuple | None:

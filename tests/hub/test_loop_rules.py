@@ -244,10 +244,14 @@ def test_loop_rules_runs_end_a_build_with_its_plan_and_a_deliver_with_its_merge_
     )
     nothing = view(tasks=tasks, runs={700: RunView(700, "author", "done")})
     assert RULES.reconcile(running, nothing) == Transition(
-        200, "queued", "failed", detail={"run_id": 700, "why": "the author run ended without a plan"}, failed=True
+        200,
+        "queued",
+        "failed",
+        detail={"run_id": 700, "why": "the author run ended without a plan", "failures": 1},
+        failed=True,
     )
     lost = RULES.reconcile(running, view(tasks=tasks, runs={700: RunView(700, "author", "lost")}))
-    assert (lost.state, lost.failed, lost.detail) == ("queued", True, {"run_id": 700, "run_state": "lost"})
+    assert (lost.state, lost.failed, lost.detail) == ("queued", True, {"run_id": 700, "run_state": "lost", "failures": 1})
     stopped = RULES.reconcile(running, view(tasks=tasks, runs={700: RunView(700, "author", "cancelled")}))
     assert (stopped.state, stopped.reason) == ("cancelled", "person")
 
@@ -257,7 +261,7 @@ def test_loop_rules_runs_end_a_build_with_its_plan_and_a_deliver_with_its_merge_
     assert RULES.reconcile(item, half).failed
     full = view(runs={900: RunView(900, "plan", "done", "northwind-reorder", True)})
     assert RULES.reconcile(item, full) == Transition(
-        800, "watching", "waiting", reason="merge_queue", detail={"run_id": 900}
+        800, "watching", "waiting", reason="merge_queue", detail={"run_id": 900, "repos": []}
     )
     watching = replace(item, state="watching", reason="merge_queue")
     at = NOW - timedelta(minutes=5)

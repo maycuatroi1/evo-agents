@@ -253,8 +253,10 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         )
         if body.state == "waiting" and kind == "author":
             from evo_agents.hub.server import author_chat  # it reads runs through this package
+            from evo_agents.hub.server.loop.author_mode import turn_ended
 
-            await author_chat.notify_waiting(conn, run_id)
+            if not await turn_ended(conn, run_id):  # an author run of the Loop that put its plan: the hub ends it
+                await author_chat.notify_waiting(conn, run_id)
         view = await run_view(conn, run_id)
     log.info("run moved", extra={"run_id": run_id, "from": state, "to": body.state, "worker_id": worker_id})
     if body.state not in runs.HELD_STATES:  # the move gave back the run's leases: revoke its GitHub tokens now

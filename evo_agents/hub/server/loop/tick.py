@@ -8,9 +8,11 @@ A tick, in order, each step in a transaction of its own that first takes the pro
    came; not while the Loop's breaker is tripped, so the cursor stands and no event is lost;
 2. the engine's ``scheduled``: a goal's new revision, the weekly look at each goal;
 3. the engine's ``reconcile`` of each work item not finished: what it waits on read again, stale ones cancelled;
-4. admission (``admit``, criterion a5): each queued work item checked against the breaker, the caps of concurrency of
-   its cycle and its repos, the rate of hand-outs and the worker, its run handed out by ``dispatch`` when it passes,
-   else its reason written; then when the tick ended.
+4. the breaker and the stalls (``breaker.check``, ``stall.handle``, criterion a7): too many work items made in an hour
+   trip the breaker; a work item at its second failure gets its triage, one at its third a decision of a person;
+5. admission (``admit``, criterion a5): each queued work item checked against the breaker, the caps of concurrency of
+   its cycle and its repos, the rate of hand-outs and the worker, its run handed out by ``dispatch`` when it passes
+   (``dispatch.hand_out`` unless a caller names another), else its reason written; then when the tick ended.
 
 The engine (``model.Engine``, ``rules.RULES`` in this release) reads and never writes; this module writes what it
 returns. A work item is made with INSERT ... ON CONFLICT (project, key) DO NOTHING, so the same delta read twice, an
@@ -19,8 +21,8 @@ claim's chain once by its key. Each write adds its row to the work item's ledger
 transaction. A tick of a project whose Loop is off does nothing; one with nothing new reads and writes no work item,
 and nothing but ``dispatch`` hands out a run; no tick calls a model.
 
-The hand-out of each kind of work item (``dispatch``) and counting work items against the breaker come with the plan's
-step 6; until then a work item that passes admission stays queued.
+The hand-out of each kind of work item is ``dispatch.hand_out`` (criterion a6): a task run of @strategist or @ba, an
+author run or a plan run on worker loop.worker. Nothing else in a tick hands out a run.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ import hashlib
 import logging
 from collections import Counter
 from collections.abc import Sequence
+from functools import partial
 
 from sqlalchemy import func, insert, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
@@ -36,7 +39,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
+from evo_agents.hub.server.loop import breaker, stall
 from evo_agents.hub.server.loop.admit import Dispatch, admit
+from evo_agents.hub.server.loop.dispatch import hand_out
 from evo_agents.hub.server.loop.model import (
     CREATED,
     CYCLE_OF,
@@ -201,7 +206,7 @@ async def _events(engine: AsyncEngine, project_id: int, rules: Engine, report: C
             return True
 
 
-async def _clock_and_reconcile(conn: AsyncConnection, project_id: int, rules: Engine, report: Counter) -> None:
+async def _clock_and_reconcile(conn: AsyncConnection, project_id: int, *, rules: Engine, report: Counter) -> None:
     """Steps 2 and 3."""
     view = await load(conn, project_id)
     for effect in rules.scheduled(view):
@@ -212,20 +217,30 @@ async def _clock_and_reconcile(conn: AsyncConnection, project_id: int, rules: En
             report["changed"] += await apply(conn, project_id, move, None, rules.name)
 
 
+async def _stalls(conn: AsyncConnection, project_id: int, *, report: Counter) -> None:
+    """Step 4."""
+    view = await load(conn, project_id)
+    if await breaker.check(conn, project_id, view):
+        report["tripped"] = 1
+    report.update(await stall.handle(conn, project_id, view))
+
+
 async def tick(
-    engine: AsyncEngine, project_id: int, *, rules: Engine = RULES, dispatch: Dispatch | None = None
+    engine: AsyncEngine, project_id: int, *, rules: Engine = RULES, dispatch: Dispatch | None = hand_out
 ) -> dict:
-    """One tick of project ``project_id``'s Loop with ``rules``, handing out runs with ``dispatch`` (see the module):
-    what it read and changed, the runs it handed out (``dispatched``) and the queued work items whose reason changed
-    (``waiting``) when there are any."""
+    """One tick of project ``project_id``'s Loop with ``rules``, handing out runs with ``dispatch`` (see the module;
+    None hands out none): what it read and changed, whether its breaker tripped (``tripped``), the triage it opened
+    and the decisions it asked (``triaged``, ``asked``), the runs it handed out (``dispatched``) and the queued work
+    items whose reason changed (``waiting``) when there are any."""
     report: Counter = Counter()
     if not await _events(engine, project_id, rules, report):
         return {"off": 1}
-    async with engine.begin() as conn:
-        state = await _state(conn, project_id)
-        if state is None or not state.enabled:
-            return {"off": 1}
-        await _clock_and_reconcile(conn, project_id, rules, report)
+    for step in (partial(_clock_and_reconcile, rules=rules), _stalls):
+        async with engine.begin() as conn:
+            state = await _state(conn, project_id)
+            if state is None or not state.enabled:
+                return {"off": 1}
+            await step(conn, project_id, report=report)
     async with engine.begin() as conn:
         state = await _state(conn, project_id)
         if state is None or not state.enabled:
@@ -234,8 +249,9 @@ async def tick(
         s = tables.loop_states
         await conn.execute(update(s).where(s.c.project_id == project_id).values(ticked_at=func.now()))
     found = {"events": report["events"], "changed": report["changed"]}
-    if report["breaker"]:
-        found["breaker"] = 1
+    for key in ("breaker", "tripped", "triaged", "asked"):
+        if report[key]:
+            found[key] = report[key]
     found.update({key: count for key, count in sorted(admitted.items()) if count})
     log.info("loop tick", extra={"project_id": project_id, **found})
     return found

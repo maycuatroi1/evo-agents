@@ -345,7 +345,8 @@ TOOLS = (
         "propose",
         "Propose a new version",
         "Propose changes of a document's items as its next version, which goes to review at once and which members "
-        "approve. Only the agent of a chat run of @ba may call it; it never drops an item or changes a code.",
+        "approve. Only the agent of a chat run of @ba, or of a task run of @ba the Loop handed out for a use case, may "
+        "call it; it never drops an item or changes a code.",
         PROPOSE_SCHEMA,
     ),
     (

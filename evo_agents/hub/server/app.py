@@ -46,6 +46,7 @@ from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, 
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
+from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
 
 # The hub worker runs the tick of a project's Loop and the release pass, but evo_agents.hub.worker imports no server
 # module beyond its job list (docs/structure.md, section Package boundaries): the hub worker command takes both from
@@ -402,6 +403,7 @@ def create_app(config: HubConfig) -> FastAPI:
         signal_keys.router,
         autonomy_policies.router,
         goals.router,
+        loop_routes.router,
         merge_view.router,
         merge_judge.worker_router,
     ):

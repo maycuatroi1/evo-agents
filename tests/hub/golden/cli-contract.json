@@ -5019,6 +5019,80 @@
       ],
       "json": null
     },
+    "hub loop resume": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "enabled",
+          "breaker",
+          "breaker_reason",
+          "tripped_at",
+          "resumed_by",
+          "resumed_at",
+          "cursor",
+          "ticked_at",
+          "items"
+        ],
+        "schema": "ProjectLoop"
+      }
+    },
+    "hub loop status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "enabled",
+          "breaker",
+          "breaker_reason",
+          "tripped_at",
+          "resumed_by",
+          "resumed_at",
+          "cursor",
+          "ticked_at",
+          "items"
+        ],
+        "schema": "ProjectLoop"
+      }
+    },
     "hub mcp": {
       "positionals": [],
       "options": [
@@ -50229,6 +50303,164 @@
           }
         }
       },
+      "/v1/projects/{project}/loop": {
+        "get": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Show Loop",
+          "description": "The project's Loop: on or off, its breaker, its cursor and its work items by state.",
+          "operationId": "show_loop_v1_projects__project__loop_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectLoop"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/loop/resume": {
+        "post": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Resume Loop",
+          "description": "Reset the tripped breaker of the project's Loop (the admin role on the project).",
+          "operationId": "resume_loop_v1_projects__project__loop_resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectLoop"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/merge-queue": {
         "get": {
           "tags": [
@@ -60119,7 +60351,8 @@
                 "scope",
                 "question",
                 "triage",
-                "release"
+                "release",
+                "loop"
               ],
               "title": "Category"
             },
@@ -67268,7 +67501,8 @@
                     "builder_proposal",
                     "canvas_baseline",
                     "merge_paused",
-                    "release"
+                    "release",
+                    "loop_paused"
                   ]
                 },
                 {
@@ -67962,7 +68196,8 @@
                 "scope",
                 "question",
                 "triage",
-                "release"
+                "release",
+                "loop"
               ],
               "title": "Category"
             },
@@ -71582,6 +71817,126 @@
             "readers"
           ],
           "title": "ProjectGrantCounts"
+        },
+        "ProjectLoop": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "the policy's loop.enabled: the Loop ticks and makes work items"
+            },
+            "breaker": {
+              "type": "string",
+              "enum": [
+                "armed",
+                "tripped"
+              ],
+              "title": "Breaker",
+              "description": "tripped: too many work items in an hour; the Loop reads no event and hands out no run"
+            },
+            "breaker_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Breaker Reason"
+            },
+            "tripped_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tripped At"
+            },
+            "resumed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed By",
+              "description": "the admin who reset the breaker last"
+            },
+            "resumed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed At",
+              "description": "the work items of the hour are counted from then"
+            },
+            "cursor": {
+              "type": "integer",
+              "title": "Cursor",
+              "description": "the last row of the project's hub_events the Loop read"
+            },
+            "ticked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticked At"
+            },
+            "items": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "propertyNames": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "watching",
+                  "waiting_human",
+                  "done",
+                  "cancelled"
+                ]
+              },
+              "type": "object",
+              "title": "Items",
+              "description": "its work items by state"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "enabled",
+            "breaker",
+            "breaker_reason",
+            "tripped_at",
+            "resumed_by",
+            "resumed_at",
+            "cursor",
+            "ticked_at",
+            "items"
+          ],
+          "title": "ProjectLoop",
+          "description": "A project's Loop as it stands."
         },
         "ProjectPlugin": {
           "properties": {
