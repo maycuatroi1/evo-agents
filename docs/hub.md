@@ -109,6 +109,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
+| canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
@@ -901,6 +902,14 @@ adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.revi
 (Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
 of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
 approved). Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
+Schemas 0072 to 0077 add the core plugin canvas and the hub's signals: 0072 `canvas_canvases`, `canvas_claims`,
+`canvas_claim_revs` and `canvas_evidence`; 0073 the hub's `signal_keys`, `signal_ingest_keys` and `signals`
+(`docs/signals.md`); 0074 `canvas_proposals`; 0075 `canvas_judgings`, `canvas_evidence.basis` and `rests_on_run`, and
+`canvas_proposals.evidence_id`; 0076 `canvas_baselines`, `canvas_baseline_items`, `canvas_claim_revs.baseline_id`
+and the hub's `hub_events`, with the delivery kinds `canvas.claim`, `canvas.baseline` and `signal.posted`, the
+permissions `canvas:read` and `signals:read` and the notice `canvas_baseline`; 0077 `canvas_claims.use_cases` and
+`signal_keys` (`docs/canvas-plugin.md`, Tables). Going back past 0076 deletes the deliveries of the three events and the
+`canvas_baseline` notices and takes the two permissions out of every grant; going back past each drops what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2120,6 +2129,31 @@ evo-agents hub task show T-1 --project evo-agents
 
 The agent type `ba` of srs adds @ba, which drafts and reviews documents for the project's writers on the workers of
 the member the project enabled it under (`docs/srs-plugin.md`, @ba).
+
+The core plugin canvas keeps a living Lean Canvas for each product of a project (`docs/canvas-plugin.md`): claims with
+a status, a test card, evidence and every rev, an edit that names the rev it read and applies at once, undo, and a
+weekly baseline the project's writers approve on the web. Its commands are clients of its routes under
+`/v1/x/canvas/`; the signals it reads are the hub's (`docs/signals.md`):
+
+```sh
+evo-agents hub plugin enable canvas --project evo-agents
+evo-agents hub canvas create pantry --project evo-agents --name "Northwind Pantry"
+evo-agents hub canvas edit pantry --project evo-agents --cell problem --text "Shops run out of stock on Mondays"
+evo-agents hub canvas edit pantry --project evo-agents --claim CL-1 --base-rev 1 --status invalidated
+evo-agents hub canvas undo pantry CL-1 --project evo-agents --rev 2
+evo-agents hub canvas show pantry --project evo-agents --claim CL-1
+evo-agents hub canvas list --project evo-agents
+evo-agents hub canvas export pantry --project evo-agents --output pantry.json
+evo-agents hub canvas import pantry.json --project evo-agents --dry-run
+evo-agents hub signal keys add pantry.reorders --project evo-agents --kind number --unit orders  # an admin
+evo-agents hub signal ingest create pantry-app --project evo-agents --max-level internal       # an admin; the evi_ token, once
+evo-agents hub signal push --project evo-agents --key pantry.reorders --value 4
+evo-agents hub signal list --project evo-agents --key pantry.reorders
+```
+
+The agent type `strategist` of canvas adds @strategist, which edits claims as a writer asks in chat, brainstorms
+proposals in a task run and judges feedback for the value check, on the workers of the member the project enabled it
+under (`docs/canvas-plugin.md`, @strategist).
 
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
