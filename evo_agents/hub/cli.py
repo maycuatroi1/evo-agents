@@ -9,10 +9,10 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``sessions`` by ``cli_sessions`` and ``policy``
-by ``cli_policy``; they need nothing beyond the core package, so they work on a core install. ``hub openapi``
-(``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document; ``hub contract check``
-does not.
+``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``sessions`` by ``cli_sessions``, ``email`` by
+``cli_emails``, ``release`` by ``release_cli``, ``policy`` by ``cli_policy`` and ``merge`` by ``cli_merge``; they need
+nothing beyond the core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract
+print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -107,11 +107,11 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry
+        from evo_agents.hub.server.app import init_sentry, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency)
+    return worker.main(config, args.concurrency, release_pass=release_pass)
 
 
 @_server_command
@@ -242,6 +242,13 @@ def register(sub) -> None:
 
     register_sessions(hsub)
 
+    from evo_agents.hub.cli_emails import register_emails
+
+    register_emails(hsub)
+
+    from evo_agents.hub.release_cli import register_release
+
+    register_release(hsub)
     from evo_agents.hub.cli_policy import register_policy
 
     register_policy(hsub)

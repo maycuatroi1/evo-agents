@@ -1,7 +1,7 @@
 """The hub's merge queue on GitLab: one row for each merge request it takes, and its ledger.
 
-Revision ID: 0068
-Revises: 0067
+Revision ID: 0075
+Revises: 0074
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_merge`` and ``evo_agents.hub.merge_gate`` as of this revision,
@@ -20,16 +20,16 @@ judge_run_id), and the policy's admin dispatches it, not a night shift. runs_kin
 plan, and runs_judge_schedule_check, which held every judge run to a schedule, now holds a judge run to one exactly
 when it is on a plan, the Curator's. No column of runs changes.
 
-Going back drops both tables, deletes the judge runs on no plan and puts back the checks of 0059 and 0017: the hub of
-0067 has no queue, and its projects' merge requests stay open for a person.
+Going back drops both tables, deletes the judge runs on no plan and puts back the checks of 0067 and 0017: the hub of
+0074 has no queue, and its projects' merge requests stay open for a person.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0068"
-down_revision = "0067"
+revision = "0075"
+down_revision = "0074"
 branch_labels = None
 depends_on = None
 
@@ -76,9 +76,9 @@ EVENT_KINDS = (  # evo_agents.hub.merge_gate.EVENT_KINDS
 LAST_GATE = 7  # gates 0 to 7, evo_agents.hub.merge_gate.GATES
 MAX_REASON_CHARS = 2000  # evo_agents.hub.merge_gate.MAX_REASON_CHARS
 MAX_DESCRIPTION_BYTES = 64 * 1024  # evo_agents.hub.merge_gate.MAX_KEPT_DESCRIPTION_BYTES
-NO_PLAN = ("review", "chat", "task", "history")  # the kinds of run on no plan, as of 0059
-ANY_PLAN_0059 = ("author", "local")  # the kinds that may name a plan or none, as of 0059
-ANY_PLAN = (*ANY_PLAN_0059, "judge")
+NO_PLAN = ("review", "chat", "task", "history", "release")  # the kinds of run on no plan, as of 0067
+ANY_PLAN_0067 = ("author", "local")  # the kinds that may name a plan or none, as of 0067
+ANY_PLAN = (*ANY_PLAN_0067, "judge")
 
 col = sa.column
 
@@ -219,4 +219,4 @@ def downgrade() -> None:
     op.drop_table("merge_queue")
     runs = sa.table("runs", col("kind"), col("plan_id"))
     op.execute(runs.delete().where(runs.c.kind == "judge", runs.c.plan_id.is_(None)))
-    _runs_checks(ANY_PLAN_0059, col("schedule_id").is_not(None))
+    _runs_checks(ANY_PLAN_0067, col("schedule_id").is_not(None))

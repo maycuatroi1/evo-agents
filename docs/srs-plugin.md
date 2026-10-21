@@ -4,8 +4,12 @@ The plugin **srs** keeps a project's BA documents in the hub's database: an SRS 
 specification, with versions that members approve, and with a code on every use case, business rule, screen and
 requirement that stays the same from version to version. Its code is `evo_agents/core_plugins/srs`; evo-ak ships it as
 a core plugin, so every hub has it (`docs/plugins.md`, Core plugins). It does nothing in a project until an admin of
-the project enables it there. Its agent type `ba` adds @ba, an agent that drafts and reviews the documents for the
-project's writers (section @ba). The plugin tasks links tasks to its items (`docs/tasks-plugin.md`).
+the project enables it there. Its agent type `ba` adds @ba, an agent that drafts the documents for the project's
+writers and reviews every version that enters review, comparing it with the other documents and with the knowledge
+graph; a conflict it can show a source for is a finding, and an open finding of level `decide` holds approval until
+members settle it in a settle chat (sections Findings, Settle chats and @ba). The plugin tasks links tasks to its items
+(`docs/tasks-plugin.md`), and an approved version keeps those tasks in step with its use cases (section Tasks when a
+version is approved).
 
 ## Enabling it
 
@@ -14,6 +18,8 @@ evo-agents hub plugin enable srs --project evo-agents
 evo-agents hub plugin config srs --project evo-agents --set 'roles={"ba": ["alice"], "qa": ["bao"], "dev": ["chi"]}'
 evo-agents hub plugin config srs --project evo-agents \
   --set 'approval_policy={"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}'
+evo-agents hub plugin config srs --project evo-agents --set self_approval=true   # authors may approve their versions
+evo-agents hub plugin config srs --project evo-agents --effective                # each field, the layer that set it
 ```
 
 It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Plugins in a project):
@@ -24,8 +30,11 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `code_patterns` | per kind of coded item (`use_case`, `business_rule`, `screen`, `nfr`, `cbr`), a regular expression that replaces the template's | the template's patterns (section Markdown) |
 | `roles` | per role of a review (`ba`, `qa`, `dev`), the members who hold it, by login | nobody holds a role |
 | `approval_policy` | per kind of document (`srs`, `spec`), the roles whose approval a version needs (`required`) and those that may approve too (`optional`) | one approval is enough (section Approval) |
+| `self_approval` | `true` lets the author of a version review it, approve it or ask for changes, as any writer of the project (section Approval) | `false`: another member reviews it |
 
-The headings a template reads stay the template's; a client changes only the patterns of its codes. Turning the
+The headings a template reads stay the template's; a client changes only the patterns of its codes. Only an admin of the
+project writes the config, with the commands above or on the plugin's page of the project on the web
+(`/p/{project}/plugins/srs`); `--unset self_approval` turns self-approval off again, back to its default. Turning the
 plugin off deletes nothing: its tables and rows stay for when it is on again.
 
 ## The model
@@ -53,12 +62,17 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
   set by a save of changes (the web, the API or @ba); Markdown does not carry them.
 - **Reviews** approve a version in review or ask for changes, per round, each counting for a role.
 - **Comments** are threads on a document, a version or an item. A comment @ba wrote names its run.
+- **Findings** are the conflicts @ba found in a document, each with the sources that show it, a level and a status
+  (section Findings).
 
 Migration 0046 adds the nine tables, each with the plugin's prefix: `srs_documents`, `srs_versions`, `srs_texts` (each
 Markdown body once, by SHA-256), `srs_items`, `srs_codes`, `srs_item_versions`, `srs_refs`, `srs_reviews` and
 `srs_comments`. Going back to 0045 drops them. Migration 0064 lets `srs_versions.state` be `withdrawn`, which carries
 `decided_at`, the moment of the withdrawal; going back to 0063 makes every withdrawn version a draft again, without
-`decided_at`.
+`decided_at`. Migration 0069 adds `srs_findings` and `srs_versions.review_run_id`, the task run of @ba's review of the
+version's current round; 0070 adds `srs_settle_chats`, the settle chat of a version, and `srs_findings.commit_authors`;
+0071 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. Going back past each drops
+what it added.
 
 ## Who does what
 
@@ -66,10 +80,10 @@ The routes answer a member with a grant on a project that enabled the plugin, an
 
 | Who | May |
 | --- | --- |
-| a reader | read the documents, their versions, items, comparisons, exports and comments, archived documents included |
-| a writer | import Markdown, save a version, submit a draft, review a version (section Approval), withdraw a version of their own in review, comment and close a thread |
-| an admin | what a writer may, plus drop a coded item, retire items by their codes (`retire`), withdraw any version in review (`withdraw`), archive a document (`archive`) and open it again (`unarchive`), and give a new document a label of its own |
-| the agent of a run | what the tools of @ba allow (section @ba); never approve, return or withdraw a version, retire items, archive or unarchive a document |
+| a reader | read the documents, their versions, items, comparisons, exports, comments and findings (`srs findings`), archived documents included; settle a finding in its settle chat |
+| a writer | import Markdown, save a version, submit a draft, review a version (section Approval: one they wrote only with `self_approval` on), withdraw a version of their own in review, comment and close a thread |
+| an admin | what a writer may, plus drop a coded item, retire items by their codes (`retire`), withdraw any version in review (`withdraw`), waive an open finding (`srs waive`), archive a document (`archive`) and open it again (`unarchive`), and give a new document a label of its own |
+| the agent of a run | what the tools of @ba allow (section @ba): record, resolve, waive and reopen findings with `srs__finding`; never approve, return or withdraw a version, waive a finding through the route, retire items, archive or unarchive a document |
 
 Reads go through the sink `X-Evo-Sink` names, else the project's hub sink. A refusal is the hub's error body, with the
 problems that refused it in `detail`; nothing is written.
@@ -116,7 +130,9 @@ A writer submits a draft that has no error; it goes to `in_review` and its round
 approves it or asks for changes, with these rules:
 
 - Nobody who wrote a version since the one approved last, the version under review included, reviews it. Admins are
-  no exception.
+  no exception. With the config's `self_approval` on, this rule alone goes: the author reviews their version as any
+  writer does, so a project without an `approval_policy` approves it with the author's own approval. The review page
+  says self-approval is on for the project. Every rule below holds either way.
 - The agent of a run never approves or returns a version: the route refuses any token scoped to a run.
 - One review per member per round.
 - An approval counts for a role the reviewer holds in `roles`: the one they name (`--role`), else the first role the
@@ -125,8 +141,14 @@ approves it or asks for changes, with these rules:
   round. Without a policy, or one that requires no role, one approval is enough. Optional roles approve without being
   waited for.
 - A request for changes sends the version back to `draft`. Submitted again, it is a new round.
+- An approval goes through the gate first (section Findings): no open finding of level `decide` in the document, and
+  no review of @ba of the version's current round still queued or running. Otherwise it is a 409 that names each
+  finding, with its chat link, and the command that waives one. A request for changes is never held.
+- A version answers its `review_run`: the id and state of @ba's review of its current round, null when none was
+  handed. The submit route answers it too, queued, once the hub handed one.
 - Approving a version supersedes every older one but a withdrawn one and, when the project has a knowledge config on
-  the hub, queues a build of its knowledge graph.
+  the hub, queues a build of its knowledge graph. When the project enables the plugin tasks, it also keeps the
+  project's tasks in step, in the same transaction (section Tasks when a version is approved).
 
 **Withdrawing a version.** The author of a version in review, while they hold writer, or an admin of the project,
 takes it out of review for good:
@@ -139,6 +161,106 @@ The version becomes `withdrawn`, a last state: it is never submitted, reviewed o
 later version leaves it withdrawn. `--comment` keeps the reason as a comment on that version, in the same
 transaction. Another writer and the agent of a run get 403, and a version that is not in review 409. To change a
 withdrawn version, save a new one: the next version is built on the latest, withdrawn or not.
+
+**On the web.** A version's review page (`/p/{project}/x/srs/documents/{slug}/versions/{number}`) has a Findings card,
+which readers see too: the document's open findings of level `decide` first, with their count, then the other open
+ones, then the settled ones. Each shows its level, kind and status, its summary, the item it is about and its sources,
+a code linking to its item's page (in another document when the reader sees that document); an open one links its
+settle chat, a settled one says who settled it (a member, the knowledge graph, or @ba's waiver), when, how, and links
+the message that settled it. While a finding of level `decide` is open, or @ba's review of the round is queued or
+running, the form's Approve is locked with the reason (the settle chat, or the run and its state) and Request changes
+stays open; while the review runs, the page reads the document and its findings again every 5 seconds until it ends.
+The hub stays the gate: an approval that still meets the 409 shows its refusal, and the page reads the findings
+again. Nothing on the web settles or waives a finding: settling goes through the settle chat, waiving through
+`evo-agents hub srs waive`.
+
+## Findings
+
+A finding is one conflict @ba found in a document (`srs_findings`): the version it was found on, the item it is about
+(none for the whole document), its kind (`duplicate`, `contradiction`, `kg_conflict`, `overlap`), its level (`info`,
+`advisory`, `decide`), a summary, the sources that show it, and its status: `open`, `resolved` or `waived`. Each row
+carries the document's label and names the run that wrote it.
+
+**No source, no finding.** A finding names at least one source, and the hub looks each up before it writes anything:
+a code an item of the project holds (`UC ORD-2`, in any document), the id of a node of the project's knowledge graph
+on the hub (`plan:rollout/step:2`), or a path a File or Document node carries (`lumen-docs:docs/billing.md`, or the path
+alone), the graph read as the agent of the run reads it. A source the hub cannot find refuses the whole call, and
+nothing is written. For a file or a document, the finding also keeps the emails of the authors of its three newest
+commits (`commit_authors`), as the graph's Commit nodes hold them: whom its settle chat invites. No route returns them.
+
+**Settling.** Only the agent of a run of @ba writes findings, with `srs__finding`: it records one, resolves or waives
+an open one, and reopens one settled at most 24 hours ago (later, the tool refuses: a new finding is recorded). A
+resolution says how it was settled and names the member who settled it, with the link of the chat message, or, settled
+from the graph, the sources that settled it, a later version of the document among them. An admin of the project
+waives an open finding with a reason, kept as its resolution:
+
+```sh
+evo-agents hub srs findings orders --project evo-agents                 # every finding, oldest first
+evo-agents hub srs findings orders --project evo-agents --status open --json
+evo-agents hub srs waive orders 12 --project evo-agents --reason "Billing keeps its own limit on purpose"
+```
+
+A writer who is not an admin, and the agent of a run, get 403; a finding that is not open, or an archived document,
+409.
+
+**The approval gate.** A version is not approved while its document has an open finding of level `decide`, whatever
+version it was found on, so a finding reopened after an approval holds the next one; nor while @ba's review of the
+version's current round (`srs_versions.review_run_id`) is queued or running. A review that failed, was cancelled or
+was lost holds nothing, nor does a round no review was handed for (the type off, or past its cap). Findings of level
+`info` and `advisory` hold nothing, and neither do comments. The 409 names each finding that holds it (`#12
+(contradiction, UC ORD-2, chat /chats/7?message=31)`) and the waive command; `hub srs approve` prints those lines. A
+request for changes is never held.
+
+## Settle chats
+
+When @ba's review of a version ends, whatever it ended as, and its document has findings of level `decide` still open,
+the hub opens a chat for that version, a settle chat (`kind` settle, `docs/hub.md`, Group chats), with no model asked.
+It does so through the plugin's events contribution `reviews`, which takes the event `task.result` of @ba's task runs,
+once the run's end is committed. A version has one settle chat (`srs_settle_chats`): a second delivery finds the
+first. No chat opens for a version that left review, an archived document, a hub whose feature chats is off, or while
+the agent type ba is off.
+
+The hub invites, each with why: the author of the version; the members of the roles `ba`, `qa` and `dev` of the
+plugin's config; the people behind the findings' sources (the author of the latest version that holds a code a source
+names, the member who wrote a plan a source names, the authors of the three newest commits of a file a source names,
+their emails turned into logins through the members' emails, `evo-agents hub email`); and the assignees of the tasks
+linked to the use case a finding is about. Someone with no account on the hub, no grant on the project, or a grant
+that does not clear the chat's label is named in the first message with why, and not added.
+
+The first message lists the findings and ends with a mention of @ba. Every message of a person in the chat wakes @ba
+without an @, a reader's too, on a worker of the type's `run_as`. Anyone in the chat settles a finding: @ba sums the
+conflicts up, writes a line `Đã chốt: ...` with what was chosen, who chose it and when, records the resolution, the
+member and the link of the message on the finding, and proposes the next version, written as the author of the version
+the chat is for, so whoever settled keeps the right to approve it. While a finding is open, its chat link is the first
+message of its chat; once settled, the message that settled it.
+
+## Tasks when a version is approved
+
+When a version is approved in a project that enables the plugin tasks, the hub compares it with the version approved
+before it (none the first time) and keeps the project's tasks in step with its use cases, in the approval's
+transaction (`evo_agents/core_plugins/srs/auto_tasks.py`):
+
+- **A new use case** gets one frame task: `UC ORD-1: Place an order`, linked to the use case, of type `story` when the
+  project has it (its first type otherwise), in the first status, carrying the document's label, made by the approver.
+  Its `external_key`, `srs:<slug>:<version>:<code>`, is how a second call finds it, so no call makes it twice.
+- **A use case that changed**, itself or a business rule under it, gets a comment of the approver on each open task
+  linked to it (a status whose group is not `done` or `cancelled`), with the link of the comparison of the two
+  versions.
+- **A use case the version dropped** moves each open task linked to it to the first status of group `cancelled`; the
+  task's history names the hub and the reason. A project whose statuses have no such group keeps the task, which gets
+  a comment saying so.
+
+Then the hub hands @ba a task run, `@ba splits the tasks of orders v3`, that lists every open frame task of the
+document with no child task yet. @ba reads each use case and makes its child tasks straight away with `tasks__create`,
+each with the frame task as its `parent` and the use case linked, for the member who approved the version: the hub
+keeps that member for the run (`srs_approval_tasks`), and the tool refuses a child whose title the frame task has
+already (`docs/tasks-plugin.md`). No run is handed while the agent type ba is off or past its cap, or when no frame
+task waits; the approval goes through all the same.
+
+Everything goes through one function, which takes the document, the version approved, the version approved before and
+the approver. It is idempotent by document and version: `srs_approval_tasks` holds one row a version, claimed first, so
+a second call makes no task, comment or run. The event `srs.version.approved` of the loop engine is to call it with the
+same data.
 
 ## Archiving a document
 
@@ -207,6 +329,8 @@ evo-agents hub srs submit orders 2 --project evo-agents               # a draft 
 evo-agents hub srs approve orders 2 --project evo-agents --role qa
 evo-agents hub srs approve orders 2 --project evo-agents --request-changes --comment "UC ORD-2 has no actor"
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # out of review for good
+evo-agents hub srs findings orders --project evo-agents --status open # the conflicts @ba found
+evo-agents hub srs waive orders 12 --project evo-agents --reason "Kept on purpose" # an admin, an open finding
 evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # what retiring would drop
 evo-agents hub srs retire orders "UC ORD-1" --project evo-agents      # the next version, a draft, without it
 evo-agents hub srs export orders --project evo-agents --version 2 --output orders-v2.md
@@ -236,11 +360,13 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/retire` | `{"codes", "summary", "dry_run"}`: the next version without those items; `dropped` lists each item |
 | `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |
 | `GET` and `POST documents/{slug}/comments`, `POST .../comments/{id}/resolve` | threads on a document, a version or an item |
+| `GET documents/{slug}/findings` (`?status=open`) | the findings of a document, oldest first, each with its sources and how it was settled; a code source names the `document` whose item holds it, when the caller sees that document |
+| `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
 
 The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,
 a document's contents with each section read and edited in place, an item's page with the trace the knowledge graph
-holds, the versions, the comparison of two versions, the review and the comments; the import is reached from the
-documents.
+holds, the versions, the comparison of two versions, the review with the document's findings and the comments; the
+import is reached from the documents.
 
 ## The knowledge graph
 
@@ -256,9 +382,11 @@ commits of those steps (`docs/kg.md`).
 ## @ba
 
 The plugin contributes the agent type `ba`: the profile @ba with the pack `srs/ba` (its instructions and the skills
-`srs-writing` and `srs-review`). A writer of the project mentions @ba in a group chat to ask about the documents,
-draft or change sections, use cases, business rules, screens and requirements, review a version, or make tasks of
-items (`mentioned_by: writer`).
+`srs-writing`, `srs-review`, `srs-settle` and `srs-tasks`). A writer of the project mentions @ba in a group chat to ask
+about the documents, draft or change sections, use cases, business rules, screens and requirements, review a version,
+or make tasks of items (`mentioned_by: writer`). The hub also hands @ba work of its own: the review of each version
+that enters review, the settle chat of a version whose review left findings of level `decide` open, and the split of
+the frame tasks of an approved version.
 
 **Enabling it.** An admin of the project enables the type after the plugin (`docs/plugins.md`, Agent types):
 
@@ -268,8 +396,8 @@ curl -X PUT "$HUB/v1/projects/evo-agents/agent-types/srs/ba" -H "Authorization: 
 ```
 
 `run_as` is the member whose workers run @ba, a writer or an admin of the project; `workers` the workers of that
-member it may take (none: any the profile allows); `daily_usd` the cap of what its task runs, the reviews below, cost
-in 24 hours. A chat run of @ba spends the chat's budget, as any chat run does.
+member it may take (none: any the profile allows); `daily_usd` the cap of what its task runs, the reviews and the
+splits below, cost in 24 hours. A chat run of @ba has no cost cap, as any chat run.
 
 **Where its runs go.** The type declares `chat_runs: run_as`, so every chat run of @ba goes to a worker of `run_as`,
 whoever mentioned it: a writer without a worker reaches @ba too. The run's row is dispatched by `run_as`, whose worker
@@ -287,28 +415,48 @@ as for any agent.
 | `srs__diff` | what changed between two versions, item by item | anyone with a grant |
 | `srs__propose` | changes on `base_version` as the document's next version, sent to review at once | the agent of a chat run of @ba |
 | `srs__comment` | a comment on a document, a version or an item | the agent of a run of @ba |
-| `tasks__create` | a task linked to the items it names by code (plugin tasks, `docs/tasks-plugin.md`) | the agent of a chat run, or a member's own session, for a writer |
+| `srs__finding` | record a finding with its sources; resolve, waive or reopen one (section Findings) | the agent of a run of @ba |
+| `kg_search`, `kg_context` | nodes of the project's knowledge graph by words, and a node with what it links to | the agent of any run, as the hub's /mcp offers them |
+| `tasks__create` | a task linked to the items it names by code, under `parent` when named (plugin tasks, `docs/tasks-plugin.md`) | the agent of a chat run, or a member's own session, for a writer; the split run of @ba, for the approver |
 
 Each tool acts for a person: the agent of a chat run for the person who mentioned the agent, the agent of another run
-for the member who dispatched it. A document is read when that person sees it through the session's sink and, when
+for the member who dispatched it (the split run's `tasks__create` for the approver). A document is read when that person sees it through the session's sink and, when
 the run's worker is another member's, when that member sees it too, since what a tool answers reaches the machine the
 agent runs on.
 
 **A proposal is a version members approve.** `srs__propose` checks its changes as a save is checked, writes them as
 the next version under the name of the person who mentioned @ba, with `drafted_by_run` set, and submits it at once.
-That person is its author, so they never approve it: another writer does. Its schema takes no drop and never changes a
-code.
+That person is its author, so they never approve it: another writer does, unless the project turned `self_approval`
+on, when they may approve it as any writer may, and the tool's answer says so. The agent of the run never approves it
+either way. Its schema takes no drop and never changes a code.
 
-**@ba reviews each version that enters review.** The first time a version goes to review (round 1, from a member's
-submit or from a proposal), the plugin hands @ba its review as a task run on a worker of `run_as`, with no
-`runs:dispatch` grant: the image trusts the plugin. The run reads the version, checks it against the template, looks
-for contradictions between use cases, with the glossary and with the NFRs, and writes each finding as a comment on its
-item (at most 20, each starting `Blocking:` or `Suggestion:`), as `run_as`, with the run named on the comment. The
-comments are advice: approval waits for none and reads none. A version sent back and submitted again is not reviewed
-again. When the type is off, `run_as` no longer holds writer, or the type's runs spent `daily_usd` in the last 24
-hours, the version goes to review without @ba's review and the hub's log says why. The audit log keeps
-`task.dispatch`, with `run_as` as its actor.
+**@ba reviews each version that enters review.** Every time a version goes to review, in every round, from a
+member's submit or from a proposal, the plugin hands @ba its review as a task run on a worker of `run_as`, with no
+`runs:dispatch` grant: the image trusts the plugin. The run is kept as the review of the version's round
+(`review_run_id`), and approval waits until it ends (section Findings). It reads the version and the document's open
+findings, and its task and the skill `srs-review` tell it to:
 
-**What @ba never does**: approve, return or withdraw a version, drop or retire an item, change or give again a code,
-archive or unarchive a document, change the plugin's config, or change the files of the repositories its run checks
-out.
+- check the version against the template and write what is missing or wrong as comments on its items (at most 20,
+  each starting `Blocking:` or `Suggestion:`), as `run_as`, with the run named on the comment; comments are advice,
+  and approval reads none;
+- compare each use case the version changes with every use case of every document of the project, drafts and versions
+  in review included (`srs__search`), and with the knowledge graph (`kg_search`, `kg_context`), going through actors,
+  systems, repositories, seams, terms and business rules, each searched in Vietnamese and in English;
+- record each conflict as a finding with its sources (`srs__finding`); a conflict with no source is no finding;
+- settle a finding from the graph first, when a plan's Decision line, an approved SRS item or a newer document answers
+  it: resolved with that source and no member, so it needs no chat;
+- go over every open finding of the document and resolve those the new version settles, citing the version.
+
+When the type is off, `run_as` no longer holds writer, or the type's runs spent `daily_usd` in the last 24 hours, the
+version goes to review without @ba's review, the hub's log says why, and approval waits for no review. The audit log
+keeps `task.dispatch`, with `run_as` as its actor.
+
+**@ba settles nothing itself.** In a settle chat it sums up, asks, records what people chose and proposes the next
+version (skill `srs-settle`, section Settle chats).
+
+**@ba splits the frame tasks of an approved version.** In the split run (section Tasks when a version is approved)
+it reads each use case and makes its child tasks with `tasks__create` (skill `srs-tasks`), and nothing else.
+
+**What @ba never does**: approve, return or withdraw a version, settle a finding nobody settled, waive a finding
+through the route, drop or retire an item, change or give again a code, archive or unarchive a document, change the
+plugin's config, or change the files of the repositories its run checks out.

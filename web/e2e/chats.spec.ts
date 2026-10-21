@@ -32,8 +32,7 @@ import { toast } from "./support/toast";
  * agent and a person, mentions the agent through the @ suggestions, and watches the run that makes come in live (the
  * agent's eyes, its reply in the thread with the run and the draft pull request, the check mark); reactions put and
  * taken off, and another member's arriving live; a thread opened from a link to a reply, answered in place, and the
- * hub's answer to a mention it refuses; the members sheet adding and taking out an agent and a person, the budget,
- * and leaving; the row of agents opening a direct chat, each chat's face and last message in the list, and a group's
+ * hub's answer to a mention it refuses; the members sheet adding and taking out an agent and a person, and leaving; the row of agents opening a direct chat, each chat's face and last message in the list, and a group's
  * image changed from its head; a direct chat drawn as a chat app, the member's messages on the right and the agent's
  * answers in the line under them, Reply going on in the session. The specs are the worker: they claim the chat run
  * and post the agent's reply as the daemon does, so no model is asked anything. Pages render in English.
@@ -255,7 +254,8 @@ test("reactions: a member puts an emoji and takes it off, another's arrives live
   await page.waitForURL(`**/chats/${chat.id}`);
   await expect(row).toHaveAttribute("data-unread", "0");
   await expect(page.getByTestId("nav-chats-count")).toHaveCount(0);
-  expect((await chatsOf(me)).find((item) => item.id === chat.id)?.unread).toBe(0);
+  // The page drops the count before the hub has the read, so the hub is asked until it has it.
+  await expect.poll(async () => (await chatsOf(me)).find((item) => item.id === chat.id)?.unread).toBe(0);
 
   // Add a reaction from the message's actions, then take it off from its chip.
   const message = messageOf(page, "The docs are up for review.");
@@ -327,7 +327,7 @@ test("threads: a link to a reply opens its thread marked, a reply goes in it, an
   await expect(hub).toContainText(`@${outsider} is not in this chat: add it to the chat, then mention it again`);
 });
 
-test("members: add an agent and a person, take the agent out, change the budget and leave the chat", async ({ page, member }) => {
+test("members: add an agent and a person, take the agent out and leave the chat", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const handle = uniqueName("helper");
@@ -356,11 +356,9 @@ test("members: add an agent and a person, take the agent out, change the budget 
   await sheet.locator(`[data-testid="chat-member-agent"][data-handle="${handle}"]`).getByTestId("chat-remove-agent").click();
   await expect(sheet.locator(`[data-testid="chat-member-agent"][data-handle="${handle}"]`)).toHaveCount(0);
 
-  await sheet.getByTestId("chat-budget-input").fill("7.5");
-  await sheet.getByTestId("chat-budget-save").click();
-  await expect(toast(page, "Budget changed")).toBeVisible();
+  await expect(sheet.getByTestId("chat-members-budget")).toHaveCount(0);
   const held = await chatPageOf(me, chat.id);
-  expect([held.chat.budget_usd, held.chat.people.map((person) => person.login).sort(), held.chat.agents]).toEqual([7.5, [me.login, lan.login].sort(), []]);
+  expect([held.chat.people.map((person) => person.login).sort(), held.chat.agents]).toEqual([[me.login, lan.login].sort(), []]);
 
   await sheet.getByTestId("chat-leave").click();
   const confirm = page.getByTestId("chat-leave-confirm");
@@ -451,7 +449,7 @@ test("the row of agents opens the member's direct chat with an agent, its compos
   await expect(row.getByTestId("chat-avatar")).toHaveAttribute("data-face", "agent");
   await expect(row.getByTestId("chat-row-last")).toHaveText("No messages yet");
 
-  // Details: the agent and the member for good, and the budget.
+  // Details: the agent and the member for good.
   await head.getByTestId("chat-details-open").click();
   const sheet = page.getByTestId("chat-members");
   await expect(sheet.getByRole("heading", { name: "Details" })).toBeVisible();
@@ -459,7 +457,6 @@ test("the row of agents opens the member's direct chat with an agent, its compos
   for (const control of ["chat-add-agent-select", "chat-add-person", "chat-remove-agent", "chat-remove-person", "chat-leave"]) {
     await expect(sheet.getByTestId(control)).toHaveCount(0);
   }
-  await expect(sheet.getByTestId("chat-budget-input")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 

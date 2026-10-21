@@ -14,7 +14,11 @@ lives an hour and is revoked when the run ends; a review run's, a judge run's an
 ``evo_agents.hub.judge``) gets its token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and
 EVO_HUB_CURATOR_APP_PRIVATE_KEY), which the rulesets of the repos keep off their default branches, and never from the
 first: without the Curator's App it gets none. On other forges it gets the one git secret the charter names
-(``git_secret``) and the env secrets the charter lists (``env_secrets``), none of the owner's others.
+(``git_secret``) and the env secrets the charter lists (``env_secrets``), none of the owner's others. A release run
+(kind release, ``evo_agents.hub.releases``) gets only the env secrets of its runtime's login (RELEASE_ENV_VARS) and,
+for its repo on GitHub, a token of the first App with ``GITHUB_PERMISSIONS`` and never GITHUB_WORKFLOW_PERMISSIONS
+(``github_workflows``), no git secret of its owner: like the Curator's, its agent holds nothing that pushes, and only
+its daemon pushes its branch release/<version>.
 
 Origins are compared in one form: ``normalize_origin`` turns ``git@host:path``, ``ssh://git@host/path`` and
 ``https://host/path.git`` into ``https://host/path``, so a secret whose url_prefix is https also covers a repo whose
@@ -50,12 +54,22 @@ GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the to
 # creates or updates a file of .github/workflows without it, whatever the pusher may do. Never for the Curator's App.
 GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
 READ_ONLY_KINDS = ("review", "judge", "author", "replay", "history")  # the kinds of run whose GitHub token reads only
+NO_WORKFLOW_KINDS = ("release",)  # the kinds of run whose GitHub token never asks GITHUB_WORKFLOW_PERMISSIONS
+# The variables of the only env secrets a release run is leased: the login of Claude Code, its runtime
+# (evo_agents.hub.releases.RUNTIME).
+RELEASE_ENV_VARS = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
 
 def github_permissions(run_kind: str) -> dict[str, str]:
     """What the GitHub token of a run of ``run_kind`` may do: read only for a review run, a judge run and an author
     run, which push nothing."""
     return dict(GITHUB_READ_PERMISSIONS if run_kind in READ_ONLY_KINDS else GITHUB_PERMISSIONS)
+
+
+def github_workflows(run_kind: str) -> bool:
+    """Whether the GitHub token of a run of ``run_kind`` that writes may also ask GITHUB_WORKFLOW_PERMISSIONS: never for
+    a release run, whose push may not change the workflows that test and publish the release."""
+    return run_kind not in NO_WORKFLOW_KINDS
 
 
 GITHUB_TOKEN_REFRESH_SECONDS = 600  # the daemon asks again for a GitHub token with less than this left
@@ -70,10 +84,11 @@ _SCP_ORIGIN = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 # Who may hand a worker its runs (workers.dispatch_from): runs dispatched with any credential of its owner, or only
 # those dispatched from a web session. And the credential a run was dispatched with (runs.dispatched_via): a web
-# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none, the night shift of a
-# project's charter acting for its owner (schema 0012, evo_agents.hub.curator).
+# session, a token (a machine token, or the worker token of a run's agent on /mcp), or none: the night shift of a
+# project's charter acting for its owner (schedule, schema 0012, evo_agents.hub.curator), or its release schedule
+# (release, schema 0067, evo_agents.hub.releases).
 DISPATCH_FROM = ("any", "web")
-DISPATCHED_VIA = ("machine", "web", "schedule")
+DISPATCHED_VIA = ("machine", "web", "schedule", "release")
 
 
 def dispatch_credential(credential_kind: str) -> str:

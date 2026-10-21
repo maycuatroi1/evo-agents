@@ -83,7 +83,18 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "lost",
         "cancelled",
     )
-    assert runs.RUN_KINDS == ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history")
+    assert runs.RUN_KINDS == (
+        "step",
+        "plan",
+        "review",
+        "judge",
+        "author",
+        "chat",
+        "task",
+        "replay",
+        "history",
+        "release",
+    )
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
     assert set(HELD_STATES) | set(ACTIVE_STATES) | set(TERMINAL_STATES) == set(RUN_STATES)
@@ -346,6 +357,7 @@ def test_decisions_and_notices_the_plan_names():
         "plugin_disabled",
         "builder_proposal",
         "merge_paused",
+        "release",
     )
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")

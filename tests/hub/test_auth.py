@@ -78,10 +78,15 @@ HUB_TABLES |= pg.REPLAY_TABLES  # migration 0056
 HUB_TABLES |= pg.HISTORY_TABLES  # migration 0059
 HUB_TABLES |= pg.SEARCH_TABLES  # migration 0060
 HUB_TABLES |= pg.NIGHTLY_TABLES  # migration 0065
-HUB_TABLES |= pg.POLICY_TABLES  # migration 0066
-HUB_TABLES |= pg.MERGE_TABLES  # migration 0068
-HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0070
-HUB_TABLES |= pg.BREAKER_TABLES  # migration 0071
+HUB_TABLES |= pg.RELEASE_TABLES  # migration 0067
+HUB_TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
+HUB_TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
+HUB_TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
+HUB_TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
+HUB_TABLES |= pg.POLICY_TABLES  # migration 0073
+HUB_TABLES |= pg.MERGE_TABLES  # migration 0075
+HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0077
+HUB_TABLES |= pg.BREAKER_TABLES  # migration 0078
 
 
 @pytest.fixture

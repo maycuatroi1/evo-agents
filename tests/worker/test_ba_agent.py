@@ -2,7 +2,8 @@
 manifest of the core plugin srs declares the agent type ba, mentioned by the project's writers, whose chat runs go to
 the workers of its run_as, with the pack srs/ba and the plugin's tools; the bundle the hub builds from the package
 (``plugins.core.image_bundle``) is a pack the worker builds as any other, srs/ba with its instructions and the skills
-srs-writing and srs-review, which say how to propose, review and keep codes. The hub's side, the routing, the tools
+srs-writing, srs-review and srs-settle, which say how to propose, review, keep codes and settle conflicts in a settle
+chat. The hub's side, the routing, the tools
 and the review runs, is ``tests.hub.test_ba_agent``'s.
 """
 
@@ -69,7 +70,8 @@ def test_ba_agent_type_of_srs_is_mentioned_by_writers_and_runs_on_the_workers_of
     assert [item["name"] for item in manifest.contributions("agent_packs")] == ["ba"]
     tools = manifest.python_refs("mcp_tools")
     assert tools == {
-        name: f"evo_agents.core_plugins.srs.agent:{name}" for name in ("read", "search", "diff", "propose", "comment")
+        name: f"evo_agents.core_plugins.srs.agent:{name}"
+        for name in ("read", "search", "diff", "propose", "comment", "finding")
     }
     propose = next(item for item in manifest.contributions("mcp_tools") if item["name"] == "propose")
     change = propose["input_schema"]["properties"]["changes"]["items"]
@@ -80,7 +82,7 @@ def test_ba_agent_type_of_srs_is_mentioned_by_writers_and_runs_on_the_workers_of
     }
 
 
-def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_two_skills(plugins, tmp_path):
+def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_four_skills(plugins, tmp_path):
     held = core.image_bundle(plugins["srs"])
     assert core.image_bundle(plugins["srs"]).sha256 == held.sha256, "the same package packs to the same bundle"
     held_files = files(held)
@@ -88,13 +90,20 @@ def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_two_skills
         "evo-plugin.json",
         f"{PACK}/INSTRUCTIONS.md",
         f"{PACK}/skills/srs-review/SKILL.md",
+        f"{PACK}/skills/srs-settle/SKILL.md",
+        f"{PACK}/skills/srs-tasks/SKILL.md",
         f"{PACK}/skills/srs-writing/SKILL.md",
     ]
     assert json.loads(held_files["evo-plugin.json"])["id"] == "srs"
     (pack,) = packs.build([ticket(held, "ba")], tmp_path / "run" / "packs", accepted=["srs"], fetch=fetch_from(held))
     assert pack.components.kinds() == ("skills", "instructions")
-    assert pack.skill_names("claude-code") == ["srs.ba:srs-review", "srs.ba:srs-writing"]
-    assert pack.skill_names("codex") == ["srs-review", "srs-writing"]
+    assert pack.skill_names("claude-code") == [
+        "srs.ba:srs-review",
+        "srs.ba:srs-settle",
+        "srs.ba:srs-tasks",
+        "srs.ba:srs-writing",
+    ]
+    assert pack.skill_names("codex") == ["srs-review", "srs-settle", "srs-tasks", "srs-writing"]
     instructions = (pack.root / "INSTRUCTIONS.md").read_text()
     for said in ("srs__propose", "srs__comment", "tasks__create", "Approve or return a version"):
         assert said in instructions, said
@@ -102,4 +111,8 @@ def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_two_skills
     assert "Never change, renumber or reuse the code of an item" in writing
     review = (pack.root / "skills" / "srs-review" / "SKILL.md").read_text()
     assert "Blocking:" in review and "with the glossary" in review and "non-functional requirements" in review
+    settle = (pack.root / "skills" / "srs-settle" / "SKILL.md").read_text()
+    assert "Đã chốt:" in settle and "action: reopen" in settle and "settled_by" in settle
+    split = (pack.root / "skills" / "srs-tasks" / "SKILL.md").read_text()
+    assert "tasks__create" in split and "`parent`" in split and "frame task" in split
     assert packs.summary([pack]) == "Agent packs built for the agent: srs/ba 1.0.0 (skills, instructions)."

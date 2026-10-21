@@ -19,12 +19,12 @@ and the mention keeps the run it made or woke, or why it made none, which the hu
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
 (the mention ``via`` thread). In a direct chat (``chat_direct``) a message whose mentions do not reach its agent goes to
 it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
-outside a thread starts a new session. Elsewhere a message that mentions no agent makes no run and asks no model
-anything. A message these routes answer carries how far each run it handed work to is while that run is on its way
-(``chat_progress``): waiting for its worker, a step of its setup, working, as the reader may read the run.
-
-PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
-creator does (403), audited as chat.budget.
+outside a thread starts a new session. In a settle chat (``chats.SETTLE``, which the hub opens) every message of a
+person whose mentions do not reach the chat's agent goes to it ``via`` settle, in the sender's session of the message's
+thread, a member who reads the agent's project alone included (``chat_runs.hand_work``). Elsewhere a message that
+mentions no agent makes no run and asks no model anything. A message these routes answer carries how far each run it
+handed work to is while that run is on its way (``chat_progress``): waiting for its worker, a step of its setup,
+working, as the reader may read the run.
 
 A member puts an emoji on a message and takes it off; a message carries at most ``chats.MAX_EMOJI_KINDS`` different
 ones. POST .../read says how far the member read, which the list's unread count starts from. Creating a chat and
@@ -38,10 +38,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, chats, profiles, tables
+from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit
@@ -154,14 +154,6 @@ class ChatReadIn(BaseModel):
 class ChatRead(BaseModel):
     last_read_seq: int
     unread: int
-
-
-class ChatUpdate(BaseModel):
-    budget_usd: float = Field(
-        gt=0,
-        le=chat_runs.MAX_BUDGET_USD,
-        description=f"what the runs of the chat's agents may cost in {chat_runs.BUDGET_HOURS} hours, in USD",
-    )
 
 
 # The chats
@@ -354,6 +346,8 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)
+    elif chat.kind == chats.SETTLE:
+        kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
         kept += await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)
@@ -390,22 +384,6 @@ async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, u
         message_id = await deliver_message(conn, chat, user, body)
         view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": message_id, "mentions": len(view.mentions)})
-    return view
-
-
-@router.patch("/{chat_id}", response_model=Chat, responses=REFUSALS)
-async def update_chat(request: Request, chat_id: ChatId, body: ChatUpdate, user: CurrentUser) -> Chat:
-    """Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does."""
-    async with request.app.state.engine.begin() as conn:
-        chat = await chat_access(conn, user, chat_id, lock=True)
-        if user.user_id != chat.created_by:
-            raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, changes its budget")
-        c = tables.chats
-        await conn.execute(update(c).values(budget_usd=body.budget_usd).where(c.c.id == chat_id))
-        target = f"chat:{chat_id} budget_usd={body.budget_usd:g}"
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_BUDGET, target=target)
-        view = await chat_view(conn, chat)
-    log.info("chat budget changed", extra={"chat_id": chat_id, "budget_usd": body.budget_usd})
     return view
 
 

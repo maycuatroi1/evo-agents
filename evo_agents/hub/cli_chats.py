@@ -32,7 +32,6 @@ CHAT_KEYS = (
     "restricted",
     "last_seq",
     "last_read_seq",
-    "budget_usd",
     "kind",
     "image_url",
 )

@@ -289,7 +289,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
   `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision), and
-  `task.result` with `runs:dispatch`, only to the plugin whose agent type ran the task (section Agent types). A payload
+  `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
+  task (section Agent types). A payload
   carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
@@ -482,7 +483,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | `Caller` | a dependency of a route: the caller, a member with any credential the hub's own routes take (`Session.web` says whether it is a web session), as `GET /v1/me/telegram` takes it; a web session's write carries the hub's `X-Evo-CSRF` (1.1) |
 | `HubAdmin` | a dependency of a route: the caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine token as those routes take, a web session's write with the hub's `Origin` |
 | `begin(request)`, `hub_config(request)`, `web_url(config, link)` | a transaction on the hub's engine; the hub's config, which a plugin hands the API and never reads; the absolute URL of a page a notification links to |
-| `Context`, `transaction(context)` | what the hub passes a job, an event, a tool or a source of the graph, read only, and a transaction on its engine |
+| `Context`, `transaction(context)` | what the hub passes a job, an event, a tool or a source of the graph, read only, and a transaction on its engine. The hub passes a `CoreContext`, a subclass whose `graph_refs` only the core plugins of this repository read: it is no part of the API |
 | `plugin_environment(plugin)` | the variables `EVO_HUB_<ID>_*` of the process (the id in upper case, `-` as `_`) |
 | `Channel`, `Outgoing`, `RetryAfter`, `Undeliverable`, `ChannelGone`, `SESSION_ENDED` | the class and the errors of the extension point `channels`, version 1 |
 | `ErrorBody`, `Login` | types for a route that keeps the hub's OpenAPI components |
@@ -843,7 +844,8 @@ it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed bran
 in its next attempt on the same branch. A task run is never rerun: the plugin hands the task again (409).
 
 **The plugin learns the end through its events**: when the run is done, failed or cancelled, the hub writes the event
-`task.result` for the plugin of the agent type alone, while the project grants it `runs:dispatch`. Its payload holds:
+`task.result` for the plugin of the agent type alone, while the project grants it `runs:dispatch`; a core plugin, which
+hands its own types tasks without that grant, gets it all the same. Its payload holds:
 
 - `task_id`, `run_id`, `attempt`, `project`, `agent_type` and `state`;
 - `branch`;

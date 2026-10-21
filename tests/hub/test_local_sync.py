@@ -430,7 +430,9 @@ def test_the_sweep_leaves_alone_a_session_refused_lately_one_too_old_and_one_who
         fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
         fire("stop", payload(own_home), monkeypatch, capsys)
     assert runs.run_of(SESSION)["state"] == "idle"
-    assert not [path for _, path in runs.calls if path.split("/")[0] in ("51", "52", "53")]
+    # Without fcntl (Windows) locked() always holds, so no hook holds a file and the sweep sends what 53 left.
+    left_alone = ("51", "52", "53") if local_sync.fcntl is not None else ("51", "52")
+    assert not [path for _, path in runs.calls if path.split("/")[0] in left_alone]
 
 
 def test_a_run_the_hub_ended_registers_again_at_the_next_prompt(own_home, fake, monkeypatch, capsys):

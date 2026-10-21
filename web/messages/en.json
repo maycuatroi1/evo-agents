@@ -51,6 +51,7 @@
       "error": "Couldn't read your workers"
     },
     "curator": "Curator",
+    "releases": "Releases",
     "agents": "Agents",
     "chats": "Chats",
     "curatorProposals": "Proposals",
@@ -2665,15 +2666,13 @@
       "leave": "Leave",
       "leaving": "Leaving",
       "removePerson": "Take {login} out of the chat",
-      "budget": "Budget",
       "restricted": "A project of this chat's agents is restricted, so its notices name the chat and link to it, nothing more.",
       "left": "You left {title}",
       "done": {
         "addAgent": "{name} added to the chat",
         "removeAgent": "{name} taken out of the chat",
         "addPerson": "{name} added to the chat",
-        "removePerson": "{name} taken out of the chat",
-        "budget": "Budget changed"
+        "removePerson": "{name} taken out of the chat"
       },
       "leaveTitle": "Leave {title}?",
       "leaveBody": "You will no longer read or write in this chat, and its notices stop. A member can add you again.",
@@ -2692,12 +2691,6 @@
       "addPerson": "Add a person",
       "peopleFull": "A chat holds at most {max} people.",
       "personHint": "People who share a project or a chat with you; type the login of someone else who signed in to the hub. Each needs a grant that clears the projects of this chat's agents.",
-      "budgetRead": "The runs of its agents may cost up to {amount} in any 24 hours. {creator}, who created the chat, changes it.",
-      "budgetLabel": "Spend limit for 24 hours, in USD",
-      "saving": "Saving",
-      "save": "Save",
-      "badBudget": "A number above 0, at most {max}.",
-      "budgetHint": "The runs of its agents may cost up to {amount} in any 24 hours, as their usage says; past it the hub hands them no work.",
       "detailsTitle": "Details",
       "directDescription": "Your direct chat with {name}.",
       "directNote": "A direct chat is you and one agent, for good. To bring in other people or agents, start a group chat with New chat."
@@ -2773,7 +2766,14 @@
       "ready": "Ready",
       "cooling": "Cooling",
       "paused": "Paused",
-      "expired": "Expired"
+      "expired": "Expired",
+      "needs-relogin": "Needs sign-in"
+    },
+    "oauthEnds": "OAuth, access token until <time></time>",
+    "oauthRenew": {
+      "title": "Sign in again as {name}",
+      "description": "Run <code>evo-agents hub account oauth-login</code> in a terminal to replace its tokens. The account stays.",
+      "descriptionRelogin": "Its refresh token was refused. Run <code>evo-agents hub account oauth-login</code> in a terminal to sign in again."
     },
     "until": "until <time></time>",
     "rank": "weight {weight}, priority {priority}",
@@ -4831,7 +4831,8 @@
       "architecture": "Architecture",
       "scope": "Scope",
       "question": "Question",
-      "triage": "Failed run"
+      "triage": "Failed run",
+      "release": "Release"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -4845,7 +4846,8 @@
       "chat_added": "Someone added you to a chat",
       "plugin_disabled": "The hub turned off a plugin",
       "builder_proposal": "@builder proposed a change for you to approve",
-      "merge_paused": "The merge queue of a repo stopped"
+      "merge_paused": "The merge queue of a repo stopped",
+      "release": "Daily release"
     },
     "item": {
       "unread": "Unread",
@@ -6114,6 +6116,264 @@
       }
     }
   },
+  "releases": {
+    "metaTitle": "Releases of {project}",
+    "title": "Releases",
+    "newTab": "(opens in a new tab)",
+    "sub": {
+      "daily": "Checks <repo></repo> every day at {at} {timezone}, as {owner}. Next check <next></next>.",
+      "paused": "Paused by {login} <ago></ago>. No check runs until an admin resumes it.",
+      "pausedByHub": "Paused <ago></ago>. No check runs until an admin resumes it.",
+      "repoLink": "{repo} on GitHub (opens in a new tab)",
+      "noNext": "not planned"
+    },
+    "state": {
+      "paused": "Paused"
+    },
+    "runNow": "Run now",
+    "checking": "Checking",
+    "runFailed": "Couldn't run the check",
+    "pause": "Pause",
+    "pausing": "Pausing",
+    "resume": "Resume",
+    "resuming": "Resuming",
+    "paused": {
+      "title": "Release schedule paused",
+      "text": "No check runs and no cycle opens until it is resumed. Release runs still queued were cancelled."
+    },
+    "resumed": {
+      "title": "Release schedule resumed",
+      "text": "The next daily check runs at {at} {timezone}."
+    },
+    "resumeFailed": "Couldn't resume the release schedule",
+    "confirmPause": {
+      "title": "Pause the release schedule?",
+      "text": "No daily check runs for {project} until an admin resumes it. Release runs still queued are cancelled, and an open cycle with no run under way closes. A run already under way finishes. The Curator's night shift is not touched.",
+      "confirm": "Pause schedule",
+      "cancel": "Keep it running"
+    },
+    "checked": {
+      "opened": {
+        "title": "Cycle #{cycle} opened",
+        "text": "Its first run, #{run}, is queued for a worker."
+      },
+      "openRun": "Open run #{run}",
+      "unchanged": {
+        "title": "Nothing to release"
+      },
+      "busy": {
+        "title": "No new cycle"
+      },
+      "paused": {
+        "title": "Not checked: the schedule is paused"
+      },
+      "owner": {
+        "title": "Not checked: the owner holds no admin role"
+      },
+      "error": {
+        "title": "The check failed"
+      }
+    },
+    "errors": {
+      "forbidden": "Only an admin of the project pauses, resumes or runs its release check.",
+      "notFound": "The project is gone, or you can no longer read it.",
+      "conflict": "The project has no release schedule any more.",
+      "apiMessage": "The hub said: {message}"
+    },
+    "empty": {
+      "title": "No release schedule yet",
+      "description": "A release schedule checks every day whether the packaged code changed since the newest release tag. When it did, an agent cuts the next version, the hub merges and tags it, follows its CI, and fixes a red tag forward until the version is published.",
+      "command": "An admin of the project sets it with <command></command>."
+    },
+    "problems": {
+      "stopped": {
+        "title": "Cycle #{id} stopped: {cause}",
+        "decision": "Answer the decision",
+        "thread": "Open the triage thread",
+        "noCause": "see why below",
+        "noReason": "The hub kept no reason.",
+        "waits": "It moves no further until {owner} answers: go on with one more cap, close the cycle, or pause the schedule."
+      },
+      "actions": {
+        "title": "The hub cannot read the CI of {workflow}",
+        "text": "The GitHub App's installation on {repo} does not grant Actions, so the hub follows no CI and fixes no red tag. A member of the GitHub organization accepts the new permission on the App's installation page."
+      }
+    },
+    "cause": {
+      "run_failed": "a run failed",
+      "run_cancelled": "a run was cancelled",
+      "refused": "the hub refused to land a run",
+      "github": "GitHub kept failing",
+      "hacking": "a change shows signs of test hacking",
+      "budget": "its cap is spent",
+      "same_test": "the same test failed at two tags in a row",
+      "timeout": "its CI timed out",
+      "ci": "its CI ended in a way no fix answers"
+    },
+    "ci": {
+      "pending": "Waiting",
+      "running": "Running",
+      "passed": "Passed",
+      "failed": "Failed",
+      "timeout": "Timed out"
+    },
+    "cycleState": {
+      "open": "Open",
+      "stopped": "Stopped",
+      "published": "Published",
+      "closed": "Closed"
+    },
+    "outcome": {
+      "opened": "Opened a cycle",
+      "openedCycle": "Opened cycle #{id}",
+      "unchanged": "Nothing to release",
+      "busy": "A cycle is under way",
+      "paused": "Paused",
+      "owner": "The owner holds no admin role",
+      "error": "Failed"
+    },
+    "cycle": {
+      "title": "Cycle #{id}",
+      "sub": "Opened by the check of {day}; its runs run as {owner}.",
+      "opened": "Opened",
+      "start": "Started with",
+      "startCut": "A cut of {ref}",
+      "startFix": "A fix of the red tag {tag}",
+      "range": "Range",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "noBase": "No tag yet",
+      "to": "to",
+      "commitLink": "Commit {commit} on GitHub (opens in a new tab)",
+      "changed": "Changed paths",
+      "noChange": "None: the cycle fixes a red tag",
+      "cost": "Cost",
+      "costValue": "{cost} of {budget}, {share}%",
+      "costLabel": "Cost of cycle #{id} against its cap",
+      "tags": "Tags",
+      "noTags": "No tag yet: the hub tags the merge commit once the cut run's branch lands.",
+      "runs": "Runs",
+      "noRuns": "No run yet.",
+      "none": {
+        "title": "No cycle open.",
+        "paused": "The schedule is paused: no check opens one.",
+        "next": "The next check is <next></next>.",
+        "noNext": "No check is planned."
+      }
+    },
+    "tags": {
+      "failedTitle": "{count, plural, one {# test failed} other {# tests failed}}",
+      "failedMore": "and {count} more",
+      "infra": "Only the infrastructure failed: the hub ran the failed jobs again {reruns, plural, =0 {not yet} one {one time} other {# times}}.",
+      "problem": "The hub could not read its CI: {problem}",
+      "columns": {
+        "tag": "Tag",
+        "ci": "CI",
+        "workflow": "Workflow",
+        "made": "Tagged by",
+        "checked": "Checked"
+      },
+      "failedCount": "{count, plural, one {# failed test} other {# failed tests}}",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "noWorkflow": "No run yet",
+      "workflow": "Workflow run",
+      "workflowAttempt": "Workflow run, attempt {attempt}",
+      "byPerson": "A person",
+      "byRun": "Run #{id}",
+      "openRun": "Open run #{id}",
+      "notChecked": "Not yet",
+      "caption": "Tags cycle #{id} follows"
+    },
+    "runs": {
+      "tagged": "Tagged {tag}",
+      "pull": "Pull request",
+      "refused": "Refused: {reason}",
+      "failed": "GitHub failed: {reason}",
+      "waitingLand": "Pushed {version}, waiting to land",
+      "notPushed": "Nothing pushed yet",
+      "columns": {
+        "run": "Run",
+        "state": "State",
+        "landing": "Landing",
+        "cost": "Cost"
+      },
+      "version": "Version {version}",
+      "openRun": "Open run #{id}",
+      "fixOf": "Fix of {tag}",
+      "mode": {
+        "cut": "Cut",
+        "fix": "Fix"
+      },
+      "caption": "Runs of cycle #{id}"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "repo": "Repo",
+      "repoLink": "{repo} on GitHub (opens in a new tab)",
+      "daily": "Daily check",
+      "dailyValue": "{at} {timezone}",
+      "next": "Next check",
+      "nextPaused": "None while paused",
+      "ships": "Ships",
+      "shipsValue": "The commit of {ref}, tagged {pattern}",
+      "workflow": "Workflow",
+      "paths": "Packaging paths",
+      "cap": "Cap per cycle",
+      "capValue": "{budget}",
+      "owner": "Runs as",
+      "updated": "Last set",
+      "updatedValue": "By {login} <ago></ago>"
+    },
+    "check": {
+      "title": "Last check",
+      "outcome": "Outcome",
+      "when": "When",
+      "by": "Made by",
+      "since": "Newest tag",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "target": "Target",
+      "commitLink": "Commit {commit} on GitHub (opens in a new tab)",
+      "changed": "Changed paths",
+      "noChange": "None",
+      "reason": "Why",
+      "none": "No check yet. The first runs at {at} {timezone}, or when an admin runs it now.",
+      "manual": "Run now by {login}",
+      "daily": "The daily check of {day}"
+    },
+    "checks": {
+      "title": "Earlier checks",
+      "caption": "The release checks of {project} before the last one",
+      "columns": {
+        "when": "When",
+        "outcome": "Outcome",
+        "reason": "Why"
+      }
+    },
+    "past": {
+      "title": "Previous cycles",
+      "none": "No cycle has ended yet.",
+      "published": "Published {tag}",
+      "closedWhy": "Closed: {reason}",
+      "closed": "Closed",
+      "noTags": "No tag",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "columns": {
+        "cycle": "Cycle",
+        "state": "State",
+        "tags": "Tags",
+        "runs": "Runs",
+        "cost": "Cost",
+        "ended": "Ended"
+      },
+      "costOf": "Of a cap of {budget}",
+      "mobileMeta": "{ending}, {runs, plural, one {# run} other {# runs}}, {cost}",
+      "mobileTitle": "Cycle #{id}, {day}",
+      "caption": "Release cycles of {project} that ended",
+      "pager": "Pages of previous cycles",
+      "range": "{first} to {last} of {total}",
+      "newer": "Newer",
+      "older": "Older"
+    }
+  },
   "monitor": {
     "title": "Monitor",
     "following": "Following every run in flight: a run that starts joins the grid.",
@@ -6801,6 +7061,8 @@
       "approvalsTitle": "Approvals",
       "approvalsCaption": "Approvals of v{version} by role",
       "policyNone": "One approval of a writer who wrote none of the versions since {since} approves it.",
+      "policyNoneSelf": "One approval of a writer approves it, its author's included.",
+      "selfApproval": "Self-approval is on in {project}: the author of a version may approve it too.",
       "policy": "Required: {required}. Optional: {optional}.",
       "nobody": "none",
       "noApprovals": "No approval yet in this round.",
@@ -6837,7 +7099,68 @@
       "submit": "Submit review",
       "approvedToast": "Approved v{version}",
       "approvalToast": "Approval recorded on v{version}",
-      "returnedToast": "Returned v{version} to draft"
+      "returnedToast": "Returned v{version} to draft",
+      "lock": {
+        "findingsTitle": "Approve is locked: {count, plural, one {# finding to decide is open} other {# findings to decide are open}}",
+        "findingsText": "Settle each in its chat with @ba, or an admin of the project waives one. You can still request changes.",
+        "openChat": "Open the settle chat",
+        "reviewTitle": "Approve waits for @ba's review of round {round}",
+        "reviewText": "Approve unlocks when the run ends. You can still request changes."
+      }
+    },
+    "findings": {
+      "title": "Findings",
+      "description": "Conflicts @ba found between this document, the project's other documents and its knowledge graph. An open finding to decide holds approval.",
+      "counts": "{decide} to decide, {open} other open, {settled} settled",
+      "groups": {
+        "decide": "To decide",
+        "open": "Other open",
+        "settled": "Settled"
+      },
+      "reviewing": "@ba is reviewing round {round}",
+      "reviewingText": "Findings show here as @ba records them. The list reads them again until the run ends.",
+      "reviewBroke": "@ba's review of round {round} did not finish",
+      "reviewBrokeText": "Approval does not wait for it, but the list may miss conflicts it did not record.",
+      "emptyTitle": "No conflict found",
+      "emptyText": "When @ba reviews a version, the conflicts it finds with other documents and the knowledge graph show here.",
+      "emptyReviewing": "@ba has recorded none so far.",
+      "failed": "The findings could not be read.",
+      "retry": "Try again",
+      "openRun": "Open run #{id}",
+      "foundOn": "#{id}, found on v{version}",
+      "about": "About",
+      "wholeDocument": "The whole document",
+      "sources": "Sources",
+      "settledWith": "Settled with",
+      "openChat": "Open the settle chat",
+      "settledMessage": "Open the message that settled it",
+      "resolvedBy": "Settled by {login}",
+      "waivedBy": "Waived by {login}",
+      "resolvedFromGraph": "Settled from the knowledge graph",
+      "waivedByAgent": "Waived by @ba",
+      "newTab": "(opens in a new tab)",
+      "level": {
+        "info": "Info",
+        "advisory": "Advisory",
+        "decide": "Decide"
+      },
+      "kind": {
+        "duplicate": "Duplicate",
+        "contradiction": "Contradiction",
+        "kg_conflict": "Graph conflict",
+        "overlap": "Overlap"
+      },
+      "status": {
+        "open": "Open",
+        "resolved": "Resolved",
+        "waived": "Waived"
+      },
+      "sourceKind": {
+        "node": "Graph node",
+        "code": "Item",
+        "path": "File",
+        "version": "Version"
+      }
     },
     "comments": {
       "added": "Comment added",

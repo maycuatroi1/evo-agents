@@ -55,6 +55,7 @@ import {
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
+import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import {
   documentPath,
@@ -66,6 +67,7 @@ import {
   RULE,
   SAMPLE_SLUG,
   SAMPLE_SRS,
+  seedFindings,
   srsPath,
   submitVersion,
   USE_CASE,
@@ -484,6 +486,19 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "a project's Releases with a stopped cycle and the cycles before it, read by a writer",
+    open: async ({ page, me }) => {
+      // The schedule is an admin's: another member is the project's admin and owns it.
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      await seedRelease(owner, project, { stopped: true });
+      await page.goto(`/p/${project}/releases`);
+      await expect(page.locator("#main").getByTestId("release-stopped")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("release-past")).toBeVisible();
+    },
+  },
+  {
     name: "no access (403)",
     open: async ({ page }) => {
       await page.goto("/admin");
@@ -838,8 +853,13 @@ const PAGES: Entry[] = [
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
       await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
-      await dialog.getByTestId("dispatch-runtime-info").click();
-      await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
+      // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
+      // click toggles it closed. Once the hover has shown it, a click keeps it shown.
+      const info = dialog.getByTestId("dispatch-runtime-info");
+      await info.hover();
+      await expect(info).toHaveAttribute("data-state", /open/);
+      await info.click();
+      await expect(info).toHaveAttribute("data-state", /open/);
       await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
   },
@@ -935,7 +955,8 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "chats list");
       await page.locator("#main").getByTestId("chats-new").click();
       const dialog = page.getByTestId("new-chat-dialog");
-      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("people-search").fill("not a login");
+      await expect(dialog.getByTestId("people-empty")).toBeVisible();
       await dialog.getByTestId("new-chat-submit").click();
       await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
     },
@@ -971,7 +992,7 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "a chat's members, budget and the leave confirmation",
+    name: "a chat's members and the leave confirmation",
     open: async ({ page, me }) => {
       const { chat } = await seedChat(me);
       await open(page, chatPath(chat.id));
@@ -1604,6 +1625,23 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "SRS comparison");
       await open(page, documentPath(project, `/versions/${v2}`));
       await expect(page.locator("#main").getByTestId("srs-review-form")).toBeVisible();
+    },
+  },
+  {
+    name: "an SRS version's review with @ba's findings and Approve locked by the one to decide",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const author = newAccount("srs-author");
+      const hub = new HubAdmin();
+      await hub.grant(project, me.login, "admin", "customer");
+      await hub.grant(project, author.login, "writer", "customer");
+      await enableSrs(me, project);
+      const seeded = await seedFindings(author, project, me);
+      await open(page, documentPath(project, `/versions/${seeded.version}`));
+      const card = page.locator("#main").getByTestId("srs-findings");
+      await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(seeded.decide));
+      await expect(card.getByTestId("srs-findings-settled").getByTestId("srs-finding-settled")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
     },
   },
   {

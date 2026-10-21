@@ -139,11 +139,11 @@ class Chat(BaseModel):
     restricted: bool = Field(description="a project of its agents is restricted: its notices name it and link only")
     last_seq: int = Field(description="the number of its last event")
     last_read_seq: int = Field(description="how far the reader read")
-    budget_usd: float = Field(
-        description="what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
-    )
     kind: Literal[chats.CHAT_KINDS] = Field(
-        description="group: members are added and removed; direct: one person and one agent, for good"
+        description=(
+            "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat "
+            "the hub opened, whose agent every message of a person wakes"
+        )
     )
     image_url: str | None = Field(
         description="the image its members set, on this hub; null for none, and always for a direct chat"
@@ -177,7 +177,9 @@ class ChatSummary(BaseModel):
     unread: int = Field(description="messages of others after the reader's last read")
     people: list[str]
     agents: list[str]
-    kind: Literal[chats.CHAT_KINDS] = Field(description="group, or direct: one person and one agent")
+    kind: Literal[chats.CHAT_KINDS] = Field(
+        description="group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"
+    )
     image_url: str | None = Field(description="the image its members set; null for none, and always for a direct chat")
     direct_agent: ChatAuthor | None = Field(
         description="a direct chat's agent, whose avatar is its face; null for a group"
@@ -304,8 +306,8 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
     ]
     agents = [agent_member(found[r.profile_id], r.added_by, r.added_at) for r in rows if r.profile_id]
     c = tables.chats
-    query = select(c.c.event_seq, c.c.budget_usd, c.c.image_sha256).where(c.c.id == chat.chat_id)
-    seq, budget, image = (await conn.execute(query)).one()
+    query = select(c.c.event_seq, c.c.image_sha256).where(c.c.id == chat.chat_id)
+    seq, image = (await conn.execute(query)).one()
     m = tables.chat_members
     read = (await conn.execute(select(m.c.last_read_seq).where(m.c.id == chat.member_id))).scalar_one()
     return Chat(
@@ -319,7 +321,6 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
         restricted=chat.restricted,
         last_seq=seq,
         last_read_seq=read,
-        budget_usd=budget,
         kind=chat.kind,
         image_url=chats.image_url(chat.chat_id, image),
     )

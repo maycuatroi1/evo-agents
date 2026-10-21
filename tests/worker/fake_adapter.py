@@ -33,7 +33,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
   that dies first leaves it running.
 
 A plan run (no step key) follows ``"plan:<plan id>"``, a review run ``"review"``, a judge run ``"judge"``, an
-author run ``"author"``, a chat run ``"chat"``, a task run ``"task"``, a replay run ``"replay"`` (its second arm
+author run ``"author"``, a chat run ``"chat"``, a task run ``"task"``, a release run ``"release"``, a replay run
+``"replay"`` (its second arm
 ``"replay/2"``) and a history run ``"history"`` (its second session ``"history/2"``). The
 n-th start of the same run in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after
 its owner answered);
@@ -289,7 +290,7 @@ class FakeAdapter(Adapter):
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history"):
+        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history", "release"):
             key = run["kind"]
         else:
             key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"

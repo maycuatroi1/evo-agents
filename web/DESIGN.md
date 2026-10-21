@@ -233,6 +233,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A worker's update that failed; a daemon that cannot update itself; a long wait to update | `CircleX`; `RefreshCwOff`; `ClockAlert` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
+| Releases, a project's daily release; a decision of a stopped cycle, a notice of the release | `Tags` |
+| A release cycle: published, closed, stopped; a check that found nothing, waits for a cycle, the owner without the admin role | `PackageCheck`, `CircleMinus`, `OctagonPause`; `CircleMinus`, `Hourglass`, `UserX` |
 | The Curator's History, its search; Graph health; Runtime and harness | `TextSearch`; `Network`; `Layers` |
 | A change's replays; replays that won | `FlaskConical`; `Trophy` |
 | A skill release: published, published again, nothing published | `PackageCheck`, `Undo2`, `PackageX` |
@@ -1418,6 +1420,29 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
+- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's project group after the
+  Curator; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
+  (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it
+  cancels the release runs still queued and closes a cycle left idle) or Resume (the primary button while paused) for an
+  admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the daily time and zone, the
+  member its runs run as and the next check as a relative time, or who paused it. Under it, only when something is
+  wrong, a `danger` banner (an alert) while the App's installation grants no Actions (`actions_permission`) and an
+  `attention` banner while the cycle is stopped: its cause and reason, that it waits for its owner, and Answer the
+  decision (the Inbox's sheet) and Open the triage thread. The cycle open now is a card (`cycle-card.tsx`): its title
+  with a pill only when stopped, where it started (a cut of the target ref, or the fix of a red tag), the range from the
+  newest tag to the target's commit as `Identifier`s on GitHub, the changed paths as chips, its cost against its cap as
+  the kit's meter (`attention-solid` from 75 %, `danger-solid` from 90 %) with the figure beside it, then the tags it
+  follows (`cycle-tables.tsx`: the tag, its CI as a pill, the workflow run as a link out, who tagged it, when the hub
+  last read it; under the row the failed test ids in `danger` mono, five at most, a fault of the infrastructure and the
+  problem that kept the hub from reading the CI) and its runs (`#N` to the run's page, Cut or Fix of the tag as a
+  `Tag`, the run's pill, how the hub landed it with the pull request, a refusal in `danger`, the cost); without a cycle,
+  one quiet line with the next check. Then the Schedule and Last check cards side by side from lg (`schedule-card.tsx`:
+  the outcome as its icon and words, `attention` for paused or an owner without the admin role, `danger` for an error,
+  with the reason), the recent checks once there are two, and the cycles that ended in a `DataCard` with Newer and
+  Older (`past-cycles.tsx`: `#N` and the day over how it ended, the cycle's pill, its tags each with its CI icon, runs,
+  cost, ended). The CI, cycle and check looks live in `badges.tsx` on the shared `StatusPill`. Under 768 px every table
+  is a list of rows. The page reads the release every 10 seconds while the cycle has a run queued or under way or a tag
+  whose CI the hub still reads, every minute otherwise.
 - `components/plugins`, plugins (docs/plugins.md; docs/hub.md, Plugins). Administration gains a Plugins tab
   (`/admin/plugins`, hub admins): the store in one `DataCard` table, a plugin's name over its id and description, its
   publisher in mono (a `ShieldAlert` in `attention` once the operator no longer trusts it; a core plugin of the hub's image
@@ -1496,9 +1521,24 @@ Shared pieces built on them:
   problems that refuse it. An item's page (`/items/{code}`) heads with the code as a chip before the h1, the kind and
   the version's state, a `review` banner when a newer version changes it, its threads, and the Traceability card read
   from the knowledge graph (tasks, plan steps, commits and pull requests, tests; the build it read, or why there is
-  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the reviewer's
-  form (Approve or Request changes, which needs a note) or why the visitor cannot review (a reader, an author of a
-  version since the approved one, admins too), what approving approves, the checks and the review history. Compare
+  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the Findings
+  card, the reviewer's form (Approve or Request changes, which needs a note) or why the visitor cannot review (a
+  reader, an author of a version since the approved one, admins too), what approving approves, the checks and the
+  review history. The Findings card (`findings-card.tsx`, plan srs-conflicts-and-tasks), which readers see too, lists
+  the conflicts @ba found in the document in three groups under a heading with a round count: to decide (open, level
+  decide; the count in `attention`), other open, settled (the one settled last first). A finding is its level as a tag
+  (decide in `attention`, as a task's urgent priority), its kind as a tag, its state as a pill (open neutral, resolved
+  green, waived an outline), `#id` and the version it was found on, its summary, the item it is about and its sources
+  as chips (a code links to its item's page, in another document when the reader sees it; a graph node to its page);
+  an open one links its settle chat, a settled one says on `surface-sunken` who settled it (a member, the knowledge
+  graph, @ba's waiver), when, how and the message that did. While @ba's review of the round is queued or running a
+  neutral banner names the run (`#id` and its pill) and the page reads the document and the findings every 5 s until
+  it ends; a review that failed, was lost or cancelled gets its own banner, since the list may miss conflicts. The
+  card has a skeleton while it loads, a line when there is none, and an alert with Try again when the read fails.
+  While a finding to decide is open, or the review runs, the form's Approve is disabled with a lock and Request
+  changes is taken; a banner under the choices says why (`attention` with the settle chat for findings, neutral with
+  the run for the review) and the Approve radio names it in `aria-describedby`. A 409 of the hub still shows as the
+  form's refusal and reads the findings again. No control on the web settles or waives a finding. Compare
   (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
   diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
   dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,

@@ -80,6 +80,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
+| emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
@@ -95,6 +96,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -209,6 +211,24 @@ evo-agents hub logout                                 # revokes this machine's t
 
 The token and the hub URL stay in `~/.evo/hub` (mode 0700, files 0600). A hub URL must be https, or http to a
 loopback address. No command prints a token.
+
+The hub names a member by an email too, such as the author of a commit, from the addresses the member lists. An
+address belongs to one member on the hub, whatever its case: adding one another member holds is refused (409), adding
+one you hold already does nothing. A hub admin lists, adds and removes the emails of anyone with `--user LOGIN`; anyone
+else gets 403. GitHub's noreply address of a login, `ID+LOGIN@users.noreply.github.com` or
+`LOGIN@users.noreply.github.com`, names that login without a row, so the hub refuses one that names another login. The
+hub does not check that you read an address, since sign-in asks GitHub for `read:user` alone: it takes 20 addresses a
+member at most, and an admin removes one listed by the wrong member.
+
+```sh
+evo-agents hub email list                              # your emails; --json prints the hub's rows
+evo-agents hub email add octo@northwind.example
+evo-agents hub email remove octo@northwind.example
+evo-agents hub email add ops@lumen.example --user lumen-dev   # a hub admin, for another member
+```
+
+An address travels in the body of a request, never in its path, so no access line holds it, and the audit rows of
+`user_email.add` and `user_email.remove` name the row and the member, never the address.
 
 One machine can be signed in to two hubs. `EVO_HUB_HOME` names the directory of a second login, and every command,
 hook and the MCP proxy then read the token, the hub URL and their state files (`hook-state.json`, `memory-state.json`,
@@ -532,16 +552,30 @@ titled with the agent's name. A person has one direct chat with each agent: the 
 agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
 of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
 for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
-there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group` or `direct`, in
-Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group`, `direct` or
+`settle`, in Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
 agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
 leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
-hop 1 for the person, within the chat's budget, and a reply in the thread of the agent's answer goes on in that session
+hop 1 for the person, and a reply in the thread of the agent's answer goes on in that session
 (`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
 reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
+**Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
+with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
+findings of level decide open (`docs/srs-plugin.md`, `evo_agents/core_plugins/srs/settle.py`). It is a group chat in
+all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
+whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
+message's thread, within the chat's hops: an `@` of it makes the same one run, and a mention of another
+agent hands that one work as in any chat and wakes the chat's agent too. And a person with any grant on the agent's
+project wakes the chat's agent, a reader too; any other agent of the chat still works for the writers of its project
+alone. Its members change as a group chat's do, and it may have an image. The hub opens it with no model asked: the
+creator is the version's author (or the run_as of the agent type when the author no longer clears its label), the
+people the plugin's rules name are added (each gets `chat_added`, from "the hub"), those it cannot add are named with
+why in its first message, which is the hub's and mentions the agent; the run that mention starts acts for the type's
+run_as, as any run a message of the hub wakes. Opening one is audited as `chat.create` in the agent's project.
 
 **Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
@@ -564,11 +598,9 @@ thread, of a direct chat the latest of all, since its answers show under the mes
 and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
 gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
 
-**Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
-rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
-and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
-what is left as its cost cap and 30 minutes of agent time. Only the creator changes it (`PATCH /v1/chats/{id}`, audited
-as `chat.budget`).
+**Caps.** A chat run has no cost cap: each gets 30 minutes of agent time (`chat_runs.TIME_CAP_SECONDS`), where its
+worker stops it. Schema 0072 dropped the chat's budget, which refused a mention once the chat's runs of a rolling 24
+hours had cost it.
 
 **Agents in chats.** The agent of a run (a chat run, or a step, plan or author run) talks in chats with
 `evo-agents worker chat post|react|create|mention` (`docs/workers.md`): a message in its thread or in a chat it is in,
@@ -628,10 +660,9 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
-| `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
-Creating a chat, adding and removing a member, sending a message, changing the budget and the image are audited
-(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.budget`, `chat.image`; an agent's in its project; an
+Creating a chat, adding and removing a member, sending a message and changing the image are audited
+(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.image`; an agent's in its project; an
 agent's message and chat as the run's dispatcher, naming the run), naming `chat:<id>` and the person, agent, message
 or image (`image:<the first 16 of its SHA-256>`, or `image:none`), never a title, a text or an image's bytes. For
 example:
@@ -651,29 +682,32 @@ happened in a chat in order. It adds the notices `chat_mention` and `chat_added`
 notices and drops the six tables: every chat is lost. Schema 0032 adds the chat run: the run kind `chat`, on no plan,
 that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
 (the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
-`chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
-columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or `direct`), and for a direct
-chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
+`chats.budget_usd` (more than 0, at most 1000, 5 unless changed), which 0072 drops. Going back to 0031 deletes the chat
+runs and drops the columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or
+`direct`), and for a direct chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
 for a group), one direct chat per pair (`chats_direct_key`), and the `via` direct of a mention. Going back to 0049 makes
 every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread. Schema
 0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
 chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
 event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
-whose objects stay in the bucket with nothing referring to them.
+whose objects stay in the bucket with nothing referring to them. Schema 0070 adds the kind `settle` (its agent in
+`chats.direct_profile_id`, no person) and the `via` settle of a mention, with the table `srs_settle_chats` of the core
+plugin srs. Going back to 0069 makes every settle chat a group chat of the same members, its agent no longer named on
+its row, reads a mention `via` settle as `via` thread, and drops the table.
 
 ### What a triage agent may do on its own
 
 The agent of a failed run's triage thread acts for the run's owner through three worker routes,
 `POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan` and `.../triage/invite` (`evo_agents/hub/server/triage_actions.py`,
 `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
-of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, within the chat's budget, and an
-edit of a plan only as a new revision that differs from the held one in the `verify` or `what` of pending steps of the
-run's repos, with no command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step
-that is done, `acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run
-dispatched by hand. When the error names another project, `.../triage/invite` puts the agent of that project in the
-chat by the rule of Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread),
-and the agent hands it work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row (`run.triage_rerun`,
-`run.triage_plan_edit`) in the same transaction.
+of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, and an edit of a plan only as a
+new revision that differs from the held one in the `verify` or `what` of pending steps of the run's repos, with no
+command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step that is done,
+`acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run dispatched by hand.
+When the error names another project, `.../triage/invite` puts the agent of that project in the chat by the rule of
+Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread), and the agent hands it
+work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row
+(`run.triage_rerun`, `run.triage_plan_edit`) in the same transaction.
 
 ## Plans and their copies in git
 
@@ -706,6 +740,19 @@ evo-agents hub plan export . --commit                 # write the copies, commit
 read. When someone else wrote in between, the hub answers 409 with the current plan, and `plan step` and `plan patch`
 read it again and retry; pass `--if-revision N` to fail instead. `plan put FILE --if-revision N` replaces a whole
 plan from a file.
+
+A step's `verify` is one shell command line: a worker runs it, and its preflight looks up the programs it calls. The
+hub cannot see a worker's PATH, so it checks the shape (`evo_agents.hub.verify_words.shell_problem`). It answers 422 to
+a write that brings a new or changed verify to a step not done when that line does not parse as shell (a quote left
+open, as an apostrophe in prose leaves one) or runs a word that is not a command name. A command name has ASCII
+letters, digits and `_ . + -` only, starts with a letter, a digit or `_`, and ends with one of them or `+`; the hub
+reads an absolute path by its last part. `Từ`, `Manual:`, `1.` and `-` fail; `g++`, `python3.12` and `/usr/bin/env`
+pass. The message names each step and the word read as a program. Put a manual check in the step's `note`, and give
+the step a verify that checks something machine-readable, such as an answered hub decision (`evo-agents hub decision
+show N --json | jq -e '.state == "answered"'`) or a line in a report file. PUT, PATCH, an author run's plan, a triage
+agent's edit and the Curator's plans all go through this check. The hub does not check a verify the replaced revision
+already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
+harness validate` warns of each verify of a step not done that the hub would refuse as new.
 
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
@@ -836,7 +883,18 @@ makes every withdrawn version a draft again. Schema 0065 adds `hub_nightly`, one
 pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); and `workers.update_requested_at`,
 `update_ended_at`, `update_outcome` (`current`, `cancelled`, `failed` or `impossible`) and `update_reason`, an owner's
 last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
-the four columns, and the hub then reads no nightly and takes no Update now.
+the four columns, and the hub then reads no nightly and takes no Update now. Schema 0066 adds `oauth_sealed`, `oauth_nonce` and
+`oauth_key_id` to `accounts`, the sealed tokens of an OAuth account (`docs/credentials.md`, Accounts), all null for every
+account there is; going back to 0065 drops them and the tokens with them. Schema 0067 adds the daily release
+(`docs/releases.md`): `release_schedules`, `release_cycles`, `release_runs`, `release_tags` and `release_checks`, the
+run kind `release` with `dispatched_via` `release` and one active release run per project, the decision category
+`release` and the notice `release`; going back to 0066 deletes the release runs, their decisions and the release
+notices, and drops the five tables. Schema 0068 adds `user_emails`, the emails of each member (Signing in). Schema 0069
+adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0070 the settle chats
+(Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
+of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
+approved). Schema 0072 drops `chats.budget_usd` and its check (Group chats, Caps); going back to 0071 puts it back at
+5 on every chat. Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -964,8 +1022,10 @@ day, as GitLab ends an access token on its expiry date. `secret list` reads `GET
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
 list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
-as the web's Accounts page does, and `hub account login` adds or renews a Claude account with the token
-`claude setup-token` prints (`docs/credentials.md`, section "Accounts").
+as the web's Accounts page does, `hub account login` adds or renews a Claude account with the token
+`claude setup-token` prints, and `hub account oauth-login` signs one in with Claude's OAuth flow: the hub keeps its
+refresh token sealed, refreshes the access token when a run is leased and ends within five minutes, and shows the state
+`needs-relogin` when the refresh token is refused (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:
@@ -1503,6 +1563,26 @@ evo-agents hub curator resume
 proposal, with when the hub counts its figures again (`outcome_due_at`). The web shows the ledger on the proposal's
 page (`/p/{project}/curator/proposals/{id}`), and a revert proposal names the proposal it undoes.
 
+## The daily release
+
+A project can release itself once a day, apart from the Curator (`docs/releases.md`). At the release schedule's local
+time (06:00 Asia/Ho_Chi_Minh by default) the job `hub.release_schedules` checks, without any model, whether a packaging
+path changed between the newest release tag and the commit of the tag `nightly`, and when it did opens a cycle and
+queues a run of kind `release`. Its agent cuts the version on `release/<version>` on a worker of the schedule's owner
+or one shared with them; the hub merges the branch and tags the merge commit with the workers' GitHub App, follows the
+tag's `release.yml` through the Actions API, fixes a red tag forward with the next patch, and stops the cycle with a
+decision for its owner and a thread in the project's triage chat on the causes `docs/releases.md` lists. That page
+also gives the version rule, the cost cap, the App's permissions and the commands:
+
+```sh
+evo-agents hub release set --project evo-agents            # an admin, who becomes the schedule's owner
+evo-agents hub release status --project evo-agents
+evo-agents hub release run --project evo-agents            # check now, through the same gates
+evo-agents hub release pause --project evo-agents
+```
+
+The web shows it on the project's Releases page (`/p/{project}/releases`).
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -2016,7 +2096,7 @@ evo-agents hub srs import order-srs.md --project evo-agents --slug orders
 evo-agents hub srs list --project evo-agents
 evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
-evo-agents hub srs approve orders 1 --project evo-agents                # by a writer who wrote no version since
+evo-agents hub srs approve orders 1 --project evo-agents                # by another writer, or the author with self_approval
 evo-agents hub srs export orders --project evo-agents --output orders.md
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin
 evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # an admin; the items it would drop
@@ -2204,6 +2284,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   smart HTTP (protocol v2) to GitHub, no git and no GitHub API, and keeps the commit and the time in `hub_nightly`, which
   every heartbeat answer hands the daemons (`docs/workers.md`, Updating itself to nightly). A read that fails keeps the
   last one and logs one warning, `nightly not read, the last read kept`.
+- `hub.release_schedules`, every minute, one pass at a time: the daily check of each release schedule whose local
+  time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
+  CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
+  server's release pass to the job runner (`HubContext.release_pass`).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

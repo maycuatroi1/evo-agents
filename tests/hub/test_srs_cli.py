@@ -1,10 +1,12 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive``
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive``
 (``evo_agents.hub.cli_srs``), as members run them against a hub that serves the core plugin srs: the commands and their
 ``--json`` keys are in the contract (seam hub-cli-v1), an import prints its preview and the problems that refuse it, an
 export writes the Markdown imported, approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins), a
 version in review is withdrawn by its author or an admin (criterion a2 of plan srs-document-lifecycle), an admin
 retires items by their codes, after a dry run that writes nothing (criterion a3 of that plan), and archives a document
-out of ``list`` (``list --all`` shows it) and unarchives it (criterion a1 of that plan).
+out of ``list`` (``list --all`` shows it) and unarchives it (criterion a1 of that plan). A member lists the findings of a
+document, an approval an open finding of level decide holds prints the finding, and an admin waives it (criteria a4
+and a5 of plan srs-conflicts-and-tasks); the findings are written in the table, as @ba's tool would.
 
 The parsing runs without Postgres or the hub-server extra, as the client does; everything that needs the hub skips
 without EVO_HUB_TEST_DSN."""
@@ -55,6 +57,16 @@ def test_the_srs_commands_are_in_the_contract():
         "SrsRetireResult",
         ["document", "version", "dry_run", "dropped"],
     )
+    findings = printed["hub srs findings"]
+    assert [p["metavar"] for p in findings["positionals"]] == ["SLUG"]
+    assert [o["flags"][0] for o in findings["options"]] == ["--project", "--status", "--json"]
+    assert {o["flags"][0]: o for o in findings["options"]}["--status"]["choices"] == ["open", "resolved", "waived"]
+    assert (findings["json"]["kind"], findings["json"]["schema"]) == ("array", "SrsFinding")
+    waive = printed["hub srs waive"]
+    assert [p["metavar"] for p in waive["positionals"]] == ["SLUG", "FINDING"]
+    assert [o["flags"][0] for o in waive["options"]] == ["--project", "--reason", "--json"]
+    assert {o["flags"][0]: o for o in waive["options"]}["--reason"]["required"]
+    assert (waive["json"]["kind"], waive["json"]["schema"]) == ("object", "SrsFinding")
 
 
 def test_srs_import_takes_no_slug_or_title_with_doc(monkeypatch, capsys, tmp_path):
@@ -66,8 +78,10 @@ def test_srs_import_takes_no_slug_or_title_with_doc(monkeypatch, capsys, tmp_pat
 
 if pg.DSN:  # the hub-server extra is installed (tests/hub/conftest.py)
     import httpx
+    from sqlalchemy import func, insert, select
 
     from evo_agents.core_plugins.srs import markdown
+    from evo_agents.hub import tables
     from evo_agents.hub.server.app import create_app
     from tests.hub.test_chats import OPEN_SINKS
     from tests.hub.test_plans import registration
@@ -243,3 +257,67 @@ def test_srs_archive_takes_a_document_out_of_list_and_unarchive_opens_it_again_f
     reopened = as_json(srs(hub, monkeypatch, capsys, "owner", "unarchive", "demo-shop", "--json"))
     assert_json_keys("hub srs unarchive", reopened)
     assert reopened["archived_at"] is None
+
+
+def written_finding(db, level: str) -> int:
+    """A finding of ``level`` on the latest version of demo-shop, about UC ORD-2, as @ba's tool writes one."""
+    s = tables.srs
+    d, v, i, f = s.documents, s.versions, s.items, s.findings
+    ((doc, label, version),) = live.sql(
+        db,
+        select(d.c.id, d.c.label, func.max(v.c.id)).join(v, v.c.document_id == d.c.id).group_by(d.c.id, d.c.label),
+    )
+    ((item,),) = live.sql(db, select(i.c.id).where(i.c.document_id == doc, i.c.code == "UC ORD-2"))
+    values = {"document_id": doc, "version_id": version, "item_id": item, "kind": "contradiction", "level": level}
+    values |= {"sources": [{"kind": "code", "ref": "UC ORD-1"}], "summary": "Two holds of stock", "label": label}
+    ((found,),) = live.sql(db, insert(f).values(values).returning(f.c.id))
+    return found
+
+
+@needs_pg
+def test_srs_findings_are_listed_hold_an_approval_and_an_admin_waives_one_from_the_command_line(
+    hub, hub_db, monkeypatch, capsys
+):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    none = ok(srs(hub, monkeypatch, capsys, "bao", "findings", "demo-shop"))
+    assert none.out == "demo-shop has no finding.\n"
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1"))
+    advice, decide = written_finding(hub_db, "advisory"), written_finding(hub_db, "decide")
+    listed = as_json(srs(hub, monkeypatch, capsys, "bao", "findings", "demo-shop", "--json"))
+    assert_json_keys("hub srs findings", listed)
+    assert [(f["id"], f["level"], f["status"], f["item_code"]) for f in listed] == [
+        (advice, "advisory", "open", "UC ORD-2"),
+        (decide, "decide", "open", "UC ORD-2"),
+    ]
+    printed = ok(srs(hub, monkeypatch, capsys, "bao", "findings", "demo-shop")).out
+    assert printed.startswith("1 open finding(s) of level decide hold the approval of demo-shop.\n"), printed
+    assert f"#{decide} decide contradiction on v1, UC ORD-2: open" in printed and "  sources: code UC ORD-1" in printed
+    held = srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1")
+    assert held.code == 1 and f"#{decide} (contradiction, UC ORD-2)" in held.err, held.err
+    assert f"  finding {decide}, contradiction: Two holds of stock" in held.err
+    writer = srs(hub, monkeypatch, capsys, "bao", "waive", "demo-shop", str(decide), "--reason", "Settled in standup")
+    assert writer.code == 1 and f"only an admin of project {PROJECT} waives a finding" in writer.err
+    waived = as_json(
+        srs(
+            hub,
+            monkeypatch,
+            capsys,
+            "owner",
+            "waive",
+            "demo-shop",
+            str(decide),
+            "--reason",
+            "Settled in standup",
+            "--json",
+        )
+    )
+    assert_json_keys("hub srs waive", waived)
+    assert (waived["status"], waived["settled_by"], waived["resolution"]) == ("waived", "owner", "Settled in standup")
+    again = srs(hub, monkeypatch, capsys, "owner", "waive", "demo-shop", str(decide), "--reason", "x")
+    assert again.code == 1 and "only an open finding is settled" in again.err
+    shown = ok(srs(hub, monkeypatch, capsys, "bao", "findings", "demo-shop", "--status", "waived")).out
+    assert f"#{decide} decide contradiction" in shown and "  waived by owner " in shown and f"#{advice}" not in shown
+    assert ok(srs(hub, monkeypatch, capsys, "bao", "findings", "demo-shop", "--status", "resolved")).out == (
+        "demo-shop has no finding resolved.\n"
+    )
+    assert as_json(srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1", "--json"))["state"] == "approved"

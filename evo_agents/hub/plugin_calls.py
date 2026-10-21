@@ -159,11 +159,13 @@ def load(ref: str):
 
 
 @dataclass(frozen=True)
-class CoreContext:
-    """What a core plugin's Python gets beside the params: the plugin, the hub's engine (for its own tables) and
-    config, the project the call is for (None for a job, which names its projects in the params), and for a tool the
-    agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller). A tool also gets the sink of
-    the caller's session on /mcp (``X-Evo-Sink``), which its reads go through, and the hub's job queue."""
+class ApiContext:
+    """What a core plugin's Python gets beside the params, as the core plugin API serves it (``Context`` of
+    ``evo_agents.hub.server.core_plugin_api``, whose fields are those of version 1.1): the plugin, the hub's engine
+    (for its own tables) and config, the project the call is for (None for a job, which names its projects in the
+    params), and for a tool the agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller). A
+    tool also gets the sink of the caller's session on /mcp (``X-Evo-Sink``), which its reads go through, and the
+    hub's job queue. A field added here changes the API's surface and takes its next version."""
 
     plugin: str
     engine: AsyncEngine | None
@@ -173,6 +175,16 @@ class CoreContext:
     run_id: int | None = None
     sink: str | None = None
     jobs: object | None = None
+
+
+@dataclass(frozen=True)
+class CoreContext(ApiContext):
+    """The context the hub hands every core plugin: ``ApiContext`` and what only the core plugins of this repository
+    read, outside the API: for a tool, ``graph_refs(ids, paths)``, which awaits which of some node ids and paths the
+    project's knowledge graph on the hub lacks as the caller reads it through its sink
+    (``evo_agents.hub.server.kg.unknown_refs``; None elsewhere)."""
+
+    graph_refs: object | None = None
 
 
 # Plugins in projects
@@ -278,6 +290,7 @@ async def call(
 
 
 __all__ = [
+    "ApiContext",
     "CoreContext",
     "CoreRegistry",
     "PluginCallError",

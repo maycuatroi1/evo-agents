@@ -1,5 +1,5 @@
 """The autonomy policy of a project, kept as revisions (plan gitlab-merge-queue, criterion a2; the keys in
-``evo_agents.hub.autonomy``). Table autonomy_policies, schema 0066.
+``evo_agents.hub.autonomy``). Table autonomy_policies, schema 0073.
 
 - GET /v1/projects/{project}/policy: the policy now, for a member with a grant on the project: the keys its newest
   revision sets (``policy``) and every key at that value or its default (``effective``), each repo of the project

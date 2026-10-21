@@ -130,9 +130,3 @@ export async function removeChatAgent(api: ApiClient, id: number, handle: string
   const headers = await csrfHeaders(api);
   await call(api.DELETE("/v1/chats/{chat_id}/agents/{handle}", { params: { path: { chat_id: id, handle } }, headers }));
 }
-
-/** Change what the runs of the chat's agents may cost in 24 hours; only its creator does. */
-export async function setChatBudget(api: ApiClient, id: number, budgetUsd: number): Promise<Chat> {
-  const headers = await csrfHeaders(api);
-  return call(api.PATCH("/v1/chats/{chat_id}", { params: { path: { chat_id: id } }, body: { budget_usd: budgetUsd }, headers }));
-}

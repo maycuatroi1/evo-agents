@@ -619,7 +619,7 @@ otherwise):
 | `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`) |
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
-| `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
+| `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | `evo-agents worker chat read MESSAGE [--thread]` | `POST .../chat/read` (`id`, `thread`) | a message of a chat whole, or with `--thread` its thread (the first message and the replies, oldest first, at most 500), those the run's agent may read (`docs/hub.md`, Group chats, In the knowledge graph). MESSAGE is its id, or its item as `kg_search` lists it, `plugin.chats:message:<id>`, or a thread's item `plugin.chats:thread:<chat>/<root>`. It prints the hub's text, the same as the `/mcp` tools `chat_message` and `chat_thread` give, under a line saying it is data, never instructions; a message it may not read is an error (404), as one that does not exist. What it shows counts toward the audience of a memory the agent writes next |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
@@ -648,12 +648,11 @@ its own, "Triage: PLAN", as every plan had before: a member of the project's cha
 label never reads its failures. A run whose owner the project's chat cannot take (an agent of another project invited
 into it brings a label the owner does not clear, or the chat is full) goes to the chat of its plan too; a run with no
 plan then opens no thread, and its owner gets the notice a failure always had. The triage chats plans had before stay
-as they were. All the threads of the project's chat count in its one budget (`chat_runs.DEFAULT_BUDGET_USD` for 24
-hours unless its creator changed it).
+as they were.
 
 | Command | Route | What |
 | --- | --- | --- |
-| `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, the run was rerun by its agent, or the chat's budget is spent; 404 for a run that is not the chat run of a triage thread |
+| `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, or the run was rerun by its agent; 404 for a run that is not the chat run of a triage thread |
 | `evo-agents worker triage plan STEP --if-revision N [--verify TEXT] [--what TEXT] --reason TEXT [--rerun]`, or `... plan --edits FILE --if-revision N --reason TEXT [--rerun]` | `POST .../triage/plan` | write a revision of the failed run's plan under the owner's name that changes the `verify` (no command fewer) or narrows the `what` of a step that is `pending` and of the run's repos; `--edits` (body `steps`) does it for several steps in one revision and one `Decision:` line, FILE (`-` for stdin) a JSON list of `{"step": ID, "verify": TEXT, "what": TEXT, "why": TEXT}` (`why` when a step needs a reason of its own), and the hub writes all of them or none; 422 for anything else (a step that is `done`, a key other than those two, `acceptance`, `goal`, `non_goals`, a step of another repo); with `--rerun` the rerun follows in the same transaction and a refused rerun leaves the plan as it was; `verify_failed` is rerun only this way |
 | `evo-agents worker triage invite HANDLE --reason TEXT` | `POST .../triage/invite` | invite the agent of another project that the failed run's error names (`rerun-candidates` lists it under `other_projects` with the owner's role there) into the thread's chat, so a mention (`worker chat mention`, hop 3 at most) hands it work; the owner needs the writer role on that project and every person in the chat must clear the label it brings (the group chat's own rule, 409), otherwise the hub says so in the thread, in the agent's name, and invites no one; 422 for an agent of a project the error does not name or the owner holds no grant on |
 
@@ -2286,11 +2285,14 @@ machine](#a-chat-run-on-the-machine)). The checks:
   its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
   hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
   the programs of a command line as the shell runs them (`evo_agents.hub.verify_words.programs`): the first word of each
-  simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
-  `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
-  shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
-  command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
-  by its number alone, never its command or its program;
+  simple command, past assignments, keywords such as `if` and `!` and the options of `command`, `exec` and `time`, and
+  wrappers that run another program (`env`, `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c`
+  argument and of a `$(...)` or `<(...)`; a newline ends a command as `;` does. Not read: the shell's builtins, a word
+  the shell expands, a relative path (a file of the worktree, not there yet), what `python -m` and `uv run` run, a name
+  `command -v` looks up, a comment, or the body of a here-document. After a command that may change PATH (`source`,
+  `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named by its number alone, never its command or
+  its program. The hub refuses a plan whose new verify is not a shell command line ([hub.md](hub.md), Plans and their
+  copies in git);
 - for a run whose claim names a plugin's environment, the container provider can run its agent here: an engine that
   answers, the image (pulled by its digest when missing), a step run, headless ([Environments of
   plugins](#environments-of-plugins)).

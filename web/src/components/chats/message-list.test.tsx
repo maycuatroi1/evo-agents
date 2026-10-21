@@ -42,7 +42,6 @@ function chat(kind: Chat["kind"]): Chat {
     restricted: false,
     last_seq: 9,
     last_read_seq: 9,
-    budget_usd: 5,
     kind,
     image_url: null,
   };

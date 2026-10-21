@@ -229,6 +229,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Emails
+         * @description The emails of the caller, or of the member ``user`` names, in the order of their addresses.
+         */
+        get: operations["list_emails_v1_emails_get"];
+        put?: never;
+        /**
+         * Add Email
+         * @description Give the caller, or the member ``user`` names, the address ``email``: 201 with the new row, 200 with the row
+         *     they had, 409 when another member holds it.
+         */
+        post: operations["add_email_v1_emails_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/emails/{email_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Email
+         * @description Remove the email ``email_id`` of the caller, or of anyone for a hub admin; answers the row it removed.
+         */
+        delete: operations["remove_email_v1_emails__email_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users": {
         parameters: {
             query?: never;
@@ -2790,6 +2835,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Where the project's daily release stands: its schedule, its latest checks and the cycle open now.
+         */
+        get: operations["status_v1_projects__project__releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ended Cycles
+         * @description The project's release cycles that ended, published or closed, newest first, each with its runs and tags.
+         */
+        get: operations["ended_cycles_v1_projects__project__releases_cycles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Schedule
+         * @description Set the project's release schedule; the caller becomes its owner.
+         */
+        put: operations["set_schedule_v1_projects__project__releases_schedule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause
+         * @description Pause the release schedule, cancel the release runs still queued and close an open cycle left idle.
+         */
+        post: operations["pause_v1_projects__project__releases_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Let the release schedule check again.
+         */
+        post: operations["resume_v1_projects__project__releases_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Now
+         * @description Check now, through the gates of the daily check, and answer the check.
+         */
+        post: operations["run_now_v1_projects__project__releases_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/release/branch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pushed
+         * @description The worker pushed release/<version> of the release run's repo: kept on the run, for the hub to land once the
+         *     run is done.
+         */
+        post: operations["pushed_v1_worker_runs__run_id__release_branch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -3652,8 +3838,9 @@ export interface paths {
         put?: never;
         /**
          * Submit Version
-         * @description Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
-         *     project enabled the agent type ba; its comments block nothing.
+         * @description Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
+         *     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
+         *     records holds approval.
          */
         post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
         delete?: never;
@@ -3674,7 +3861,11 @@ export interface paths {
         /**
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
-         *     it, and the agent of a run never does.
+         *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
+         *     decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
+         *     approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
+         *     use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
+         *     child tasks, in the same transaction.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
         delete?: never;
@@ -3785,6 +3976,48 @@ export interface paths {
          * @description Close the thread of a comment.
          */
         post: operations["resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Findings
+         * @description The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among
+         *     them names the document whose item holds it, when the member sees that document.
+         */
+        get: operations["list_findings_v1_x_srs__project__documents__slug__findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive Finding
+         * @description Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and
+         *     ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived.
+         */
+        post: operations["waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4599,11 +4832,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Update Chat
-         * @description Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does.
-         */
-        patch: operations["update_chat_v1_chats__chat_id__patch"];
+        patch?: never;
         trace?: never;
     };
     "/v1/chats/{chat_id}/messages": {
@@ -4967,7 +5196,7 @@ export interface paths {
         /**
          * Rerun
          * @description Run the failed run of this triage thread again for its owner, inside the frame; 422 for a cause with no
-         *     automatic rerun, 409 when the chain of reruns, the chat's budget or an earlier rerun forbids it.
+         *     automatic rerun, 409 when the chain of reruns or an earlier rerun forbids it.
          */
         post: operations["rerun_v1_worker_runs__run_id__triage_rerun_post"];
         delete?: never;
@@ -5984,6 +6213,12 @@ export interface components {
              */
             workers: string[];
             /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
+            /**
              * Weight
              * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
              */
@@ -6017,10 +6252,10 @@ export interface components {
             expires_at: string | null;
             /**
              * State
-             * @description ready, cooling, paused or expired, now
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
              * @enum {string}
              */
-            state: "ready" | "cooling" | "paused" | "expired";
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
             /** @description what a run's CLI last said of its usage; null before any */
             last_usage: components["schemas"]["AccountUsage"] | null;
             /**
@@ -7669,16 +7904,11 @@ export interface components {
              */
             last_read_seq: number;
             /**
-             * Budget Usd
-             * @description what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it
-             */
-            budget_usd: number;
-            /**
              * Kind
-             * @description group: members are added and removed; direct: one person and one agent, for good
+             * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set, on this hub; null for none, and always for a direct chat
@@ -7896,7 +8126,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread" | "direct") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle") | null;
             /**
              * Login
              * @description the person it reached
@@ -8231,10 +8461,10 @@ export interface components {
             agents: string[];
             /**
              * Kind
-             * @description group, or direct: one person and one agent
+             * @description group; direct: one person and one agent; or settle: a group chat the hub opened for its agent
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set; null for none, and always for a direct chat
@@ -8249,14 +8479,6 @@ export interface components {
             faces: components["schemas"]["ChatAuthor"][];
             /** @description the latest message of its main line; null for none */
             last_message: components["schemas"]["ChatLastMessage"] | null;
-        };
-        /** ChatUpdate */
-        ChatUpdate: {
-            /**
-             * Budget Usd
-             * @description what the runs of the chat's agents may cost in 24 hours, in USD
-             */
-            budget_usd: number;
         };
         /**
          * CheckoutReport
@@ -8628,7 +8850,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
             /** Question */
             question: string;
             /**
@@ -9050,6 +9272,14 @@ export interface components {
              * @description sha256 of the effective config, a secret counted by its sealed value
              */
             digest: string;
+        };
+        /** EmailAdd */
+        EmailAdd: {
+            /**
+             * Email
+             * @description one address; case does not matter
+             */
+            email: string;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -11630,7 +11860,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "merge_paused") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "merge_paused" | "release") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -11711,6 +11941,40 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * OAuthTokens
+         * @description The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an
+         *     account of OAuth; never shown again.
+         */
+        OAuthTokens: {
+            /**
+             * Refresh Token
+             * Format: password
+             * @description the refresh token; sealed, never shown again
+             */
+            refresh_token: string;
+            /**
+             * Access Expires At
+             * Format: date-time
+             * @description when the access token (the value) ends
+             */
+            access_expires_at: string;
+            /**
+             * Account Uuid
+             * @description the Claude account's id
+             */
+            account_uuid?: string | null;
+            /**
+             * Organization Uuid
+             * @description its organization's id
+             */
+            organization_uuid?: string | null;
+            /**
+             * Email
+             * @description the Claude account's address
+             */
+            email?: string | null;
         };
         /** OptionIn */
         OptionIn: {
@@ -11896,7 +12160,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
             /** Question */
             question: string;
             /**
@@ -11960,7 +12224,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -14112,6 +14376,476 @@ export interface components {
             /** Conf */
             conf: number | null;
         };
+        /** ReleaseBranch */
+        ReleaseBranch: {
+            /** Run Id */
+            run_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /** Head */
+            head: string;
+            /** Version */
+            version: string;
+        };
+        /** ReleaseCheck */
+        ReleaseCheck: {
+            /** Id */
+            id: number;
+            /**
+             * Trigger
+             * @description schedule, the daily job; manual, an admin's run
+             * @enum {string}
+             */
+            trigger: "schedule" | "manual";
+            /**
+             * Local Day
+             * Format: date
+             * @description the day of the check in the schedule's time zone
+             */
+            local_day: string;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Requested By
+             * @description the admin of a manual check
+             */
+            requested_by: string | null;
+            /**
+             * Outcome
+             * @description opened: a cycle opened and its cut run queued; unchanged: no packaging path changed since the newest tag; busy: a cycle is open or stopped; paused: the schedule is paused; owner: its owner holds no admin role on the project; error: the check could not read GitHub, the reason says why
+             * @enum {string}
+             */
+            outcome: "opened" | "unchanged" | "busy" | "paused" | "owner" | "error";
+            /** Reason */
+            reason: string | null;
+            /**
+             * Base Tag
+             * @description the newest tag the pattern matched
+             */
+            base_tag: string | null;
+            /** Base Commit */
+            base_commit: string | null;
+            /**
+             * Target Commit
+             * @description the commit of the target ref
+             */
+            target_commit: string | null;
+            /**
+             * Changed Paths
+             * @description the packaging paths that changed since the newest tag
+             */
+            changed_paths: string[] | null;
+            /** Cycle Id */
+            cycle_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /** ReleaseCycle */
+        ReleaseCycle: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "stopped" | "published" | "closed";
+            /**
+             * Start
+             * @description the mode of its first run
+             * @enum {string}
+             */
+            start: "cut" | "fix";
+            /** Owner */
+            owner: string;
+            /**
+             * Local Day
+             * Format: date
+             */
+            local_day: string;
+            /** Base Tag */
+            base_tag: string | null;
+            /** Base Commit */
+            base_commit: string | null;
+            /** Target Ref */
+            target_ref: string;
+            /** Target Commit */
+            target_commit: string | null;
+            /** Changed Paths */
+            changed_paths: string[];
+            /**
+             * Budget Usd
+             * @description what the cycle's runs may cost
+             */
+            budget_usd: number;
+            /**
+             * Cost Usd
+             * @description what they cost so far, each agent session once
+             */
+            cost_usd: number;
+            /** Stop Reason */
+            stop_reason: string | null;
+            /**
+             * Stop Cause
+             * @description why it stopped last
+             */
+            stop_cause: ("run_failed" | "run_cancelled" | "refused" | "github" | "hacking" | "budget" | "same_test" | "timeout" | "ci") | null;
+            /**
+             * Decision Id
+             * @description the decision its last stop asked the owner
+             */
+            decision_id: number | null;
+            /**
+             * Thread
+             * @description the thread its last stop opened in the project's triage chat
+             */
+            thread: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Runs */
+            runs: components["schemas"]["ReleaseCycleRun"][];
+            /**
+             * Tags
+             * @description the tags it follows, in the order it began to
+             */
+            tags: components["schemas"]["ReleaseTag"][];
+        };
+        /** ReleaseCycleList */
+        ReleaseCycleList: {
+            /** Project */
+            project: string;
+            /**
+             * Cycles
+             * @description the cycles that ended, published or closed, newest first
+             */
+            cycles: components["schemas"]["ReleaseCycle"][];
+            /**
+             * Total
+             * @description the cycles that ended, on every page
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** ReleaseCycleRun */
+        ReleaseCycleRun: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "cut" | "fix";
+            /**
+             * Tag
+             * @description the red tag a fix run fixes forward
+             */
+            tag: string | null;
+            /** State */
+            state: string;
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Version
+             * @description the version the run pushed; null before it pushed
+             */
+            version?: string | null;
+            /**
+             * Branch
+             * @description release/<version>, the branch it pushed
+             */
+            branch?: string | null;
+            /**
+             * Decision
+             * @description the agent's Decision line on the version
+             */
+            decision?: string | null;
+            /**
+             * Pull Url
+             * @description the pull request the hub opened of the branch
+             */
+            pull_url?: string | null;
+            /**
+             * Merge Commit
+             * @description the commit the hub merged it as
+             */
+            merge_commit?: string | null;
+            /**
+             * Tagged
+             * @description the tag the hub made on the merge commit
+             */
+            tagged?: string | null;
+            /** Tagged At */
+            tagged_at?: string | null;
+            /**
+             * Land State
+             * @description tagged; refused, with the reason; failed, GitHub failing; null while it waits to land
+             */
+            land_state?: ("tagged" | "refused" | "failed") | null;
+            /** Land Reason */
+            land_reason?: string | null;
+        };
+        /** ReleasePushed */
+        ReleasePushed: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description release/<version>
+             */
+            branch: string;
+            /**
+             * Head
+             * @description the commit the branch has now
+             */
+            head: string;
+            /**
+             * Version
+             * @description the version the agent picked, X.Y.Z
+             */
+            version: string;
+            /**
+             * Decision
+             * @description the agent's Decision line
+             */
+            decision?: string | null;
+        };
+        /** ReleaseSchedule */
+        ReleaseSchedule: {
+            /** Repo */
+            repo: string;
+            /**
+             * Github Repo
+             * @description owner/name of the repo on GitHub; null once its origin is not there
+             */
+            github_repo: string | null;
+            /**
+             * At
+             * @description the local time of the daily check, HH:MM
+             */
+            at: string;
+            /** Timezone */
+            timezone: string;
+            /**
+             * Target Ref
+             * @description the ref whose commit a release ships: a tag, else a branch of that name
+             */
+            target_ref: string;
+            /**
+             * Tag Pattern
+             * @description the release tags: a literal prefix, then *, before a version X.Y.Z
+             */
+            tag_pattern: string;
+            /**
+             * Workflow
+             * @description the workflow that publishes a tag
+             */
+            workflow: string;
+            /**
+             * Paths
+             * @description the packaging paths: a check opens a cycle when one of them changed
+             */
+            paths: string[];
+            /**
+             * Cycle Budget Usd
+             * @description what one cycle's runs may cost
+             */
+            cycle_budget_usd: number;
+            /**
+             * Owner
+             * @description the admin who set the schedule last, whom its runs are dispatched as
+             */
+            owner: string;
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Paused At */
+            paused_at: string | null;
+            /** Paused By */
+            paused_by: string | null;
+        };
+        /**
+         * ReleaseScheduleWrite
+         * @description What PUT .../releases/schedule sets; a key left out keeps what the schedule holds, or its default.
+         */
+        ReleaseScheduleWrite: {
+            /**
+             * Repo
+             * @description a repo of the project, on GitHub
+             */
+            repo?: string | null;
+            /**
+             * At
+             * @description the local time of the daily check, HH:MM
+             */
+            at?: string | null;
+            /**
+             * Timezone
+             * @description an IANA name
+             */
+            timezone?: string | null;
+            /**
+             * Target Ref
+             * @description the ref a release ships
+             */
+            target_ref?: string | null;
+            /**
+             * Tag Pattern
+             * @description a prefix, then *
+             */
+            tag_pattern?: string | null;
+            /**
+             * Workflow
+             * @description the workflow that publishes
+             */
+            workflow?: string | null;
+            /**
+             * Paths
+             * @description packaging paths
+             */
+            paths?: string[] | null;
+            /** Cycle Budget Usd */
+            cycle_budget_usd?: number | null;
+        };
+        /**
+         * ReleaseSpec
+         * @description What the worker of a release run is told (``evo_agents.hub.server.release_claims``): its cycle and mode, the
+         *     repo and the commit its worktree starts at, and the release tags' prefix; it pushes release/<version> alone.
+         */
+        ReleaseSpec: {
+            /** Cycle Id */
+            cycle_id: number;
+            /**
+             * Mode
+             * @description cut: a new version of the target; fix: the next patch of a red tag
+             * @enum {string}
+             */
+            mode: "cut" | "fix";
+            /**
+             * Repo
+             * @description the repo of the release schedule
+             */
+            repo: string;
+            /**
+             * Start Commit
+             * @description the commit the worktree starts at: a cut's target, a fix's red tag's
+             */
+            start_commit: string;
+            /**
+             * Base Tag
+             * @description the newest release tag when the cycle opened
+             */
+            base_tag: string | null;
+            /**
+             * Tag Prefix
+             * @description what a release tag starts with before its version: v of v*
+             */
+            tag_prefix: string;
+            /**
+             * Red Tag
+             * @description the tag a fix run fixes forward; null for a cut
+             */
+            red_tag?: string | null;
+        };
+        /** ReleaseStatus */
+        ReleaseStatus: {
+            /** Project */
+            project: string;
+            /** @description null before an admin sets one */
+            schedule: components["schemas"]["ReleaseSchedule"] | null;
+            /** Paused */
+            paused: boolean;
+            /**
+             * Next Check At
+             * @description the next moment of the daily check, in UTC
+             */
+            next_check_at: string | null;
+            last_check: components["schemas"]["ReleaseCheck"] | null;
+            /**
+             * Checks
+             * @description the latest 10 checks, newest first
+             */
+            checks: components["schemas"]["ReleaseCheck"][];
+            /** @description the cycle that is open or stopped, if any */
+            cycle: components["schemas"]["ReleaseCycle"] | null;
+        };
+        /** ReleaseTag */
+        ReleaseTag: {
+            /** Tag */
+            tag: string;
+            /** Commit */
+            commit: string;
+            /**
+             * Run Id
+             * @description the run whose merge commit the hub tagged; null for a tag a person made
+             */
+            run_id: number | null;
+            /**
+             * Ci State
+             * @description the CI of the schedule's workflow for the tag
+             * @enum {string}
+             */
+            ci_state: "pending" | "running" | "passed" | "failed" | "timeout";
+            /**
+             * Workflow Url
+             * @description the run of the workflow for the tag
+             */
+            workflow_url: string | null;
+            /** Run Attempt */
+            run_attempt: number | null;
+            /**
+             * Reruns
+             * @description times the hub ran its failed jobs again, for a fault of the infrastructure
+             */
+            reruns: number;
+            /**
+             * Failed Tests
+             * @description the test ids that failed, else each failed job and its step
+             */
+            failed_tests: string[];
+            /** Failed Jobs */
+            failed_jobs: string[];
+            /**
+             * Infra
+             * @description whether the infrastructure alone failed it
+             */
+            infra: boolean;
+            /**
+             * Problem
+             * @description what kept the hub from reading its CI: actions_permission, GitHub failing
+             */
+            problem: string | null;
+            /**
+             * Watched Since
+             * Format: date-time
+             * @description what its deadlines count from
+             */
+            watched_since: string;
+            /** Checked At */
+            checked_at: string | null;
+        };
         /** Replay */
         Replay: {
             /** Id */
@@ -14546,10 +15280,10 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
             /** Project */
             project: string;
             /**
@@ -14579,9 +15313,9 @@ export interface components {
             dispatched_by: string;
             /**
              * Dispatched Via
-             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; release, the project's release schedule, for its owner; null for a run dispatched before 0.5.0
              */
-            dispatched_via: ("machine" | "web" | "schedule") | null;
+            dispatched_via: ("machine" | "web" | "schedule" | "release") | null;
             /**
              * Worker Id
              * @description the worker that claimed it
@@ -15577,7 +16311,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release";
             /** Project */
             project: string;
             /**
@@ -15687,6 +16421,8 @@ export interface components {
              * @description the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none
              */
             packs?: components["schemas"]["RunPack"][];
+            /** @description a release run's cycle, mode and start commit; null for any other run */
+            release?: components["schemas"]["ReleaseSpec"] | null;
         };
         /** RunState */
         RunState: {
@@ -16077,6 +16813,8 @@ export interface components {
              * @description after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge
              */
             expires_at?: string | null;
+            /** @description kind env, env_var CLAUDE_CODE_OAUTH_TOKEN only: the account signed in with OAuth. The value is its access token; this holds the refresh token and when the access token ends, and the hub keeps all of them sealed. expires_at, when given, is that end */
+            oauth?: components["schemas"]["OAuthTokens"] | null;
             /**
              * Value
              * Format: password
@@ -16681,6 +17419,99 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
+        /**
+         * SrsFinding
+         * @description A conflict found in a document, with the sources that show it and, once settled, how.
+         */
+        SrsFinding: {
+            /** Id */
+            id: number;
+            /**
+             * Version
+             * @description the version it was found on
+             */
+            version: number;
+            /**
+             * Item
+             * @description the key of the item it is about; null for the whole document
+             */
+            item: string | null;
+            /** Item Code */
+            item_code: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "contradiction" | "kg_conflict" | "overlap";
+            /**
+             * Level
+             * @description an open finding of level decide holds approval
+             * @enum {string}
+             */
+            level: "info" | "advisory" | "decide";
+            /**
+             * Sources
+             * @description what shows the conflict, at least one
+             */
+            sources: components["schemas"]["SrsFindingSource"][];
+            /** Summary */
+            summary: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "resolved" | "waived";
+            /**
+             * Resolution
+             * @description how it was settled, or why it was waived
+             */
+            resolution: string | null;
+            /**
+             * Resolution Sources
+             * @description what settled it, when settled from the graph
+             */
+            resolution_sources: components["schemas"]["SrsFindingSource"][];
+            /**
+             * Settled By
+             * @description the member who settled it; null when settled from the graph
+             */
+            settled_by: string | null;
+            /** Settled At */
+            settled_at: string | null;
+            /**
+             * Chat Link
+             * @description the link of the chat message that settled it
+             */
+            chat_link: string | null;
+            /**
+             * Run Id
+             * @description the run of @ba that recorded it
+             */
+            run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SrsFindingSource */
+        SrsFindingSource: {
+            /**
+             * Kind
+             * @description node: an id of the project's knowledge graph; code: a code an item of the project holds; path: repo:path, or a path, a file or document node carries; version: a later version of the document
+             * @enum {string}
+             */
+            kind: "node" | "code" | "path" | "version";
+            /** Ref */
+            ref: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Document
+             * @description of a code: the slug of the document whose item holds it, when the reader sees that document
+             */
+            document?: string | null;
+        };
         /** SrsImport */
         SrsImport: {
             /** Markdown */
@@ -17030,6 +17861,20 @@ export interface components {
              */
             body: string;
         };
+        /**
+         * SrsReviewRun
+         * @description @ba's review of a version's current round: the task run the hub handed when the version entered review.
+         */
+        SrsReviewRun: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @description approving the version waits while it is queued or running
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+        };
         /** SrsSave */
         SrsSave: {
             /**
@@ -17087,6 +17932,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
         };
@@ -17130,6 +17977,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
             /** Document */
@@ -17140,6 +17989,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWaiveIn */
+        SrsWaiveIn: {
+            /**
+             * Reason
+             * @description why, kept as its resolution
+             */
+            reason: string;
         };
         /** SrsWithdrawIn */
         SrsWithdrawIn: {
@@ -19136,6 +19993,20 @@ export interface components {
             /** Resets At */
             resets_at?: string | null;
         };
+        /** UserEmail */
+        UserEmail: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Login */
+            login: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** UserGrant */
         UserGrant: {
             /** Project */
@@ -20274,6 +21145,204 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_emails_v1_emails_get: {
+        parameters: {
+            query?: {
+                /** @description the member, any case; another's needs a hub admin */
+                user?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_email_v1_emails_post: {
+        parameters: {
+            query?: {
+                /** @description the member, any case; another's needs a hub admin */
+                user?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailAdd"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_email_v1_emails__email_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24954,7 +26023,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -29557,6 +30626,470 @@ export interface operations {
             };
         };
     };
+    status_v1_projects__project__releases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ended_cycles_v1_projects__project__releases_cycles_get: {
+        parameters: {
+            query?: {
+                /** @description the cycles of one page */
+                limit?: number;
+                /** @description the cycles before the page */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseCycleList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_schedule_v1_projects__project__releases_schedule_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseScheduleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_v1_projects__project__releases_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_v1_projects__project__releases_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_now_v1_projects__project__releases_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pushed_v1_worker_runs__run_id__release_branch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleasePushed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBranch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_changes_v1_projects__project__curator_changes_get: {
         parameters: {
             query?: never;
@@ -33416,6 +34949,172 @@ export interface operations {
             };
         };
     };
+    list_findings_v1_x_srs__project__documents__slug__findings_get: {
+        parameters: {
+            query?: {
+                /** @description only the findings in this status */
+                status?: ("open" | "resolved" | "waived") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsWaiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     show_settings_v1_x_tasks__project__settings_get: {
         parameters: {
             query?: never;
@@ -36728,77 +38427,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chat"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_chat_v1_chats__chat_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatUpdate"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
