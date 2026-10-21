@@ -40,6 +40,7 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "curator_paused": "Night shift paused",
     "author_waiting": "An author run waits for your reply",
     "builder_proposal": "A change of @builder waits for your approval",
+    "merge_paused": "Merge queue paused",
 }
 
 

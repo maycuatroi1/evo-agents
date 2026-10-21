@@ -150,6 +150,11 @@ MERGE_ROLLBACK = "merge.rollback"
 MERGE_REVERT = "merge.revert"
 MERGE_RELEASE = "merge.release"
 MERGE_SAMPLE = "merge.sample"
+# The breaker of a repo of the merge queue (evo_agents.hub.server.merge_breaker), in the project: it tripped,
+# "<project>/<repo> cause=<cause> causes=<cause,...> paused=<!iid,...>", or an admin reset it, "<project>/<repo>
+# resumed=<!iid,...>".
+MERGE_BREAKER = "merge.breaker"
+MERGE_RESUME = "merge.resume"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

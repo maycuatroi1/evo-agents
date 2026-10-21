@@ -79,7 +79,7 @@ STATES = (
     "reverting",  # the culprit of a failed check: the hub opens its revert, first in the queue
     "reverted",  # its revert merged
     "blocked",  # a gate did not pass: it waits for a new push, or for a person
-    "paused",
+    "paused",  # the repo's breaker tripped while it was ready or in its turn: ready again once an admin resets it
     "closed",  # merged or closed by a person on GitLab, or out of scope
 )
 GATING = ("gating", "judging")  # the states the gate moves on

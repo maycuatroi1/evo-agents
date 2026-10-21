@@ -340,6 +340,7 @@ def test_schema_0061_takes_the_two_lenses_and_going_back_deletes_what_they_wrote
         "0068",
         "0069",
         "0070",
+        "0071",
     )
     again = finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
     assert again.status_code == 201, again.text

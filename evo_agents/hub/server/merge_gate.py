@@ -26,6 +26,9 @@ the GitLab client, for as long as the pass needs it:
 - moves the turn of the repo's target branch on: the merge requests ``ready`` are rebased, tested and merged one at a
   time, a revert first (``evo_agents.hub.server.merge_turn``).
 
+The breaker of the repo (``evo_agents.hub.server.merge_breaker``) trips on what follows a merge; while it is tripped,
+the merge requests at their gates wait, those ready or in their turn are paused, and a revert alone moves on.
+
 A gate that does not pass leaves the merge request ``gating`` with why when it waits for something on GitLab (its
 pipeline, the project's settings, the end of its draft), or ``blocked`` with why; a blocked one moves only after a
 new push. Each new reason, and each gate passed at a head, is a line of the ledger (merge_events), and the hub
@@ -319,9 +322,8 @@ async def _repo(engine, sealer, project: Project, repo: str, settings: dict, out
     if settings["mode"] != autonomy.AUTO or not origin or project_of(origin) is None or not target:
         q = tables.merge_queue
         async with engine.begin() as conn:
-            query = select(q).where(
-                q.c.project_id == project.id, q.c.repo == repo, q.c.state.in_(merge_gate.QUEUED_STATES)
-            )
+            waiting = (*merge_gate.QUEUED_STATES, "paused")  # paused: its breaker tripped
+            query = select(q).where(q.c.project_id == project.id, q.c.repo == repo, q.c.state.in_(waiting))
             for row in (await conn.execute(query.with_for_update())).all():
                 await close(conn, row, f"the policy has {repo} in mode {settings['mode']}: a person merges it")
                 outcomes["closed"] += 1
@@ -364,8 +366,12 @@ class RepoPass:
         self.label: str = project.policy["merge"]["opt_in_label"]
         self._checked: list[str] | None = None
         self._project_id: int | None = None  # the GitLab project's id
+        self.tripped = False  # the repo's breaker tripped (merge_breaker): a revert alone moves on
 
     async def run(self) -> None:
+        from evo_agents.hub.server import merge_breaker, merge_turn, post_merge  # they import this module
+
+        self.tripped = await merge_breaker.tripped(self.engine, self.project.id, self.repo)
         listed = {mr.iid: mr for mr in await self.gl.merge_requests(self.path, target_branch=self.target)}
         await self.open_runs(listed)
         await self.take_labeled(listed)
@@ -384,8 +390,6 @@ class RepoPass:
                 await self.move(row_id)
             except GitLabRefused as exc:
                 await self.refused(row_id, exc)
-        from evo_agents.hub.server import merge_turn, post_merge  # they move the rows through this module
-
         await post_merge.follow(self)
         await merge_turn.take_turns(self)
 
@@ -637,6 +641,7 @@ class RepoPass:
             draft=mr.draft,
             source=row.source if row.source != "label" or self.label in mr.labels else None,
             labeler_ok=True,  # checked when the queue took it (take_labeled)
+            paused=self.tripped and row.source != "revert",  # the revert of a failure goes on (merge_breaker)
         )
         return merge_gate.scope(facts)
 
