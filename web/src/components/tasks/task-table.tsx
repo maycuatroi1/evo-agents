@@ -8,7 +8,7 @@ import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-ta
 import { NAME_LINK } from "@/components/data/identifier";
 
 import type { Sprint, Task } from "./api";
-import { Assignees, CodeChips, PriorityTag, StepsDone, TaskStatusBadge } from "./badges";
+import { Assignees, BlockedBadge, CodeChips, PriorityTag, StepsDone, TaskStatusBadge } from "./badges";
 import { taskHref } from "./links";
 import { partsOf } from "./model";
 import { DueDate } from "./task-card";
@@ -65,7 +65,12 @@ export function TaskTable({
       }),
       helper.accessor("status", {
         header: () => t("status"),
-        cell: (info) => <TaskStatusBadge name={statusName(info.getValue())} group={info.row.original.status_group} />,
+        cell: (info) => (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <TaskStatusBadge name={statusName(info.getValue())} group={info.row.original.status_group} />
+            {info.row.original.blocked ? <BlockedBadge /> : null}
+          </span>
+        ),
       }),
       ...(login
         ? [
@@ -126,7 +131,12 @@ export function TaskTable({
         title: task.title,
         titleText: task.title,
         href: taskHref(project, task.ref),
-        status: <TaskStatusBadge name={statusName(task.status)} group={task.status_group} />,
+        status: (
+          <span className="flex flex-wrap items-center justify-end gap-1.5">
+            <TaskStatusBadge name={statusName(task.status)} group={task.status_group} />
+            {task.blocked ? <BlockedBadge /> : null}
+          </span>
+        ),
         meta: [task.ref, tPriority(task.priority), task.assignees.join(", ") || null, task.codes.join(", ") || null, login ? partsOf(task, login).map((part) => tPart(part)).join(", ") : null]
           .filter(Boolean)
           .join(", "),

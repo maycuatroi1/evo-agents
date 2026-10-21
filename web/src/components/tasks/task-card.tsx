@@ -8,7 +8,7 @@ import type { DragEvent } from "react";
 import { cn } from "@/lib/utils";
 
 import type { Task, TaskPerson, TasksSettings } from "./api";
-import { Assignees, CodeChips, PriorityTag, StepsDone } from "./badges";
+import { Assignees, BlockedBadge, CodeChips, PriorityTag, StepsDone } from "./badges";
 import { taskHref } from "./links";
 import { isFinished } from "./model";
 import { AssigneeSelect, type EditTask, StatusSelect } from "./task-controls";
@@ -114,6 +114,11 @@ export function TaskCard({
       >
         <span className="line-clamp-3">{task.title}</span>
       </Link>
+      {task.blocked ? (
+        <div>
+          <BlockedBadge />
+        </div>
+      ) : null}
       {task.codes.length || task.steps_total ? (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <CodeChips codes={task.codes} max={3} />

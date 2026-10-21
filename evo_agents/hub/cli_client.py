@@ -2,9 +2,11 @@
 side of the hub.
 
 Standard library only, like ``client``; ``project register`` reads the harness with the harness loader (PyYAML, a
-core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and exit status 1, and a 401
-says to run ``evo-agents hub login``. ``--json`` prints what the hub answered, with the keys declared next to the
-flag (``contract.json_option``). No command ever prints a token.
+core dependency). Results go to stdout; a failure is one ``error:`` line on stderr and the exit status
+``client.exit_status`` gives it: 69 when the hub or the network could not be reached, 75 when the hub answered 5xx or
+429, 1 otherwise (2 is argparse's, for a wrong command line). A 401 says to run ``evo-agents hub login``. ``--json``
+prints what the hub answered, with the keys declared next to the flag (``contract.json_option``). No command ever
+prints a token.
 
 ``hub admin`` covers grants, users and row counts (``server.admin``); the audit trail and every user's tokens
 (``server.admin_console``) have no command and are read in the web's admin area. ``project register`` reads the
@@ -29,19 +31,19 @@ from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents.hub.access import ROLES
+from evo_agents.hub.client import EXIT_FAILED as EXIT_FAILED  # cli_memory and cli_skills take it from here
 from evo_agents.hub.client import (
     Hub,
     HubError,
     NotSignedIn,
     check_url,
+    exit_status,
     hub_dir,
     load_credentials,
     login,
     remove_credentials,
 )
 from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
-
-EXIT_FAILED = 1
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 WHOAMI_KEYS = ("login", "admin", "token", "grants")
@@ -73,7 +75,7 @@ PROJECT_KEYS = (
 
 
 def _client_command(func):
-    """Turn a HubError of ``func`` into an ``error:`` line and exit status 1."""
+    """Turn a HubError of ``func`` into an ``error:`` line and the exit status ``client.exit_status`` gives it."""
 
     @functools.wraps(func)
     def run(args) -> int:
@@ -81,7 +83,7 @@ def _client_command(func):
             return func(args)
         except HubError as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
+            return exit_status(exc)
 
     return run
 

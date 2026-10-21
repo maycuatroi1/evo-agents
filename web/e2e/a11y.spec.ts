@@ -86,6 +86,7 @@ import {
   USE_CASE,
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
+import { pmPath, seedPm } from "./support/pm";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -1736,6 +1737,19 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "Tasks backlog");
       await page.locator("#main").getByTestId("sprint-new").click();
       await expect(page.getByTestId("sprint-new-form")).toBeVisible();
+    },
+  },
+  {
+    name: "the PM daily report with its eight sections, and at 375 px",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedPm(me, project);
+      await open(page, pmPath(project));
+      await expect(page.locator("#main").getByTestId("pm-report")).toBeVisible();
+      await expectNoSeriousViolations(page, "PM daily");
+      await page.setViewportSize({ width: 375, height: 812 });
+      await expectNoSeriousViolations(page, "PM daily at 375 px");
     },
   },
   {

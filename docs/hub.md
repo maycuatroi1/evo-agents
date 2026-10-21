@@ -112,6 +112,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
+| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md`) |
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -199,6 +200,25 @@ four `evo-agents worker` commands above, in the code spans and fenced code block
 subcommand or option that does not exist, an option without its value, or a value outside an option's choices. The
 other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
 `--contract FILE` checks against a saved `contract print` output instead.
+
+### Exit status
+
+Every `evo-agents` command that talks to the hub ends with one of these statuses, so a script, evo-cli or the
+Curator's figures can tell a wrong call from a hub that was down (`evo_agents/hub/client.py`, `exit_status`):
+
+| Status | When |
+| --- | --- |
+| 0 | the command did what it says |
+| 1 | any other failure: the hub refused the request (4xx other than 429), not signed in, a file that cannot be read |
+| 2 | the command line is wrong: argparse's own status, with `invalid choice` or `unrecognized arguments` in its message, and the option combinations a command refuses |
+| 69 | the hub or the network could not be reached: refused, reset, no answer in time (`EX_UNAVAILABLE`) |
+| 75 | the hub answered 5xx or 429: try again later (`EX_TEMPFAIL`) |
+
+evo-cli reads status 2 with `invalid choice` or `unrecognized arguments` as an evo-agents too old for the command it
+ran, and asks for an upgrade; that meaning stays. The worker's daemon keeps its own statuses (`docs/workers.md`): 3,
+or `EVO_WORKER_REVOKED_EXIT`, once its token is revoked, and 1 when the hub answers 426. `evo-agents worker doctor`
+exits 2 when a finding is high, and a command that needs the worker extra and lacks it exits 2 too. The commands of
+`evo-agents kg` that work on this machine alone keep 1 and 2 as they are.
 
 ## Signing in
 
@@ -1093,8 +1113,12 @@ roles, its GitHub App and the ruleset it needs, and Telegram. This section and t
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
 below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
-default): the failures per tool
-and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
+default): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
+sessions' digests), the skills (per skill its loads in the sessions' digests, typed with `/name` among them, and in
+runs, the friction after each load next to the baseline of every digest that counts skills, the interrupts and
+corrections, and what came of the runs that loaded it: done, the steps whose verify the worker ran again at
+`evo-agents worker step done`, failed and lost by cause), the failures that come from the environment by cause (a
+command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
@@ -1679,6 +1703,20 @@ pushed. The text of `digest_show`, like that of `run_events`, stays under 24,000
 the hub's tools cut a text for `kg_more`: `digest_show` leaves out the last items of its longest lists and says how
 many (a kept item keeps the index that `session:ID:FIELD:INDEX` evidence names), and `run_events` stops before the
 event that would go past it and says after which seq to call again; one event's line holds at most 500 characters.
+A command that runs several programs (`a && b`, `a | b`, `a; b`) counts a call for each, and a failure counts for a
+program only when the command ran it alone or a line of the output starts with its name and a colon
+(`evo-agents kg scrub: error: ...`); the other failures of such commands are counted apart (`bash_compound`), so
+`evo-agents kg scrub --help; echo ======`, which zsh failed, is not a failure of evo-agents. `bash_kinds` splits each
+program's failures by kind: `usage_errors` (a wrong call: a usage line, an unrecognized argument, an invalid choice, or
+evo-agents' exit status 2), `env_errors` (the environment: the hub answering 5xx, the network, a timeout, a command the
+harness blocked, or evo-agents' 69 and 75) and `other_errors`. `skills` counts each skill the session loaded, through
+the Skill tool (its input's `skill`) or typed by the person as `/name` (the transcript's
+`<command-name>/name</command-name>`, which fires no Skill call and no PreToolUse hook; Claude Code's own commands,
+`/compact`, `/clear`, `/model` and the like, are not skills), and in the window from each load to the person's next
+turn the Bash commands, their failures by kind, the person's interrupts (`[Request interrupted by user`) and whether
+the turn that closed it corrected the agent (`evo_agents/hub/friction.py`). `turns` and `interrupts` are the session's.
+These fields are null in a digest an older evo-hub plugin pushed; the hub takes such a digest as before and does not
+count stored digests again.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -1687,8 +1725,15 @@ token is replaced wherever it appears. The push follows the write rule (the writ
 digest carries the project's default label, so only members whose grant, and the sink they read through, clear it
 see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest; only the member who pushed a session
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
-the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
-days.
+the hub pushes it, with up to three others that waited. Claude Code runs no Stop hook for a turn the person
+interrupted, so a session whose every turn was interrupted, or that closed while a tool ran, had no digest:
+SessionEnd now pushes the session's digest too, with those that waited, before it reports the local run ended (its
+hook may take 20 seconds of the session's exit; Claude Code 2.1.299 waits for a SessionEnd hook as long as hooks.json
+says, up to 60). When SessionEnd did not run either, SessionStart finds the session: it reads the transcripts of the
+last 7 days under the Claude Code projects directories, untouched for 10 minutes, of the directories of a hub project
+and with no entry in `digest-state.json`, at most 40 for 2 seconds, and queues each of 6 messages for the next Stop;
+the others are noted with their size and read again only once they changed. The directories of a worker's runs are
+left out. `hub.prune_digests` deletes the digests not pushed for 90 days.
 
 **Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
 project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
@@ -1860,7 +1905,10 @@ commands, edits and errors from the normalized `item_completed` item stream (she
 searches), and `compactions` from the `ContextCompaction` items. The spool leaves a Codex result as it is, so
 `spool_results` and `spool_original_chars` are 0 and `spool_reads` counts the shell runs that name the spool directory.
 The `js`/node_repl and agent-spawning tools that the item stream does not normalize are not counted, and `files_read`
-is 0 since Codex reads files through the shell, which the commands already hold.
+is 0 since Codex reads files through the shell, which the commands already hold. A Codex digest counts a skill only
+when the person named it (`$name`), which the rollout marks with a message of the person that starts with `<skill>`
+and names it; a skill the model reads on its own with `cat .../SKILL.md` leaves no such mark and is not counted. Its
+interrupts are the `turn_aborted` events.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in

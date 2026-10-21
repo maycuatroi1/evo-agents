@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from evo_agents.core_plugins.tasks import GROUPS
+from evo_agents.core_plugins.tasks.blockers import KINDS, WAITING_KINDS, BlockerRow, Waiting
 from evo_agents.core_plugins.tasks.imports import Plan, TasksFile
 from evo_agents.core_plugins.tasks.links import LinkView
 from evo_agents.core_plugins.tasks.settings import Settings
@@ -20,8 +21,10 @@ from evo_agents.hub.tables_tasks import (
     MAX_COMMENT_CHARS,
     MAX_DESCRIPTION_CHARS,
     MAX_GOAL_CHARS,
+    MAX_REASON_CHARS,
     MAX_SPRINT_NAME_CHARS,
     MAX_TITLE_CHARS,
+    MAX_WAITING_CHARS,
     PRIORITIES,
     SPRINT_STATES,
 )
@@ -73,6 +76,7 @@ class TasksItem(BaseModel):
     steps_total: int = Field(description="how many plan steps it links that the caller sees")
     codes: list[str] = Field(description="the codes of the SRS items it links to that the caller sees, as linked")
     label: dict = Field(description="the label the task carries")
+    blocked: bool = Field(description="it has an open blocker: one set by hand, or an open decision of its runs")
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -123,12 +127,29 @@ class TasksComment(BaseModel):
     created_at: datetime
 
 
+class TasksBlocker(BaseModel):
+    """What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task."""
+
+    id: int | None = Field(description="the blocker's id for PATCH; None for an open decision")
+    kind: Literal[KINDS] = Field(description="manual: set with POST blockers; decision: an open decision of a run")
+    reason: str = Field(description="why; a decision's question")
+    waiting_kind: Literal[WAITING_KINDS] = Field(description="who or what it waits on: a member, a task or a text")
+    waiting_on: str = Field(description="the member's login, the task's ref, or the text")
+    since: datetime = Field(description="when it was set; when a decision was asked")
+    set_by: str | None = Field(description="who set it; None for a decision")
+    cleared_at: datetime | None
+    cleared_by: str | None
+    decision_id: int | None = Field(description="decision: the decision to answer")
+    run_id: int | None = Field(description="decision: the run that asked it")
+
+
 class TasksItemDetail(TasksItem):
-    """A task whole: its description, links, history and comments."""
+    """A task whole: its description, links, blockers, history and comments."""
 
     description_md: str
     external_ref: dict | None = Field(description="where an import took it from, and what it named it could not link")
     links: list[TasksLink]
+    blockers: list[TasksBlocker] = Field(description="every open blocker, those set by hand first")
     events: list[TasksEvent]
     comments: list[TasksComment]
 
@@ -203,6 +224,36 @@ class TasksItemEdit(BaseModel):
         }
 
 
+class TasksBlockerIn(BaseModel):
+    """A new blocker: why, and exactly one of the three things it waits on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_REASON_CHARS)
+    waiting_member: str | None = Field(None, max_length=100, description="the login of a member with a grant")
+    waiting_task: str | None = Field(None, max_length=20, description="the ref of another task of the project")
+    waiting_text: str | None = Field(None, max_length=MAX_WAITING_CHARS, description="someone outside, in words")
+
+    def waiting(self) -> Waiting:
+        return Waiting(self.waiting_member, self.waiting_task, self.waiting_text)
+
+
+class TasksBlockerEdit(BaseModel):
+    """A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(None, min_length=1, max_length=MAX_REASON_CHARS)
+    waiting_member: str | None = Field(None, max_length=100)
+    waiting_task: str | None = Field(None, max_length=20)
+    waiting_text: str | None = Field(None, max_length=MAX_WAITING_CHARS)
+    cleared: bool = Field(False, description="true clears the blocker")
+
+    def waiting(self) -> Waiting | None:
+        given = Waiting(self.waiting_member, self.waiting_task, self.waiting_text)
+        return given if given.given() else None
+
+
 class TasksPerson(BaseModel):
     """A member of the project, whom a task may name."""
 
@@ -219,6 +270,9 @@ class TasksSprint(BaseModel):
     created_by: str
     created_at: datetime
     closed_at: datetime | None
+    activated_at: datetime | None = Field(
+        description="when it turned active; empty for a sprint that was active before the hub kept this"
+    )
     tasks: int = Field(description="how many tasks it holds")
 
 
@@ -285,7 +339,13 @@ def settings_model(config: Settings, srs: bool) -> TasksSettings:
     )
 
 
-def item_model(config: Settings, row: TaskRow, held: People, progress: tuple[int, int], codes: list[str]) -> TasksItem:
+def blocker_model(row: BlockerRow) -> TasksBlocker:
+    return TasksBlocker(**row.__dict__)
+
+
+def item_model(
+    config: Settings, row: TaskRow, held: People, progress: tuple[int, int], codes: list[str], blocked: bool
+) -> TasksItem:
     return TasksItem(
         number=row.number,
         ref=config.ref(row.number),
@@ -303,6 +363,7 @@ def item_model(config: Settings, row: TaskRow, held: People, progress: tuple[int
         steps_total=progress[1],
         codes=codes,
         label=row.label,
+        blocked=blocked,
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -313,6 +374,7 @@ def detail_model(
     item: TasksItem,
     row: TaskRow,
     shown: list[LinkView],
+    blockers: list[BlockerRow],
     history: list[EventRow],
     said: list[CommentRow],
 ) -> TasksItemDetail:
@@ -321,6 +383,7 @@ def detail_model(
         description_md=row.description_md,
         external_ref=row.external_ref,
         links=[TasksLink(**view.__dict__) for view in shown],
+        blockers=[blocker_model(blocker) for blocker in blockers],
         events=[TasksEvent(**event.__dict__) for event in history],
         comments=[comment_model(row) for row in said],
     )
@@ -347,6 +410,9 @@ def import_model(config: Settings, found: Plan, dry_run: bool, made: list[int]) 
 
 
 __all__ = [
+    "TasksBlocker",
+    "TasksBlockerEdit",
+    "TasksBlockerIn",
     "TasksComment",
     "TasksCommentIn",
     "TasksEvent",
@@ -369,6 +435,7 @@ __all__ = [
     "TasksSprintEdit",
     "TasksSprintIn",
     "TasksStatus",
+    "blocker_model",
     "comment_model",
     "detail_model",
     "import_model",
