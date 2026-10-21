@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
-import { srsDocumentQuery } from "@/components/srs/api";
+import { srsDocumentQuery, srsFindingsQuery } from "@/components/srs/api";
 import { versionParam } from "@/components/srs/model";
 import { ReviewPage } from "@/components/srs/review-page";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
@@ -25,13 +25,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: t("review", await names(params)) };
 }
 
-/** A version's review: its approvals, the reviewer's form, what it changes and its checks. */
+/** A version's review: its approvals, the document's findings, the reviewer's form, what it changes and its checks. */
 export default async function SrsReviewRoute({ params }: Props) {
   const { project, slug, number } = await names(params);
   const api = await serverApi();
   const client = getQueryClient();
   const latest = srsDocumentQuery(() => api, project, slug, null);
-  const error = await prefetch(client, latest);
+  // The findings' failure is the card's to show: the browser asks again, and only the document's fails the page.
+  const [error] = await Promise.all([prefetch(client, latest), prefetch(client, srsFindingsQuery(() => api, project, slug))]);
   const held = client.getQueryData(latest.queryKey);
   if (held && held.latest_version !== number && held.versions.some((version) => version.number === number)) {
     await prefetch(client, srsDocumentQuery(() => api, project, slug, number));

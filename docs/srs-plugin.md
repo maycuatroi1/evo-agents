@@ -137,6 +137,8 @@ approves it or asks for changes, with these rules:
 - An approval goes through the gate first (section Findings): no open finding of level `decide` in the document, and
   no review of @ba of the version's current round still queued or running. Otherwise it is a 409 that names each
   finding, with its chat link, and the command that waives one. A request for changes is never held.
+- A version answers its `review_run`: the id and state of @ba's review of its current round, null when none was
+  handed. The submit route answers it too, queued, once the hub handed one.
 - Approving a version supersedes every older one but a withdrawn one and, when the project has a knowledge config on
   the hub, queues a build of its knowledge graph. When the project enables the plugin tasks, it also keeps the
   project's tasks in step, in the same transaction (section Tasks when a version is approved).
@@ -152,6 +154,18 @@ The version becomes `withdrawn`, a last state: it is never submitted, reviewed o
 later version leaves it withdrawn. `--comment` keeps the reason as a comment on that version, in the same
 transaction. Another writer and the agent of a run get 403, and a version that is not in review 409. To change a
 withdrawn version, save a new one: the next version is built on the latest, withdrawn or not.
+
+**On the web.** A version's review page (`/p/{project}/x/srs/documents/{slug}/versions/{number}`) has a Findings card,
+which readers see too: the document's open findings of level `decide` first, with their count, then the other open
+ones, then the settled ones. Each shows its level, kind and status, its summary, the item it is about and its sources,
+a code linking to its item's page (in another document when the reader sees that document); an open one links its
+settle chat, a settled one says who settled it (a member, the knowledge graph, or @ba's waiver), when, how, and links
+the message that settled it. While a finding of level `decide` is open, or @ba's review of the round is queued or
+running, the form's Approve is locked with the reason (the settle chat, or the run and its state) and Request changes
+stays open; while the review runs, the page reads the document and its findings again every 5 seconds until it ends.
+The hub stays the gate: an approval that still meets the 409 shows its refusal, and the page reads the findings
+again. Nothing on the web settles or waives a finding: settling goes through the settle chat, waiving through
+`evo-agents hub srs waive`.
 
 ## Findings
 
@@ -339,13 +353,13 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/retire` | `{"codes", "summary", "dry_run"}`: the next version without those items; `dropped` lists each item |
 | `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |
 | `GET` and `POST documents/{slug}/comments`, `POST .../comments/{id}/resolve` | threads on a document, a version or an item |
-| `GET documents/{slug}/findings` (`?status=open`) | the findings of a document, oldest first, each with its sources and how it was settled |
+| `GET documents/{slug}/findings` (`?status=open`) | the findings of a document, oldest first, each with its sources and how it was settled; a code source names the `document` whose item holds it, when the caller sees that document |
 | `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
 
 The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,
 a document's contents with each section read and edited in place, an item's page with the trace the knowledge graph
-holds, the versions, the comparison of two versions, the review and the comments; the import is reached from the
-documents.
+holds, the versions, the comparison of two versions, the review with the document's findings and the comments; the
+import is reached from the documents.
 
 ## The knowledge graph
 

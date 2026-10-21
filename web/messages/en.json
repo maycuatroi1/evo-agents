@@ -6274,7 +6274,68 @@
       "submit": "Submit review",
       "approvedToast": "Approved v{version}",
       "approvalToast": "Approval recorded on v{version}",
-      "returnedToast": "Returned v{version} to draft"
+      "returnedToast": "Returned v{version} to draft",
+      "lock": {
+        "findingsTitle": "Approve is locked: {count, plural, one {# finding to decide is open} other {# findings to decide are open}}",
+        "findingsText": "Settle each in its chat with @ba, or an admin of the project waives one. You can still request changes.",
+        "openChat": "Open the settle chat",
+        "reviewTitle": "Approve waits for @ba's review of round {round}",
+        "reviewText": "Approve unlocks when the run ends. You can still request changes."
+      }
+    },
+    "findings": {
+      "title": "Findings",
+      "description": "Conflicts @ba found between this document, the project's other documents and its knowledge graph. An open finding to decide holds approval.",
+      "counts": "{decide} to decide, {open} other open, {settled} settled",
+      "groups": {
+        "decide": "To decide",
+        "open": "Other open",
+        "settled": "Settled"
+      },
+      "reviewing": "@ba is reviewing round {round}",
+      "reviewingText": "Findings show here as @ba records them. The list reads them again until the run ends.",
+      "reviewBroke": "@ba's review of round {round} did not finish",
+      "reviewBrokeText": "Approval does not wait for it, but the list may miss conflicts it did not record.",
+      "emptyTitle": "No conflict found",
+      "emptyText": "When @ba reviews a version, the conflicts it finds with other documents and the knowledge graph show here.",
+      "emptyReviewing": "@ba has recorded none so far.",
+      "failed": "The findings could not be read.",
+      "retry": "Try again",
+      "openRun": "Open run #{id}",
+      "foundOn": "#{id}, found on v{version}",
+      "about": "About",
+      "wholeDocument": "The whole document",
+      "sources": "Sources",
+      "settledWith": "Settled with",
+      "openChat": "Open the settle chat",
+      "settledMessage": "Open the message that settled it",
+      "resolvedBy": "Settled by {login}",
+      "waivedBy": "Waived by {login}",
+      "resolvedFromGraph": "Settled from the knowledge graph",
+      "waivedByAgent": "Waived by @ba",
+      "newTab": "(opens in a new tab)",
+      "level": {
+        "info": "Info",
+        "advisory": "Advisory",
+        "decide": "Decide"
+      },
+      "kind": {
+        "duplicate": "Duplicate",
+        "contradiction": "Contradiction",
+        "kg_conflict": "Graph conflict",
+        "overlap": "Overlap"
+      },
+      "status": {
+        "open": "Open",
+        "resolved": "Resolved",
+        "waived": "Waived"
+      },
+      "sourceKind": {
+        "node": "Graph node",
+        "code": "Item",
+        "path": "File",
+        "version": "Version"
+      }
     },
     "comments": {
       "added": "Comment added",

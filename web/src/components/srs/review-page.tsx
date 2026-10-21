@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bot, CircleCheck, CircleMinus, FileDiff, Lock } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useEffect, useRef } from "react";
 
 import { When } from "@/components/data/when";
 import { Banner } from "@/components/feedback/banner";
@@ -14,9 +15,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { type SrsDocument, type SrsVersion, srsConfigQuery, srsDiffQuery, srsDocumentQuery } from "./api";
+import { type SrsDocument, type SrsVersion, srsConfigQuery, srsDiffQuery, srsDocumentQuery, srsFindingsQuery } from "./api";
 import { ChangeBadge, CodeChip, VersionBadge } from "./badges";
 import { DocumentHead } from "./document-head";
+import { FindingsCard } from "./findings-card";
+import { approveLock, REVIEW_REFRESH_MS, reviewHolds } from "./findings-model";
 import { useSrsViewer } from "./hooks";
 import { compareHref, documentHref, itemHref } from "./links";
 import { policyOf, reviewBlock, rolesOf, slots, versionOf } from "./model";
@@ -74,6 +77,17 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
   const viewer = useSrsViewer(project);
   const config = useQuery({ ...srsConfigQuery(browserApi, project), retry: false });
   const detail = useHubQuery(srsDocumentQuery(browserApi, project, latest.slug, version.number === latest.latest_version ? null : version.number));
+  // @ba's review of the round holds approval while it is queued or running: the findings are read again until it ends,
+  // and once more as it ends, for what it recorded after the last read.
+  const reviewing = reviewHolds(version.review_run);
+  const findings = useQuery({ ...srsFindingsQuery(browserApi, project, latest.slug), retry: false, refetchInterval: reviewing ? REVIEW_REFRESH_MS : false });
+  const { refetch: refetchFindings } = findings;
+  const wasReviewing = useRef(reviewing);
+  useEffect(() => {
+    if (wasReviewing.current && !reviewing) void refetchFindings();
+    wasReviewing.current = reviewing;
+  }, [reviewing, refetchFindings]);
+  const lock = version.state === "in_review" ? approveLock(findings.data, version.review_run) : null;
   const fields = config.data?.fields ?? [];
   const policy = policyOf(fields, latest.kind);
   const block = viewer ? reviewBlock(viewer, latest, version) : "reader";
@@ -140,10 +154,18 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
           <ApprovalsCard policy={policy} slots={slots(policy, version)} version={version} approved={approved} />
+          <FindingsCard
+            project={project}
+            slug={latest.slug}
+            round={version.round}
+            run={version.review_run}
+            inReview={version.state === "in_review"}
+            findings={findings}
+          />
           {version.state === "in_review" ? (
             block === null && viewer ? (
               <div className="rounded-md border bg-card p-4">
-                <ReviewForm project={project} slug={latest.slug} version={version} roles={rolesOf(fields, viewer.login)} />
+                <ReviewForm project={project} slug={latest.slug} version={version} roles={rolesOf(fields, viewer.login)} lock={lock} />
               </div>
             ) : (
               <Banner icon={Lock} title={t("cannotTitle", { version: version.number })} testId="srs-review-blocked">
@@ -172,12 +194,18 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
 
 /**
  * A version's review (/p/{project}/x/srs/documents/{slug}/versions/{number}): the approvals the policy asks for and who
- * gave them this round, the reviewer's form for a writer who may review it (nobody who wrote a version since the one
- * approved last, admins included), why another may not, what approving it approves, its checks and its history.
+ * gave them this round, the conflicts @ba found in the document (the Findings card, which readers see too), the
+ * reviewer's form for a writer who may review it (nobody who wrote a version since the one approved last, admins
+ * included), why another may not, what approving it approves, its checks and its history. While @ba's review of the
+ * version's round is queued or running, the document is read again every few seconds, so the page sees it end.
  */
 export function ReviewPage({ project, slug, number, initialError }: { project: string; slug: string; number: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("srs.review");
-  const state = useHubQuery(srsDocumentQuery(browserApi, project, slug, null), initialError);
+  const query = srsDocumentQuery(browserApi, project, slug, null);
+  const state = useHubQuery(
+    { ...query, refetchInterval: (held) => (reviewHolds(held.state.data && versionOf(held.state.data, number)?.review_run) ? REVIEW_REFRESH_MS : false) },
+    initialError,
+  );
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
       {(latest) => {
