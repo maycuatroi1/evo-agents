@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import environments, interactive, orphans, packs
+from evo_agents.worker import environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
@@ -236,6 +236,10 @@ class Agent:
             env.pop(API_KEY, None)
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
+        if run.venvs:  # the .venv/bin of each repo whose environment the worker made, first (runner.venv)
+            for key in venvs.FOREIGN:
+                env.pop(key, None)
+            env["PATH"] = venvs.front(env.get("PATH"), [str(venvs.bin_dir(path)) for path in run.venvs.values()])
         return env
 
     @property
@@ -459,7 +463,7 @@ class Agent:
         looks = 0
         async for item in adapter.events():
             if isinstance(item, AgentEvent):
-                run.event(item.kind, item.body, item.at)
+                run.agent_event(item)
                 self.limits.see(self, item)
             if not self.group_noted and looks < NOTE_GROUP_LOOKS:  # a runtime that started after start returned
                 looks += 1

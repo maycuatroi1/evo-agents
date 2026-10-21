@@ -393,12 +393,17 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
     assert start["matcher"] == "startup|resume|clear"
     (stop,) = found["Stop"]
     assert "matcher" not in stop
-    for group, name in ((start, "session-start"), (stop, "stop")):
+    (end,) = found["SessionEnd"]
+    for group, name in ((start, "session-start"), (stop, "stop"), (end, "session-end")):
         (hook,) = group["hooks"]
         assert hook["type"] == "command" and hook["command"].endswith(f" evo-agents hub hook {name} || true")
         assert hook["timeout"] >= hooks.BUDGETS[name] + 5  # uvx and the interpreter start inside Claude Code's limit
     assert hooks.REQUEST_TIMEOUT < min(hooks.BUDGETS.values())
-    local = {"UserPromptSubmit": "user-prompt", "SessionEnd": "session-end"}
+    # SessionEnd pushes the digest, then reports the local run ended within what is left
+    assert hooks.BUDGETS["session-end"] >= hooks.REQUEST_TIMEOUT + local_sync.LIMITS["session-end"][1]
+    assert end["hooks"][0]["timeout"] <= 60  # Claude Code 2.1.299 waits 60 s at most for a SessionEnd hook
+    assert "--offline --from evo-ak==" in end["hooks"][0]["command"]
+    local = {"UserPromptSubmit": "user-prompt"}
     for event, name in local.items():
         (group,) = found[event]
         (hook,) = group["hooks"]

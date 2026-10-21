@@ -60,7 +60,7 @@ from evo_agents.hub.server.loop.view import load
 log = logging.getLogger(__name__)
 
 ARMED = "armed"  # loop_states.breaker
-MAX_KEY_CHARS = 500  # loop_items.key, as 0087 checks it
+MAX_KEY_CHARS = 500  # loop_items.key, as 0093 checks it
 KEY_DIGEST_CHARS = 16
 
 

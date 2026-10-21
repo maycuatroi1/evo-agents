@@ -1,4 +1,4 @@
-"""The tables of the goals of a project (0085, plan loop-engine), which ``evo_agents.hub.tables`` adds to its metadata
+"""The tables of the goals of a project (0091, plan loop-engine), which ``evo_agents.hub.tables`` adds to its metadata
 and exposes as its own attributes (``tables.goals``, ``tables.goal_revisions``): queries name them there.
 
 goals holds one row per goal of a project (``evo_agents.hub.goals``): its number (the code G-<number>, unique in the

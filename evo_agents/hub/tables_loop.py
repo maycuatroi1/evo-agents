@@ -1,4 +1,4 @@
-"""The tables of the Loop of a project (0087, plan loop-engine), which ``evo_agents.hub.tables`` adds to its metadata and
+"""The tables of the Loop of a project (0093, plan loop-engine), which ``evo_agents.hub.tables`` adds to its metadata and
 exposes as its own attributes (``tables.loop_states``, ``tables.loop_items``, ``tables.loop_item_events``): queries
 name them there. They are the stable part of contract loop/1 (``evo_agents.hub.server.loop``): a later engine reads
 and writes the same rows.

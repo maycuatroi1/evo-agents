@@ -24,7 +24,17 @@ from evo_agents.hub import tables
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, OWNER, app_key  # noqa: F401 (app_key is a fixture)
 from tests.hub.test_credentials_api import worker_of as credential_worker
-from tests.hub.test_release_schedule import HEAD, REPO, SIX, fire, path, set_schedule, status_of, user_id, world  # noqa: F401
+from tests.hub.test_release_schedule import (  # noqa: F401
+    HEAD,
+    REPO,
+    SIX,
+    fire,
+    path,
+    set_schedule,
+    status_of,
+    user_id,
+    world,
+)
 
 PUSHED, MERGE = "f" * 40, "e" * 40
 WORKFLOW_URL = f"https://github.com/{MINE}/{REPO}/actions/runs/7001"

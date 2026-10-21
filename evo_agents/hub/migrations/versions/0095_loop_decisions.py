@@ -1,7 +1,7 @@
 """The decision the Loop asks a person, and its notice loop_paused.
 
-Revision ID: 0089
-Revises: 0088
+Revision ID: 0095
+Revises: 0094
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.runs`` as of this revision, never imports, so a later change to them
@@ -13,18 +13,18 @@ answer chooses (run it again, drop it, leave it to a person). When the Loop of a
 hour than its policy lets it, its breaker trips and each admin of the project is told: notifications.notice_kind takes
 ``loop_paused``. No column of a table changes.
 
-Going back deletes the decisions of category loop and the loop_paused notices, and puts the checks of 0088 back.
+Going back deletes the decisions of category loop and the loop_paused notices, and puts the checks of 0094 back.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0089"
-down_revision = "0088"
+revision = "0095"
+down_revision = "0094"
 branch_labels = None
 depends_on = None
 
-CATEGORIES_0088 = (  # decisions_category_check as 0067 set it
+CATEGORIES_0094 = (  # decisions_category_check as 0067 set it
     "deploy",
     "delete_data",
     "live_migration",
@@ -37,8 +37,8 @@ CATEGORIES_0088 = (  # decisions_category_check as 0067 set it
     "release",
 )
 CATEGORY = "loop"
-CATEGORIES = (*CATEGORIES_0088, CATEGORY)  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
-NOTICE_KINDS_0088 = (  # notifications_notice_kind_check as 0084 set it
+CATEGORIES = (*CATEGORIES_0094, CATEGORY)  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
+NOTICE_KINDS_0094 = (  # notifications_notice_kind_check as 0090 set it
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -53,9 +53,12 @@ NOTICE_KINDS_0088 = (  # notifications_notice_kind_check as 0084 set it
     "release",
     "canvas_baseline",
     "merge_paused",
+    "pm_daily",
+    "pm_escalation",
+    "run_outputs",
 )
 NOTICE = "loop_paused"
-NOTICE_KINDS = (*NOTICE_KINDS_0088, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
+NOTICE_KINDS = (*NOTICE_KINDS_0094, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
 
 col = sa.column
 
@@ -75,5 +78,5 @@ def downgrade() -> None:
     op.execute(notifications.delete().where(notifications.c.notice_kind == NOTICE))
     decisions = sa.table("decisions", col("category"))
     op.execute(decisions.delete().where(decisions.c.category == CATEGORY))
-    _check("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS_0088)
-    _check("decisions", "decisions_category_check", "category", CATEGORIES_0088)
+    _check("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS_0094)
+    _check("decisions", "decisions_category_check", "category", CATEGORIES_0094)

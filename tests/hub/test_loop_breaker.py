@@ -1,5 +1,5 @@
 """The breaker of a project's Loop (``evo_agents.hub.server.loop.breaker``, ``routes``; ``evo-agents hub loop``), as
-criterion a7 of plan loop-engine names it, and schema 0089, on the hub with Postgres.
+criterion a7 of plan loop-engine names it, and schema 0095, on the hub with Postgres.
 
 More work items made in an hour than the policy's loop.max_items_per_hour trip the breaker: the Loop of the project
 reads no event past its cursor and hands out no run, each admin of the project gets the notice loop_paused, and the
@@ -107,7 +107,7 @@ def test_loop_breaker_trips_on_too_many_work_items_in_an_hour_and_only_an_admin_
     assert [row[3] for row in items(hub_db)] == ["type_refused", "type_refused"], "admitted, their types off"
 
 
-def test_loop_breaker_schema_0089_takes_the_loop_decision_and_its_notice_and_going_back_deletes_them(
+def test_loop_breaker_schema_0093_takes_the_loop_decision_and_its_notice_and_going_back_deletes_them(
     client, hub, hub_db
 ):
     policy(client, hub, {"enabled": True, "max_items_per_hour": 1})
@@ -132,11 +132,15 @@ def test_loop_breaker_schema_0089_takes_the_loop_decision_and_its_notice_and_goi
     asked = {"run_id": run_id, "project_id": pid, "category": "loop", "question": "Run it again?"}
     asked["options"] = [{"key": "retry", "label": "Run it again"}, {"key": "drop", "label": "Drop it"}]
     sql(hub_db, insert(d).values(asked))
+    n = tables.notifications
+    sql(hub_db, insert(n).values(user_id=owner_id, kind="notice", notice_kind="pm_escalation", title="Blocked"))
 
-    move_to(hub_db, "0088", down=True)
+    move_to(hub_db, "0094", down=True)
     assert notices(hub_db) == [] and sql(hub_db, select(func.count()).select_from(d))[0][0] == 0
+    kept = select(n.c.notice_kind).where(n.c.notice_kind.like("pm_%"))
+    assert sql(hub_db, kept) == [("pm_escalation",)], "going back keeps the notices of the plugin pm (0086)"
     with pytest.raises(psycopg.errors.CheckViolation, match="decisions_category_check"):
         sql(hub_db, insert(d).values(asked))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0089") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0095") :]
     sql(hub_db, insert(d).values(asked))
     assert sql(hub_db, select(d.c.category))[0][0] == "loop"

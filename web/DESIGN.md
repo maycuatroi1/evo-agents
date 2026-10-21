@@ -249,6 +249,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
 | Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
 | The usage limits of an account | `Gauge` |
+| A line of service credentials that opens into its variables; ssh and other accounts without a logo of their own | `ChevronRight`; `KeyRound` |
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
@@ -282,8 +283,36 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Evidence: signal, feedback, interview, experiment, market, document, simulation; real; synthetic; supports, contradicts, neutral | `RadioTower`, `MessageSquareQuote`, `Mic`, `FlaskConical`, `Store`, `FileText`, `Bot`; `ShieldCheck`; `Sparkles`; `ThumbsUp`, `ThumbsDown`, `Minus` |
 | A claim's edit, undo of a rev, compared revs, a conflict at an old rev; @strategist's judgings | `PencilLine`, `Undo2`, `GitCompareArrows`, `GitMerge`; `Scale` |
 | Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
+| A run's outputs: the Outputs tab, its preview on a phone, the notice run_outputs | `Images` |
+| An output's source: sent by the agent, a tool's result, the run's output folder | `Paperclip`, `Wrench`, `FolderOpen` |
+| An output's kind: image, video, audio, PDF and text, code and JSON, CSV, HTML page, other; an image that did not load | `ImageIcon`, `Film`, `AudioLines`, `FileText`, `FileCode`, `FileSpreadsheet`, `AppWindow`, `File`; `ImageOff` |
+| The viewer: previous, next; zoom out, in, fit; download; show in trace; delete; an HTML page's sandbox | `ChevronLeft`, `ChevronRight`; `ZoomOut`, `ZoomIn`, `Maximize2`; `Download`; `ListTree`; `Trash2`; `ShieldCheck` |
+| Notices, the kinds of notice a member turns off | `BellRing` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
+
+### Provider logos
+
+The Accounts page (`components/accounts/provider-logo.tsx`) names who an account signs in to with the provider's logo at
+20 px, in the brand's colour, and the provider's name as text beside it: the logo is never the only name. Marks are
+Simple Icons paths (CC0) drawn inline, `fill="currentColor"`; the reading of an account's provider from its variable is
+the hub's (`docs/credentials.md`, section "Accounts"). A logo is an identity, not a status: what is wrong with an
+account stays with its pill and its dot, and a logo never changes colour for a state. The mark is decorative
+(`aria-hidden`) because the name is text next to it.
+
+| Provider | Logo | Colour |
+| --- | --- | --- |
+| Claude | Simple Icons `claude` | `#D97757` |
+| GitLab | Simple Icons `gitlab` | `#FC6D26` |
+| Anthropic, Notion | Simple Icons `anthropic`, `notion` | text colour of the theme (near black in their brand) |
+| GitHub | Simple Icons `github`, the `GitHubMark` of `brand.tsx`, drawn once | text colour of the theme |
+| Lark | lettered tile "L", white on `#3370FF` | `#3370FF` |
+| OpenAI | lettered tile "O", `background` on `foreground` | text colour of the theme |
+| SSH, other | Lucide `KeyRound` | `fg-subtle` |
+
+An account that is ready has no pill; the pill appears only for Paused, Cooling, Expired and Needs sign-in, and the word
+"Ready" stays in the page for a screen reader. Model accounts and service credentials are two groups with a title and
+a count each; a kind of account added later is one more group of the same shape.
 
 The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
 tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
@@ -1200,7 +1229,7 @@ Shared pieces built on them:
   the full date and time zone. An ordered list labelled "Phases of run #N", the current phase `aria-current="step"`,
   each phase's status in words for screen readers.
 - The session (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
-  (`?view=log`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
+  (`?view=log`, `?view=outputs`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
   navigate. It is flat on the page: the tab bar's rule is its one line, the Raw log a `term-bg` block with 6 px
   corners. The stream's state (`log-stream-state.tsx`) shows at the right end of the tab bar only when the stream
   dropped (reconnecting, read by polling, failed: a dot in its tone and the word in `caption` `fg-subtle`); connecting,
@@ -1290,6 +1319,58 @@ Shared pieces built on them:
 - The diff page (`/p/{project}/runs/{id}/diff`) reads the run's diff on the web's server through the presigned GET
   the API signs (`diff-blob.ts`), so the blob store needs no CORS rule and connect-src stays `'self'`; the download is
   a navigation to the presigned URL, as for skill bundles. It renders up to 20,000 lines, file by file.
+- The files of runs (`components/data/output-*.tsx`, `lib/outputs.ts`; docs/hub.md, Run outputs): what a run's agent made
+  and the hub keeps, a file it sent (`evo-agents worker output`, SendUserFile, the Artifact tool, `evo-agents hub send`),
+  an image of a tool's result (a browser's screenshot, a Read of an image) and a file of the run's `.evo-run/outputs/`.
+  The hub serves their bytes from its own origin to who may read what lists them (the run, a question, a chat message),
+  so the CSP adds nothing but `media-src 'self'`, said rather than left to `default-src` (`lib/security.ts`, its test).
+  A chip (`OutputChip`) is an image's 56 by 80 px thumbnail on `surface-sunken` with 6 px corners, loaded lazily, or a
+  file's kind icon, name and size on one 36 px line (44 px under 768 px), inside a `border` edge on `card`, `accent`
+  under the pointer; a strip (`OutputStrip`) lists eight and one "2 more files" button. A tile (`OutputTile`) is a card
+  of the grid: the picture at 4:3 over a hairline (an icon and the extension for any other kind), the name in 13 px 500
+  and "34.5 kB, 10:22" in `caption` `fg-subtle`. Each is a button named "Open home.png, Image, 34.5 kB" that opens the
+  viewer, focus coming back to it when the viewer closes. The viewer (`output-viewer.tsx`, loaded with `next/dynamic`
+  on the first open) is a dialog, the phone's whole screen under 640 px and at most 84 rem by 92 % of the height above:
+  a head with the name as its title, "Image, 34.5 kB", the source with its icon and when it came in `caption`
+  `fg-subtle`, then the place in the list ("3 of 12") between Previous and Next, an image's zoom (Zoom out, the zoom in
+  per cent, Zoom in, Fit), Download (an attachment under the file's own name), what the page adds, and Close; then the
+  file on `surface-sunken`; then the caption as SafeMarkdown in 13 px `fg-muted`, at most 8 rem tall. Under 768 px the
+  head is the name and Close over the place and the zoom, and Download with what the page adds is a bar at the foot,
+  above the safe area, its buttons sharing the width. The arrow keys
+  move, Esc closes, `+`, `-` and `0` zoom, a double click zooms to 200 % and back, the mouse drags a zoomed image and a
+  horizontal swipe of 48 px on a touch screen moves on (unless zoomed). An image is fitted by container units, never
+  past its own width; a video and an audio file play in the browser's player, seekable as the hub answers byte ranges;
+  a PDF sits in a frame with "Open in a new tab" under it; HTML in a frame with `sandbox="allow-scripts"`, no referrer
+  and a `ShieldCheck` note that it cannot reach the hub (the hub's answer carries the same sandbox and `connect-src
+  'none'`); text is read from the hub (its first MiB through a byte range, said under it) and drawn as Markdown
+  (SafeMarkdown, at most 72 characters a line), JSON indented, a CSV or TSV as a table of 500 rows with its head
+  sticky, code and plain text in 13 px mono on `card`; any other kind is its icon, "There is no preview of this kind of
+  file" and Download.
+- A run's page and its files (`runs/use-run-outputs.tsx`, `output-index.ts`, `run-outputs.tsx`,
+  `run-outputs-preview.tsx`, `output-delete.tsx`): the Outputs tab shows after the Trace once the run holds a file,
+  its count a round pill as the Raw log's, `?view=outputs` in the URL. It is the source chips (All, Sent, Tools, Output
+  folder, each with its count, only those with files), "11 files, 4.2 MB" at the bar's end (polite, so arrivals are
+  said), a note when the project keeps no images of tools' results, then the tiles newest first in a grid of columns at
+  least 9.5 rem wide (11 rem from 640 px), scrolling inside the session from xl as the other tabs. The files are read
+  again each time the log brings the hub's line of outputs recorded or deleted, and every 15 seconds while the run is
+  active, so a file shows without a reload. In the Trace each file shows under the call it came from, by the
+  output's tool call, by the SHA-256 of the `resource_link` the call's update holds (never by name) or by the files a
+  `worker output` or `hub send` command names: a strip under the group's row, folded or not, and a call that only sends
+  files (SendUserFile, Artifact, those commands) reads as the names of its files and opens on their strip, never on
+  their paths. The hub's line of files the calls show is left out; its line of files no call shows (the output folder)
+  carries their strip. The viewer of the page adds Show in trace (the Trace tab, the call's row opened, centred and
+  focused, following stopped) and, for the run's dispatcher and an admin of the project, Delete in `quiet-danger`,
+  confirmed in `ConfirmAction` ("Delete home.png?", Delete file, Keep it): a toast says it, the file leaves the list at
+  once and the viewer goes on to the one beside it. Under 768 px the page shows "Outputs 11" after the trace's preview,
+  the newest six as chips and Open all outputs, which opens the session's screen on the tab. A question carries its
+  files on the DecisionCard (`inbox/decision-notes.tsx`, under the context, the bytes served to the decision's
+  readers), so on a run's page, in the Inbox's sheet and on the phone's screen; the Inbox's row of a question and of
+  the notice run_outputs (`Images`, "Files from a run") show their chips under the body. An agent's chat message shows
+  the files of its run under its bubble, on its side, and a `message_changed` event of the chat replaces the message
+  held, so files that came after it show. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
+  first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
+  with a toast. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
+  tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.
 - `components/monitor`, the Monitor (`/monitor`, in the sidebar's first group after Inbox): every run in flight of the
   projects of the visitor's grants in a list, and the runs the visitor watches as live tiles in a grid. One read of
   `GET /v1/me/overview` (prefetched on the server with the runs the URL names; every 5 seconds while a run is in

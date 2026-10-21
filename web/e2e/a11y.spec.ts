@@ -87,6 +87,7 @@ import {
   USE_CASE,
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
+import { pmPath, seedPm } from "./support/pm";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -199,6 +200,17 @@ async function seedSecrets(me: Member) {
     expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     value: secretValue("a11y"),
   });
+}
+
+/** Accounts of `me`: a Claude subscription and an API key, two Lark variables for one line, a GitLab token. */
+async function seedAccounts(me: Member) {
+  const projects = [me.projects[0]];
+  const env = (name: string, env_var: string) => putSecretByApi(me, name, { kind: "env", env_var, projects, value: secretValue("a11y") });
+  await env("claude-sub", "CLAUDE_CODE_OAUTH_TOKEN");
+  await env("anthropic-key", "ANTHROPIC_API_KEY");
+  await env("lark-id", "LARK_APP_ID");
+  await env("lark-secret", "LARK_APP_SECRET");
+  await env("gitlab-token", "GITLAB_TOKEN");
 }
 
 /**
@@ -819,6 +831,33 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/secrets");
       await expect(page.locator("#main").getByTestId("secrets-table")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts with no account yet",
+    open: async ({ page }) => {
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts in two groups with a merged line open",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.goto("/accounts");
+      const services = page.locator("#main").getByTestId("accounts-group-service");
+      await expect(page.locator("#main").getByTestId("accounts-group-model")).toBeVisible();
+      await services.getByTestId("service-group-toggle").click();
+      await expect(services.getByTestId("service-variables")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts on a small screen",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
     },
   },
   {
@@ -1777,6 +1816,19 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "Tasks backlog");
       await page.locator("#main").getByTestId("sprint-new").click();
       await expect(page.getByTestId("sprint-new-form")).toBeVisible();
+    },
+  },
+  {
+    name: "the PM daily report with its eight sections, and at 375 px",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedPm(me, project);
+      await open(page, pmPath(project));
+      await expect(page.locator("#main").getByTestId("pm-report")).toBeVisible();
+      await expectNoSeriousViolations(page, "PM daily");
+      await page.setViewportSize({ width: 375, height: 812 });
+      await expectNoSeriousViolations(page, "PM daily at 375 px");
     },
   },
   {

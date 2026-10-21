@@ -1,7 +1,7 @@
 """The Loop of a project: its state and cursor, its work items and their ledger.
 
-Revision ID: 0087
-Revises: 0086
+Revision ID: 0093
+Revises: 0092
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_loop`` and ``evo_agents.hub.server.loop.model`` as of this
@@ -19,15 +19,15 @@ cancelled). loop_item_events is its ledger, only ever added to: a kind of EVENT_
 the run and the event it came of, and a detail object. A project's rows go with the project; a goal, claim, document,
 task, run or event deleted under a work item leaves it, its link cleared.
 
-No column of an older table changes. Going back drops the three tables: the hub of 0086 has no Loop.
+No column of an older table changes. Going back drops the three tables: the hub of 0092 has no Loop.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0087"
-down_revision = "0086"
+revision = "0093"
+down_revision = "0092"
 branch_labels = None
 depends_on = None
 

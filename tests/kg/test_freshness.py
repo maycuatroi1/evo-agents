@@ -24,7 +24,7 @@ def test_a_value_that_is_not_a_ref_a_count_or_an_https_link_is_dropped():
         }
     )
     assert read == {"commit": SHA, "ref": None, "base": None, "behind": None, "url": None}
-    assert brief([{"source": "app", **read}]) == f"commits read: app {SHA[:7]}"
+    assert brief([{"source": "app", **read}]) == f"commits read: 1 source, 0 current; behind unknown: app {SHA[:7]}"
     assert describe(read) == f"{SHA[:7]} of HEAD"
 
 
@@ -43,8 +43,24 @@ def test_reads_leave_the_link_prefixes_inside_the_build():
         {"source": "app", "commit": SHA, "ref": "origin/main", "base": "origin/main", "behind": 4, "url": None}
     ]
     assert describe(reads(coverage)[0]) == f"{SHA[:7]} of origin/main, 4 behind origin/main"
-    assert brief(reads(coverage)) == f"commits read: app {SHA[:7]} (4 behind origin/main)"
+    assert brief(reads(coverage)) == f"commits read: 1 source, 0 current; behind: app {SHA[:7]} (4 behind origin/main)"
     assert brief([]) is None and reads(None) == [] and reads({}) == []
+
+
+def test_the_brief_counts_the_current_sources_and_names_only_the_others():
+    def read(source, behind, base="origin/main"):
+        return {"source": source, "commit": SHA, "ref": "HEAD", "base": base, "behind": behind, "url": None}
+
+    current = [read(f"repo{n}", 0) for n in range(13)]
+    assert brief(current) == "commits read: 13 sources, all current"
+    assert brief(current[:1]) == "commits read: 1 source, all current"
+    late = [read("angular", 26, "origin/develop"), read("auth", 7)]
+    unknown = {"source": "notes", "commit": SHA, "ref": None, "base": None, "behind": None, "url": None}
+    assert brief(current[:2] + late[:1] + [unknown] + late[1:]) == (
+        f"commits read: 5 sources, 2 current; behind: angular {SHA[:7]} (26 behind origin/develop), "
+        f"auth {SHA[:7]} (7 behind origin/main); behind unknown: notes {SHA[:7]}"
+    )
+    assert "repo0" not in brief(current + late)
 
 
 def test_links_move_to_the_commit_read_only_for_the_source_and_prefix_they_start_with():

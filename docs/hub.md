@@ -96,7 +96,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
@@ -113,6 +113,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
+| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md`) |
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -200,6 +201,25 @@ four `evo-agents worker` commands above, in the code spans and fenced code block
 subcommand or option that does not exist, an option without its value, or a value outside an option's choices. The
 other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
 `--contract FILE` checks against a saved `contract print` output instead.
+
+### Exit status
+
+Every `evo-agents` command that talks to the hub ends with one of these statuses, so a script, evo-cli or the
+Curator's figures can tell a wrong call from a hub that was down (`evo_agents/hub/client.py`, `exit_status`):
+
+| Status | When |
+| --- | --- |
+| 0 | the command did what it says |
+| 1 | any other failure: the hub refused the request (4xx other than 429), not signed in, a file that cannot be read |
+| 2 | the command line is wrong: argparse's own status, with `invalid choice` or `unrecognized arguments` in its message, and the option combinations a command refuses |
+| 69 | the hub or the network could not be reached: refused, reset, no answer in time (`EX_UNAVAILABLE`) |
+| 75 | the hub answered 5xx or 429: try again later (`EX_TEMPFAIL`) |
+
+evo-cli reads status 2 with `invalid choice` or `unrecognized arguments` as an evo-agents too old for the command it
+ran, and asks for an upgrade; that meaning stays. The worker's daemon keeps its own statuses (`docs/workers.md`): 3,
+or `EVO_WORKER_REVOKED_EXIT`, once its token is revoked, and 1 when the hub answers 426. `evo-agents worker doctor`
+exits 2 when a finding is high, and a command that needs the worker extra and lacks it exits 2 too. The commands of
+`evo-agents kg` that work on this machine alone keep 1 and 2 as they are.
 
 ## Signing in
 
@@ -763,6 +783,15 @@ agent's edit and the Curator's plans all go through this check. The hub does not
 already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
 harness validate` warns of each verify of a step not done that the hub would refuse as new.
 
+`evo-agents harness validate`, and the warnings a PUT answers with, also check the shape the create-exec-plan skill
+asks of a plan (`plan_semantics` in `evo_agents/harness/__init__.py`): a step id that an earlier step has too, a step
+that depends on itself, a cycle of steps that depend on each other (once, with its ids), a step title over 60
+characters (counted as characters, not bytes; a step without a title passes, since older plans have none), an id
+`a<number>` in a step's `acceptance` that no criterion of the plan's `acceptance` has, and a criterion with an id
+that no step's `acceptance` names, unless it is `invariant: true`. A step's `acceptance` may be a list or a string
+such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
+plans hold there pass. Each is a warning: the hub stores the plan anyway.
+
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
 with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
@@ -919,20 +948,25 @@ each project's autonomy policy, and the @builder proposal kind `policy`; 0080 th
 and its rebases in a row; 0083 what follows a merge (its checks, a revert's merge request, the results of the UAT and
 PROD checks) and `merge_samples`; 0084 `merge_breakers` and the notice `merge_paused`. No column of a table older than
 0079 changes. Going back to 0078 drops those tables, deletes the forge secrets, the policy proposals, the judge runs on
-no plan and the merge_paused notices, and puts back the checks they widened. Schema 0085 adds `goals` and
-`goal_revisions` and the @builder proposal kind `goal` (section Goals); going back to 0084 deletes the goal proposals
-and their notices and drops both tables. Schema 0086 adds the delivery kinds `srs.version.approved` and `tasks.status`
-and the permissions `srs:read` and `tasks:read` (`docs/plugins.md`, Extension points); `hub_events` takes both kinds as
-it is. Going back to 0085 deletes the deliveries and the rows of `hub_events` of the two kinds and takes the two
-permissions out of every grant. Schema 0087 adds the Loop of a project (plan loop-engine): `loop_states` (on or off,
-the cursor on `hub_events`, the breaker), `loop_items` (each work item: kind, cycle, key unique in the project,
-ancestors, state and reason, tries and failures, the engine that made it) and `loop_item_events`, its ledger, only
-ever added to; no column of an older table changes, and going back to 0086 drops the three tables. Schema 0088 lets
-`findings.lens` and `proposals.lens` take the Curator's lens `product` (`docs/curator.md`, The lens product); going
-back to 0087 deletes the findings and proposals of that lens. Schema 0089 lets `decisions.category` take `loop`, the
-decision the Loop asks the person a work item's last run stands for after its third failure, and
-`notifications.notice_kind` take `loop_paused`, the notice of a tripped breaker of the Loop; going back to 0088
-deletes those decisions and notices.
+no plan and the merge_paused notices, and puts back the checks they widened. Schemas 0085 to 0090 belong to the
+plugins tasks and pm, to the run figures and to the outputs of runs: 0085 `tasks_blockers` and
+`tasks_sprints.activated_at`, 0086 `pm_sends` and the notices `pm_daily` and `pm_escalation`, 0087
+`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md`,
+`docs/workers.md`), 0089 `run_outputs` and `run_output_links`, 0090 `notification_mutes` and the notice `run_outputs`
+(section Outputs of runs). Schema 0091 adds `goals` and `goal_revisions` and the @builder proposal kind `goal` (section
+Goals); going back to 0090 deletes the goal proposals and their notices and drops both tables. Schema 0092 adds the
+delivery kinds `srs.version.approved` and `tasks.status` and the permissions `srs:read` and `tasks:read`
+(`docs/plugins.md`, Extension points); `hub_events` takes both kinds as it is. Going back to 0091 deletes the
+deliveries and the rows of `hub_events` of the two kinds and takes the two permissions out of every grant. Schema 0093
+adds the Loop of a project (plan loop-engine, `docs/loop.md`): `loop_states` (on or off, the cursor on `hub_events`,
+the breaker), `loop_items` (each work item: kind, cycle, key unique in the project, ancestors, state and reason, tries
+and failures, the engine that made it) and `loop_item_events`, its ledger, only ever added to; no column of an older
+table changes, and going back to 0092 drops the three tables. Schema 0094 lets `findings.lens` and `proposals.lens`
+take the Curator's lens `product` (`docs/curator.md`, The lens product); going back to 0093 deletes the findings and
+proposals of that lens. Schema 0095 lets `decisions.category` take `loop`, the decision the Loop asks the person a
+work item's last run stands for after its third failure, and `notifications.notice_kind` take `loop_paused`, the
+notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
+kinds of 0090.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1099,6 +1133,55 @@ Telegram and the Inbox like any other, and the first answer wins, from the web, 
 machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
 states and kind in `hub run list/show`; the machine side talks HTTP.
 
+## Outputs of runs
+
+An output is a file a run's agent made that the hub keeps for the people who read the run (`evo_agents.hub.outputs`):
+a file it sent on purpose (source `sent`: `evo-agents worker output`, SendUserFile, the Artifact tool, a file attached
+to a question or a chat message), an image the machine took out of a tool's result (`tool`: a browser's screenshot, a
+Read of an image), or a file left in the run's `.evo-run/outputs/` (`outputs`). It has a name, a media type, a size, a
+SHA-256, a caption, when it came and the tool call of the trace it came from. Its bytes are a blob of kind
+`run-output` the run's project holds; a run holds one output per SHA-256, so a file sent twice is the output it is.
+Schema 0089 holds them (`run_outputs`), what carries them (`run_output_links`: a question or a chat message) and a
+project's switch (`projects.output_tool_images`); going back to 0084 drops them, and the chat events of kind
+`message_changed`.
+
+- **Sending.** The worker of a run and the machine of a local session send outputs in two calls, the presigned
+  uploads of the bytes the project does not hold and the outputs (`docs/workers.md`, "Outputs").
+- **Limits.** 200 MiB a file, 500 outputs and 1 GiB a run, a SHA-256 counted once; past one, 413 names the limit.
+- **Reading.** Readers of a run list its outputs (`GET /v1/projects/{p}/runs/{id}/outputs`, `?source=` and `?after=`)
+  and a local run's are its member's alone. Each output's `url` serves its bytes from the hub's own origin to whoever
+  reads what listed it: the run (`.../runs/{id}/outputs/{oid}/content`), a question that carries it
+  (`.../decisions/{id}/outputs/{oid}/content`, its readers) or a chat message that carries it
+  (`/v1/chats/{id}/outputs/{oid}/content`, a member of the chat who reads the message). Anyone else gets 404.
+- **Serving.** An answer carries the output's type (text of every kind as UTF-8 `text/plain`), `nosniff`,
+  `Cross-Origin-Resource-Policy: same-origin`, a Content-Disposition with a safe name (an attachment with
+  `?download=true`, and always for a type the web does not view) and its SHA-256 as ETag, and serves one byte range
+  (206, 416 outside the file), so a video seeks. HTML and SVG never run with the hub's origin: their
+  Content-Security-Policy's `sandbox` gives them an opaque origin, without `allow-same-origin`, and `connect-src
+  'none'` lets an HTML page call nothing, so it reads no cookie and calls no API as the viewer; SVG runs no script.
+- **Questions and chats.** A question carries outputs of its run (`output_ids`), and every view of the question
+  lists them. A chat message of a run's agent carries outputs of that run, never a tool image. A chat run's own files
+  go under its next message, and once it ended under its last one, which the chat's streams hear of as
+  `message_changed`.
+- **Notices.** The files of sources `sent` and `outputs` go to the run's owner as the notice `run_outputs`, gathered a
+  minute a run, in the Inbox with their outputs and on Telegram with the run's link, never an image of source `tool`;
+  a member turns it off (`docs/notifications.md`, "The files of a run").
+- **Deleting.** The run's dispatcher or an admin of the project deletes an output (`DELETE
+  .../runs/{id}/outputs/{oid}`, audit `run.output_delete`): it leaves the questions and messages that carried it, and
+  its bytes go once nothing refers to them any longer (the blob collection counts `run_outputs.sha256`).
+- **Retention.** An output of source `tool` goes with its run's events, `EVO_HUB_RUN_LOG_DAYS` after the run ended
+  (hub.prune_run_events), unless a question or a chat message carries it. The other sources stay until someone deletes
+  them.
+- **The switch.** `GET /v1/projects/{p}/output-settings` answers any member whether the project takes tool images
+  (`tool_images`, on by default) and the limits; an admin of the project switches it with `PUT` (audit
+  `settings.outputs`). Off, the hub refuses outputs of source `tool` (409) and the machines send none; they read it at
+  `GET /v1/worker/runs/{id}/output-settings` and `GET .../local-runs/{id}/output-settings`.
+
+`evo-agents hub run outputs RUN [--source S] [--json]` lists a run's outputs, and `--download DIR` saves each under
+its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked against its SHA-256, next to a file of
+that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
+and in the `--json` of `hub chat send|react`.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -1107,8 +1190,12 @@ roles, its GitHub App and the ruleset it needs, and Telegram. This section and t
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
 below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
-default): the failures per tool
-and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
+default): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
+sessions' digests), the skills (per skill its loads in the sessions' digests, typed with `/name` among them, and in
+runs, the friction after each load next to the baseline of every digest that counts skills, the interrupts and
+corrections, and what came of the runs that loaded it: done, the steps whose verify the worker ran again at
+`evo-agents worker step done`, failed and lost by cause), the failures that come from the environment by cause (a
+command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
@@ -1719,7 +1806,7 @@ project's hub sink); each page's buttons call the object's own route, so who may
 `hub.loop_notices`, every 5 minutes, sends `goal_review` on the first day of each month to the admins and goal owners
 of a project whose Loop is on, and `loop_brief`, the Loop's part of the morning brief, at 07:00 in the Loop's zone to
 the goal owners of a project whose Curator sends no brief; the Curator's brief carries that part itself
-(`docs/notifications.md`, Notices). Schema 0090 lets `notifications.notice_kind` take both; going back to 0089 deletes
+(`docs/notifications.md`, Notices). Schema 0096 lets `notifications.notice_kind` take both; going back to 0095 deletes
 them.
 
 ## Memories, skills and knowledge graphs
@@ -1769,6 +1856,20 @@ pushed. The text of `digest_show`, like that of `run_events`, stays under 24,000
 the hub's tools cut a text for `kg_more`: `digest_show` leaves out the last items of its longest lists and says how
 many (a kept item keeps the index that `session:ID:FIELD:INDEX` evidence names), and `run_events` stops before the
 event that would go past it and says after which seq to call again; one event's line holds at most 500 characters.
+A command that runs several programs (`a && b`, `a | b`, `a; b`) counts a call for each, and a failure counts for a
+program only when the command ran it alone or a line of the output starts with its name and a colon
+(`evo-agents kg scrub: error: ...`); the other failures of such commands are counted apart (`bash_compound`), so
+`evo-agents kg scrub --help; echo ======`, which zsh failed, is not a failure of evo-agents. `bash_kinds` splits each
+program's failures by kind: `usage_errors` (a wrong call: a usage line, an unrecognized argument, an invalid choice, or
+evo-agents' exit status 2), `env_errors` (the environment: the hub answering 5xx, the network, a timeout, a command the
+harness blocked, or evo-agents' 69 and 75) and `other_errors`. `skills` counts each skill the session loaded, through
+the Skill tool (its input's `skill`) or typed by the person as `/name` (the transcript's
+`<command-name>/name</command-name>`, which fires no Skill call and no PreToolUse hook; Claude Code's own commands,
+`/compact`, `/clear`, `/model` and the like, are not skills), and in the window from each load to the person's next
+turn the Bash commands, their failures by kind, the person's interrupts (`[Request interrupted by user`) and whether
+the turn that closed it corrected the agent (`evo_agents/hub/friction.py`). `turns` and `interrupts` are the session's.
+These fields are null in a digest an older evo-hub plugin pushed; the hub takes such a digest as before and does not
+count stored digests again.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -1777,8 +1878,15 @@ token is replaced wherever it appears. The push follows the write rule (the writ
 digest carries the project's default label, so only members whose grant, and the sink they read through, clear it
 see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest; only the member who pushed a session
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
-the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
-days.
+the hub pushes it, with up to three others that waited. Claude Code runs no Stop hook for a turn the person
+interrupted, so a session whose every turn was interrupted, or that closed while a tool ran, had no digest:
+SessionEnd now pushes the session's digest too, with those that waited, before it reports the local run ended (its
+hook may take 20 seconds of the session's exit; Claude Code 2.1.299 waits for a SessionEnd hook as long as hooks.json
+says, up to 60). When SessionEnd did not run either, SessionStart finds the session: it reads the transcripts of the
+last 7 days under the Claude Code projects directories, untouched for 10 minutes, of the directories of a hub project
+and with no entry in `digest-state.json`, at most 40 for 2 seconds, and queues each of 6 messages for the next Stop;
+the others are noted with their size and read again only once they changed. The directories of a worker's runs are
+left out. `hub.prune_digests` deletes the digests not pushed for 90 days.
 
 **Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
 project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
@@ -1932,6 +2040,24 @@ The questions of the session reach the member too (`docs/notifications.md`, A de
 hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
 reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
 it stopped waiting.
+The session's files become outputs of its run (Outputs of runs; `evo_agents/hub/local_outputs.py`): each file
+SendUserFile sends (its input's `files` and `caption`), each page the Artifact tool publishes (its `file_path`, the
+caption naming the page's title and claude.ai link), each file of `evo-agents hub send FILE... [--caption TEXT]` (a CLI
+session has no SendUserFile; the command finds the session by `CLAUDE_CODE_SESSION_ID`), all of source `sent`, and
+every image block of a tool's result (an MCP or Playwright screenshot, a Read of an image), of source `tool`. The
+tool's `tool_call_update` keeps, after its text, a content block per image in place of its base64: the ACP
+`resource_link` a worker's run writes (`{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name",
+"mimeType", "size"}`, `evo_agents.hub.outputs.output_link`), which the run's outputs match by SHA-256. A shape the
+hook does not know is passed over. The `local-tool` hook parses its payload whole up to 64 Mi characters (the other
+hooks stop at 1 MiB), and of a longer one still makes the tool's event from its first and last characters. No upload
+runs in a hook: the hook writes an image's bytes and the queue under `~/.evo/hub/local-outputs/<session>/` and starts
+`evo-agents hub send --queued` in the background, detached, unless one runs or the hub did not answer in the last 15 s;
+Stop, UserPromptSubmit and SessionEnd start it too while outputs wait. The sender copies each file sent (a text file
+through `redact_data`, as the events, captions too), reads the project's switch (off: the images are deleted unsent and
+no longer taken), then uploads and records in batches of 100; an output the hub refuses is dropped and named in
+`send.log`, and a hub or blob store that does not answer keeps everything for a later run. A question of the dialog
+carries the outputs of source `sent` of the turn (since the person's last message), waiting up to 3 s for those not
+recorded yet. Queues untouched for 7 days are deleted.
 [Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
@@ -1950,7 +2076,10 @@ commands, edits and errors from the normalized `item_completed` item stream (she
 searches), and `compactions` from the `ContextCompaction` items. The spool leaves a Codex result as it is, so
 `spool_results` and `spool_original_chars` are 0 and `spool_reads` counts the shell runs that name the spool directory.
 The `js`/node_repl and agent-spawning tools that the item stream does not normalize are not counted, and `files_read`
-is 0 since Codex reads files through the shell, which the commands already hold.
+is 0 since Codex reads files through the shell, which the commands already hold. A Codex digest counts a skill only
+when the person named it (`$name`), which the rollout marks with a message of the person that starts with `<skill>`
+and names it; a skill the model reads on its own with `cat .../SKILL.md` leaves no such mark and is not counted. Its
+interrupts are the `turn_aborted` events.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
@@ -2362,8 +2491,9 @@ be limited to that one bucket. Keys:
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
   blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
-  the retention deleted (Session transcripts, above), and only once no row refers to them. The `blobs`
-  table says which projects hold each.
+  the retention deleted (Session transcripts, above), and the outputs of runs deleted by hand or with their run's
+  events (Outputs of runs, above), and only once no row refers to them. The `blobs` table says which projects hold
+  each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
 An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presigned PUT URLs (valid 15 minutes, for
@@ -2371,7 +2501,7 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
-file, 48 MiB for a part of a session's transcript.
+file, 48 MiB for a part of a session's transcript, 200 MiB for an output of a run (`run-output`).
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls

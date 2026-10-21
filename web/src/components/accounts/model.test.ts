@@ -4,18 +4,23 @@ import {
   accountBody,
   accountFormOf,
   accountProblems,
+  groupAccounts,
   type PolicyForm,
   policyBody,
   policyFormOf,
   policyProblems,
   policyRows,
   renewalDue,
+  serviceEntries,
+  sharedVariables,
 } from "./model";
 import type { Account, AccountPolicy } from "./queries";
 
 const ACCOUNT: Account = {
   name: "claude-a",
   env_var: "CLAUDE_CODE_OAUTH_TOKEN",
+  provider: "claude",
+  category: "model",
   auth: "token",
   projects: ["demo", "docs"],
   workers: [],
@@ -93,5 +98,32 @@ describe("the renewal reminder", () => {
 
   it("is never due for an OAuth account: the end is its access token's, which the hub renews", () => {
     expect(renewalDue({ auth: "oauth", expires_at: new Date(NOW + 2 * 60 * 60 * 1000).toISOString() }, NOW)).toBeNull();
+  });
+});
+
+const SERVICE: Account = { ...ACCOUNT, name: "lark-id", env_var: "LARK_APP_ID", provider: "lark", category: "service", cost_24h_usd: null, cost_7d_usd: null };
+
+describe("the groups of accounts", () => {
+  it("puts each account in the group of its category, model first, and keeps an empty group", () => {
+    const groups = groupAccounts([SERVICE, ACCOUNT]);
+    expect(groups.map((group) => [group.id, group.accounts.map((account) => account.name)])).toEqual([
+      ["model", ["claude-a"]],
+      ["service", ["lark-id"]],
+    ]);
+    expect(groupAccounts([ACCOUNT])[1].accounts).toEqual([]);
+  });
+
+  it("merges service accounts of one provider with the same projects, whatever the order of the projects", () => {
+    const secret = { ...SERVICE, name: "lark-secret", env_var: "LARK_APP_SECRET", projects: ["docs", "demo"] };
+    const other = { ...SERVICE, name: "lark-other", env_var: "LARK_TOKEN", projects: ["demo"] };
+    const gitlab = { ...SERVICE, name: "gl", env_var: "GITLAB_TOKEN", provider: "gitlab" as const };
+    const entries = serviceEntries([SERVICE, secret, other, gitlab]);
+    expect(entries.map((entry) => entry.accounts.map((account) => account.name))).toEqual([["lark-id", "lark-secret"], ["lark-other"], ["gl"]]);
+  });
+
+  it("names the variables the visitor has two accounts for", () => {
+    const second = { ...ACCOUNT, name: "claude-b" };
+    expect([...sharedVariables([ACCOUNT, second, SERVICE])]).toEqual(["CLAUDE_CODE_OAUTH_TOKEN"]);
+    expect(sharedVariables([ACCOUNT, SERVICE]).size).toBe(0);
   });
 });

@@ -1,7 +1,7 @@
 """The Curator's lens on the product.
 
-Revision ID: 0088
-Revises: 0087
+Revision ID: 0094
+Revises: 0093
 Create Date: 2026-10-21
 
 ``evo_agents.hub.review.LENSES`` gains ``product`` (plan loop-engine, criterion a9): the signals the project measures,
@@ -11,19 +11,19 @@ of this revision, never imports, so a later change to them takes a new revision.
 operation on SQLAlchemy Core expressions. No column of a table changes.
 
 Going back deletes the findings and the proposals of the lens (and those dropped as repeats of one) and puts the checks
-of 0061 back: schema 0087 does not know it. The playbook's entries keep their lens, which its check of 0060 takes. What
+of 0061 back: schema 0093 does not know it. The playbook's entries keep their lens, which its check of 0060 takes. What
 the lens proposed through the plugins canvas and builder stays: those rows name a run, not a lens.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0088"
-down_revision = "0087"
+revision = "0094"
+down_revision = "0093"
 branch_labels = None
 depends_on = None
 
-LENSES_0087 = (  # as 0061 set them
+LENSES_0093 = (  # as 0061 set them
     "tool_errors",
     "environment",
     "corrections",
@@ -40,7 +40,7 @@ LENSES_0087 = (  # as 0061 set them
     "harness",
 )
 NEW_LENSES = ("product",)
-LENSES = (*LENSES_0087, *NEW_LENSES)  # evo_agents.hub.review.LENSES, in another order
+LENSES = (*LENSES_0093, *NEW_LENSES)  # evo_agents.hub.review.LENSES, in another order
 
 col = sa.column
 
@@ -62,4 +62,4 @@ def downgrade() -> None:
     op.execute(proposals.delete().where(proposals.c.duplicate_of.in_(new)))  # dropped as repeats of one
     op.execute(proposals.delete().where(proposals.c.lens.in_(NEW_LENSES)))
     op.execute(findings.delete().where(findings.c.lens.in_(NEW_LENSES)))
-    _lenses(LENSES_0087)
+    _lenses(LENSES_0093)

@@ -1,8 +1,8 @@
 """The hub's calls to GitLab, made with a project's forge secret (``evo_agents.hub.server.forge``): read a project's
-merge settings and protected branches, the head of a branch, a merge request, its diff and commits, who labeled it and
-the role of a member, and the pipelines and jobs of a commit, open and rebase a merge request, merge it with the sha the
-hub checked, comment on it, play or retry a job, retry a pipeline, and revert commits onto a branch of their own with a
-merge request of them (plan gitlab-merge-queue, criteria a3 to a5).
+merge settings and protected branches, the head of a branch, the merge base of two commits, a merge request, its diff
+and commits, who labeled it and the role of a member, and the pipelines and jobs of a commit, open and rebase a merge
+request, merge it with the sha the hub checked, comment on it, play or retry a job, retry a pipeline, and revert commits
+onto a branch of their own with a merge request of them (plan gitlab-merge-queue, criteria a3 to a5).
 
 GitLab's REST API v4 is at ``https://<host>[:port]/api/v4`` of the origin's host (``project_of``), and a project is
 named by its path, URL-encoded (``group%2Frepo``). The token travels in the PRIVATE-TOKEN header of each request alone:
@@ -551,6 +551,20 @@ class GitLab:
         if commit is None:
             raise GitLabUnavailable(f"GitLab answered without a usable commit while {doing}")
         return commit.word("id")
+
+    async def merge_base(self, project: str, first: str, second: str) -> str | None:
+        """The newest commit both ``first`` and ``second`` of ``project`` stem from (GET .../repository/merge_base):
+        ``second`` itself when ``first`` already holds it. None when GitLab does not know one of them, or they share
+        none."""
+        doing = f"reading the merge base of {first[:12]} and {second[:12]} of {project}"
+        path = f"{self._project(project)}/repository/merge_base"
+        try:
+            found = await self._object("GET", path, doing, params=[("refs[]", first), ("refs[]", second)])
+        except GitLabRefused as exc:
+            if exc.status in (400, 404):
+                return None
+            raise
+        return found.word("id")
 
     # Acting
 

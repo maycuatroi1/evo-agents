@@ -138,6 +138,7 @@ describe("a task's history", () => {
     expect(eventWords(event("status", "todo", "done"))).toEqual({ kind: "status", from: "todo", to: "done" });
     expect(eventWords(event("status", null, "done"))).toEqual({ kind: "status", from: null, to: "done" });
     expect(eventWords(event("description", null, null))).toEqual({ kind: "description" });
+    expect(eventWords(event("outcome", null, null))).toEqual({ kind: "outcome" });
     expect(eventWords(event("priority", "low", "high"))).toEqual({ kind: "set", field: "priority", from: "low", to: "high" });
     expect(eventWords(event("sprint", "Sprint 7", null))).toEqual({ kind: "cleared", field: "sprint", from: "Sprint 7" });
     expect(eventWords(event("qa", "bao", "eve"))).toEqual({ kind: "people", field: "qa", to: "eve" });

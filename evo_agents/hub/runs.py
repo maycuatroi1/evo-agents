@@ -71,6 +71,7 @@ import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
@@ -304,10 +305,14 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 # loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
 # goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
 # loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
+# run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
+# sends to the run's owner (``server.output_notices``)
+OUTPUT_NOTICE = "run_outputs"
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -320,10 +325,15 @@ NOTICE_KINDS = (
     "canvas_baseline",
     "merge_paused",
     "release",
+    "pm_daily",
+    "pm_escalation",
+    OUTPUT_NOTICE,
     "loop_paused",
     "goal_review",
     "loop_brief",
 )
+MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
+OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5
@@ -374,6 +384,16 @@ MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps t
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
+
+OUTPUT_COMMAND = "evo-agents worker output"  # the agent of any run sends files to the run's outputs
+# Said to the agent of a run of one step, a plan run, a step's session, a chat run and a review run.
+OUTPUTS_RULE = (
+    "- To show the people who read this run a file you made (a screenshot, a video, a report), send it with "
+    f"`{OUTPUT_COMMAND} FILE --caption TEXT` (several files at once if you like), or leave it in {OUTPUTS_DIR}/ "
+    "under the current directory, which the worker sends at each step you report and when the run ends. The run's "
+    "page on the hub shows them; the images of your tools' results may get there by themselves."
+)
+ATTACH_RULE = "  Add `--attach FILE` for a screenshot or a file the owner should see with the question."
 
 TRUNCATION_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; the plan on the hub has the full text]"
 SHORT_BYTES = 200  # a plan id, step key, title, repo or branch in the prompt
@@ -676,6 +696,7 @@ def _rules(branch: str) -> list[str]:
         '  "summary": what you changed, how you checked it, and anything left undone.',
         "  The worker runs every verify command again in this directory, and the step counts as verified only when "
         "each one exits 0.",
+        OUTPUTS_RULE,
     ]
 
 
@@ -787,11 +808,13 @@ def _plan_rules() -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        ATTACH_RULE,
         "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
         "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
         "what the owner must do, with a way around the block among the options when there is one, and end your "
         "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
         "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
         f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
@@ -925,7 +948,9 @@ def _step_session_rules(key: str) -> list[str]:
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
         "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
         "time you wait does not count toward the run's timeout.",
+        ATTACH_RULE,
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because the step is done or because you cannot go "
         f'on, write {RESULT_FILE} as a JSON object whose "summary" says what you did of step {key}, what you decided '
         "yourself, and what is left and why. The worker runs no verify command at the end of the session: "

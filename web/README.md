@@ -80,9 +80,10 @@ production build of its own; a failed shard uploads its report as `playwright-re
 touches neither `web/` nor the Python package skips them, and one that touches only `web/` skips the Python tests.
 
 `E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts`,
-`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts`, `e2e/insights-screenshots.spec.ts` and
-`e2e/workers-screenshots.spec.ts`, which write review screenshots of the shell, the memories, skills, knowledge graph,
-runs, Insights and workers pages (a run's page and its diff, the Run plan dialog, a plan run's banner and page, a
+`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts`, `e2e/run-outputs-screenshots.spec.ts`,
+`e2e/insights-screenshots.spec.ts` and `e2e/workers-screenshots.spec.ts`, which write review screenshots of the shell,
+the memories, skills, knowledge graph, runs, a run's files (its Trace and Outputs tab, the viewer, a question, the
+Inbox and the project's card), Insights and workers pages (a run's page and its diff, the Run plan dialog, a plan run's banner and page, a
 worker's Version card and its update notes included) in light and dark (the memories, skills, runs, Insights and workers
 ones also at 375 px).
 
@@ -90,7 +91,8 @@ The runs specs are the worker themselves: they claim runs, report states and sen
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log
 against them; `e2e/monitor.spec.ts` checks the Monitor's list, its grid at each tile count and the tiles' live
 traces the same way, and `e2e/layout-width.spec.ts` measures every area's content frame at 1920 by 1080.
-`e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
+`e2e/run-outputs.spec.ts` sends a run's files the same way, through the hub's routes and the stack's moto bucket, with
+`e2e/fixtures/clip.webm` (three seconds of ffmpeg's testsrc2 in VP8) as its video. `e2e/inbox.spec.ts` asks decisions and sends notices the same way, then checks the bell, the Inbox and
 the answers from the Inbox and from a plan run's page against what reaches the run's inbox. For the terminal the stack plays the worker's end (`FakeTerminal` in `e2e/hub_stack.py`, driven through
 `e2e/support/terminal.ts`): once a browser waits on a run it connects with the worker's token over a real PTY, whose line
 discipline echoes what is typed and whose program answers each line with `echo: <line>` and each resize with

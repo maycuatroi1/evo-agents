@@ -1,7 +1,7 @@
 """Two events plugins may take: an approved version of an SRS document and a task's status set or changed.
 
-Revision ID: 0086
-Revises: 0085
+Revision ID: 0092
+Revises: 0091
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.plugin_events``, ``evo_agents.hub.hub_events`` and
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0086"
-down_revision = "0085"
+revision = "0092"
+down_revision = "0091"
 branch_labels = None
 depends_on = None
 

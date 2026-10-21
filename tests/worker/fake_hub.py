@@ -101,6 +101,18 @@ class FakeHub:
         self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
+        # The outputs of runs (docs/workers.md, Outputs): run id -> the outputs recorded, in order, each as the hub
+        # answers one; the bytes PUT to the uploads, by SHA-256; the project's switch of tool images, the limits the
+        # settings answer and hold, and the calls of output-uploads and outputs left to answer 503 (a hub that is down)
+        self.outputs: dict[int, list[dict]] = {}
+        self.output_bytes: dict[str, bytes] = {}
+        self.output_calls: list[tuple[str, int]] = []  # (route, run id) of each call of the outputs
+        self.tool_images = True
+        self.output_limits = {"max_file_bytes": 200 * 1024 * 1024, "max_outputs": 500, "max_run_bytes": 1024**3}
+        self.outputs_down = 0
+        self.output_routes = True  # False: 404, as a hub older than the outputs
+        self._output_tickets: dict[str, tuple[str, int]] = {}  # upload id -> (sha256, size)
+        self._output_ids = itertools.count(1)
         self._ids = itertools.count(101)
         self._messages = itertools.count(1)
         self._decision_ids = itertools.count(1)
@@ -153,6 +165,10 @@ class FakeHub:
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
                 post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
                 get("/blobs/{sha}", self._blob),
+                get("/v1/worker/runs/{id}/output-settings", self._output_settings),
+                post("/v1/worker/runs/{id}/output-uploads", self._output_uploads),
+                post("/v1/worker/runs/{id}/outputs", self._record_outputs),
+                web.put("/uploads/{upload}", self._put_upload),
             ]
         )
         self._runner = web.AppRunner(app, access_log=None)
@@ -169,7 +185,7 @@ class FakeHub:
 
     @web.middleware
     async def _auth(self, request: web.Request, handler):
-        if request.path.startswith("/blobs/"):  # a presigned GET: the URL is the credential
+        if request.path.startswith(("/blobs/", "/uploads/")):  # a presigned GET or PUT: the URL is the credential
             return await handler(request)
         if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION or self.outdated:
             return _error(426, "upgrade_required", "the worker protocol header is missing")
@@ -913,6 +929,101 @@ class FakeHub:
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)
         return web.json_response({"uploads": []})
+
+    # The outputs of a run, as evo_agents.hub.server.run_outputs answers them
+
+    def run_outputs(self, run_id: int) -> list[dict]:
+        return self.outputs.get(run_id, [])
+
+    def output_data(self, output: dict) -> bytes:
+        return self.output_bytes[output["sha256"]]
+
+    def _output_run(self, request: web.Request, route: str) -> int:
+        run_id, run = self._run(request)
+        self.output_calls.append((route, run_id))
+        if not self.output_routes:
+            raise _refusal(404, "Not Found")
+        if self.outputs_down > 0 and route != "settings":
+            self.outputs_down -= 1
+            raise web.HTTPServiceUnavailable(text="down", content_type="text/plain")
+        return run_id
+
+    def _output_usage(self, run_id: int) -> tuple[int, int]:
+        held = self.run_outputs(run_id)
+        return len(held), sum(output["size"] for output in held)
+
+    async def _output_settings(self, request: web.Request) -> web.Response:
+        run_id = self._output_run(request, "settings")
+        count, size = self._output_usage(run_id)
+        answer = {"project": self.project, "tool_images": self.tool_images, **self.output_limits}
+        return web.json_response({**answer, "run_id": run_id, "outputs": count, "bytes": size})
+
+    def _output_refusal(self, run_id: int, items: list[dict]) -> web.Response | None:
+        if not self.tool_images and any(item["source"] == "tool" for item in items):
+            return _error(409, "conflict", f"project {self.project} takes no images out of tools' results")
+        held = {output["sha256"] for output in self.run_outputs(run_id)}
+        new = {item["sha256"]: item["size"] for item in items if item["sha256"] not in held}
+        count, size = self._output_usage(run_id)
+        limits = self.output_limits
+        if any(value > limits["max_file_bytes"] for value in new.values()):
+            limit = "file_bytes"
+        elif count + len(new) > limits["max_outputs"]:
+            limit = "outputs_per_run"
+        elif size + sum(new.values()) > limits["max_run_bytes"]:
+            limit = "bytes_per_run"
+        else:
+            return None
+        detail = [{"limit": limit, "outputs": count, "bytes": size}]
+        body = {"error": "payload_too_large", "message": f"past the limit {limit}", "detail": detail}
+        return web.json_response(body, status=413)
+
+    async def _output_uploads(self, request: web.Request) -> web.Response:
+        run_id = self._output_run(request, "output-uploads")
+        items = (await request.json())["items"]
+        refusal = self._output_refusal(run_id, items)
+        if refusal is not None:
+            return refusal
+        tickets, present = [], []
+        for item in items:
+            if item["sha256"] in self.output_bytes:
+                present.append(item["sha256"])
+                continue
+            upload = secrets.token_hex(8)
+            self._output_tickets[upload] = (item["sha256"], item["size"])
+            tickets.append({"sha256": item["sha256"], "upload_id": upload, "url": f"{self.url}/uploads/{upload}"})
+        return web.json_response({"uploads": tickets, "present": present, "expires_at": _now()})
+
+    async def _put_upload(self, request: web.Request) -> web.Response:
+        sha, size = self._output_tickets[request.match_info["upload"]]
+        data = await request.read()
+        if len(data) != size or hashlib.sha256(data).hexdigest() != sha:
+            return web.Response(status=400)
+        self.output_bytes[sha] = data
+        return web.Response(status=200)
+
+    async def _record_outputs(self, request: web.Request) -> web.Response:
+        run_id = self._output_run(request, "outputs")
+        items = (await request.json())["outputs"]
+        refusal = self._output_refusal(run_id, items)
+        if refusal is not None:
+            return refusal
+        if any(item["sha256"] not in self.output_bytes for item in items):
+            return _error(409, "conflict", "the project does not hold the bytes")
+        held = self.outputs.setdefault(run_id, [])
+        answered, added = [], 0
+        for item in items:
+            output = next((o for o in held if o["sha256"] == item["sha256"]), None)
+            if output is None:
+                keys = ("sha256", "size", "source", "name", "media_type", "caption", "tool_call_id")
+                output = {"id": next(self._output_ids), "run_id": run_id, **{key: item.get(key) for key in keys}}
+                held.append(output)
+                added += 1
+            elif ("tool", "outputs", "sent").index(item["source"]) > ("tool", "outputs", "sent").index(
+                output["source"]
+            ):
+                output["source"] = item["source"]
+            answered.append(dict(output))
+        return web.json_response({"outputs": answered, "added": added}, status=201)
 
     async def _plan(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
