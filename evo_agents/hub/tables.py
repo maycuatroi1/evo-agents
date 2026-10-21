@@ -834,7 +834,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# The tool figures of runs (0013); the session digests are in tables_sessions
+# The tool figures of runs (0013, and the skills of 0087); the session digests are in tables_sessions
 
 run_tool_stats = Table(
     "run_tool_stats",
@@ -844,6 +844,7 @@ run_tool_stats = Table(
     Column("calls", Integer, nullable=False),
     Column("errors", Integer, nullable=False),
     Column("duration_ms", BigInteger, nullable=False),
+    Column("skills", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
 )

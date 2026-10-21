@@ -1202,14 +1202,17 @@ worker's spool, are added in again, and `hub.prune_run_events` writes the figure
 deletes its events, so they stay when the log goes. The name a call counts under, `gen_ai.tool.name` as
 OpenTelemetry's GenAI conventions call it, is its title for Claude Code, which is the tool's name (`Bash`, `Read`,
 `mcp__server__tool`); Codex and opencode title a call by what it does, so for them it is the call's kind (`execute`,
-`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool.
+`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool. A call of
+Claude Code's Skill tool also names the skill it loaded (`rawInput.skill`): the row of the Skill tool keeps per skill
+its calls and the calls that failed (`run_tool_stats.skills`, schema 0087; none for a run that ended before it).
 
 `GET .../runs/{id}/tool-stats` answers a run's `runtime`, `state`, `finished_at` and `tools`, each with
-`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), to whoever
-may read the run. `GET /v1/projects/{p}/tool-stats` adds them up per tool and runtime, with the `runs` that called
-each, over the runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to
-90, 7 by default), filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The
-MCP tool `run_tool_stats` answers both, with `run_id` for one run.
+`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), and
+`skills`, each with `skill`, `calls` and `errors`, to whoever may read the run. `GET /v1/projects/{p}/tool-stats` adds
+them up per tool and runtime, with the `runs` that called each, and per skill with the `runs` that loaded it, over the
+runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to 90, 7 by default),
+filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The MCP tool
+`run_tool_stats` answers both, with `run_id` for one run.
 
 ### Messages
 
@@ -2424,7 +2427,9 @@ another status for both. A 426 (a protocol the hub no longer speaks) stops the d
 upgrade of evo-agents mends. Once its runs ended, a daemon that may update itself and whose `config.json` says the hub
 last sent `version_locked: false` first updates its install to the tag nightly, and exits 75 when that worked, so its
 service starts the new version instead of starting the old one again and again
-([Updating itself to nightly](#updating-itself-to-nightly)).
+([Updating itself to nightly](#updating-itself-to-nightly)). The other `evo-agents worker` commands exit as every
+`evo-agents` command does (`docs/hub.md`, "Exit status"): 69 when the hub or the network could not be reached, 75 when
+the hub answered 5xx or 429, 1 for another refusal, 2 for a wrong command line.
 
 A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
 while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents

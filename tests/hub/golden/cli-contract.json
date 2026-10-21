@@ -12323,7 +12323,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.27.0"
+      "version": "0.29.0"
     },
     "paths": {
       "/v1/health": {
@@ -59187,6 +59187,51 @@
           ],
           "title": "Committed"
         },
+        "CompoundBash": {
+          "properties": {
+            "calls": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Calls",
+              "description": "Bash commands that ran several programs"
+            },
+            "errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Errors",
+              "description": "their failures whose output named none of their programs"
+            },
+            "usage_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Usage Errors",
+              "default": 0
+            },
+            "env_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Env Errors",
+              "default": 0
+            },
+            "other_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Other Errors",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "required": [
+            "calls",
+            "errors"
+          ],
+          "title": "CompoundBash"
+        },
         "ConfigField": {
           "properties": {
             "name": {
@@ -61102,7 +61147,8 @@
                     "errors",
                     "files_edited",
                     "tools",
-                    "bash"
+                    "bash",
+                    "skills"
                   ]
                 },
                 {
@@ -71248,6 +71294,44 @@
           ],
           "title": "ProgramCount"
         },
+        "ProgramKinds": {
+          "properties": {
+            "program": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Program"
+            },
+            "usage_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Usage Errors",
+              "description": "failures of a wrong call: a usage line, an unknown option or choice"
+            },
+            "env_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Env Errors",
+              "description": "failures the environment caused: the hub or the network, a timeout, a block"
+            },
+            "other_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Other Errors"
+            }
+          },
+          "type": "object",
+          "required": [
+            "program",
+            "usage_errors",
+            "env_errors",
+            "other_errors"
+          ],
+          "title": "ProgramKinds"
+        },
         "Project": {
           "properties": {
             "name": {
@@ -71690,6 +71774,14 @@
               "type": "array",
               "title": "Tools",
               "description": "per tool and runtime, the most called first"
+            },
+            "skills": {
+              "items": {
+                "$ref": "#/components/schemas/RuntimeSkillStat"
+              },
+              "type": "array",
+              "title": "Skills",
+              "description": "per skill the Skill tool loaded, the most called first"
             }
           },
           "type": "object",
@@ -78191,6 +78283,14 @@
               "type": "array",
               "title": "Tools",
               "description": "the most called first; empty for a run that has not ended"
+            },
+            "skills": {
+              "items": {
+                "$ref": "#/components/schemas/SkillStat"
+              },
+              "type": "array",
+              "title": "Skills",
+              "description": "what the Skill tool loaded, the most called first; empty before schema 0087"
             }
           },
           "type": "object",
@@ -78310,6 +78410,37 @@
           ],
           "title": "RuntimeReport",
           "description": "One runtime as the daemon found it on the machine."
+        },
+        "RuntimeSkillStat": {
+          "properties": {
+            "skill": {
+              "type": "string",
+              "title": "Skill",
+              "description": "the skill a call of the Skill tool loaded"
+            },
+            "calls": {
+              "type": "integer",
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors",
+              "description": "calls an update of which said failed"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "runs that loaded the skill"
+            }
+          },
+          "type": "object",
+          "required": [
+            "skill",
+            "calls",
+            "errors",
+            "runs"
+          ],
+          "title": "RuntimeSkillStat"
         },
         "RuntimeToolStat": {
           "properties": {
@@ -79305,6 +79436,77 @@
               ],
               "title": "Tool Result Chars",
               "description": "per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest"
+            },
+            "bash_kinds": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ProgramKinds"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bash Kinds",
+              "description": "per program with failures, how many of each kind; null when an older client pushed the digest"
+            },
+            "bash_compound": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CompoundBash"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bash commands that ran several programs; null when a client that did not count them pushed"
+            },
+            "skills": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillCount"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Skills",
+              "description": "per skill loaded, its loads and the friction after them, the most loaded first; null when a client that did not count them pushed the digest"
+            },
+            "interrupts": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Interrupts",
+              "description": "times the person interrupted the agent"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns",
+              "description": "turns of the person, the commands they typed among them"
             },
             "spool_results": {
               "anyOf": [
@@ -80419,6 +80621,91 @@
           "title": "Skill",
           "description": "A skill with its latest version."
         },
+        "SkillCount": {
+          "properties": {
+            "skill": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Skill",
+              "description": "the skill, as the Skill tool or the person's /name named it"
+            },
+            "calls": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Calls",
+              "description": "loads: through the Skill tool, and typed by the person"
+            },
+            "typed": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Typed",
+              "description": "loads the person typed as /name (Codex: named with $name)"
+            },
+            "failed": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Failed",
+              "description": "calls of the Skill tool that answered an error",
+              "default": 0
+            },
+            "bash": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Bash",
+              "description": "Bash commands from each load to the person's next turn",
+              "default": 0
+            },
+            "usage_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Usage Errors",
+              "default": 0
+            },
+            "env_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Env Errors",
+              "default": 0
+            },
+            "other_errors": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Other Errors",
+              "default": 0
+            },
+            "interrupts": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Interrupts",
+              "description": "times the person interrupted the agent in those windows",
+              "default": 0
+            },
+            "corrections": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Corrections",
+              "description": "turns that closed a window and read as a correction of the agent",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "required": [
+            "skill",
+            "calls",
+            "typed"
+          ],
+          "title": "SkillCount"
+        },
         "SkillHistory": {
           "properties": {
             "scope": {
@@ -80467,6 +80754,31 @@
             "versions"
           ],
           "title": "SkillHistory"
+        },
+        "SkillStat": {
+          "properties": {
+            "skill": {
+              "type": "string",
+              "title": "Skill",
+              "description": "the skill a call of the Skill tool loaded"
+            },
+            "calls": {
+              "type": "integer",
+              "title": "Calls"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors",
+              "description": "calls an update of which said failed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "skill",
+            "calls",
+            "errors"
+          ],
+          "title": "SkillStat"
         },
         "SourceRead": {
           "properties": {
