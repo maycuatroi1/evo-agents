@@ -8,7 +8,7 @@ chat run does, and the hub checks the frame again on each call, so an agent that
 
 - POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on a worker, runtime or
   account that is a fit candidate (``candidates.candidates_of``), for the causes of ``triage_rules.RERUN_CAUSES``, within
-  the chain cap and the chat's budget.
+  the chain cap.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
   own rule that decides (``chat_members.put_agent``): the owner needs the writer role there, and a label of the chat that
@@ -37,14 +37,13 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import curator, profiles, runs, tables, triage_rules
+from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
 from evo_agents.hub.server import audit, chat_agents
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import put_agent
-from evo_agents.hub.server.chat_runs import agent_access, chat_run, chat_spend, post_agent
+from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -274,16 +273,6 @@ async def _audit(conn: AsyncConnection, frame: Frame, action: str, tail: str) ->
     )
 
 
-async def _budget(conn: AsyncConnection, frame: Frame) -> None:
-    spent, budget = await chat_spend(conn, frame.chat_id)
-    if spent >= budget:
-        raise HTTPException(
-            409,
-            f"the chat's budget of {curator.money(budget)} for {rules.BUDGET_HOURS} hours is spent "
-            f"({curator.money(spent)}): the agent reruns nothing until it frees up; ask the owner",
-        )
-
-
 def _unfit(found: RerunCandidates, options: RerunOptions, failed) -> tuple[int | None, str | None]:
     """(the worker id the rerun is pinned to, or None to keep the run's pin; the runtime to ask for, or None): from the
     options, against the candidates; 422 for a worker, runtime or account that is no candidate or no fit."""
@@ -350,7 +339,6 @@ async def _rerun(conn: AsyncConnection, frame: Frame, options: RerunOptions, *, 
     refusal = triage_rules.chain_problem(depth, causes, failed.failure_cause)
     if refusal:
         raise HTTPException(409, refusal)
-    await _budget(conn, frame)
     found = await candidates_of(
         conn,
         project=frame.project,
@@ -379,7 +367,7 @@ def _where(options: RerunOptions, run) -> str:
 @worker_router.post("/runs/{run_id}/triage/rerun", status_code=201, response_model=TriageActed, responses={**REFUSALS})
 async def rerun(request: Request, run_id: RunId, body: TriageRerunIn, user: CurrentUser) -> TriageActed:
     """Run the failed run of this triage thread again for its owner, inside the frame; 422 for a cause with no
-    automatic rerun, 409 when the chain of reruns, the chat's budget or an earlier rerun forbids it."""
+    automatic rerun, 409 when the chain of reruns or an earlier rerun forbids it."""
     async with request.app.state.engine.begin() as conn:
         frame = await _frame(conn, user, run_id)
         new_id = await _rerun(conn, frame, body, edited=False)

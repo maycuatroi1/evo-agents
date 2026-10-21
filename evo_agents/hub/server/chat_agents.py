@@ -14,7 +14,7 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
 - POST .../chat/reactions: an emoji of the agent on a message of a chat it is in, or taken off (``remove``).
 - POST .../chat/mentions: a message of the agent that mentions ``handle``, which hands that agent the work as a
   person's mention does (``chat_runs.hand_work``) but for the origin of the chain, one hop further, never to the agent's
-  own profile, within the chat's budget. A refusal is answered (201, ``refusal``) and said in the thread.
+  own profile. A refusal is answered (201, ``refusal``) and said in the thread.
 - POST .../chats: a new chat of the agent and the origin of the chain, with the people named, each of whom must hold a
   grant that clears the label of the agent's project; the origin and each person get the notice chat_added.
 - POST .../chat/pulls: the worker pushed the run's branch of a repo (chat runs only): the hub opens a draft pull

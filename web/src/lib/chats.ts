@@ -39,8 +39,6 @@ export const MAX_PEOPLE = 50;
 export const MAX_AGENTS = 10;
 export const MAX_EMOJI_KINDS = 20;
 export const MAX_RUNS_PER_MESSAGE = 3;
-export const MAX_BUDGET_USD = 1000;
-export const BUDGET_HOURS = 24;
 /** `chat_members.LOGIN_PATTERN`: a GitHub login. */
 export const LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 /** `runs.models.LINE`: one line of text, no control characters. */
