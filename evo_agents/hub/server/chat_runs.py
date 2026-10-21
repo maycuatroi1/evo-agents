@@ -44,6 +44,7 @@ from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
 from evo_agents.hub.server.output_store import attach_leftovers, link_message
 from evo_agents.hub.server.profile_store import Profile, by_id
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
@@ -330,15 +331,17 @@ async def go_on_parked(
 async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
     project the worker has a checkout of: of them, the project's harness alone on a daemon of
-    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``)."""
+    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``). A daemon that clones
+    what it lacks (``runs.CLONES_CHECKOUTS``) starts with the harness without a checkout of it too, when a project of
+    the owner's lists an origin to clone it from (``repo_origins``)."""
     profile = hand.profile
-    names = [
-        name
-        for name in await project_repos(conn, profile.project_id)
-        if f"{profile.project}/{name}" in (worker.checkouts or {})
-    ]
+    listed = await project_repos(conn, profile.project_id)
+    names = [name for name in listed if f"{profile.project}/{name}" in (worker.checkouts or {})]
     if runs.LAZY_CHAT_REPOS in (worker.features or ()):
         harness = await project_harness(conn, profile.project_id)
+        if harness is not None and harness not in names and runs.CLONES_CHECKOUTS in (worker.features or ()):
+            if harness in await repo_origins(conn, profile.project_id, hand.owner_id, [harness]):
+                names.append(harness)
         names = [name for name in names if name == harness]
     allow = profiles.allowed(profile.permissions, "model")
     title = rules.turn_title(profile.handle, hand.chat.title, hand.body)

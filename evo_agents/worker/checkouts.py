@@ -18,6 +18,10 @@ plan run needs a checkout of every repo its plan names: without the harness here
 claimed by this worker.
 
 Only a directory that is a git work tree counts. Standard library only.
+
+A run of a repo the worker has no checkout of clones it first (``evo_agents.worker.runner.clones``), where
+``clone_place`` puts it: as the project's repos are placed above, else under the worker's home; the clone is kept in
+``checkouts`` of config.json, so it is found again whatever registry or project names it.
 """
 
 from __future__ import annotations
@@ -131,6 +135,26 @@ def discover(config: WorkerConfig, clusters: list[dict] | None = None) -> dict[s
     return found
 
 
+def project_workspace(config: WorkerConfig, project: str, clusters: list[dict] | None = None) -> Path | None:
+    """The workspace the repos of ``project`` are placed in (see the module's docstring); None when nothing names one."""
+    clusters = registry_clusters() if clusters is None else clusters
+    own = project_clusters(clusters, project, config.url)
+    workspace = next((c.get("workspace") for c in own if isinstance(c.get("workspace"), str)), None)
+    workspace = workspace or (config.repos.get(project) or {}).get("workspace")
+    return Path(workspace).expanduser() if isinstance(workspace, str) and workspace.strip() else None
+
+
+def clone_place(
+    config: WorkerConfig, project: str, repo: str, path: str | None, home: Path, clusters: list[dict] | None = None
+) -> Path:
+    """Where a clone of ``repo`` of ``project`` goes: ``path`` as the hub registered it (else the repo's name) placed in
+    the project's workspace (``project_workspace``), else ``checkouts/<project>/<repo>`` in the worker's ``home``."""
+    workspace = project_workspace(config, project, clusters)
+    if workspace is not None:
+        return place(path or repo, workspace)
+    return home / "checkouts" / project / repo
+
+
 def default_branch_of(config: WorkerConfig, project: str, repo: str) -> str | None:
     """The repo's default branch as the hub lists it, when config.json holds the project's repos."""
     for entry in (config.repos.get(project) or {}).get("repos") or []:
@@ -141,12 +165,13 @@ def default_branch_of(config: WorkerConfig, project: str, repo: str) -> str | No
 
 def hub_repos(project: dict) -> dict:
     """What config.json keeps of a project as GET /v1/projects/{p} answers it: the workspace it was registered with,
-    its repos, and the path of its harness."""
+    its repos (each with its path, default branch and origin), and the path of its harness."""
     harness = project.get("harness") if isinstance(project.get("harness"), dict) else {}
     repos = []
     for repo in project.get("repos") or []:
         if isinstance(repo, dict) and isinstance(repo.get("name"), str):
-            repos.append({"name": repo["name"], "path": repo.get("path"), "default_branch": repo.get("default_branch")})
+            kept = {key: repo.get(key) for key in ("path", "default_branch", "origin")}
+            repos.append({"name": repo["name"], **kept})
     workspace = harness.get("workspace") if isinstance(harness.get("workspace"), str) else None
     path = harness.get("path") if isinstance(harness.get("path"), str) and harness["path"].strip() else None
     return {"workspace": workspace, "repos": repos, "harness": path}

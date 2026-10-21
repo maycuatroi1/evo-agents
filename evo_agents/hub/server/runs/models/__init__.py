@@ -750,6 +750,11 @@ class WorkerSettings(BaseModel):
         description="its owner locked its version: the daemon stays on the evo-agents it runs and does not update "
         "itself; a hub before 0048 sends none, and a daemon that got none does not update itself either"
     )
+    projects: list[str] = Field(
+        default_factory=list,
+        description="the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends "
+        "none, and a daemon that got none keeps those of its config",
+    )
 
 
 class NightlyRead(BaseModel):

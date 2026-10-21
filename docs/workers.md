@@ -31,8 +31,8 @@ describes how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, version lock and sharing after it joined | `workers` |
-| worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, projects, version lock and sharing after it joined | `workers` |
+| worker project | a project the worker may take runs of, chosen at registration; its owner adds and drops them later in place, the worker keeping its id, token and secret bindings | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
@@ -69,15 +69,15 @@ a task run its agent type and the draft pull requests of its branch (`agent_type
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name, plugins
-  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), version lock
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), projects
+  ([The projects a worker serves](#the-projects-a-worker-serves)), version lock
   ([Updating itself to nightly](#updating-itself-to-nightly)) and sharing ([Shared workers](#shared-workers)), from a web session with its CSRF header or with the
   owner's machine token. A hub admin who does not own the worker gets
-  403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
-  terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
-  again.
+  403 and anyone else 404, and a revoked worker is 409. Whether it allows the web terminal is not a setting: the
+  machine sets it when it joins or registers, and changing it means registering again.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
-  who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
+  who dispatched it. A worker takes runs only of the projects it serves, and only while its owner still
   holds writer on them: once the grant goes, claims skip those runs, the hub takes back the credentials leased to the
   member's runs there and leases them none.
 - **The agent has the full permissions of the machine's owner.** Claude Code runs with permission mode
@@ -153,6 +153,31 @@ worker. Share only a machine whose user holds no credential of its owner beyond 
 doctor` lists what it holds), with members who may read each other's work in the projects it serves. A worker that
 holds runs of several members over time keeps their worktrees until it prunes them; one slot keeps the side-by-side
 rule simple, and more slots serve one member at a time.
+
+## The projects a worker serves
+
+A worker takes runs of the projects chosen when it joined or registered. Its owner changes them in place, without
+registering again: the worker keeps its id, its token, its other settings, the charters that name it and its secret
+bindings, which name the worker and not a project. `PATCH /v1/workers/{id}` with `{"projects": [...]}` takes the whole
+list, 1 to 100 names, in any order, and replaces the rows of `worker_projects` in one transaction, with one audit row
+`worker.update` that shows the list before and after (`projects=[a,b]->[a,b,c]`). The same rights as the other
+settings apply: the owner alone, from a web session or with their machine token.
+
+- **A project added needs the writer role**, as a pairing does: 404 for a project the owner cannot see, 403 below
+  writer, and nothing changes.
+- **A project it serves already stays** whatever role the owner holds on it now. A list that keeps such a project is
+  not refused, though claims still skip its runs while the owner is below writer ([Who may do what](#who-may-do-what)).
+- **A project is not dropped while the worker is needed there**: 409, naming the project and why, and nothing changes,
+  while a run of that project in an active state (queued, held, waiting, in review or parked) is held by the worker or
+  pinned to it, or while the charter of that project's Curator puts its night shift on duty on the worker. Let the
+  runs end or cancel them, or name another worker in the charter (`evo-agents hub curator charter`), then drop it.
+
+The daemon learns the list from `settings.projects` of its next heartbeat answer, keeps it in `config.json`, and looks
+for the checkouts of the new projects at once. On the worker's machine, `evo-agents worker projects --add P` or
+`--remove P` changes them with the owner's machine token and writes the new list to `config.json` with the repos of
+its projects as the hub lists them; `--worker W` changes another of the owner's workers by id or name, from any
+machine signed in to its hub. On the web, the owner checks or unchecks them in the Settings card of the worker's page.
+A project added still needs its checkouts on the machine, as at registration ([Runtimes and checkouts](#runtimes-and-checkouts)).
 
 ## Worker status
 
@@ -813,7 +838,10 @@ Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) need
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
 replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
 repos and `replay` in `run_kinds`, and a history run (kind `history`, see
-[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. The
+[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. None of
+those checkouts is asked of a daemon whose last heartbeat listed `clones_checkouts` in `features`: it clones each repo
+of the run it has no checkout of before the run goes on ([Repos a run clones](#repos-a-run-clones)), so it takes a run
+whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -899,7 +927,9 @@ with the project's harness alone and whose agent opens each other repo it needs 
 ([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
 checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
 duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
-heartbeat answer and carries out an owner's Update now ([Update now](#update-now)). This daemon sends every kind of `runs.RUN_KINDS` and
+heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `clones_checkouts`, a daemon
+that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
+hands a run whatever checkouts it reports. This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -928,7 +958,8 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
-  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false},
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false,
+               "projects": ["demo"]},
   "nightly": {"commit": "<40 or 64 hex>", "read_at": "..."},
   "update_now": {"requested_at": "..."},
   "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
@@ -942,9 +973,9 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`, and
-`version_locked`, which a hub before schema 0048 does not send), which the owner may change with `PATCH
-/v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`,
+`version_locked`, which a hub before schema 0048 does not send, and `projects`, the names of the projects it serves,
+which a hub before evo-ak 0.31.2 does not send), which the owner may change with `PATCH /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
 those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon); for a daemon that
 lists `kg_sync`, the projects whose graph it keeps fresh, `[{"project", "received_at"}]`, `received_at` being when the
 hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon); `nightly`, the
@@ -1109,7 +1140,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), or `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)), at least one; the values it has already change nothing and are not audited |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), `projects` (the whole list, 1 to 100 names, [The projects a worker serves](#the-projects-a-worker-serves)), `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)) or `shared`, at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/update-now`, `/update-now/cancel` | owner or hub admin | ask the worker's daemon to update itself to nightly now, or withdraw that ([Update now](#update-now)); 409 with why for a revoked or locked worker, a daemon that does not say `update_now`, or one that runs nightly's commit already |
@@ -1152,10 +1183,12 @@ of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, o
 
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
-(the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
+(the step's repo, or every repo in a plan run's `repos`) unless its daemon says `clones_checkouts`, and, for a plan
+run, a daemon of 0.4.0 or later
 (`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one
 fails the answer is 409 naming each one, for example
-`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is
+`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness, and its daemon
+(evo-agents 0.30.0) does not clone what it lacks: ...`, and nothing is
 queued, rather than a run that stays queued for good. A dispatch without a worker is not checked: a worker that can
 take it may join later.
 
@@ -1172,7 +1205,8 @@ and `parent_run_id` naming the old run; the step must be ready again. Approve an
 for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
 that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
 each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
-was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run, has a runtime the
+was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run or a daemon that
+clones the ones it lacks (its reasons then say `clones <repos> before the run starts`), has a runtime the
 run's agent profile allows, is one the profile allows, and, when the owner bound any account to the project, has one
 ready on it (not expired, paused or cooling). The fit workers are ranked by the run's `failure_cause`: the worker the
 run was on first for `missing_tool`, `checkout` and `branch_mismatch`, last for `worker_stopped`, `lease_lost` and
@@ -1421,6 +1455,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
+| `evo-agents worker projects [--add P ...] [--remove P ...] [--worker W]` | shows the projects the worker serves, or changes them in place with `PATCH /v1/workers/{id}` and the owner's machine token; this machine's worker by default, whose `config.json` takes the new list and the repos of its projects at once, or with `--worker` another of the owner's workers by id or name, whose daemon takes them at its next heartbeat ([The projects a worker serves](#the-projects-a-worker-serves)) |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
 | `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run |
@@ -1468,8 +1503,34 @@ in the registry's cluster of the project (`hub.project`, on the same hub): its r
 directory name. The registry is `~/.evo/harness/registry.json`, then `~/.claude/harness/registry.json`, as
 `evo-agents hub registry pull` writes it. Only a git work tree counts. The hub lists a project's harness apart from
 its repos, but a plan names the harness as one of its repos, since its plans live there, so a plan run needs a
-checkout of it too. The daemon reads the project's repos and harness from the hub each time it starts, while the
-machine is signed in with `evo-agents hub login`.
+checkout of it too; `evo-agents hub project register` sends the harness among the repos, with the origin its git
+remote names, when harness.yaml does not list it. The daemon reads the project's repos and harness from the hub each
+time it starts, while the machine is signed in with `evo-agents hub login`.
+
+### Repos a run clones
+
+A run never waits, and never fails, for want of a checkout a person would have to make by hand. Once a run's leases are
+taken, the daemon sets up each repo of the run it has no checkout of (`evo_agents/worker/runner/clones.py`), several
+at a time, under a lock of where the repo goes, so two runs never clone one repo at once:
+
+- where: the path the hub registered for the repo, placed in the project's workspace as `evo-agents hub registry pull`
+  places it, else `checkouts/<project>/<repo>` in the worker's home;
+- a git work tree there already is taken as it is and nothing is cloned;
+- else the daemon clones the origin the hub's answer to the leases names (`repos` of `POST
+  /v1/worker/runs/{id}/credentials`): the one the run's project registers, else the one another project registers for a
+  repo of that name, among the projects the run's owner holds a grant on, when they agree on it (a plan of one project
+  may work in the harness of another); the clone goes through the run's leases, is made beside its place and moved in
+  once whole;
+- a path taken by something that is no work tree moves the clone under the worker's home.
+
+The checkout is the daemon's from then on: in the next heartbeat's `checkouts` and in `checkouts` of `config.json`. A
+repo for which no project names an origin fails the run with cause `origin`, and a clone git cannot make with cause
+`credentials` (the remote refused the credential) or `checkout`; a chat run or a task run goes on without such a repo
+instead, with a note, as an author run does without any repo but its harness. A dispatch names such a repo only when
+some project the dispatcher holds a grant on lists its origin: otherwise the hub answers 409 and queues nothing. A chat
+run's agent opens a repo the worker has no checkout of likewise (`evo-agents worker repo open`): the hub refuses it, 409,
+only when no project of the run's owner lists an origin for it, and a chat run on a daemon of `lazy_chat_repos` starts
+with the harness without a checkout of it when one does.
 
 ### Runtime adapters
 

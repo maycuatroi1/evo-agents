@@ -24,6 +24,11 @@ And step 1 of the auto-update-nightly plan: the owner locks a worker's version t
 carries the lock, and the hub keeps and shows the commit a daemon runs and what it found of updating itself, which a
 daemon that sends neither leaves empty.
 
+And the projects a worker serves, changed in place with PATCH /v1/workers/{id} by its owner alone: a project added
+needs the writer role, one served already stays on a lesser role, the change is audited and reaches the heartbeat
+answer, and dropping a project is refused while a run of it is active on the worker or its night shift is on duty
+there.
+
 And step 1 of the nightly-within-a-minute plan: the heartbeat answer carries where nightly points once the hub read it;
 the owner or a hub admin asks for and cancels an Update now as they drain, audited once and refused with why when the
 worker is locked, its daemon too old or already current; the answer carries the open request, and the hub ends it on
@@ -709,7 +714,7 @@ def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, 
         assert response.status_code == 200, response.text
         return response.json()
 
-    settings = {"plugins": [], "version_locked": False}
+    settings = {"plugins": [], "version_locked": False, "projects": ["demo"]}
     assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], **settings}
     patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
@@ -777,7 +782,8 @@ def test_the_owner_locks_the_worker_version_with_a_patch_audited_once_and_the_he
     assert unlocked.status_code == 200, unlocked.text
     assert (unlocked.json()["version_locked"], unlocked.json()["slots"]) == (False, 2)
     assert (f"{target} slots=1->2 version_locked=true->false", OWNER) in audit_rows(hub_db, "worker.update")
-    assert beat() == {"slots": 2, "name": "mac-mini", "labels": [], "plugins": [], "version_locked": False}
+    unlocked_settings = {"slots": 2, "name": "mac-mini", "labels": [], "plugins": [], "version_locked": False}
+    assert beat() == {**unlocked_settings, "projects": ["demo"]}
 
 
 def test_a_patch_of_the_version_lock_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):
@@ -1243,3 +1249,129 @@ def test_a_pairing_code_in_any_log_line_is_masked():
     assert scrub('{"code": "ABCD-EF12"}') == '{"code": "***"}'
     for kept in ("123E4567-E89B-12D3-A456-426614174000", "fast-path", "ABCD-EFGHJ", "XABCD-EFGH", "ILOU-1234"):
         assert scrub(kept) == kept
+
+
+# The projects a worker serves
+
+
+def projects_of(db, worker_id: int) -> list[str]:
+    wp, projects = tables.worker_projects, tables.projects
+    names = (
+        select(projects.c.name)
+        .join_from(wp, projects, projects.c.id == wp.c.project_id)
+        .where(wp.c.worker_id == worker_id)
+        .order_by(projects.c.name)
+    )
+    return [name for (name,) in sql(db, names)]
+
+
+def test_the_owner_changes_the_projects_of_a_worker_in_place_audited_and_sent_to_its_daemon(
+    client, hub, hub_db, github
+):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, token = answer["worker"]["id"], answer["token"]
+    path = f"/v1/workers/{worker_id}"
+
+    added = client.patch(path, json={"projects": ["docs", "demo", "docs"]}, headers=hub["owner"])
+    assert added.status_code == 200, added.text
+    assert added.json()["projects"] == ["demo", "docs"] and added.json()["id"] == worker_id
+    assert projects_of(hub_db, worker_id) == ["demo", "docs"]
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.update") == [(f"{target} projects=[demo]->[demo,docs]", OWNER)]
+    beat = client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=worker_headers(token))
+    assert beat.status_code == 200 and beat.json()["settings"]["projects"] == ["demo", "docs"], beat.text
+
+    # the same projects in another order change nothing, from the web too; the token and the other settings stay
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    same = client.patch(path, json={"projects": ["docs", "demo"]}, headers=owner_web)
+    assert same.status_code == 200 and same.json()["projects"] == ["demo", "docs"], same.text
+    assert len(audit_rows(hub_db, "worker.update")) == 1
+    both = client.patch(path, json={"projects": ["docs"], "slots": 2}, headers=owner_web)
+    assert both.status_code == 200 and (both.json()["projects"], both.json()["slots"]) == (["docs"], 2)
+    assert (f"{target} slots=1->2 projects=[demo,docs]->[docs]", OWNER) in audit_rows(hub_db, "worker.update")
+    assert client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=worker_headers(token)).status_code == 200
+
+
+def test_a_project_added_needs_the_writer_role_and_one_served_already_stays_on_a_lesser_role(
+    client, hub, hub_db, admin
+):
+    granted = client.put(f"/v1/admin/projects/notes/grants/{OWNER}", json=WRITER, headers=admin)
+    assert granted.status_code == 200, granted.text
+    worker_id = joined(client, paired(client, hub["owner"], projects=["demo", "notes"])["code"])["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    # the owner holds reader on notes now, as the owner of a worker that serves meridai does on the hub
+    lowered = client.put(f"/v1/admin/projects/notes/grants/{OWNER}", json=READER, headers=admin)
+    assert lowered.status_code == 200, lowered.text
+
+    kept = client.patch(path, json={"projects": ["demo", "notes", "docs"]}, headers=hub["owner"])
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["projects"] == projects_of(hub_db, worker_id) == ["demo", "docs", "notes"]
+
+    # dropped, notes is a project the owner only reads: adding it again is 403
+    assert client.patch(path, json={"projects": ["demo", "docs"]}, headers=hub["owner"]).status_code == 200
+    refused = client.patch(path, json={"projects": ["demo", "docs", "notes"]}, headers=hub["owner"])
+    assert refused.status_code == 403, refused.text
+    assert "writer role" in refused.json()["message"] and "reader" in refused.json()["message"]
+    # a project the owner holds no grant on, and one the hub does not have, are 404 alike
+    add_project(hub_db, "hidden")
+    for name in ("hidden", "nowhere"):
+        unseen = client.patch(path, json={"projects": ["demo", name]}, headers=hub["owner"])
+        assert unseen.status_code == 404, unseen.text
+    assert projects_of(hub_db, worker_id) == ["demo", "docs"]
+    assert len(audit_rows(hub_db, "worker.update")) == 2
+
+    # an empty list, a name the hub would not take, or too many are 422
+    for projects in ([], ["Not A Name"], [f"p{n}" for n in range(101)]):
+        assert client.patch(path, json={"projects": projects}, headers=hub["owner"]).status_code == 422, projects
+
+
+def test_the_projects_of_a_worker_are_changed_by_its_owner_alone(client, hub, hub_db, github):
+    worker_id = joined(client, paired(client, hub["owner"])["code"])["worker"]["id"]
+    path, body = f"/v1/workers/{worker_id}", {"projects": ["demo", "docs"]}
+    for headers in (hub["admin"], web_writes(client, github, ADMIN, ADMIN_ID)):
+        refused = client.patch(path, json=body, headers=headers)
+        assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    # another member who writes to demo, even with the worker shared with them, sees it and changes nothing
+    assert client.patch(path, json={"shared": True}, headers=hub["owner"]).status_code == 200
+    assert client.get(path, headers=hub["other"]).status_code == 200
+    assert client.patch(path, json=body, headers=hub["other"]).status_code == 404
+    assert projects_of(hub_db, worker_id) == ["demo"]
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.patch(path, json=body, headers=hub["owner"])
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+
+
+def test_a_project_is_not_dropped_while_a_run_of_it_is_active_on_the_worker_or_its_night_shift_is_on_duty_there(
+    client, hub, hub_db
+):
+    answer = joined(client, paired(client, hub["owner"], projects=["demo", "docs"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    ids = seed_plan(hub_db, "docs") | {"worker": worker_id}
+    with live.connect(hub_db) as conn:
+        held = add_run(conn, ids, "running", step="1")
+        pinned = add_run(conn, ids, "queued", step="2", pinned_worker_id=worker_id)
+        add_run(conn, ids, "done", step="3")  # ended: it needs the worker no more
+    projects = tables.projects
+    demo = sql(hub_db, select(projects.c.id).where(projects.c.name == "demo"))[0][0]
+    duty = {"project_id": demo, "kind": "night_shift", "owner_id": ids["user"], "worker_id": worker_id}
+    sql(hub_db, insert(tables.schedules).values(**duty))
+
+    busy = client.patch(path, json={"projects": ["demo"]}, headers=hub["owner"])
+    assert busy.status_code == 409, busy.text
+    said = busy.json()["message"]
+    assert "cannot stop serving docs" in said and f"({held}, {pinned})" in said and "nothing was changed" in said
+    on_duty = client.patch(path, json={"projects": ["docs"]}, headers=hub["owner"])
+    assert on_duty.status_code == 409, on_duty.text
+    assert "cannot stop serving demo" in on_duty.json()["message"]
+    assert "evo-agents hub curator charter" in on_duty.json()["message"]
+    assert projects_of(hub_db, worker_id) == ["demo", "docs"] and audit_rows(hub_db, "worker.update") == []
+
+    # once the runs ended, docs goes; the night shift of demo keeps demo, and the worker's id and token stay
+    runs_table = tables.runs
+    ended = runs_table.c.id.in_([held, pinned])
+    sql(hub_db, update(runs_table).values(state="cancelled", finished_at=func.now()).where(ended))
+    dropped = client.patch(path, json={"projects": ["demo"]}, headers=hub["owner"])
+    assert dropped.status_code == 200 and dropped.json()["projects"] == ["demo"], dropped.text
+    beat = client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=worker_headers(answer["token"]))
+    assert beat.status_code == 200 and beat.json()["settings"]["projects"] == ["demo"]

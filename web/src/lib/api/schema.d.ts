@@ -1335,8 +1335,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a
-         *     web session or with their machine token.
+         * @description Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
+         *     only, from a web session or with their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -11143,6 +11143,11 @@ export interface components {
             leases: components["schemas"]["CredentialLease"][];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
+            /**
+             * Repos
+             * @description each repo of the run, in the run's order
+             */
+            repos?: components["schemas"]["RunRepoSource"][];
         };
         /** Csrf */
         Csrf: {
@@ -20109,6 +20114,29 @@ export interface components {
             branch?: string | null;
         };
         /**
+         * RunRepoSource
+         * @description A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it.
+         */
+        RunRepoSource: {
+            /** Repo */
+            repo: string;
+            /**
+             * Origin
+             * @description as a project registered it; null when none did
+             */
+            origin: string | null;
+            /**
+             * Path
+             * @description as that project registered it: relative to its workspace, ~/..., or absolute
+             */
+            path: string | null;
+            /**
+             * Project
+             * @description the project that registered it: the run's, or another of its owner's
+             */
+            project: string | null;
+        };
+        /**
          * RunSkill
          * @description A skill the worker writes for the run's agent, as the hub holds it when the run is claimed: an author run's
          *     create-exec-plan, global, at its latest version.
@@ -24834,6 +24862,11 @@ export interface components {
              * @description its owner locked its version: the daemon stays on the evo-agents it runs and does not update itself; a hub before 0048 sends none, and a daemon that got none does not update itself either
              */
             version_locked: boolean;
+            /**
+             * Projects
+             * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
+             */
+            projects?: string[];
         };
         /**
          * WorkerUpdate
@@ -24867,6 +24900,11 @@ export interface components {
              * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
              */
             shared?: boolean | null;
+            /**
+             * Projects
+             * @description every project it takes runs of, the whole list: the writer role on each one added; one dropped must have no active run on the worker and no night shift on duty there
+             */
+            projects?: string[] | null;
         };
         /**
          * WorkerUpdateNow

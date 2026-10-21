@@ -541,12 +541,15 @@ def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_
     assert beta["exit"] == 0 and beta["stdout"] == f"{directory / 'beta'}\n", beta
     assert again["exit"] == 0 and again["stdout"] == beta["stdout"], "a repo open already: the same path"
     assert delta["exit"] == 1 and delta["stdout"] == ""
-    no_checkout = f"worker mac has no checkout of delta of project {PROJECT}: the run cannot open it here"
+    no_checkout = (
+        f"worker mac has no checkout of delta of project {PROJECT}: and no project of the run's owner lists an origin "
+        "to clone it from"
+    )
     assert delta["stderr"] == f"error: {no_checkout}\n"
     assert gamma["exit"] == 1 and gamma["stdout"] == ""
     assert gamma["stderr"] == f"error: project {PROJECT} has no repo gamma: its repos are alpha, beta, delta\n"
     assert looked["stdout"].splitlines() == ["beta", branch], "the worktree of beta alone, on the session's branch"
-    assert opened_repos(hub)[:2] == [(first, "beta"), (first, "gamma")], "delta never reached the hub"
+    assert opened_repos(hub)[:3] == [(first, "beta"), (first, "delta"), (first, "gamma")], "the hub refused delta"
     assert found["first_repos"] == [{"repo": "beta", "branch": branch}]
     assert [item["repo"] for item in found["first_record"]["repos"]] == ["beta"]
     assert found["first_asks"] == 2, "the leases were taken again once the hub added beta"
@@ -584,7 +587,7 @@ def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_
     assert f"Goes on from run #{first} in {directory}, with its worktrees of beta." in later_texts
     assert any(text == f"Fetching origin in {three.checkouts['beta']}." for text in later_texts)
     assert any("1 left to their fetch" in text for text in later_texts), later_texts
-    assert opened_repos(hub)[2:] == [(later, "alpha")]
+    assert opened_repos(hub)[3:] == [(later, "alpha")]
     assert [item["repo"] for item in three.home.load_run(later)["repos"]] == ["beta", "alpha"]
     assert [item for item in pulls(hub) if item[0] == later] == [], "nothing changed in the next turn"
     assert git("symbolic-ref", "--short", "HEAD", cwd=directory / "alpha") == branch

@@ -77,6 +77,7 @@ class FakeHub:
         self.history_batch = 6
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
+        self.clone_origins: dict[str, str] = {}  # repo -> the origin a project lists for it, which a chat run may clone
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
         # What the worker said of its agent's usage limit (POST .../rate-limit), with the run's id, and what a rejected
         # (or unauthorized) report gets: run id -> the answers in order, each with ``leases``, the run's next leases on
@@ -860,15 +861,23 @@ class FakeHub:
         """A repo a chat run's daemon opened for its agent, answered as ``chat_agents.open_repo`` does: added to the run's
         repos on its branch, so the leases and the run that goes on in the session take it; 404 for a run that is not a
         chat run, 422 for a repo the project does not list (``project_repos``), 409 for one the worker's last heartbeat
-        names no checkout of."""
+        names no checkout of, unless its daemon clones what it lacks and ``clone_origins`` names one for it."""
         spec, name = run["spec"], body.get("repo")
         if spec["kind"] != "chat":
             raise _refusal(404, f"run {run_id} is a {spec['kind']} run: only a chat run's agent opens a repo here")
         if self.project_repos is not None and name not in self.project_repos:
             listed = ", ".join(self.project_repos) or "none"
             raise _refusal(422, f"project {self.project} has no repo {name}: its repos are {listed}")
-        if f"{self.project}/{name}" not in ((self.last_heartbeat or {}).get("checkouts") or {}):
-            return _error(409, "conflict", f"worker mac has no checkout of {name} of project {self.project}")
+        beat = self.last_heartbeat or {}
+        if f"{self.project}/{name}" not in (beat.get("checkouts") or {}):
+            if runs.CLONES_CHECKOUTS not in (beat.get("features") or ()):
+                why = "the run cannot open it here"
+            elif name not in self.clone_origins:
+                why = "and no project of the run's owner lists an origin to clone it from"
+            else:
+                why = None
+            if why is not None:
+                return _error(409, "conflict", f"worker mac has no checkout of {name} of project {self.project}: {why}")
         repos = spec["repos"] = list(spec.get("repos") or [])  # NULL for a run that started with no repo
         added = name not in [entry["repo"] for entry in repos]
         if added:

@@ -543,10 +543,14 @@ def _review_budget(charter: dict, budget: dict) -> dict | None:
 
 async def _review_repos(conn: AsyncConnection, project_id: int, project: str, worker: Pinned) -> list[dict]:
     """The repos of the project the worker on duty has a checkout of, in name order, each with no branch: a review
-    run's worktrees are detached at origin's default branch."""
+    run's worktrees are detached at origin's default branch. A worker that has none and clones what it lacks
+    (runs.CLONES_CHECKOUTS) reviews every repo of the project, cloned before the run starts."""
     pr = tables.project_repos
-    names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).scalars()
-    return [{"repo": name, "branch": None} for name in names if f"{project}/{name}" in worker.checkouts]
+    names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).all()
+    held = [{"repo": name, "branch": None} for (name,) in names if f"{project}/{name}" in worker.checkouts]
+    if held or runs.CLONES_CHECKOUTS not in worker.features:
+        return held
+    return [{"repo": name, "branch": None} for (name,) in names]
 
 
 async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
