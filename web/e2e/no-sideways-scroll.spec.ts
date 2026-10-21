@@ -28,6 +28,7 @@ import {
   startRun,
   uploadDiff,
 } from "./support/runs";
+import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
@@ -115,6 +116,15 @@ for (const width of WIDTHS) {
   test(`plans, memories and skills pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member([{ role: "writer", maxLevel: "customer" }]);
     await noSidewaysScroll(page, [width], await seedProject(me));
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`PM daily never scrolls sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedPm(me, project, { long: LONG });
+    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: shown("pm-report") }]);
   });
 }
 

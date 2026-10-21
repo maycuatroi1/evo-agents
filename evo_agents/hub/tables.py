@@ -40,6 +40,7 @@ from evo_agents.hub import (
     tables_kg,
     tables_merge,
     tables_plugins,
+    tables_pm,
     tables_profiles,
     tables_release,
     tables_sessions,
@@ -833,7 +834,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# The tool figures of runs (0013, and the skills of 0085); the session digests are in tables_sessions
+# The tool figures of runs (0013, and the skills of 0087); the session digests are in tables_sessions
 
 run_tool_stats = Table(
     "run_tool_stats",
@@ -981,6 +982,7 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+pm_sends = tables_pm.pm_tables(metadata)  # 0086
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

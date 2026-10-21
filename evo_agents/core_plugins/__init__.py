@@ -11,6 +11,8 @@ points imports it; its contributions' Python lives in modules the hub imports wh
   BA documents to a template, and the backlog (``docs/plugins.md``, sections Builder and SRS and tasks).
 - ``canvas``: a living Lean Canvas per product, whose claims carry a status, a test card, evidence and every rev
   (plan living-lean-canvas).
+- ``pm``: the daily report of a project's delivery, read from the tables of tasks, srs, plans, runs and decisions
+  (plan pm-daily-tracking, ``docs/pm-plugin.md``).
 
 telegram and chats, the Telegram channel and the history of group chats in the knowledge graph, left for the
 distribution evo-agents-core-plugins (repository maycuatroi1/evo-agents-core-plugins), which deploy/hub/core-plugins.txt

@@ -1204,7 +1204,7 @@ OpenTelemetry's GenAI conventions call it, is its title for Claude Code, which i
 `mcp__server__tool`); Codex and opencode title a call by what it does, so for them it is the call's kind (`execute`,
 `edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool. A call of
 Claude Code's Skill tool also names the skill it loaded (`rawInput.skill`): the row of the Skill tool keeps per skill
-its calls and the calls that failed (`run_tool_stats.skills`, schema 0085; none for a run that ended before it).
+its calls and the calls that failed (`run_tool_stats.skills`, schema 0087; none for a run that ended before it).
 
 `GET .../runs/{id}/tool-stats` answers a run's `runtime`, `state`, `finished_at` and `tools`, each with
 `gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), and
