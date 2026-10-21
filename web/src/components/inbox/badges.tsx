@@ -9,10 +9,13 @@ import {
   ClipboardCheck,
   DatabaseZap,
   GitMerge,
+  Goal,
   Hammer,
+  IterationCw,
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
+  OctagonPause,
   PowerOff,
   Rocket,
   Send,
@@ -46,6 +49,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   triage: MessageSquare,
   // What a stopped release cycle asks its owner: go on with one more cap, close it, or pause the schedule.
   release: Tags,
+  // What the Loop asks a person after a work item failed a third time: retry it, drop it, or take it over.
+  loop: IterationCw,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {
@@ -74,6 +79,9 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   canvas_baseline: { icon: ClipboardCheck },
   merge_paused: { icon: PowerOff },
   release: { icon: Tags },
+  loop_paused: { icon: OctagonPause },
+  goal_review: { icon: Goal },
+  loop_brief: { icon: IterationCw },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

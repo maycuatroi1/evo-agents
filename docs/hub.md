@@ -1684,6 +1684,24 @@ evo-agents hub loop resume --project demo     # an admin resets the breaker that
 `GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the
 admin's reset (403 for anyone else, 409 when the breaker has not tripped), audited `loop.resume`.
 
+The Loop's work items, for anyone with a grant: `GET /v1/projects/{p}/loop/items` lists them newest first (`?state=`,
+`?kind=`, `?goal=` a code or alias, `?open=true` for those not done or cancelled, `?limit=` up to 500, 200 by default,
+`more` when more match), each with its kind and cycle, its state and reason with the figures of that reason
+(`waiting`: the cap and the count for `concurrency` or `rate`, the worker and why for `worker`...), its runs and
+failures, who it stands for, its ancestors by their codes (goal, claim, use case and version, frame task, plan, run),
+the work item it came of and the first of its chain (`root`). `GET .../loop/items/{id}` gives one with its chain (every
+work item that came of that first one), the stages of its path from the goal to the claim, the use case, the frame
+task, the plan, the runs handed out, the merge requests of the plan and the release, and its ledger. `GET
+.../loop/goals` measures each goal's metric now against its target, with its work items by state. Each ancestor shows
+as its own route shows it: a claim, an SRS document and a task under their labels through `X-Evo-Sink` or the
+project's hub sink, a plan, its runs and its merge requests when the reader reads that plan; one the reader may not
+read is left out and named in `hidden`. Nothing there writes.
+
+The web shows them on the project's pages Goals (`/p/{p}/goals`, a goal at `/p/{p}/goals/G-1`), Loop (`/p/{p}/loop`,
+by state or by chain, a work item's chain at `/p/{p}/loop/items/{id}`) and Decisions (`/p/{p}/decide`). An admin turns
+the Loop on or off on the Loop page, as the next revision of the policy (`loop.enabled`, with `if_revision`), and resets
+its breaker there; every other member reads.
+
 **The decision board** of a project, `GET /v1/projects/{p}/decision-board` (the web's `/p/{p}/decide`), gathers what
 waits for a person, the three gates first: the goals (the month's review once the hub asked for it with the notice
 `goal_review`, until a goal gets a revision or the month ends, and each active goal past its deadline), the canvases

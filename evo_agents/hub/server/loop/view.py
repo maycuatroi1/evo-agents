@@ -66,7 +66,7 @@ RELEASED = ("merged", "not-needed")  # the status of a repo of a plan once a per
 # Goals
 
 
-async def _measure(conn: AsyncConnection, project_id: int, metric: dict, now: datetime) -> float | None:
+async def measure(conn: AsyncConnection, project_id: int, metric: dict, now: datetime) -> float | None:
     """The value of ``metric`` now; None when its key is no number key of the project or no signal is in its window."""
     k, s = tables.signal_keys, tables.signals
     key_id = await conn.scalar(
@@ -98,7 +98,7 @@ async def reached(conn: AsyncConnection, project_id: int, metric: dict | None, n
     """Whether goal metric ``metric`` meets its target now; None without a metric or a value."""
     if not metric or metric.get("comparator") not in COMPARE or metric.get("target") is None:
         return None
-    value = await _measure(conn, project_id, metric, now)
+    value = await measure(conn, project_id, metric, now)
     return None if value is None else COMPARE[metric["comparator"]](value, metric["target"])
 
 
@@ -239,7 +239,7 @@ async def _claims(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, ClaimV
 # Tasks, approvals, runs and merge requests
 
 
-async def _groups(conn: AsyncConnection, row, project_id: int) -> dict[str, str | None]:
+async def status_groups(conn: AsyncConnection, row, project_id: int) -> dict[str, str | None]:
     """status -> its group, as the config of the plugin tasks (its row of ``enabled_query``) in the project sets them."""
     stacks = await stored_stacks(conn, [row.id], project_id, None)
     merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
@@ -254,7 +254,7 @@ async def _tasks(conn: AsyncConnection, project_id: int, items: Sequence[ItemVie
     frames = {item.detail.get("frame") for item in items if item.task_id is None and item.detail.get("frame")}
     if plugin is None or not (ids or frames):
         return {}, {}
-    groups = await _groups(conn, plugin, project_id)
+    groups = await status_groups(conn, plugin, project_id)
     t, sp = tables.tasks.items, tables.tasks.sprints
     query = (
         select(t.c.id, t.c.number, t.c.status, t.c.external_key, sp.c.state.label("sprint"))
