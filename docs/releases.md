@@ -1,13 +1,14 @@
 # The daily release
 
-A project on the hub can have a daily release. Once a day, at a local time its admins set (06:00 in Asia/Ho_Chi_Minh
-by default), the hub checks without any model whether the code that makes the package changed between the newest
-release tag and the commit of the tag `nightly`. When it did, an agent on a worker the hub picks cuts the next
-version on a branch, and the hub merges that branch and tags the merge commit. The hub then follows the tag's
-`release.yml` until its job `publish` puts the version on PyPI. A red CI is fixed forward with the next patch, as often
-as it takes, under a cap of what one cycle may cost (200 USD by default). The cycle stops and asks its owner what next
-when the same test fails at two tags in a row, the cap is spent, a run fails, the CI overruns, or a fix shows signs of
-test hacking.
+A project on the hub can have a daily release. Once a day, at a local time its admins set (06:00 in Asia/Ho_Chi_Minh by
+default), the hub checks without any model whether the code that makes the package changed between the newest release
+tag and the commit of the tag `nightly`. When it did, an agent on a worker the hub picks cuts the next version on a
+branch, and the hub merges that branch and tags the merge commit. The hub then follows the tag's `release.yml` until its
+job `publish` puts the version on PyPI; its job `github-release` then makes the tag's GitHub Release with notes GitHub
+generates from the merged pull requests, and the same wheel and sdist. A red CI is fixed forward with the next patch, as
+often as it takes, under a cap of what one cycle may cost (200 USD by default). The cycle stops and asks its owner what
+next when the same test fails at two tags in a row, the cap is spent, a run fails, the CI overruns, or a fix shows signs
+of test hacking.
 
 No GitHub Actions cron and no model credential in GitHub's secrets are involved: the hub's job runner makes the check,
 a member's worker runs the agent, and the hub's GitHub App, never the agent, merges and tags.
@@ -36,9 +37,9 @@ a member's worker runs the agent, and the hub's GitHub App, never the agent, mer
 3. **The landing.** The hub opens the pull request of that branch into the default branch, checks it, merges it with a
    merge commit at the commit the run pushed, and tags that merge commit `v<version>`, all with its GitHub App.
 4. **The CI.** The hub follows the run of `release.yml` for the tag through the Actions API.
-5. **Published.** The workflow succeeded and its job `publish` too: the cycle is `published`, and its owner gets a
-   notice of kind `release`, on the web and on their linked channels such as Telegram, with the version, the
-   workflow run and `https://pypi.org/project/evo-ak/<version>/`.
+5. **Published.** The workflow succeeded, its jobs `publish` and `github-release` included: the cycle is `published`,
+   and its owner gets a notice of kind `release`, on the web and on their linked channels such as Telegram, with the
+   version, the workflow run and `https://pypi.org/project/evo-ak/<version>/`.
 6. **Red.** The hub reads the failed jobs and the end of their logs. A fault of the infrastructure alone gets the
    failed jobs run again once. Anything else queues a run in mode `fix`, which cuts the next patch with the fix on
    `release/<patch>`; the hub lands and tags it as in 3, and follows the new tag. The red tag stays as it is.
