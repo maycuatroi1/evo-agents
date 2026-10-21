@@ -73,5 +73,5 @@ export const TASKS: Task[] = [
 ];
 
 export function detailOf(base: Task, patch: Partial<TaskDetail> = {}): TaskDetail {
-  return { ...base, description_md: "", external_ref: null, links: [], blockers: [], events: [], comments: [], ...patch };
+  return { ...base, description_md: "", outcome_md: "", external_ref: null, links: [], blockers: [], events: [], comments: [], ...patch };
 }

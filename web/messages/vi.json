@@ -7483,6 +7483,10 @@
       "bodyHint": "Markdown. Một mã như UC ORD-3 trong đó được nối trong knowledge graph.",
       "cancel": "Huỷ",
       "save": "Lưu",
+      "outcomeHeading": "Kết quả",
+      "outcomeNone": "Chưa nêu kết quả: báo cáo hằng ngày dùng mục Kết quả hay Outcome trong mô tả.",
+      "outcome": "Kết quả",
+      "outcomeHint": "Markdown. Task đi tới đâu; báo cáo hằng ngày đọc mục này trước mô tả.",
       "saved": "Đã lưu {ref}"
     },
     "links": {
@@ -7573,6 +7577,7 @@
       "hub": "Evo Agent Hub",
       "created": "đã tạo task",
       "description": "đã sửa mô tả",
+      "outcome": "đã sửa kết quả",
       "status": "đã chuyển từ {from} sang {to}",
       "statusSet": "đã đặt trạng thái {to}",
       "changed": "đã đổi {field} từ {from} sang {to}",

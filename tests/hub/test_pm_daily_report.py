@@ -90,6 +90,19 @@ def test_pm_daily_a_use_case_is_done_through_its_frame_task_and_shows_its_outcom
     ]
 
 
+def test_pm_daily_a_use_case_shows_the_task_outcome_field_before_the_section_of_its_description():
+    case = UseCase("ORD-3", "Cancel an order")
+    described = "x\n\n## Outcome\nFrom the description."
+    given = {"use_cases": (case,), "description_md": described, "events": (moved(SATURDAY, "done"),)}
+
+    def outcome(**more):
+        return report.daily(facts(task(10, "done", **given, **more)), MONDAY)["done_use_cases"][0]["outcome"]
+
+    assert outcome(outcome_md="  Written in the field.\n") == "Written in the field."
+    assert outcome(outcome_md="") == "From the description."
+    assert outcome(outcome_md="   ") == "From the description."
+
+
 def test_pm_daily_the_sprint_scope_is_the_one_it_opened_with_whatever_moved_after():
     opened = at(date(2026, 10, 12))
     sprint = Sprint("Sprint 7", LONG_AGO, date(2026, 10, 12), date(2026, 10, 23), activated_at=opened)

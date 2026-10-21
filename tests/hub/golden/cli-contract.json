@@ -10737,6 +10737,14 @@
         },
         {
           "flags": [
+            "--outcome"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--type"
           ],
           "value": "string",
@@ -10870,6 +10878,7 @@
           "created_at",
           "updated_at",
           "description_md",
+          "outcome_md",
           "external_ref",
           "links",
           "blockers",
@@ -10909,6 +10918,14 @@
         {
           "flags": [
             "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--outcome"
           ],
           "value": "string",
           "required": false,
@@ -11089,6 +11106,7 @@
           "created_at",
           "updated_at",
           "description_md",
+          "outcome_md",
           "external_ref",
           "links",
           "blockers",
@@ -11295,6 +11313,7 @@
           "created_at",
           "updated_at",
           "description_md",
+          "outcome_md",
           "external_ref",
           "links",
           "blockers",
@@ -70544,7 +70563,7 @@
                 }
               ],
               "title": "Outcome",
-              "description": "the section `## Kết quả` or `## Outcome` that ends its description"
+              "description": "its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description"
             }
           },
           "type": "object",
@@ -85174,6 +85193,11 @@
               "type": "string",
               "title": "Description Md"
             },
+            "outcome_md": {
+              "type": "string",
+              "title": "Outcome Md",
+              "description": "what the task came to, markdown; pm reads it before the description's outcome section"
+            },
             "external_ref": {
               "anyOf": [
                 {
@@ -85240,6 +85264,7 @@
             "created_at",
             "updated_at",
             "description_md",
+            "outcome_md",
             "external_ref",
             "links",
             "blockers",
@@ -85275,6 +85300,18 @@
                 }
               ],
               "title": "Description Md"
+            },
+            "outcome_md": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome Md"
             },
             "type": {
               "anyOf": [
@@ -85401,6 +85438,12 @@
               "type": "string",
               "maxLength": 100000,
               "title": "Description Md",
+              "default": ""
+            },
+            "outcome_md": {
+              "type": "string",
+              "maxLength": 100000,
+              "title": "Outcome Md",
               "default": ""
             },
             "type": {

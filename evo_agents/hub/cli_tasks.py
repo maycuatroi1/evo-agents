@@ -53,7 +53,7 @@ ITEM_KEYS = (
     "created_at",
     "updated_at",
 )
-DETAIL_KEYS = (*ITEM_KEYS, "description_md", "external_ref", "links", "blockers", "events", "comments")
+DETAIL_KEYS = (*ITEM_KEYS, "description_md", "outcome_md", "external_ref", "links", "blockers", "events", "comments")
 BLOCKER_KEYS = (
     "id",
     "kind",
@@ -168,6 +168,10 @@ def _print_task(task: dict) -> None:
     if task["description_md"]:
         for line in task["description_md"].splitlines():
             print(f"  | {line}")
+    if task["outcome_md"]:
+        print("  Outcome:")
+        for line in task["outcome_md"].splitlines():
+            print(f"  | {line}")
     for blocker in task["blockers"]:
         print(f"  {_blocker_line(blocker)}")
     if task["links"]:
@@ -219,6 +223,7 @@ def _links(args) -> dict:
 FIELDS = {  # option -> the field of a task it sets
     "title": "title",
     "description": "description_md",
+    "outcome": "outcome_md",
     "type": "type",
     "status": "status",
     "priority": "priority",
@@ -229,7 +234,10 @@ FIELDS = {  # option -> the field of a task it sets
 
 
 def _fields(args) -> dict:
-    return {key: getattr(args, name) for name, key in FIELDS.items() if getattr(args, name) is not None}
+    found = {key: getattr(args, name) for name, key in FIELDS.items() if getattr(args, name) is not None}
+    if found.get("outcome_md") == "-":
+        found["outcome_md"] = sys.stdin.read()
+    return found
 
 
 @client_command
@@ -350,6 +358,9 @@ def _project(parser) -> None:
 def _task_options(parser, *, new: bool) -> None:
     parser.add_argument("--title", required=new, metavar="TEXT")
     parser.add_argument("--description", metavar="MARKDOWN")
+    parser.add_argument(
+        "--outcome", metavar="MARKDOWN", help="what the task came to, read by pm first; - reads stdin, empty clears it"
+    )
     parser.add_argument("--type", metavar="TYPE", help="one of the project's types (default: its first)")
     parser.add_argument("--status", metavar="KEY", help="one of the project's statuses (default: its first)")
     parser.add_argument("--priority", choices=PRIORITIES)

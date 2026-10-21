@@ -55,6 +55,7 @@ class TaskInput:
 
     title: str
     description_md: str = ""
+    outcome_md: str = ""
     type: str | None = None
     status: str | None = None
     priority: str = "medium"
@@ -251,6 +252,7 @@ async def create(
         "type": _type(settings, task.type),
         "title": task.title,
         "description_md": task.description_md,
+        "outcome_md": task.outcome_md,
         "status": _status(settings, task.status),
         "priority": _priority(task.priority),
         "due_on": task.due_on,
@@ -270,7 +272,7 @@ async def create(
     return values["number"]
 
 
-FIELDS = ("title", "description_md", "type", "status", "priority", "due_on", "sprint", "parent")
+FIELDS = ("title", "description_md", "outcome_md", "type", "status", "priority", "due_on", "sprint", "parent")
 
 
 async def _relation(conn: AsyncConnection, writer: Writer, row: TaskRow, name: str, value: str | None):
@@ -319,8 +321,8 @@ async def edit(conn: AsyncConnection, writer: Writer, row: TaskRow, changes: Tas
         await conn.execute(update(t).where(t.c.id == row.id).values(**columns, updated_at=func.now()))
         for name, (old, new, _) in found.items():
             shown = name.removesuffix("_id")
-            if shown == "description_md":
-                await record(conn, row.id, writer.user_id, "description")
+            if shown in ("description_md", "outcome_md"):
+                await record(conn, row.id, writer.user_id, shown.removesuffix("_md"))
             else:
                 await record(conn, row.id, writer.user_id, shown, old, new)
     slots = _slots(changes.assignees, changes.roles)

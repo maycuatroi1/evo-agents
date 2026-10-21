@@ -35,6 +35,7 @@ class TaskRow:
     type: str
     title: str
     description_md: str
+    outcome_md: str
     status: str
     priority: str
     due_on: date | None
@@ -151,6 +152,7 @@ def _tasks_query(project_id: int):
             t.c.type,
             t.c.title,
             t.c.description_md,
+            t.c.outcome_md,
             t.c.status,
             t.c.priority,
             t.c.due_on,
