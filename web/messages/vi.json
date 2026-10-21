@@ -6538,6 +6538,8 @@
       "approvalsTitle": "Phê duyệt",
       "approvalsCaption": "Phê duyệt v{version} theo vai trò",
       "policyNone": "Một lượt duyệt của người có vai trò ghi chưa viết version nào kể từ {since} là đủ.",
+      "policyNoneSelf": "Một lượt duyệt của người có vai trò ghi là đủ, kể cả lượt của chính người viết.",
+      "selfApproval": "Dự án {project} đã bật tự duyệt: người viết một version cũng duyệt được version đó.",
       "policy": "Bắt buộc: {required}. Không bắt buộc: {optional}.",
       "nobody": "không có",
       "noApprovals": "Vòng này chưa có lượt duyệt nào.",

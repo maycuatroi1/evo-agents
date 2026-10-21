@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pluginKeys } from "@/lib/plugin-queries";
 import { queryKeys } from "@/lib/queries";
 import { documentOf, ITEMS } from "@/test/fixtures/srs";
 import { renderVi } from "@/test/render";
@@ -14,6 +15,7 @@ import { DocumentPage } from "./document-page";
 import { ItemBody } from "./item-body";
 import { itemHref } from "./links";
 import { ReviewForm } from "./review-form";
+import { ReviewPage } from "./review-page";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -110,5 +112,37 @@ describe("ReviewForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Hãy ghi cần sửa gì.");
     expect(screen.getByTestId("srs-review-note")).toHaveAttribute("aria-invalid", "true");
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReviewPage", () => {
+  /** The client of `seeded`, signed in as alice, the author of v3 in review, with the config's `self_approval`. */
+  function asAuthor(selfApproval: boolean) {
+    const client = seeded("writer");
+    client.setQueryData(queryKeys.whoami, {
+      login: "alice",
+      admin: false,
+      token: { kind: "web", scopes: [], expires_at: null },
+      grants: [{ project: PROJECT, role: "writer", max_level: "internal" }],
+    });
+    const field = { name: "self_approval", value: selfApproval, secret: false, layer: selfApproval ? "project" : "default", version: selfApproval ? 1 : null };
+    client.setQueryData(pluginKeys.effective(PROJECT, "srs"), { plugin: "srs", version: "1.0.0", project: PROJECT, agent: "default", fields: [field], problems: [], digest: "d" });
+    return client;
+  }
+
+  it("tells the author they cannot review their version, and gives them the form once self-approval is on", () => {
+    const page = <ReviewPage project={PROJECT} slug="demo-shop" number={3} initialError={null} />;
+    const off = withClient(page, asAuthor(false));
+    expect(screen.getByTestId("srs-review-blocked")).toHaveTextContent("Bạn không duyệt được v3");
+    expect(screen.getByTestId("srs-review-blocked")).toHaveTextContent("Bạn đã viết v3 kể từ v2");
+    expect(screen.queryByTestId("srs-self-approval")).toBeNull();
+    expect(screen.queryByTestId("srs-review-submit")).toBeNull();
+    off.unmount();
+
+    withClient(page, asAuthor(true));
+    expect(screen.queryByTestId("srs-review-blocked")).toBeNull();
+    expect(screen.getByTestId("srs-review-submit")).toBeInTheDocument();
+    expect(screen.getByTestId("srs-self-approval")).toHaveTextContent("Dự án demo đã bật tự duyệt");
+    expect(screen.getByTestId("srs-approvals")).toHaveTextContent("kể cả lượt của chính người viết");
   });
 });

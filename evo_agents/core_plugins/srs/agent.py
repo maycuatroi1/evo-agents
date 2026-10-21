@@ -12,9 +12,9 @@ does too: what a tool answers reaches the machine the agent runs on.
   ``read``'s list of documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
 - ``propose`` answers the agent of a chat run of @ba alone (the profile of the project's agent type ``ba``, while it
   is on). Its changes, checked as a save is, become the document's next version, written as the person and drafted by
-  the run, and go to review at once; the person, its author, never approves it. Its schema takes no drop, and a code
-  an item holds never changes (``writes.store_problems``). A version it sends to review is reviewed by @ba in turn
-  (``auto_review``).
+  the run, and go to review at once; the person, its author, never approves it unless the project turned the
+  config's ``self_approval`` on, and the answer says which. Its schema takes no drop, and a code an item holds never
+  changes (``writes.store_problems``). A version it sends to review is reviewed by @ba in turn (``auto_review``).
 - ``comment`` answers the agent of a run of @ba: a chat run, or the review run of ``auto_review``. The comment is the
   person's, drafted by the run (``srs_comments.run_id``).
 
@@ -325,11 +325,13 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     review = await review_entered(conn, access, doc, sent)
     new = await store.snapshot(conn, sent)
     since = latest.version.number
-    said = [
-        f"Version {made} of {slug} is in review, drafted by run #{who.run_id} and written as {who.person.login}, who "
-        "therefore does not approve it: another member of the project does.",
-        f"Compare it with version {since}: {compare_path(access.name, slug, since, made)}",
-    ]
+    login = who.person.login
+    head = f"Version {made} of {slug} is in review, drafted by run #{who.run_id} and written as {login}"
+    if settings.self_approval:
+        approver = f"{head}. Self-approval is on in project {access.name}, so {login} may approve it as any writer may."
+    else:
+        approver = f"{head}, who therefore does not approve it: another member of the project does."
+    said = [approver, f"Compare it with version {since}: {compare_path(access.name, slug, since, made)}"]
     if review is not None:
         said.append(f"@{BA} reviews it in run #{review}; its comments are advice and block no approval.")
     return "\n".join([*said, "", _changes_text(slug, since, made, latest.doc, new.doc)])

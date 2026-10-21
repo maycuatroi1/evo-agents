@@ -6538,6 +6538,8 @@
       "approvalsTitle": "Approvals",
       "approvalsCaption": "Approvals of v{version} by role",
       "policyNone": "One approval of a writer who wrote none of the versions since {since} approves it.",
+      "policyNoneSelf": "One approval of a writer approves it, its author's included.",
+      "selfApproval": "Self-approval is on in {project}: the author of a version may approve it too.",
       "policy": "Required: {required}. Optional: {optional}.",
       "nobody": "none",
       "noApprovals": "No approval yet in this round.",
