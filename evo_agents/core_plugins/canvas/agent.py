@@ -20,7 +20,8 @@ written.
   it, so it reads nothing but its items and changes, proposes and adds nothing.
 
 Nothing here moves a claim to validated (``rules.check`` refuses an agent that, whoever asked), confirms evidence,
-decides a proposal or a baseline: those routes refuse the token of a run.
+decides a proposal or a baseline: those routes refuse the token of a run. An edit or an undo queues a build of the
+project's knowledge graph, as the routes do.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from evo_agents.core_plugins.canvas.commands import undo_command, undone_text
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.tools import AGENT_EVIDENCE_KINDS
 from evo_agents.hub import signals, tables
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.signals import readable
 from evo_agents.hub.tables_canvas import CELLS
@@ -47,7 +49,7 @@ DEFAULT_DAYS = 30
 DEFAULT_LIMIT = 50
 FEEDBACK_CHARS = 300  # of a piece of feedback a series shows
 RACE = "another write in the project took a claim's number at the same moment: nothing was written; try again"
-CLAIM_FIELDS = ("cell", "text", "status", "confidence", "position", "test_card", "archived")
+CLAIM_FIELDS = ("cell", "text", "status", "confidence", "position", "test_card", "archived", "use_cases", "signal_keys")
 
 
 def _text(text: str, *, error: bool = False) -> dict:
@@ -111,6 +113,8 @@ def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list
     return [
         f"- {row.code} [{row.status}, {row.confidence}, rev {row.rev}{archived}] {row.text}",
         f"  test card: {_card_text(row.test_card)}",
+        *([f"  use cases: {', '.join(row.use_cases)}"] if row.use_cases else []),
+        *([f"  signal keys: {', '.join(row.signal_keys)}"] if row.signal_keys else []),
         f"  {_evidence_counts(evidence)}",
     ]
 
@@ -291,9 +295,21 @@ async def _edit(conn: AsyncConnection, who: Acting, args: dict) -> str:
     return _outcomes_text(who, outcomes, found)
 
 
+def _changing(context: CoreContext, work):
+    """``work``, then a build of the project's knowledge graph queued, whose claims the plugin's source gives."""
+
+    async def changing(conn: AsyncConnection, who: Acting, args: dict) -> str:
+        text = await work(conn, who, args)
+        if context.jobs is not None:
+            await queue_if_configured(context.jobs, conn, who.access.project_id, who.access.name)
+        return text
+
+    return changing
+
+
 async def edit(params: dict, context: CoreContext) -> dict:
     """The tool ``canvas__edit``: the member's command, applied at once as an agent's revs for them."""
-    return await _answer(params, context, _edit)
+    return await _answer(params, context, _changing(context, _edit))
 
 
 async def _undo(conn: AsyncConnection, who: Acting, args: dict) -> str:
@@ -313,7 +329,7 @@ async def _undo(conn: AsyncConnection, who: Acting, args: dict) -> str:
 
 async def undo(params: dict, context: CoreContext) -> dict:
     """The tool ``canvas__undo``: the member's last command taken back, or the current rev of claims named."""
-    return await _answer(params, context, _undo)
+    return await _answer(params, context, _changing(context, _undo))
 
 
 def _cards(changes: list[writes.Change]) -> None:

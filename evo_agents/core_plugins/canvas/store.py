@@ -10,7 +10,7 @@ A piece of evidence is read under its own label, so one above what the member ma
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from sqlalchemy import func, select
@@ -60,6 +60,8 @@ class ClaimRow:
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
+    use_cases: list[str] = field(default_factory=list)  # the codes of the use cases it links
+    signal_keys: list[str] = field(default_factory=list)  # the signal keys it links
 
     @property
     def code(self) -> str:
@@ -74,6 +76,8 @@ class ClaimRow:
             confidence=self.confidence,
             test_card=self.test_card,
             archived=self.archived_at is not None,
+            use_cases=tuple(self.use_cases),
+            signal_keys=tuple(self.signal_keys),
         )
 
 
@@ -289,6 +293,8 @@ def _claims_query():
         k.c.created_at,
         k.c.updated_at,
         k.c.archived_at,
+        k.c.use_cases,
+        k.c.signal_keys,
     ).select_from(k.join(users, users.c.id == k.c.created_by))
 
 

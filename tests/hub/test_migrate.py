@@ -1551,6 +1551,30 @@ def test_0071_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
+def test_0072_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0072")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "cell": "solution", "text": "One tap reorders", "label": {}, **owner}
+        conn.execute(insert(k.claims).values(number=1, **claim))  # links nothing by default
+        linked = {"use_cases": ["UC ORD-1"], "signal_keys": ["pantry.stock.outs_per_week"]}
+        conn.execute(insert(k.claims).values(number=2, **claim, **linked))
+        for bad in ({"use_cases": [f"UC ORD-{n}" for n in range(21)]}, {"signal_keys": [f"a.b{n}" for n in range(21)]}):
+            with pytest.raises(errors.CheckViolation):  # at most 20 of each
+                conn.execute(insert(k.claims).values(number=3, **claim, **bad))
+    held = select(k.claims.c.number, k.claims.c.use_cases, k.claims.c.signal_keys).order_by(k.claims.c.number)
+    assert query(hub_db, held) == [(1, [], []), (2, ["UC ORD-1"], ["pantry.stock.outs_per_week"])]
+    move_to(hub_db, "0071", down=True)
+    assert not {"use_cases", "signal_keys"} & columns(hub_db, "canvas_claims")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

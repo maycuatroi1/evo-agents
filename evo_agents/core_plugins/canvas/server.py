@@ -11,6 +11,8 @@ baseline of one claim at once. The agent of a run gets none of these routes: it 
 (``agent``), and a run's token is refused on every decision. Admins give a new canvas a label of its own, and
 archive a canvas or unarchive it. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal
 is the hub's error body, with the claims of a conflict or the problems of an import in ``detail``; nothing is written.
+A write that changes a canvas or its claims queues a build of the project's knowledge graph (``kg``) in its
+transaction, joining one that waits.
 """
 
 from __future__ import annotations
@@ -67,6 +69,7 @@ from evo_agents.core_plugins.canvas.models import (
 )
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -101,6 +104,11 @@ async def _answer(request: Request, work):
         if getattr(exc.orig, "sqlstate", None) not in RACES:
             raise
         return error_response(request, 409, RACE)
+
+
+async def _graph_changed(request: Request, conn: AsyncConnection, access: ProjectAccess) -> None:
+    """Queue a build of the project's knowledge graph, whose canvases and claims the plugin's source gives (``kg``)."""
+    await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
 
 
 async def _opened(conn: AsyncConnection, user, project: str) -> ProjectAccess:
@@ -281,6 +289,7 @@ async def create_canvas(request: Request, project: ProjectName, body: CanvasIn, 
         store.writer(access, "making a canvas")
         writer = writes.person(access, user.user_id, sink)
         await writes.create_canvas(conn, writer, body.slug, body.name, body.description, _label(access, body.label))
+        await _graph_changed(request, conn, access)
         return await _detail(conn, access, await store.canvas(conn, access, body.slug, sink), False, sink)
 
     return await _answer(request, work)
@@ -292,6 +301,7 @@ async def _archived(request: Request, project: str, slug: str, user, sink: str |
         store.admin(access, "archiving a canvas" if archived else "unarchiving a canvas")
         canvas = await store.canvas(conn, access, slug, sink, lock=True)
         await writes.set_archived(conn, access, user.user_id, canvas, archived)
+        await _graph_changed(request, conn, access)
         row = await store.canvas(conn, access, slug, sink)
         return CanvasSummary(**summary_values(row, (await store.counts(conn, [row.id]))[row.id]))
 
@@ -324,6 +334,8 @@ async def edit_claims(
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "editing claims")
         changes = [writes.Change(item.claim, item.base_rev, item.values()) for item in body.changes]
         outcomes = await writes.edit(conn, writer, canvas, changes, body.reason)
+        if any(outcome.written for outcome in outcomes):
+            await _graph_changed(request, conn, access)
         return await _edited(conn, access, canvas, outcomes, sink)
 
     return await _answer(request, work)
@@ -340,6 +352,7 @@ async def undo_claims(
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "undoing a change")
         targets = [(item.claim, item.rev) for item in body.revs]
         outcomes = await writes.undo(conn, writer, canvas, targets, body.reason)
+        await _graph_changed(request, conn, access)
         return await _edited(conn, access, canvas, outcomes, sink)
 
     return await _answer(request, work)
@@ -441,10 +454,12 @@ async def list_proposals(
     return await _answer(request, work)
 
 
-async def _decide(request: Request, project: str, slug: str, proposal_id: int, user, sink, act):
+async def _decide(request: Request, project: str, slug: str, proposal_id: int, user, sink, act, *, writes_claim=False):
     async def work(conn):
-        _, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding a proposal")
+        access, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding a proposal")
         await act(conn, writer, canvas)
+        if writes_claim:
+            await _graph_changed(request, conn, access)
         row = await proposals.proposal(conn, canvas, proposal_id)
         return proposal_model(row, await proposals.changes_of(conn, row))
 
@@ -461,7 +476,7 @@ async def accept_proposal(
     async def act(conn, writer, canvas):
         await proposals.accept(conn, writer, canvas, proposal_id)
 
-    return await _decide(request, project, slug, proposal_id, user, sink, act)
+    return await _decide(request, project, slug, proposal_id, user, sink, act, writes_claim=True)
 
 
 @router.post("/{project}/canvases/{slug}/proposals/{proposal_id}/reject", response_model=CanvasProposal)
@@ -514,6 +529,8 @@ async def import_canvas(
         writer = writes.person(access, user.user_id, sink)
         label = _label(access, body.label)
         report = await transfer.run_import(conn, writer, body.data, label=label, dry_run=body.dry_run)
+        if not body.dry_run:
+            await _graph_changed(request, conn, access)
         return import_model(report, body.dry_run)
 
     return await _answer(request, work)
@@ -624,6 +641,7 @@ async def decide_item(
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding an item of a baseline")
         decision = decisions.Decision(ref, body.decision, body.deadline, body.reason)
         row = await decisions.decide(conn, writer, canvas, number, decision, await baselines.today(conn))
+        await _graph_changed(request, conn, access)
         return await _baseline_model(conn, access, user, canvas, row, sink)
 
     return await _answer(request, work)

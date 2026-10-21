@@ -16,6 +16,7 @@ from evo_agents.core_plugins.canvas.content import (
     CARD_FIELDS,
     COMPARATORS,
     MAX_CARD_TEXT_CHARS,
+    MAX_LINKS,
     MAX_SAMPLES,
     MAX_TENANT_CHARS,
     MAX_WINDOW_DAYS,
@@ -51,6 +52,8 @@ from evo_agents.hub.tables_canvas import (
 
 CODE = r"^(?:[Cc][Ll]-)?[1-9][0-9]{0,8}$"  # content.CODE
 Reason = Field("", max_length=MAX_REASON_CHARS, description="why, kept with each rev it writes")
+UseCases = Field(description="the codes of the use cases of the plugin srs it links, sorted")
+SignalKeys = Field(description="the keys of the project's signals it links, sorted")
 CardText = Field(None, min_length=1, max_length=MAX_CARD_TEXT_CHARS)
 
 
@@ -117,6 +120,8 @@ class CanvasContent(BaseModel):
     confidence: Literal[CONFIDENCES]
     test_card: CanvasTestCard | None
     archived: bool
+    use_cases: list[str] = UseCases
+    signal_keys: list[str] = SignalKeys
 
 
 class CanvasClaim(BaseModel):
@@ -131,6 +136,8 @@ class CanvasClaim(BaseModel):
     confidence: Literal[CONFIDENCES]
     test_card: CanvasTestCard | None
     archived: bool
+    use_cases: list[str] = UseCases
+    signal_keys: list[str] = SignalKeys
     rev: int = Field(description="the rev it is at: an edit names it as base_rev")
     evidence_count: int = Field(description="the pieces of evidence the caller may read, withdrawn ones included")
     real_support_count: int = Field(description="those that are real and support it, which validated needs")
@@ -344,7 +351,8 @@ class CanvasIn(BaseModel):
 
 class CanvasChangeIn(BaseModel):
     """One change of an edit: the fields it sets on ``claim``, read at ``base_rev``; without ``claim``, a new claim
-    with at least a cell and a text. ``test_card`` null takes the card away."""
+    with at least a cell and a text. ``test_card`` null takes the card away; ``use_cases`` and ``signal_keys`` give
+    the whole list of links, each one a change adds checked against the project's SRS and registry of signals."""
 
     claim: str | None = Field(None, pattern=CODE, description="CL-3, or 3; left out: a new claim")
     base_rev: int | None = Field(None, ge=1)
@@ -355,6 +363,18 @@ class CanvasChangeIn(BaseModel):
     confidence: Literal[CONFIDENCES] | None = None
     test_card: CanvasTestCardIn | None = None
     archived: bool | None = None
+    use_cases: list[str] | None = Field(
+        None,
+        max_length=MAX_LINKS,
+        description="the codes of the use cases of the plugin srs that realize it, as UC ORD-1 or an alias: the whole "
+        "list, [] for none",
+    )
+    signal_keys: list[str] | None = Field(
+        None,
+        max_length=MAX_LINKS,
+        description="the keys of the project's signals that measure it, as declared in its registry: the whole list, [] "
+        "for none",
+    )
 
     def values(self) -> dict:
         given = self.model_dump(exclude_unset=True, exclude={"claim", "base_rev"}, mode="json")
@@ -428,6 +448,8 @@ def claim_model(row: ClaimRow, evidence: list[EvidenceRow]) -> CanvasClaim:
         confidence=row.confidence,
         test_card=card_model(row.test_card),
         archived=row.archived_at is not None,
+        use_cases=list(row.use_cases),
+        signal_keys=list(row.signal_keys),
         rev=row.rev,
         evidence_count=len(evidence),
         real_support_count=len(rules.real_support([item.facts() for item in evidence])),
