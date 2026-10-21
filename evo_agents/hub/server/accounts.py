@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.account_providers import Category, Provider, category_of, provider_of
 from evo_agents.hub.accounts import (
     ACCOUNT_STATES,
     DEFAULT_COOLDOWN_SECONDS,
@@ -75,6 +76,8 @@ class Account(BaseModel):
 
     name: str
     env_var: str = Field(description="the variable it sets")
+    provider: Provider = Field(description="who it signs in to, read from its variable (``account_providers``)")
+    category: Category = Field(description="model: the runtime's own sign-in, whose runs cost; service: any other")
     projects: list[str] = Field(description="the projects whose runs may take it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
     auth: Literal["token", "oauth"] = Field(
@@ -95,8 +98,12 @@ class Account(BaseModel):
     last_usage_at: datetime | None = Field(description="when a run reported that usage")
     runs_24h: int = Field(description="the runs that took it in the last 24 hours")
     runs_7d: int = Field(description="the runs that took it in the last 7 days")
-    cost_24h_usd: float = Field(description="what those runs cost in the last 24 hours, in USD, from their usage")
-    cost_7d_usd: float = Field(description="what those runs cost in the last 7 days, in USD, an estimate")
+    cost_24h_usd: float | None = Field(
+        description="what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
+    )
+    cost_7d_usd: float | None = Field(
+        description="what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
+    )
     held_by: list[HeldBy] = Field(description="the runs a worker holds now with it")
 
 
@@ -167,7 +174,12 @@ def _account(row, figures: Figures | None = None) -> Account:
     state = account_state(row.paused_at, row.cooldown_until, None if oauth else row.expires_at, now)
     if oauth and state == "cooling" and (row.cooldown_reason or "").startswith(RELOGIN_REASON):
         state = "needs-relogin"
-    return Account(**values, state=state, **vars(figures or Figures()))
+    provider = provider_of(row.env_var)
+    category = category_of(provider)
+    figured = vars(figures or Figures())
+    if category == "service":  # a run's cost is one number for the run, kept by its model account
+        figured |= {"cost_24h_usd": None, "cost_7d_usd": None}
+    return Account(**values, provider=provider, category=category, state=state, **figured)
 
 
 @router.get("/accounts", response_model=list[Account])
