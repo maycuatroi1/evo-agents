@@ -535,11 +535,10 @@ def test_a_worker_handed_no_release_pass_checks_no_schedule_and_says_so(world, c
 def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkeypatch, tmp_path):
     import argparse
 
-    from evo_agents.hub.server.loop.tick import tick as loop_tick
-
     from evo_agents.hub import cli as hub_cli
     from evo_agents.hub import worker
     from evo_agents.hub.config import S3_VARIABLES
+    from evo_agents.hub.server.loop.tick import tick as loop_tick
 
     for name, value in zip(S3_VARIABLES, ("https://s3.northwind.test", "northwind-hub", "id", "secret"), strict=True):
         monkeypatch.setenv(name, value)
