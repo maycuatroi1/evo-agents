@@ -15378,7 +15378,7 @@ export interface components {
             done_at: string;
             /**
              * Outcome
-             * @description the section `## Kết quả` or `## Outcome` that ends its description
+             * @description its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description
              */
             outcome: string | null;
         };
@@ -21629,6 +21629,11 @@ export interface components {
             /** Description Md */
             description_md: string;
             /**
+             * Outcome Md
+             * @description what the task came to, markdown; pm reads it before the description's outcome section
+             */
+            outcome_md: string;
+            /**
              * External Ref
              * @description where an import took it from, and what it named it could not link
              */
@@ -21657,6 +21662,8 @@ export interface components {
             title?: string | null;
             /** Description Md */
             description_md?: string | null;
+            /** Outcome Md */
+            outcome_md?: string | null;
             /** Type */
             type?: string | null;
             /** Status */
@@ -21691,6 +21698,11 @@ export interface components {
              * @default
              */
             description_md: string;
+            /**
+             * Outcome Md
+             * @default
+             */
+            outcome_md: string;
             /** Type */
             type?: string | null;
             /** Status */

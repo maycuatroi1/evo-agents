@@ -7,6 +7,7 @@ The parsing runs without Postgres; everything that needs the hub skips without E
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -196,3 +197,33 @@ def test_hub_task_cli_blocks_and_unblocks_a_task_on_a_task_a_member_or_a_text(hu
     assert [t["ref"] for t in still] == ["T-2"]
     refused = task(hub, monkeypatch, capsys, "alice", "block", "T-1", "--waiting-on", "T-1", *reason)
     assert refused.code == 1 and "never waits on itself" in refused.err
+
+
+@needs_pg
+def test_hub_task_outcome_is_set_on_create_and_edit_and_read_from_stdin(hub, monkeypatch, capsys):
+    made = as_json(
+        task(hub, monkeypatch, capsys, "alice", "create", "--title", "Cancel", "--outcome", "Done.", "--json")
+    )
+    assert_json_keys("hub task create", made)
+    assert made["outcome_md"] == "Done."
+    stdin = io.StringIO("Orders cancel in one tap.\n\nSecond line.\n")
+    piped = run_cli(
+        monkeypatch,
+        capsys,
+        hub.homes["alice"],
+        "hub",
+        "task",
+        "edit",
+        "T-1",
+        "--outcome",
+        "-",
+        "--project",
+        PROJECT,
+        "--json",
+        stdin=stdin,
+    )
+    assert as_json(piped)["outcome_md"] == "Orders cancel in one tap.\n\nSecond line.\n"
+    shown = ok(task(hub, monkeypatch, capsys, "bao", "show", "T-1")).out
+    assert "  Outcome:\n  | Orders cancel in one tap.\n" in shown and "alice outcome" in shown
+    cleared = as_json(task(hub, monkeypatch, capsys, "alice", "edit", "T-1", "--outcome", "", "--json"))
+    assert cleared["outcome_md"] == ""

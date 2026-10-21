@@ -73,6 +73,7 @@ class Task:
     due_on: date | None = None
     sprint: str | None = None
     description_md: str = ""
+    outcome_md: str = ""
     frame: bool = False  # the frame task an SRS approval made
     visible: bool = True  # whether the reader may see it; a task they may not still counts
     assignees: tuple[str, ...] = ()

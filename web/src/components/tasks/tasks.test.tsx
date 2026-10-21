@@ -13,6 +13,7 @@ import type { Task, TaskBlocker, TaskDetail, TaskEdit, TaskLink } from "./api";
 import { tasksKeys } from "./api";
 import { BoardPage } from "./board-page";
 import { TaskBlockers } from "./task-blockers";
+import { TaskDescription } from "./task-description";
 import { TaskLinks } from "./task-links";
 
 vi.mock("next/navigation", () => ({
@@ -289,5 +290,30 @@ describe("TaskBlockers", () => {
         body: { reason: "No data yet", waiting_member: "chi", waiting_task: null, waiting_text: null },
       }),
     );
+  });
+});
+
+describe("TaskDescription outcome", () => {
+  it("shows the outcome of a task, or says the report falls back to the description's section", () => {
+    const { unmount } = withClient(<TaskDescription project={PROJECT} task={detailOf(TASKS[2], { outcome_md: "Orders cancel in one tap." })} writer={false} />, seeded("reader"));
+    expect(screen.getByTestId("task-outcome-body")).toHaveTextContent("Orders cancel in one tap.");
+    unmount();
+    withClient(<TaskDescription project={PROJECT} task={detailOf(TASKS[2])} writer={false} />, seeded("reader"));
+    expect(screen.queryByTestId("task-outcome-body")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-outcome")).toHaveTextContent("Kết quả");
+  });
+
+  it("lets a writer edit the outcome and sends only the field that changed", async () => {
+    const user = userEvent.setup();
+    const task = detailOf(TASKS[2], { description_md: "Body", outcome_md: "Old." });
+    answer = () => json({ ...task, outcome_md: "Shipped." });
+    withClient(<TaskDescription project={PROJECT} task={task} writer />, seeded("writer"));
+    await user.click(screen.getByTestId("task-edit"));
+    const field = screen.getByTestId("task-editor-outcome");
+    expect(field).toHaveValue("Old.");
+    await user.clear(field);
+    await user.type(field, "Shipped.");
+    await user.click(screen.getByTestId("task-editor-save"));
+    await waitFor(() => expect(sent).toContainEqual({ method: "PATCH", path: "/v1/x/tasks/demo/tasks/T-14", body: { outcome_md: "Shipped." } }));
   });
 });
