@@ -4,6 +4,10 @@ import tempfile
 
 import pytest
 
+# No test asks GitHub for the pull requests of a repo: a git source whose origin is on github.com reads none
+# (evo_agents.kg.connectors.github). The tests of that reading turn it on and stand in for GitHub.
+os.environ["EVO_KG_PULLS"] = "0"
+
 if os.name == "nt":
     _setenv, _delenv = pytest.MonkeyPatch.setenv, pytest.MonkeyPatch.delenv
 
@@ -20,6 +24,13 @@ if os.name == "nt":
     pytest.MonkeyPatch.setenv = _setenv_home
     pytest.MonkeyPatch.delenv = _delenv_home
     os.environ["HOME"] = os.environ["USERPROFILE"] = tempfile.mkdtemp(prefix="evo-home-")
+
+
+@pytest.fixture(autouse=True)
+def _no_hub_home_of_this_machine(monkeypatch):
+    """No EVO_HUB_HOME of the shell running pytest: a test that points HOME at a temporary directory expects the
+    hub login under it, and must never read, overwrite or delete the login of the machine somewhere else."""
+    monkeypatch.delenv("EVO_HUB_HOME", raising=False)
 
 
 def pytest_addoption(parser):

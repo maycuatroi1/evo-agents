@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from evo_agents.hub import config
+from evo_agents.plugins.environment import NPROC
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "deploy/hub/docker-compose.yml"
@@ -170,3 +171,104 @@ def test_compose_defaults_are_the_hub_config_defaults():
         "runs with another value than the code and docs/hub.md say; make the compose default empty, or equal to "
         "the hub's:\n" + "\n".join(differ)
     )
+
+
+# The plugins service, which runs third-party code
+
+PLUGINS_ENVIRONMENT = {"EVO_HUB_PLUGIN_HOST_TOKEN", "EVO_HUB_LOG_LEVEL"}  # all the plugin host reads
+PLUGINS_CAPABILITIES = ["SETUID", "SETGID", "CHOWN", "KILL"]  # a user of its own for each backend, and no more
+
+
+def test_compose_gives_the_plugin_isolation_service_no_hub_variable():
+    plugins = compose()["services"]["plugins"]
+    environment = plugins["environment"]
+    assert isinstance(environment, dict) and environment is not passed_by_compose(), "never *hub-environment"
+    assert set(environment) == PLUGINS_ENVIRONMENT, (
+        f"the plugins service runs third-party code and takes only {sorted(PLUGINS_ENVIRONMENT)}; "
+        f"{sorted(set(environment) - PLUGINS_ENVIRONMENT)} would reach it"
+    )
+    assert "env_file" not in plugins and "secrets" not in plugins
+    assert set(plugins["networks"]) == {"default"}, "not on the platform's network, where the database is"
+
+
+def test_compose_runs_the_plugin_isolation_service_as_root_with_four_capabilities_and_limits():
+    services = compose()["services"]
+    plugins = services["plugins"]
+    assert plugins["user"] == "0:0" and plugins["cap_drop"] == ["ALL"]
+    assert plugins["cap_add"] == PLUGINS_CAPABILITIES
+    assert plugins["init"] is True and "no-new-privileges:true" in plugins["security_opt"]
+    assert {"cpus", "mem_limit", "pids_limit"} <= set(plugins), "a backend must not starve the hub's machine"
+    pids = int(default_of("EVO_HUB_PLUGINS_PIDS", plugins["pids_limit"]))
+    assert pids >= (8 + 1) * NPROC, (
+        f"the review of PR #72: pids_limit {pids} with {NPROC} processes per plugin user lets a few plugins at their "
+        "limit take every pid of the service; eight of them must leave as much again to the host"
+    )
+    mounts = {volume.split(":")[1] for volume in plugins["volumes"]}
+    assert mounts == {"/plugins"} and "--data-dir" in plugins["command"] and "/plugins" in plugins["command"]
+    others = {volume.split(":")[0] for name in ("api", "worker") for volume in services[name].get("volumes", [])}
+    assert not others & {volume.split(":")[0] for volume in plugins["volumes"]}, "the plugins volume is its own"
+
+
+# The build: a hub's own core plugins beside the pinned ones (docs/hub-deployment.md, section Core plugins in the image)
+
+BUILD = "x-hub-build"
+EXTRA = "EVO_HUB_EXTRA_CORE_PLUGINS"  # a build argument: the requirements, no secret
+INDEX = "EVO_HUB_CORE_PLUGIN_INDEX_URL"  # the index URL, which may hold a credential: the build secret alone
+INDEX_SECRET = "core_plugin_index"
+HUB_SERVICES = ("api", "worker", "plugins")  # the services of the hub's image
+DOCKERFILE = ROOT / "deploy/hub/Dockerfile"
+DOCKERIGNORE = ROOT / "deploy/hub/Dockerfile.dockerignore"
+PIP_FLAGS = "--no-deps --require-hashes --only-binary=:all:"
+
+
+def test_compose_builds_the_hub_services_from_one_definition_with_the_extra_plugins_and_the_index_secret():
+    data = compose()
+    build = data[BUILD]
+    assert build["context"] == "../.." and build["dockerfile"] == "deploy/hub/Dockerfile"
+    assert build["args"] == {EXTRA: f"${{{EXTRA}:-}}"}, "unset must build as before: an empty argument"
+    assert build["secrets"] == [INDEX_SECRET]
+    assert data["secrets"] == {INDEX_SECRET: {"environment": INDEX}}
+    for service in HUB_SERVICES:
+        assert data["services"][service]["build"] is build, f"{service} must take build: *hub-build"
+
+
+def test_compose_keeps_the_build_variables_out_of_every_service():
+    data = compose()
+    assert not {EXTRA, INDEX} & set(passed_by_compose()), f"{BLOCK} passes what config.py reads, and it reads neither"
+    for name, service in data["services"].items():
+        environment = service.get("environment") or {}
+        text = yaml.safe_dump(environment)
+        assert EXTRA not in text and INDEX not in text, f"{name} would hold the build's variables at run time"
+        assert "secrets" not in service, f"{name}: a service's secret is a file in its running container"
+        assert "env_file" not in service
+    assert {EXTRA, INDEX} <= listed_in_env_example()
+
+
+def _instructions(text: str) -> list[str]:
+    """The instructions of a Dockerfile, each on one line, comments left out."""
+    lines = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+    return [" ".join(part.split()) for part in "\n".join(lines).replace("\\\n", " ").splitlines() if part.strip()]
+
+
+def test_dockerfile_installs_the_pinned_then_the_extra_core_plugins_into_the_venv_and_checks_them():
+    instructions = _instructions(DOCKERFILE.read_text())
+    stages = [index for index, line in enumerate(instructions) if line.startswith("FROM ")]
+    assert len(stages) == 2, "a build stage and the runtime stage"
+    build, runtime = instructions[stages[0] : stages[1]], instructions[stages[1] :]
+    joined = "\n".join(build)
+    pinned = joined.index("deploy/hub/core-plugins.txt /tmp/core-plugins.txt")  # copied into the build stage
+    hub = joined.index("pip install '.[hub-server,graphify]'")
+    extra = joined.index(f'ARG {EXTRA}=""')
+    secret = joined.index(f"RUN --mount=type=secret,id={INDEX_SECRET},required=false")
+    check = joined.index("python -I -m evo_agents.plugins.core_install check")
+    assert hub < pinned < extra < secret < check, "the hub, then the pinned plugins, then the extra ones, then check"
+    installs = [line for line in build if "-r /tmp/" in line]
+    assert len(installs) == 2 and all(line.count(PIP_FLAGS) == 1 for line in installs), (
+        f"pip installs the core plugins with {PIP_FLAGS}: exactly the lines core_install wrote, each against its hash"
+    )
+    assert "--index-url https://pypi.org/simple -r /tmp/pinned.txt" in installs[0], "the pinned ones from PyPI alone"
+    assert "/run/secrets/core_plugin_index" in installs[1] and "pip check" in installs[1]
+    later = "\n".join(runtime)
+    assert EXTRA not in later and "secret" not in later, "the runtime stage gets neither the argument nor the secret"
+    assert [line for line in runtime if line.startswith("COPY")] == ["COPY --from=build /opt/venv /opt/venv"]
+    assert "!deploy/hub/core-plugins.txt" in DOCKERIGNORE.read_text().splitlines()

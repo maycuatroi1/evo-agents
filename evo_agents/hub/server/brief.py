@@ -13,6 +13,8 @@ included, through the outbox (``notifications.notify``). The brief holds:
 - the merges into a default branch the night's runs reported (merge_default_branch notices, the hub's merges of the
   Curator's pull requests among them), and what waits for the owner to merge or approve it: the project's runs in
   review, and the Curator's pull requests (or merge requests) still open, each named by its Builder's run and its link;
+- the Curator's changes still planned, each with why the night shift has not built it yet (``changes.queue_builder``
+  keeps it as the change's reason);
 - the decisions of the project that wait for the owner's answer, and the proposals that wait for an admin's, with how
   many of them are in the owner's Inbox;
 - the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning.
@@ -41,8 +43,9 @@ from evo_agents.hub.server.projects import ProjectAccess
 
 log = logging.getLogger(__name__)
 
-MAX_LISTED = 10  # runs, merges, runs in review, decisions and proposals a brief names; it counts all of them
+MAX_LISTED = 10  # runs, merges, runs in review, planned changes, decisions and proposals a brief names; it counts all
 QUESTION_CHARS = 160  # of a decision's question in the brief
+REASON_CHARS = 400  # of why a planned change waits, in the brief
 MAX_BRIEF_BYTES = 64 * 1024  # curator_briefs.body as JSON, as schema 0015 bounds it
 
 
@@ -149,6 +152,55 @@ async def _awaiting(conn: AsyncConnection, project_id: int) -> tuple[int, list[d
             }
         )
     return total, listed[:MAX_LISTED]
+
+
+async def _planned(conn: AsyncConnection, access: ProjectAccess) -> tuple[int, list[dict]]:
+    """The Curator's changes still planned whose proposal the owner may read: how many, and the oldest few, each with
+    why it waits (its reason; null when the night shift has not passed over it, or queued its Builder)."""
+    c, p = tables.curator_changes, tables.proposals
+    query = (
+        select(c.c.id, c.c.proposal_id, c.c.plan_id, c.c.repo, c.c.tier, c.c.reason, c.c.builder_run_id, p.c.label)
+        .join_from(c, p, p.c.id == c.c.proposal_id)
+        .where(c.c.project_id == access.project_id, c.c.state == "planned")
+        .order_by(c.c.id)
+    )
+    through = plan_routes._sink(access, None)
+    readable = [row for row in (await conn.execute(query)).all() if access.visible(row.label, through)]
+    listed = [
+        {
+            "id": row.id,
+            "proposal_id": row.proposal_id,
+            "plan_id": row.plan_id,
+            "repo": row.repo,
+            "tier": row.tier,
+            "builder_run_id": row.builder_run_id,
+            "reason": one_line(row.reason, REASON_CHARS) if row.reason else None,
+        }
+        for row in readable[:MAX_LISTED]
+    ]
+    return len(readable), listed
+
+
+def _waits_for(change: dict) -> str:
+    """Why a planned change of the brief waits, in words."""
+    if change["reason"]:
+        return change["reason"]
+    if change["builder_run_id"]:
+        return f"its Builder is run #{change['builder_run_id']}"
+    return "the night shift has not looked at it yet"
+
+
+def _planned_blocks(planned: dict) -> list[str]:
+    """The brief's paragraphs on the Curator's changes still planned: how many, then a line for each listed; none
+    when there is none."""
+    if not planned["total"]:
+        return []
+    lines = [
+        f"- change #{item['id']} ({item['plan_id']}, proposal #{item['proposal_id']}, tier {item['tier']}, "
+        f"{item['repo']}): {_waits_for(item)}"
+        for item in planned["listed"]
+    ]
+    return [f"The Curator's changes waiting to be built: {planned['total']}.", *(["\n".join(lines)] if lines else [])]
 
 
 async def _decisions(conn: AsyncConnection, project_id: int, owner_id: int) -> tuple[int, list[dict]]:
@@ -289,6 +341,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     if pulls:
         shown = "; ".join(f"{item['title']}: {item['pull_request'] or 'on GitLab'}" for item in pulls)
         blocks.append(f"The Curator's changes waiting for you to merge them: {shown}.")
+    blocks.extend(_planned_blocks(facts["planned_changes"]))
     blocks.append(f"Decisions waiting for your answer: {decisions['open']}.")
     if decisions["listed"]:
         blocks.append(
@@ -317,6 +370,7 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
     run_ids = [run["id"] for run in listed]
     figures = await night_figures(conn, due.id, night)
     awaiting_total, awaiting = await _awaiting(conn, due.project_id)
+    planned_total, planned = await _planned(conn, access)
     decisions_total, decisions = await _decisions(conn, due.project_id, due.owner_id)
     proposals_total, in_inbox, proposals = await _proposals(conn, access)
     paused = (
@@ -341,6 +395,7 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
         "review_run": await _review(conn, run_ids),
         "merged": (await _merged(conn, run_ids))[:MAX_LISTED],
         "awaiting_merge": {"total": awaiting_total, "listed": awaiting},
+        "planned_changes": {"total": planned_total, "listed": planned},
         "decisions": {"open": decisions_total, "listed": decisions},
         "proposals": {"open": proposals_total, "in_inbox": in_inbox, "listed": proposals},
         "worker": await _worker(conn, due.worker_id, body["window"]["timezone"]),
@@ -357,6 +412,7 @@ def _details(facts: dict) -> dict:
         "budget_usd": facts["budget_usd"],
         "merged": len(facts["merged"]),
         "awaiting_merge": facts["awaiting_merge"]["total"],
+        "planned_changes": facts["planned_changes"]["total"],
         "open_decisions": facts["decisions"]["open"],
         "open_proposals": facts["proposals"]["open"],
         "worker": worker["name"],
@@ -385,7 +441,9 @@ async def _send(conn: AsyncConnection, due) -> str:
     title, text = compose(due.project, facts, window["timezone"])
     stored = {"title": one_line(title), **facts}
     if len(json.dumps(stored, ensure_ascii=False).encode()) > MAX_BRIEF_BYTES:
-        stored = {key: value for key, value in stored.items() if key not in ("decisions", "proposals")}
+        stored = {
+            key: value for key, value in stored.items() if key not in ("decisions", "proposals", "planned_changes")
+        }
     inserted = (
         await conn.execute(
             pg_insert(b)

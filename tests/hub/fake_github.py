@@ -22,23 +22,42 @@ answers for a login with no account.
 It plays a second App too, the Curator's (``curator_app_id``, ``curator_app_public_key``): a JWT is the App its ``iss``
 names, and each App sees only its own installations (``install(..., app="curator")``). For the Curator's changes it
 keeps repos (``add_repo``: default branch, branch heads, rulesets) and answers, for an installation token that opens the
-repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GET .../rules/branches/{branch} and
-GET .../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass
-Apps; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set) and GET
-.../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them); POST
-.../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
-the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
-once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
-GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
+repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GET .../rules/branches/{branch} and GET
+.../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass Apps;
+GET .../branches/{branch}, GET .../git/trees/{sha} and GET .../compare/{base}...{head} over the commits ``commit`` made
+on the default branch (its tree whole, or cut for a commit of ``cut_trees``; a comparison of two of them, its commits
+oldest first, paged, with its merge base; and of a branch's head ``push`` set, whose merge base is the default branch's
+head at the push); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a commit ``snapshot`` wrote, its files' bytes
+and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
+``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
+GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
+.../status (``ci`` sets them); POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409)
+and a base branch whose ruleset the token's App may not bypass (405), and otherwise merges. It answers git's own POST
+/{o}/{r}.git/git-upload-pack with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and
+an installation token that opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under
+each ref-prefix asked, an annotated tag with the commit it peels to. A pull request names the base's commit it opened
+on, and once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing
+either on GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
 required_status_checks of its own; GET .../pulls/{n}/commits lists the head commit with the message ``push`` gave it
 (``messages``); a pull request says it changes ``claimed_files`` of its branch when the test set it, else as many files
-as it lists.
+as it lists. POST .../pulls refuses with 422 and GitHub's ``errors`` as GitHub words them: a head the repo has no branch
+of (field head, code invalid), a pull request of the branch into that base open already, a draft on a repo whose
+``drafts`` is False (code custom, a message about drafts), and, first of all, each answer a test queued in
+``pull_refusals`` for the next tries, one a try.
+
+For the CI of a release tag it plays GitHub Actions (``workflow_run`` makes a run of a workflow for a tag pushed at a
+commit, with its jobs, their failed steps and logs; ``attempt`` sets what a later attempt of it says): GET
+.../actions/workflows/{workflow}/runs (head_sha, event), GET .../actions/runs/{id} and GET .../actions/runs/{id}/jobs
+for a token with actions read; GET .../actions/jobs/{id}/logs, which redirects to the fake's own /_logs/{id} as GitHub
+redirects to its storage, with no credential asked there; and POST .../actions/runs/{id}/rerun-failed-jobs for a token
+with actions write, which queues the run's next attempt (``reruns`` records each).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
 import json
 import secrets
 import threading
@@ -53,6 +72,8 @@ APP_TOKEN_SECONDS = 3600  # an installation token lives an hour
 JWT_MAX_SECONDS = 600  # GitHub refuses an App JWT whose exp is further ahead
 JWT_LEEWAY_SECONDS = 60  # an iat this far in the future still passes, for clocks apart
 _LEVELS = {"read": 1, "write": 2, "admin": 3}
+# What GitHub says of a draft on a repo that takes none; the hub reads only that an item is about drafts.
+NO_DRAFTS = "Draft pull requests are not supported in this repository."
 LEGACY_PERMISSIONS = {"admin": "admin", "maintain": "write", "write": "write", "triage": "read", "read": "read"}
 
 
@@ -85,6 +106,15 @@ class FakeRepo:
     files: dict = field(default_factory=dict)  # branch -> the files of its pull request, as GitHub lists them
     messages: dict = field(default_factory=dict)  # commit -> its message
     claimed_files: dict = field(default_factory=dict)  # branch -> how many files its pull request says it changes
+    drafts: bool = True  # False: GitHub takes no draft pull request on it (422)
+    history: list = field(default_factory=list)  # (sha, committer time) of the default branch's commits, oldest first
+    trees: dict = field(default_factory=dict)  # commit -> its files {path: blob sha}
+    cut_trees: set = field(default_factory=set)  # commits whose tree GitHub answers cut (truncated)
+    contents: dict = field(default_factory=dict)  # (commit, path) -> the file's text (``put_file``)
+    merge_bases: dict = field(default_factory=dict)  # a pushed branch's head -> the default branch's head at the push
+    blobs: dict = field(default_factory=dict)  # blob sha -> its bytes (``snapshot``)
+    modes: dict = field(default_factory=dict)  # (commit, path) -> its mode in the tree, 100644 when not named
+    refs: dict = field(default_factory=dict)  # full ref -> (the object it names, the commit a tag peels to or None)
 
 
 @dataclass
@@ -102,6 +132,25 @@ class FakePull:
     base_sha: str | None = None  # the base branch's commit when it opened
     merged_at: str | None = None
     merged_by: str | None = None
+    draft: bool = False  # opened as a draft (a chat run's)
+    title: str = ""
+
+
+@dataclass
+class FakeWorkflowRun:
+    """A run of a workflow for the push of a tag: its current attempt and the jobs of it."""
+
+    id: int
+    owner: str
+    name: str
+    workflow: str
+    sha: str
+    tag: str
+    status: str
+    conclusion: str | None
+    started_at: str
+    attempt: int = 1
+    jobs: list = field(default_factory=list)  # each {id, name, status, conclusion, step}
 
 
 @dataclass
@@ -158,17 +207,24 @@ class FakeGitHub:
     curator_app_public_key: str | None = None
     repos: dict = field(default_factory=dict)  # (owner, name), lower case -> FakeRepo
     pulls: dict = field(default_factory=dict)  # (owner, name, number), lower case names -> FakePull
+    pull_refusals: list = field(default_factory=list)  # (status, body) answering the next POSTs of a pull request
+    merge_refusals: list = field(default_factory=list)  # (status, body) answering the next merges of a pull request
     check_runs: dict = field(default_factory=dict)  # sha -> [check run]
     statuses: dict = field(default_factory=dict)  # sha -> combined status
     merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
+    made_refs: list = field(default_factory=list)  # (owner, name, ref, sha, app) of each ref made through the API
     installations: dict = field(default_factory=dict)  # installation id -> AppInstallation
     app_tokens: dict = field(default_factory=dict)  # installation token -> AppToken
     app_jwts: list[str] = field(default_factory=list)  # every App JWT a request carried, taken or not
     accounts: dict = field(default_factory=dict)  # login, lower case -> GitHub id, of every account the fake knows
     collaborators: dict = field(default_factory=dict)  # (owner, repo, login), lower case -> role on the repo
+    workflow_runs: dict = field(default_factory=dict)  # run id -> FakeWorkflowRun
+    job_logs: dict = field(default_factory=dict)  # job id -> the text of its log
+    reruns: list = field(default_factory=list)  # (owner, name, run id, app) of each run of failed jobs again
 
     def __post_init__(self):
         self._lock = threading.Lock()
+        self._job_ids = itertools.count(50_001)
         self._server = _QuietServer(("127.0.0.1", 0), _handler(self))
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
 
@@ -231,6 +287,7 @@ class FakeGitHub:
         with self._lock:
             repo = self.repos[(owner.lower(), name.lower())]
             repo.heads[branch] = sha
+            repo.merge_bases.setdefault(sha, repo.heads.get(repo.default_branch))
             if message is not None:
                 repo.messages[sha] = message
             if files is not None:
@@ -238,6 +295,50 @@ class FakeGitHub:
             for found in self.pulls.values():
                 if (found.owner, found.name, found.head) == (repo.owner, repo.name, branch) and found.state == "open":
                     found.head_sha = sha
+
+    def commit(self, owner: str, name: str, sha: str, when: str, files: dict) -> None:
+        """A commit ``sha`` at ``when`` on the default branch of owner/name, which now points at it, holding ``files``
+        ({path: blob sha})."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            repo.history.append((sha, when))
+            repo.trees[sha] = dict(files)
+            repo.heads[repo.default_branch] = sha
+
+    def snapshot(self, owner: str, name: str, sha: str, files: dict) -> None:
+        """Commit ``sha`` of owner/name holds ``files``, {path: bytes, or (bytes, mode)}, which GET .../git/trees and
+        .../git/blobs answer; a merge commit of a pull request whose head is ``sha`` holds them too."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            tree = {}
+            for path, held in files.items():
+                data, mode = held if isinstance(held, tuple) else (held, "100644")
+                blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+                repo.blobs[blob] = data
+                repo.modes[(sha, path)] = mode
+                tree[path] = blob
+            repo.trees[sha] = tree
+
+    def set_ref(self, owner: str, name: str, ref: str, sha: str, peeled: str | None = None) -> None:
+        """Full ref ``ref`` of owner/name names object ``sha``; ``peeled`` is the commit an annotated tag points to."""
+        with self._lock:
+            self.repos[(owner.lower(), name.lower())].refs[ref] = (sha, peeled)
+
+    def tag(self, owner: str, name: str, tag: str, sha: str, *, annotated: bool = False) -> None:
+        """Tag ``tag`` of owner/name on commit ``sha``: lightweight, or an annotated tag object that peels to it."""
+        if annotated:
+            self.set_ref(owner, name, f"refs/tags/{tag}", hashlib.sha1(f"tag {tag}".encode()).hexdigest(), sha)
+        else:
+            self.set_ref(owner, name, f"refs/tags/{tag}", sha)
+
+    def put_file(self, owner: str, name: str, sha: str, path: str, text: str | None) -> None:
+        """File ``path`` of commit ``sha`` of owner/name holds ``text`` (None: the commit has no such file)."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            if text is None:
+                repo.contents.pop((sha, path), None)
+            else:
+                repo.contents[(sha, path)] = text
 
     def ci(self, sha: str, runs: list | None = None, statuses: dict | None = None) -> None:
         """What CI says of ``sha``: its check runs (name, status, conclusion) and its combined status."""
@@ -261,6 +362,54 @@ class FakeGitHub:
             pull = self.pull_of(owner, name, branch)
             pull.state = "closed"
         return pull
+
+    def _jobs(self, run_id: int, jobs) -> list[dict]:
+        made = []
+        for item in jobs:
+            job_id = next(self._job_ids)
+            if item.get("log") is not None:
+                self.job_logs[job_id] = item["log"]
+            made.append(
+                {
+                    "id": job_id,
+                    "name": item["name"],
+                    "status": item.get("status", "completed"),
+                    "conclusion": item.get("conclusion", "success"),
+                    "step": item.get("step"),
+                }
+            )
+        return made
+
+    def workflow_run(
+        self,
+        owner: str,
+        name: str,
+        *,
+        workflow: str,
+        sha: str,
+        tag: str,
+        status: str = "completed",
+        conclusion: str | None = "success",
+        jobs=(),
+        started_at: str | None = None,
+    ) -> FakeWorkflowRun:
+        """A run of ``workflow`` for the push of ``tag`` at ``sha``, with ``jobs``: each {name, conclusion, step (the
+        step that failed), log (its text)}."""
+        with self._lock:
+            run_id = 7_000_000 + len(self.workflow_runs) + 1
+            run = FakeWorkflowRun(
+                run_id, owner, name, workflow, sha, tag, status, conclusion, started_at or _now(), 1, []
+            )
+            run.jobs = self._jobs(run_id, jobs)
+            self.workflow_runs[run_id] = run
+        return run
+
+    def attempt(self, run_id: int, *, status: str = "completed", conclusion: str | None = "success", jobs=()) -> None:
+        """The run's current attempt now says ``status`` and ``conclusion``, with ``jobs``."""
+        with self._lock:
+            run = self.workflow_runs[run_id]
+            run.status, run.conclusion = status, conclusion
+            run.jobs = self._jobs(run_id, jobs)
 
     def pull_of(self, owner: str, name: str, branch: str) -> FakePull | None:
         return next(
@@ -538,12 +687,46 @@ class FakeGitHub:
             "merged": pull.merged,
             "mergeable": pull.mergeable,
             "html_url": f"https://github.com/{pull.owner}/{pull.name}/pull/{pull.number}",
+            "draft": pull.draft,
+            "title": pull.title,
             "head": {"ref": pull.head, "sha": pull.head_sha},
             "base": {"ref": pull.base, "sha": pull.base_sha},
             "merge_commit_sha": pull.merge_sha,
             "merged_at": pull.merged_at,
             "merged_by": {"login": pull.merged_by} if pull.merged_by else None,
         }
+
+    def _upload_pack(self, owner: str, name: str, headers: dict, body: str):
+        """git's ls-refs over smart HTTP, protocol version 2, with an installation token as the password."""
+        scheme, _, encoded = headers.get("authorization", "").partition(" ")
+        try:
+            user, _, token = base64.b64decode(encoded).decode().partition(":")
+        except ValueError:
+            user, token = "", ""
+        if scheme.lower() != "basic" or user != "x-access-token":
+            return 401, {"message": "Authentication failed"}
+        _, _, refused = self._api_token({"authorization": f"token {token}"}, owner, name, "contents", "read")
+        if refused:
+            return refused
+        asked, at = [], 0
+        while at < len(body):
+            size = int(body[at : at + 4], 16)
+            if size >= 4:
+                asked.append(body[at + 4 : at + size].rstrip("\n"))
+            at += max(size, 4)
+        if "command=ls-refs" not in asked or headers.get("git-protocol") != "version=2":
+            return 400, {"message": "only ls-refs of protocol version 2"}
+        prefixes = [line.removeprefix("ref-prefix ") for line in asked if line.startswith("ref-prefix ")]
+        peel = "peel" in asked
+        with self._lock:
+            refs = sorted(self.repos[(owner.lower(), name.lower())].refs.items())
+        lines = []
+        for ref, (sha, peeled) in refs:
+            if prefixes and not any(ref.startswith(prefix) for prefix in prefixes):
+                continue
+            text = f"{sha} {ref}" + (f" peeled:{peeled}" if peel and peeled else "") + "\n"
+            lines.append(f"{len(text) + 4:04x}{text}")
+        return 200, ("".join(lines) + "0000").encode()
 
     def _blocks(self, repo: FakeRepo, branch: str, app: str | None) -> list[dict]:
         """The active rulesets with an update rule on ``branch`` (the default branch) that ``app`` may not bypass."""
@@ -557,6 +740,73 @@ class FakeGitHub:
             and app not in item.get("bypass", ())
         ]
 
+    def _run_answer(self, run: FakeWorkflowRun) -> dict:
+        return {
+            "id": run.id,
+            "name": run.workflow.rsplit(".", 1)[0],
+            "path": f".github/workflows/{run.workflow}",
+            "head_branch": run.tag,
+            "head_sha": run.sha,
+            "event": "push",
+            "status": run.status,
+            "conclusion": run.conclusion,
+            "html_url": f"https://github.com/{run.owner}/{run.name}/actions/runs/{run.id}",
+            "run_attempt": run.attempt,
+            "run_started_at": run.started_at,
+            "created_at": run.started_at,
+        }
+
+    def _job_answer(self, run: FakeWorkflowRun, job: dict) -> dict:
+        failed = job["conclusion"] in ("failure", "timed_out")
+        steps = [{"number": 1, "name": "Set up job", "status": "completed", "conclusion": "success"}]
+        if job.get("step"):
+            steps.append({"number": 2, "name": job["step"], "status": "completed", "conclusion": job["conclusion"]})
+        return {
+            "id": job["id"],
+            "run_id": run.id,
+            "run_attempt": run.attempt,
+            "name": job["name"],
+            "status": job["status"],
+            "conclusion": job["conclusion"],
+            "html_url": f"https://github.com/{run.owner}/{run.name}/actions/runs/{run.id}/job/{job['id']}",
+            "steps": steps if failed or job.get("step") else steps[:1],
+        }
+
+    def _actions_api(self, method: str, owner: str, name: str, rest: list[str], query: dict, need):
+        runs = [run for run in self.workflow_runs.values() if (run.owner, run.name) == (owner, name)]
+        if method == "POST" and len(rest) == 4 and rest[1] == "runs" and rest[3] == "rerun-failed-jobs":
+            _, app, refused = need("actions", "write")
+            if refused:
+                return refused
+            run = next((item for item in runs if str(item.id) == rest[2]), None)
+            if run is None:
+                return 404, {"message": "Not Found"}
+            with self._lock:
+                run.status, run.conclusion, run.attempt = "queued", None, run.attempt + 1
+                self.reruns.append((owner, name, run.id, app))
+            return 201, {}
+        _, _, refused = need("actions", "read")
+        if refused:
+            return refused
+        if rest[1:2] == ["workflows"] and rest[3:] == ["runs"]:
+            found = [
+                self._run_answer(run)
+                for run in runs
+                if run.workflow == rest[2]
+                and run.sha == query.get("head_sha", run.sha)
+                and query.get("event", "push") == "push"
+            ]
+            return 200, {"total_count": len(found), "workflow_runs": found}
+        run = next((item for item in runs if rest[1:2] == ["runs"] and str(item.id) == rest[2]), None)
+        if run is not None and len(rest) == 3:
+            return 200, self._run_answer(run)
+        if run is not None and rest[3:] == ["jobs"]:
+            jobs = [self._job_answer(run, job) for job in run.jobs]
+            return 200, {"total_count": len(jobs), "jobs": jobs}
+        if rest[1:2] == ["jobs"] and rest[3:] == ["logs"] and rest[2].isdigit() and int(rest[2]) in self.job_logs:
+            return 302, None, {"Location": f"{self.url}/_logs/{rest[2]}"}
+        return 404, {"message": "Not Found"}
+
     def _curator_api(self, method: str, parts: list[str], query: dict, headers: dict, body: str):
         owner, name, rest = parts[1], parts[2], parts[3:]
         repo = self.repos.get((owner.lower(), name.lower()))
@@ -564,9 +814,87 @@ class FakeGitHub:
         def need(permission: str, level: str):
             return self._api_token(headers, owner, name, permission, level)
 
+        if rest[:1] == ["actions"] and len(rest) >= 3:
+            return self._actions_api(method, repo.owner, repo.name, rest, query, need)
+
         if method == "GET" and not rest:
             _, _, refused = need("metadata", "read")
             return refused or (200, self._repo_answer(repo))
+        if method == "GET" and rest[:1] == ["branches"] and len(rest) >= 2:
+            _, _, refused = need("metadata", "read")
+            if refused:
+                return refused
+            branch = "/".join(rest[1:])
+            if branch not in repo.heads:
+                return 404, {"message": "Branch not found"}
+            sha = repo.heads[branch]
+            when = dict(repo.history).get(sha)
+            return 200, {"name": branch, "commit": {"sha": sha, "commit": {"committer": {"date": when}}}}
+        if method == "GET" and rest[:2] == ["git", "trees"] and len(rest) == 3:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            files = repo.trees.get(rest[2])
+            if files is None:
+                return 404, {"message": "Not Found"}
+            entries = [
+                {
+                    "path": path,
+                    "mode": repo.modes.get((rest[2], path), "100644"),
+                    "type": "commit" if repo.modes.get((rest[2], path)) == "160000" else "blob",
+                    "sha": sha,
+                    **({"size": len(repo.blobs[sha])} if sha in repo.blobs else {}),
+                }
+                for path, sha in sorted(files.items())
+            ]
+            return 200, {"sha": rest[2], "tree": entries, "truncated": rest[2] in repo.cut_trees}
+        if method == "GET" and rest[:2] == ["git", "blobs"] and len(rest) == 3:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            if rest[2] not in repo.blobs:
+                return 404, {"message": "Not Found"}
+            data = repo.blobs[rest[2]]
+            encoded = base64.b64encode(data).decode()
+            return 200, {"sha": rest[2], "size": len(data), "encoding": "base64", "content": encoded}
+        if method == "GET" and rest[:1] == ["compare"] and len(rest) == 2:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            base, _, head = rest[1].partition("...")
+            shas = [sha for sha, _ in repo.history]
+            if head in repo.merge_bases and head not in shas:  # a pushed branch over the default branch
+                merge_base = {"sha": repo.merge_bases[head]}
+                return 200, {
+                    "status": "ahead",
+                    "ahead_by": 1,
+                    "behind_by": 0,
+                    "commits": [],
+                    "merge_base_commit": merge_base,
+                }
+            if base not in shas or head not in shas:
+                return 404, {"message": "Not Found"}
+            low, high = shas.index(base), shas.index(head)
+            ahead, behind = max(high - low, 0), max(low - high, 0)
+            status = "identical" if low == high else ("ahead" if high > low else "behind")
+            size, page = int(query.get("per_page", "250")), int(query.get("page", "1"))
+            listed = repo.history[low + 1 : high + 1][(page - 1) * size : page * size]
+            commits = [
+                {"sha": sha, "commit": {"message": repo.messages.get(sha, ""), "committer": {"date": when}}}
+                for sha, when in listed
+            ]
+            found = {"status": status, "ahead_by": ahead, "behind_by": behind, "commits": commits}
+            found["total_commits"] = ahead
+            return 200, {**found, "merge_base_commit": {"sha": shas[min(low, high)]}}
+        if method == "GET" and rest[:1] == ["contents"] and len(rest) >= 2:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            text = repo.contents.get((query.get("ref"), "/".join(rest[1:])))
+            if text is None:
+                return 404, {"message": "Not Found"}
+            encoded = base64.b64encode(text.encode()).decode()
+            return 200, {"type": "file", "encoding": "base64", "path": "/".join(rest[1:]), "content": encoded}
         if method == "GET" and rest[:2] == ["rules", "branches"]:
             _, _, refused = need("metadata", "read")
             if refused:
@@ -618,13 +946,29 @@ class FakeGitHub:
                 return refused
             asked = json.loads(body or "{}")
             branch, base = asked.get("head"), asked.get("base")
+            with self._lock:
+                queued = self.pull_refusals.pop(0) if self.pull_refusals else None
+            if queued is not None:
+                return queued
             if branch not in repo.heads:
-                return 422, {"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}
-            if any(item.head == branch and item.state == "open" for item in self.pulls.values()):
-                return 422, {"message": "A pull request already exists"}
+                return 422, _invalid({"resource": "PullRequest", "field": "head", "code": "invalid"})
+            if any(item.head == branch and item.base == base and item.state == "open" for item in self.pulls.values()):
+                return 422, _invalid(
+                    {"resource": "PullRequest", "code": "custom", "message": "A pull request already exists"}
+                )
+            if asked.get("draft") is True and not repo.drafts:
+                return 422, _invalid({"resource": "PullRequest", "code": "custom", "message": NO_DRAFTS})
             number = 1 + sum(1 for key in self.pulls if key[:2] == (owner.lower(), name.lower()))
             pull = FakePull(
-                number, repo.owner, repo.name, branch, repo.heads[branch], base, base_sha=repo.heads.get(base)
+                number,
+                repo.owner,
+                repo.name,
+                branch,
+                repo.heads[branch],
+                base,
+                base_sha=repo.heads.get(base),
+                draft=asked.get("draft") is True,
+                title=str(asked.get("title") or ""),
             )
             with self._lock:
                 self.pulls[(owner.lower(), name.lower(), number)] = pull
@@ -637,7 +981,9 @@ class FakeGitHub:
             found = [
                 self._pull_answer(item)
                 for item in self.pulls.values()
-                if item.head == branch and item.state == query.get("state", "open")
+                if item.head == branch
+                and item.state == query.get("state", "open")
+                and item.base == query.get("base", item.base)
             ]
             return 200, found
         if rest[:1] == ["pulls"] and len(rest) >= 2 and rest[1].isdigit():
@@ -665,6 +1011,10 @@ class FakeGitHub:
                 if refused:
                     return refused
                 asked = json.loads(body or "{}")
+                with self._lock:
+                    queued = self.merge_refusals.pop(0) if self.merge_refusals else None
+                if queued is not None:
+                    return queued
                 if pull.state != "open":
                     return 405, {"message": "Pull Request is not mergeable"}
                 if asked.get("sha") != pull.head_sha:
@@ -673,6 +1023,11 @@ class FakeGitHub:
                     return 405, {"message": "Repository rule violations found"}
                 merged = secrets.token_hex(20)
                 with self._lock:
+                    if pull.head_sha in repo.trees:  # the merge commit holds the head's files
+                        repo.trees[merged] = dict(repo.trees[pull.head_sha])
+                        for (commit, path), mode in list(repo.modes.items()):
+                            if commit == pull.head_sha:
+                                repo.modes[(merged, path)] = mode
                     pull.state, pull.merged, pull.merge_sha = "closed", True, merged
                     pull.merged_at, pull.merged_by = _now(), f"evo-agents-{app}[bot]"
                     repo.heads[pull.base] = merged
@@ -689,6 +1044,18 @@ class FakeGitHub:
             if refused:
                 return refused
             return 200, self.statuses.get(rest[1], {"state": "pending", "total_count": 0, "statuses": []})
+        if method == "POST" and rest == ["git", "refs"]:
+            _, app, refused = need("contents", "write")
+            if refused:
+                return refused
+            asked = json.loads(body or "{}")
+            ref, sha = asked.get("ref"), asked.get("sha")
+            with self._lock:
+                if ref in repo.refs:
+                    return 422, {"message": "Reference already exists"}
+                repo.refs[ref] = (sha, None)
+                self.made_refs.append((repo.owner, repo.name, ref, sha, app))
+            return 201, {"ref": ref, "object": {"sha": sha, "type": "commit"}}
         if method == "POST" and rest == ["check-runs"]:
             _, app, refused = need("checks", "write")
             if refused:
@@ -728,11 +1095,22 @@ class FakeGitHub:
             return self._access_tokens(parts[2], headers, body)
         if method == "DELETE" and path == "/installation/token":
             return self._revoke_token(headers)
+        pack = len(parts) == 3 and parts[1].endswith(".git") and parts[2] == "git-upload-pack"
+        if method == "POST" and pack and (parts[0].lower(), parts[1][:-4].lower()) in self.repos:
+            return self._upload_pack(parts[0], parts[1][:-4], headers, body)
         if parts[0] == "repos" and len(parts) >= 3 and (parts[1].lower(), parts[2].lower()) in self.repos:
             return self._curator_api(method, parts, query, headers, body)
         if path == "/moved":
             return 302, None, {"Location": f"{self.url}/user"}
+        if method == "GET" and path.startswith("/_logs/") and path[len("/_logs/") :].isdigit():
+            text = self.job_logs.get(int(path[len("/_logs/") :]))
+            return (404, {"message": "gone"}) if text is None else (200, text.encode())
         return 404, {"message": "Not Found"}
+
+
+def _invalid(*errors: dict) -> dict:
+    """GitHub's body of a 422 it gives a pull request it does not open."""
+    return {"message": "Validation Failed", "errors": list(errors)}
 
 
 def _now() -> str:
@@ -761,11 +1139,12 @@ def _handler(fake: FakeGitHub):
             query = {k: v[0] for k, v in parse_qs(parts.query).items()}
             headers = {k.lower(): v for k, v in self.headers.items()}
             status, payload, *extra = fake.answer(method, parts.path, query, headers, body)
-            data = b"" if payload is None else json.dumps(payload).encode()
+            raw = isinstance(payload, bytes)  # git's own protocol, not JSON
+            data = payload if raw else b"" if payload is None else json.dumps(payload).encode()
             self.send_response(status)
             for name, value in (extra[0] if extra else {}).items():
                 self.send_header(name, value)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/x-git-upload-pack-result" if raw else "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)

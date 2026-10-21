@@ -8,9 +8,12 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-registered by ``cli_client`` and need nothing beyond the core package, so they work on a core install. ``hub
-openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document; ``hub contract
-check`` does not.
+registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``, ``signal`` by
+``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by ``release_cli``,
+``policy`` by ``cli_policy`` and ``merge`` by ``cli_merge``; they need nothing beyond the core package, so they work on
+a core install. ``hub openapi`` (``openapi``) and ``hub contract
+print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -105,11 +108,25 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry
+        from evo_agents.hub.server.app import init_sentry, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency)
+    return worker.main(config, args.concurrency, release_pass=release_pass)
+
+
+@_server_command
+def cmd_plugin_host(args) -> int:
+    try:
+        from evo_agents.hub.plugin_host_service import load_host_config, run_service
+    except ImportError as exc:
+        return _missing_extra(exc, args)
+    try:
+        config = load_host_config(args)
+    except ValueError as exc:
+        log.error(str(exc))
+        return EXIT_USAGE
+    return run_service(config)
 
 
 def _positive(value: str) -> int:
@@ -149,6 +166,61 @@ def cmd_migrate(args) -> int:
     return 0
 
 
+def _register_client_commands(hsub) -> None:
+    """The command groups of the client, each registered by its own module, imported only when the parser is built."""
+    from evo_agents.hub.cli_client import register_client
+
+    register_client(hsub)
+
+    from evo_agents.hub.cli_agents import register_agents
+
+    register_agents(hsub)
+
+    from evo_agents.hub.cli_chats import register_chats
+
+    register_chats(hsub)
+
+    from evo_agents.hub.cli_plugins import register_plugins
+
+    register_plugins(hsub)
+
+    from evo_agents.hub.cli_srs import register_srs
+
+    register_srs(hsub)
+
+    from evo_agents.hub.cli_tasks import register_tasks
+
+    register_tasks(hsub)
+
+    from evo_agents.hub.cli_canvas import register_canvas
+
+    register_canvas(hsub)
+
+    from evo_agents.hub.cli_signals import register_signals
+
+    register_signals(hsub)
+
+    from evo_agents.hub.cli_sessions import register_sessions
+
+    register_sessions(hsub)
+
+    from evo_agents.hub.cli_emails import register_emails
+
+    register_emails(hsub)
+
+    from evo_agents.hub.release_cli import register_release
+
+    register_release(hsub)
+
+    from evo_agents.hub.cli_policy import register_policy
+
+    register_policy(hsub)
+
+    from evo_agents.hub.cli_merge import register_merge
+
+    register_merge(hsub)
+
+
 def register(sub) -> None:
     hub = sub.add_parser("hub", help="team hub for memories, plans, skills and knowledge graphs")
     hsub = hub.add_subparsers(dest="hub_command", required=True)
@@ -181,9 +253,24 @@ def register(sub) -> None:
     migrate.add_argument("--dsn", help=dsn_help)
     migrate.set_defaults(func=cmd_migrate)
 
-    from evo_agents.hub.cli_client import register_client
+    plugin_host = hsub.add_parser(
+        "plugin-host",
+        help="run the backends of isolated plugins, apart from the hub, holding none of its secrets (hub-server extra)",
+    )
+    plugin_host.add_argument("--hub-url", help="the hub's URL to pull plugins from (default: $EVO_HUB_PUBLIC_URL)")
+    plugin_host.add_argument(
+        "--data-dir", help="where plugins are placed and run (default: $EVO_HUB_DATA_DIR/plugins or ~/.evo/plugin-host)"
+    )
+    plugin_host.add_argument("--host", default="0.0.0.0", help="interface to listen on (default: 0.0.0.0)")
+    plugin_host.add_argument("--port", type=int, help="port to listen on (default: 8090)")
+    plugin_host.add_argument(
+        "--allow-shared-user",
+        action="store_true",
+        help="not as root, run backends under this user anyway; a developer's machine only (docs/plugins.md)",
+    )
+    plugin_host.set_defaults(func=cmd_plugin_host)
 
-    register_client(hsub)
+    _register_client_commands(hsub)
 
     from evo_agents.hub.openapi import register as register_openapi
 

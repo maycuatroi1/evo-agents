@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { BLOCKED, seedCurator, TITLES } from "./support/curator";
+import { answerAs, BLOCKED, fireNight, seedCurator, TITLES } from "./support/curator";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -13,8 +13,9 @@ import { toast } from "./support/toast";
  * duty): an admin writes the charter through the form, which refuses what the hub would, then pauses and resumes the
  * night shift; the Curator's page shows the night, the last review run and the nights before; the proposals list
  * filters by state, tier and lens with counts; a proposal shows its evidence (the run's log, the digest's entry, the
- * line of code), its findings, its draft plan and its ledger, and takes Accept, Defer and Reject; the Inbox lists the
- * tier 2 proposal beside the decisions and answers it in a sheet; Home says where each project's Curator stands; a
+ * line of code), its findings, its draft plan and its ledger, and takes Accept, Defer and Reject; accepting a tier 2
+ * proposal makes the Curator's plan at once, which the proposal's Change card links with its branch and the reason the
+ * night shift passed it over; the Inbox lists the tier 2 proposal beside the decisions and answers it in a sheet; Home says where each project's Curator stands; a
  * reader reads everything and changes nothing. axe checks every page and the dialogs in light and dark.
  */
 test.skip(isDeployed, "writes charters and plays the night's worker through the local stack");
@@ -61,8 +62,10 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   await form.getByTestId("charter-add-goal").click();
   await form.getByTestId("charter-goal-id").fill("faster-runs");
   await form.getByTestId("charter-goal-what").fill("Plan runs finish within an hour.");
-  await form.getByTestId("charter-window-start").fill(hourAround(-2));
-  await form.getByTestId("charter-window-end").fill(hourAround(3));
+  // Read once: the view is checked against these, and the hour can turn between the form and the view.
+  const [windowStart, windowEnd] = [hourAround(-2), hourAround(3)];
+  await form.getByTestId("charter-window-start").fill(windowStart);
+  await form.getByTestId("charter-window-end").fill(windowEnd);
   await form.getByTestId("charter-timezone").fill("UTC");
   await form.getByTestId("charter-run-budget").fill("0.5");
   await form.getByTestId("charter-max-runs").fill("4");
@@ -77,7 +80,7 @@ test("an admin writes the charter from the web, and pauses and resumes the night
   await expect(page).toHaveURL(new RegExp(`/p/${project}/curator/charter$`));
   const view = main(page).getByTestId("charter-view");
   await expect(view).toHaveAttribute("data-revision", "1");
-  await expect(view.getByTestId("charter-window")).toHaveText(`${hourAround(-2)} to ${hourAround(3)}, UTC`);
+  await expect(view.getByTestId("charter-window")).toHaveText(`${windowStart} to ${windowEnd}, UTC`);
   await expect(view.getByTestId("charter-worker-name")).toHaveText(live.worker.name);
   await expect(view.getByTestId("charter-night-budget-value")).toHaveText("$2.00");
   await expect(view.getByTestId("charter-protected-value")).toHaveText("deploy/**.github/workflows/**");
@@ -132,7 +135,7 @@ test("the night's review shows on the Curator's page, and its proposals filter b
 
   // The review run's own page says what it is and leads back to its proposals.
   await main(page).getByTestId("curator-last-review-run").click();
-  await expect(main(page).getByTestId("run-kind")).toHaveText("Review run");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "review");
   await expect(main(page).getByTestId("run-proposals-link")).toHaveAttribute("href", `/p/${project}/curator/proposals?run=${night.runId}`);
   await main(page).getByTestId("run-proposals-link").click();
 
@@ -192,11 +195,14 @@ test("a proposal shows where its evidence leads and its draft plan, and an admin
   await expect(draft.getByTestId("proposal-draft-steps")).toContainText("pnpm test -- wait");
   await draft.getByTestId("proposal-draft-json").click();
   await expect(draft.getByTestId("proposal-draft-raw")).toContainText('"id": "curator-wait-helper"');
+  await expect(main(page).getByTestId("proposal-change")).toHaveCount(0); // no change before an answer
   await expectNoSeriousViolations(page, "a proposal");
 
   await header.getByTestId("proposal-accept").click();
   const dialog = page.getByTestId("proposal-answer-dialog");
   await expect(dialog).toHaveAttribute("data-action", "accept");
+  await expect(dialog).toContainText("makes its draft a plan of the Curator at once");
+  await expect(dialog).toContainText("leaves the pull request open for a person to merge");
   await dialog.getByTestId("proposal-answer-note").fill("Two\nlines");
   await dialog.getByTestId("proposal-answer-send").click();
   await expect(dialog).toContainText("The note is one line.");
@@ -208,6 +214,27 @@ test("a proposal shows where its evidence leads and its draft plan, and an admin
   await expect(main(page).getByTestId("proposal-answered-by")).toContainText(`Accepted by ${me.login}`);
   await expect(main(page).getByTestId("proposal-note")).toHaveText("Ship it after the release.");
   await expect(header.getByTestId("proposal-accept")).toHaveCount(0);
+
+  // Accepting it made the Curator's plan at once: the Change card links the plan, and the branch on GitHub.
+  await expect(main(page).getByTestId("proposal-accepted-next")).toContainText("Its pull request stays open until a person merges it");
+  const change = main(page).getByTestId("proposal-change");
+  const planId = `curator-${wide.id}-curator-wait-helper`;
+  const branch = `curator/${wide.id}-curator-wait-helper`;
+  await expect(change.getByTestId("change-state")).toHaveText("Planned");
+  await expect(change.getByTestId("proposal-change-plan-link")).toHaveAttribute("href", `/p/${project}/plans/${planId}`);
+  await expect(change.getByTestId("proposal-change-branch-link")).toHaveText(branch);
+  await expect(change.getByTestId("proposal-change-branch-link")).toHaveAttribute("href", `https://github.com/example-org/api/tree/${branch}`);
+  await expect(change.getByTestId("proposal-change-pull")).toHaveCount(0);
+  await expect(change.getByTestId("proposal-change-reason")).toHaveCount(0);
+
+  // The night shift passes over it, since this hub has no Curator App to check the repo's ruleset with: the card says so.
+  expect(await fireNight(project)).toHaveLength(1);
+  await page.reload();
+  const reason = main(page).getByTestId("proposal-change").getByTestId("proposal-change-reason");
+  await expect(reason).toHaveAttribute("data-tone", "info");
+  await expect(reason.getByRole("heading", { level: 3 })).toHaveText("Why it waits");
+  await expect(reason).toContainText("this hub has no Curator App to check it with");
+  await expectNoSeriousViolations(page, "a proposal with its change");
 
   await open(page, `/p/${project}/curator/proposals/${night.proposals[0].id}`);
   await main(page).getByTestId("proposal-defer").click();
@@ -259,10 +286,12 @@ test("a proposal's ledger says what happened to it, line by line, with the figur
   const dialog = page.getByTestId("proposal-answer-dialog");
   await dialog.getByTestId("proposal-answer-note").fill("Go.");
   await dialog.getByTestId("proposal-answer-send").click();
-  await expect(lines).toHaveCount(2);
+  await expect(lines).toHaveCount(3); // accepting a tier 2 proposal makes the Curator's plan in the same answer
   await expect(lines.nth(1)).toHaveAttribute("data-action", "accepted");
   await expect(lines.nth(1).getByTestId("ledger-actor")).toContainText(me.login);
   await expect(lines.nth(1).getByTestId("ledger-what")).toHaveText(`${me.login} accepted it: Go.`);
+  await expect(lines.nth(2)).toHaveAttribute("data-action", "planned");
+  await expect(lines.nth(2)).toHaveAttribute("data-actor", "curator");
 });
 
 test("the Inbox lists the tier 2 proposal beside the decisions, and an admin answers it in a sheet", async ({ page, member }) => {
@@ -347,6 +376,18 @@ test.describe("dark theme", () => {
     await expect(main(page).getByTestId("proposal-read-only")).toBeVisible();
     await expect(main(page).getByTestId("proposal-accept")).toHaveCount(0);
     await expectNoSeriousViolations(page, "a proposal (dark)");
+
+    // The change the owner's yes made, as a reader reads it: its plan, its branch and why the night shift passed it over.
+    const docs = night.proposals[0];
+    await answerAs(owner, project, docs.id, "accept");
+    expect(await fireNight(project)).toHaveLength(1);
+    await open(page, `/p/${project}/curator/proposals/${docs.id}`);
+    await expect(main(page).getByTestId("proposal-accepted-next")).toContainText("the hub may merge it if the charter allows");
+    const change = main(page).getByTestId("proposal-change");
+    await expect(change.getByTestId("change-state")).toHaveText("Planned");
+    await expect(change.getByTestId("proposal-change-plan-link")).toHaveAttribute("href", `/p/${project}/plans/curator-${docs.id}-curator-wait-helper`);
+    await expect(change.getByTestId("proposal-change-reason")).toContainText("this hub has no Curator App to check it with");
+    await expectNoSeriousViolations(page, "a proposal with its change (dark)");
   });
 });
 
@@ -367,9 +408,11 @@ test.describe("at 375 px", () => {
       await expectNoSeriousViolations(page, `${path} at 375 px`);
     }
     await expect(main(page).locator(`[data-proposal-id="${night.proposals[2].id}"]`)).toBeVisible();
+    await answerAs(me, project, night.proposals[2].id, "accept"); // its page carries the Change card, branch and all
     for (const path of [`/p/${project}/curator/proposals/${night.proposals[2].id}`, `/p/${project}/curator/charter?edit=1`]) {
       await open(page, path);
       await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
+      if (path.includes("/proposals/")) await expect(main(page).getByTestId("proposal-change-branch-link")).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
     }
   });

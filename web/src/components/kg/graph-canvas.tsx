@@ -33,10 +33,10 @@ type Theme = {
 };
 
 const FALLBACK: Theme = {
-  tones: { 1: "#2f4bd8", 2: "#bc7800", 3: "#0f8c80", 4: "#7c4de8", 5: "#858c99" },
-  foreground: "#0e1116",
-  muted: "#4b5362",
-  surface: "#f5f6f8",
+  tones: { 1: "#2f4bd8", 2: "#bc7800", 3: "#0f8c80", 4: "#7c4de8", 5: "#85858d" },
+  foreground: "#09090b",
+  muted: "#52525b",
+  surface: "#ffffff",
   brand: "#2f4bd8",
   ring: "#2f4bd8",
   font: "sans-serif",

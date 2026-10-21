@@ -13,7 +13,20 @@ paths, a package, a Go import path, a JS or TS specifier read through the neares
 qualified name to find there. The first entry that finds a definition decides; two definitions are
 ambiguous and link nothing. A call through ``this``, ``self`` or ``super`` names a class of its own file
 instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method up that class's chain, and
-gives each class its ``inherits`` edges and each method its ``overrides`` edges.
+gives each class its ``inherits`` edges and each method its ``overrides`` edges. A Python call through a typed
+receiver (``extract.pytypes``) names the class by a type expression: the class an annotation names, or what a
+callee returns, an instance of it when it is a class, else the class its return annotation names, which the
+index resolves once a build in the callee's own file; the method is then found up that class's chain.
+
+A SHA names a commit a git source read from its history when exactly one such commit starts with it: ``repo@sha``
+among the commits of that repo, a bare SHA in a plan step's evidence among those of the step's repo first, then of
+every repo; such a mention links to the commit's item, and one that names no commit read gets a Commit node of its own
+as before. A pull request is named by its URL, ``owner/repo#57``, ``repo#57`` with a repo name of harness.yaml, or
+"PR #57" in the text of a step of that repo.
+
+A link task notes what it reads of the index (``Reads``), and the build memoizes it by those entries rather than by
+the whole index (``Memo.run_traced``): a changed file links again the items that looked up one of its names or
+paths, not every item of the project.
 """
 
 from __future__ import annotations
@@ -29,7 +42,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "9"
+LINK_VERSION = "11"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -41,6 +54,8 @@ MD_LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 REPO_SHA = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+)@([0-9a-f]{7,40})\b")
 BARE_SHA = re.compile(r"(?<![\w/.@-])([0-9a-f]{7,40})(?![\w-])")
 PLAN_STEP = re.compile(r"(?<![\w/.-])([a-z0-9][a-z0-9-]{2,})#(\d+)\b")
+GITHUB_PULL = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)\b")  # owner/repo#57
+PULL_WORD = re.compile(r"\b(?:PR|[Pp]ull [Rr]equest) ?#(\d+)\b")  # "PR #57" in the text of a step of that repo
 TOKEN = re.compile(r"(?<![\w.-])([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])(?![\w-])")
 SYMBOLISH = re.compile(r"^[A-Za-z_][\w]*(?:\.[A-Za-z_]\w*)*(?:\(\))?$")
 
@@ -53,6 +68,8 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "plan": {},
         "step": {},
         "url": {},
+        "pr": {},  # "<repo>#57" and "<owner>/<repo>#57" -> the pull request
+        "commit": defaultdict(list),  # the first 7 characters of a SHA -> the commits read that start with them
         "path": defaultdict(list),
         "dir": defaultdict(list),
         "module": defaultdict(list),
@@ -65,6 +82,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "classes": {},  # class symbol -> (its file item, its qualname)
     }
     with_bases: list[dict] = []
+    typed: list[dict] = []
     for facts in facts_by_item.values():
         for f in facts:
             if f["t"] == "node":
@@ -73,19 +91,47 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
                 _learn(index, f)
                 if f["type"] == "symbol" and f.get("bases"):
                     with_bases.append(f)
+                if f["type"] == "symbol" and (f.get("returns") or f.get("items")):
+                    typed.append(f)
     index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [{"kind": i["kind"], "pattern": i["pattern"]} for i in identifiers]
     hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
+    _return_types(index, typed)
     return index
+
+
+def _return_types(index: dict, functions: list[dict]) -> None:
+    """``index["returns"]``: function -> the class its return annotation names; ``index["returns_items"]``:
+    function -> the class of each item of the tuple it returns (None for an item that names none). Each is
+    resolved in the function's own file, as a base is."""
+    contexts: dict[tuple, Linker] = {}
+    returns: dict[str, str] = {}
+    items: dict[str, tuple] = {}
+    for f in sorted(functions, key=lambda f: f["node"]):
+        key = (f["file"], f.get("repo"), f.get("path"))
+        if key not in contexts:
+            contexts[key] = Linker(index, *key)
+        ctx, target = contexts[key], {"repo": f.get("repo"), "source": f.get("source")}
+        if f.get("returns"):
+            found = ctx.first_found(f["returns"], target, index["classes"])
+            if found:
+                returns[f["node"]] = found
+        if f.get("items"):
+            found_items = tuple(ctx.first_found(v, target, index["classes"]) if v else None for v in f["items"])
+            if any(found_items):
+                items[f["node"]] = found_items
+    index["returns"], index["returns_items"] = returns, items
 
 
 def _learn(index: dict, f: dict) -> None:
     """Add one ``ident`` fact to the index."""
     kind = f["type"]
-    if kind in ("repo", "seam", "plan", "step", "url"):
+    if kind in ("repo", "seam", "plan", "step", "url", "pr"):
         index[kind].setdefault(f["key"], f["node"])
+    elif kind == "commit":
+        index["commit"][f["key"][:7]].append({"sha": f["key"], "repo": f.get("repo"), "node": f["node"]})
     elif kind == "path":
         index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
     elif kind == "dir":  # every item under a directory names it: keep one entry per node
@@ -142,6 +188,102 @@ def index_digest(index: dict) -> str:
         for k, v in index.items()
     }
     return sha256(canonical_json(plain))
+
+
+# Tables a link task reads whole: small, seldom changed, and looked up once per word of prose, so noting each key
+# would make the list of what a task read longer than its output.
+WHOLE_TABLES = frozenset({"repo", "seam", "plan", "identifiers"})
+WHOLE, KEY = 0, 1  # how a task read a table: whole, or one key of it
+NONE_KEY = "\0none"  # the key None, as the list of what a task read writes it
+
+
+class Reads:
+    """The identifier index as one link task sees it, noting what the task reads: one key of a table (absent keys
+    too), or a whole table of WHOLE_TABLES. ``keys()`` lists them for ``Memo.run_traced``; ``Held`` digests what
+    they hold."""
+
+    def __init__(self, index: dict):
+        self._index = index
+        self._keys: set[tuple] = set()
+
+    def __getitem__(self, table: str) -> _Table:
+        return _Table(self, table, self._index[table])
+
+    def get(self, table: str, default=None):
+        return _Table(self, table, self._index[table]) if table in self._index else default
+
+    def note(self, table: str, key=None) -> None:
+        self._keys.add((table, WHOLE, "") if key is None or table in WHOLE_TABLES else (table, KEY, key))
+
+    def keys(self) -> list[list]:
+        return [list(k) for k in sorted(self._keys, key=canonical_json)]
+
+
+class _Table:
+    """One table of a ``Reads``: every lookup is noted before it is answered as the table answers it."""
+
+    __slots__ = ("_name", "_reads", "_table")
+
+    def __init__(self, reads: Reads, name: str, table):
+        self._reads, self._name, self._table = reads, name, table
+
+    def _key(self, key):
+        self._reads.note(self._name, NONE_KEY if key is None else key)
+        return key
+
+    def get(self, key, default=None):
+        return self._table.get(self._key(key), default)
+
+    def __getitem__(self, key):
+        return self._table[self._key(key)]
+
+    def __contains__(self, key) -> bool:
+        return self._key(key) in self._table
+
+    def __iter__(self):
+        self._reads.note(self._name)
+        return iter(self._table)
+
+    def __len__(self) -> int:
+        self._reads.note(self._name)
+        return len(self._table)
+
+
+class Held:
+    """What the entries of one build's identifier index hold, each digested once: ``digest(keys)`` is the ``reads``
+    input of a traced link task that read ``keys`` (``Reads.keys``)."""
+
+    def __init__(self, index: dict):
+        self.index = index
+        self._cache: dict[tuple, str] = {}
+
+    def digest(self, keys: list[list]) -> str:
+        return sha256(canonical_json([self._one(*k) for k in keys]))
+
+    def _one(self, table: str, how: int, key: str) -> str:
+        found = self._cache.get((table, how, key))
+        if found is None:
+            held, real = self.index.get(table), None if key == NONE_KEY else key
+            if how == WHOLE:
+                value = ["whole", _plain(held)]
+            elif isinstance(held, (set, frozenset)):
+                value = ["member", real in held]
+            else:
+                value = ["value", _plain(held[real])] if held is not None and real in held else ["absent"]
+            found = sha256(canonical_json([table, how, key, value]))
+            self._cache[(table, how, key)] = found
+        return found
+
+
+def _plain(value):
+    """``value`` as canonical JSON can write it: sets sorted, tuples as lists, dict keys as they are."""
+    if isinstance(value, (set, frozenset)):
+        return sorted(value, key=str)
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    return value
 
 
 def _url_prefix(url: str) -> str:
@@ -259,28 +401,52 @@ class Linker:
 
     def resolve_call(self, f: dict) -> None:
         """Link a caller to the one symbol the first ``via`` entry with a definition finds."""
-        target = f["target"]
-        for kind, value, qual in target["via"]:
-            found = sorted(set(self.definitions(kind, value, qual, target)))
-            if not found:
-                continue
-            key = (f["src"], "calls", found[0])
-            if len(found) == 1 and found[0] != f["src"] and key not in self.edges:
-                self.edges[key] = edge(
-                    f["src"], "calls", found[0], f["units"], status="resolved", conf=0.8, needs=found, where=f["where"]
-                )
-            return
+        found = self.first_found(f["target"]["via"], f["target"])
+        key = (f["src"], "calls", found)
+        if found and found != f["src"] and key not in self.edges:
+            self.edges[key] = edge(
+                f["src"], "calls", found, f["units"], status="resolved", conf=0.8, needs=[found], where=f["where"]
+            )
+
+    def first_found(self, via: list, target: dict, keep=None) -> str | None:
+        """The one symbol the first ``via`` entry with a definition (in ``keep``, when given) finds; None when
+        that entry finds two, or none finds any."""
+        for kind, value, qual in via:
+            found = sorted({d for d in self.definitions(kind, value, qual, target) if keep is None or d in keep})
+            if found:
+                return found[0] if len(found) == 1 else None
+        return None
+
+    def class_of(self, kind: list, target: dict) -> str | None:
+        """The one class a type expression of this file names (``extract.pytypes``): ``ann`` the class its via
+        list finds; ``ret`` what the one callee its via list finds returns, the callee itself when it is a class,
+        else the class of its return annotation (or of one item of the tuple it returns); ``one`` the class all
+        its types name."""
+        classes = self.index["classes"]
+        if kind[0] == "one":
+            found = {self.class_of(k, target) for k in kind[1]}
+            return found.pop() if len(found) == 1 else None
+        if kind[0] == "ann":
+            return self.first_found(kind[1], target, classes)
+        callee, item = self.first_found(kind[1], target), kind[2]
+        if callee is None or callee in classes:
+            return callee if item is None else None
+        if item is None:
+            return self.index.get("returns", {}).get(callee)
+        items = self.index.get("returns_items", {}).get(callee, ())
+        return items[item] if item < len(items) else None
 
     def definitions(self, kind: str, value, qual: str, target: dict) -> list[str]:
         """The symbols named ``qual`` in the scope one ``via`` entry names, same repo or source first.
         ``local`` is a definition of this file; ``self`` and ``super`` the method ``qual`` up the chain of
-        the class ``value`` of this file, ``super`` past the class itself."""
+        the class ``value`` of this file, ``super`` past the class itself; ``typed`` the method ``qual`` up the
+        chain of the class the type expression ``value`` names."""
         repo = target.get("repo")
         if kind == "local":
             found = self.index["def"].get(f"{self.item_id}::{qual}")
             return [found] if found else []
-        if kind in ("self", "super"):
-            cls = self.index["def"].get(f"{self.item_id}::{value}")
+        if kind in ("self", "super", "typed"):
+            cls = self.index["def"].get(f"{self.item_id}::{value}") if kind != "typed" else self.class_of(value, target)
             member = hierarchy.find_member(self.index, cls, qual, skip=kind == "super") if cls else None
             return [member[0]] if member else []
         if kind in ("package", "gopkg"):
@@ -305,6 +471,15 @@ class Linker:
                 return same
             found = found or [e["node"] for e in entries]
         return found
+
+    def commit_target(self, sha: str, repo: str | None = None, strict: bool = False) -> str | None:
+        """The item of the one commit read whose SHA starts with ``sha``: among the commits of ``repo`` alone when
+        ``strict``, else those of ``repo`` first; None when no commit read has it, or two do. The same commit read by
+        two sources is one commit: the smaller item id stands for it."""
+        entries = [e for e in self.index["commit"].get(sha[:7], []) if e["sha"].startswith(sha)]
+        scoped = [e for e in entries if e["repo"] == repo] if repo else []
+        entries = scoped if strict or scoped else entries
+        return min(e["node"] for e in entries) if len({e["sha"] for e in entries}) == 1 else None
 
     def _first_file(self, candidates: list[str], repo: str | None) -> list[str]:
         for candidate in candidates:
@@ -372,12 +547,10 @@ class Linker:
                     break
             if found is None:
                 return  # a package import or a file outside the sources: not a dangling link
-        elif ttype == "module":
-            entries = self.index["module"].get(target["value"], [])
-            same = [e for e in entries if e["source"] == target.get("source")]
-            found = _unique(same or entries)
+        elif ttype in ("module", "commit"):
+            found = self._module_or_commit(ttype, target)
             if found is None:
-                return  # third-party or optional import: outside the project, not a dangling link
+                return  # third-party or optional import, or a commit no source read: not a dangling link
         if found is None:
             self._ref("dangling", f"{ttype}:{target['value']}")
             return
@@ -394,9 +567,67 @@ class Linker:
                 where=f.get("where") or [[unit, ""]],
             )
 
+    def _module_or_commit(self, ttype: str, target: dict) -> str | None:
+        if ttype == "commit":
+            return self.commit_target(target["value"], target.get("repo"), strict=True)
+        entries = self.index["module"].get(target["value"], [])
+        same = [e for e in entries if e["source"] == target.get("source")]
+        return _unique(same or entries)
+
     # -- scanning -------------------------------------------------------------------------------
 
-    def scan(self, src: str, unit: str, text: str, field: str = "text", heading: str | None = None) -> None:
+    def _commits(self, src: str, unit: str, text: str, field: str, claim, repo: str | None) -> None:
+        """``repo@sha``, and a bare SHA in evidence: the commit read when one has it, else a Commit node of the
+        mention's own."""
+        for m in REPO_SHA.finditer(text):
+            if not claim(m):
+                continue
+            name, sha = m.group(1), m.group(2)
+            self._count("resolved")
+            found = self.commit_target(sha, name, strict=True)
+            if found:
+                self._link(src, found, unit, m.start(), "parsed", "commit", field)
+                continue
+            commit = f"commit:{name}@{sha}"
+            self.nodes.setdefault(
+                commit, node(commit, "Commit", f"{name}@{sha[:10]}", [unit], props={"repo": name, "sha": sha})
+            )
+            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+            if name in self.index["repo"]:
+                key = (commit, "in_repo", self.index["repo"][name])
+                self.edges.setdefault(key, edge(commit, "in_repo", self.index["repo"][name], [unit]))
+        if field != "evidence":
+            return
+        for m in BARE_SHA.finditer(text):
+            sha = m.group(1)
+            if not (re.search(r"[a-f]", sha) and re.search(r"\d", sha)) or not claim(m):
+                continue
+            self._count("resolved")
+            found = self.commit_target(sha, repo)
+            if found:
+                self._link(src, found, unit, m.start(), "resolved", "commit", field)
+                continue
+            commit = f"commit:{sha}"
+            self.nodes.setdefault(commit, node(commit, "Commit", sha[:10], [unit], props={"sha": sha}))
+            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+
+    def _pulls(self, src: str, unit: str, text: str, field: str, claim, repo: str | None) -> None:
+        """A pull request a source read: ``owner/repo#57`` and ``repo#57`` (parsed), "PR #57" in the text of a step
+        of that repo (resolved)."""
+        for pattern, status in ((GITHUB_PULL, "parsed"), (PLAN_STEP, "parsed"), (PULL_WORD, "resolved")):
+            for m in pattern.finditer(text):
+                if pattern is PULL_WORD:
+                    key = f"{repo}#{m.group(1)}" if repo else None
+                else:
+                    key = f"{m.group(1).lower() if pattern is GITHUB_PULL else m.group(1)}#{m.group(2)}"
+                target = self.index["pr"].get(key) if key else None
+                if target and claim(m):
+                    self._count("resolved")
+                    self._link(src, target, unit, m.start(), status, "pr", field)
+
+    def scan(
+        self, src: str, unit: str, text: str, field: str = "text", heading: str | None = None, repo: str | None = None
+    ) -> None:
         taken: list[tuple[int, int]] = []
 
         def claim(m) -> bool:
@@ -447,35 +678,15 @@ class Linker:
             else:
                 self._count("ambiguous" if entries else "dangling", m.group(0))
 
-        for m in REPO_SHA.finditer(text):
-            if not claim(m):
-                continue
-            repo, sha = m.group(1), m.group(2)
-            commit = f"commit:{repo}@{sha}"
-            self.nodes.setdefault(
-                commit, node(commit, "Commit", f"{repo}@{sha[:10]}", [unit], props={"repo": repo, "sha": sha})
-            )
-            self._count("resolved")
-            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
-            if repo in self.index["repo"]:
-                key = (commit, "in_repo", self.index["repo"][repo])
-                self.edges.setdefault(key, edge(commit, "in_repo", self.index["repo"][repo], [unit]))
-
-        if field == "evidence":
-            for m in BARE_SHA.finditer(text):
-                sha = m.group(1)
-                if not (re.search(r"[a-f]", sha) and re.search(r"\d", sha)) or not claim(m):
-                    continue
-                commit = f"commit:{sha}"
-                self.nodes.setdefault(commit, node(commit, "Commit", sha[:10], [unit], props={"sha": sha}))
-                self._count("resolved")
-                self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+        self._commits(src, unit, text, field, claim, repo)
 
         for m in PLAN_STEP.finditer(text):
             target = self.index["step"].get(f"{m.group(1)}#{m.group(2)}")
             if target and claim(m):
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), "parsed", "step", field)
+
+        self._pulls(src, unit, text, field, claim, repo)
 
         for m in REPO_PATH.finditer(text):
             repo, path = m.group(1), m.group(2)
@@ -569,10 +780,10 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     kind = record["kind"]
     if kind in ("manifest", "contracts", "plan", "knowledge", "binding", "ontology"):
         for t in texts:  # structured files: only the free-text fields, never comments or keys
-            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"))
+            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
     elif texts:
         for t in texts:
-            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"))
+            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
     elif kind in ("code", "config", "asset"):
         pass  # code links come from the structure stage; config and assets are not prose
     elif fragments:
@@ -584,3 +795,11 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     elif body:
         linker.scan(item_id, item_unit(item_id), body)
     return linker.facts() + hierarchy.item_facts(item_id, structure, index)
+
+
+def link_traced(
+    record: dict, fragments: list[dict], body: str | None, structure: list[dict], index: dict
+) -> tuple[list[dict], list[list]]:
+    """``link_item`` and the entries of the index it read, for ``Memo.run_traced``."""
+    reads = Reads(index)
+    return link_item(record, fragments, body, structure, reads), reads.keys()

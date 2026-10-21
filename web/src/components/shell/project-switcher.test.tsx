@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { createApiClient } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
 
-import { matchProjects, ProjectSwitcher, switcherProjects } from "./project-switcher";
+import { defaultProject, matchProjects, ProjectSwitcher, switcherProjects } from "./project-switcher";
 
 const api = vi.hoisted(() => ({ answers: {} as Record<string, unknown>, seen: [] as string[] }));
 const nav = vi.hoisted(() => ({ project: "beta" as string | undefined }));
@@ -65,6 +65,7 @@ beforeEach(() => {
   api.answers = { "/v1/projects": PROJECTS, "/v1/me/overview": OVERVIEW };
   api.seen = [];
   nav.project = "beta";
+  window.localStorage.clear();
   window.matchMedia ??= ((query: string) => ({
     matches: false,
     media: query,
@@ -98,7 +99,35 @@ describe("switcherProjects and matchProjects", () => {
   });
 });
 
+describe("defaultProject", () => {
+  it("is the last project opened while it is listed, else the first with a grant, else the first", () => {
+    expect(defaultProject(PROJECTS, "beta")).toBe("beta");
+    expect(defaultProject(PROJECTS, "gone")).toBe("alpha-api");
+    expect(defaultProject(PROJECTS, null)).toBe("alpha-api");
+    expect(defaultProject([PROJECTS[2], PROJECTS[1]], null)).toBe("beta");
+    expect(defaultProject([PROJECTS[2]], null)).toBe("hidden-ops");
+    expect(defaultProject([], "beta")).toBeNull();
+  });
+});
+
 describe("ProjectSwitcher", () => {
+  it("outside a project names the last one opened, or the first, rather than none", async () => {
+    nav.project = undefined;
+    setup();
+    const trigger = screen.getByTestId("project-switcher");
+    await waitFor(() => expect(trigger).toHaveAccessibleName("Chọn dự án, đang chọn alpha-api"));
+    cleanup();
+
+    nav.project = "beta";
+    setup();
+    await waitFor(() => expect(window.localStorage.getItem("hub.shell.project")).toBe("beta"));
+    cleanup();
+
+    nav.project = undefined;
+    setup();
+    await waitFor(() => expect(screen.getByTestId("project-switcher")).toHaveAccessibleName("Chọn dự án, đang chọn beta"));
+  });
+
   it("names the current project, and reads the counts only once it opens", async () => {
     setup();
     const trigger = screen.getByTestId("project-switcher");

@@ -18,6 +18,7 @@ import {
   sendNotice,
   workerInbox,
 } from "./support/runs";
+import { localAsk, localState, registerLocal } from "./support/local";
 import { toast } from "./support/toast";
 
 /**
@@ -360,4 +361,28 @@ test.describe("in Vietnamese", () => {
     await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
     await expect(main(page).getByTestId("notification-answer")).toBeFocused();
   });
+});
+
+test("the owner answers a question of a local session from the Inbox while its turn is over, and no answer once it ended", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const { run } = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000b01");
+  const decision = await localAsk(me, project, run.id, "Which branch do I push to?");
+  // The turn ended before the person answered: the session is idle, and takes the answer at its next turn.
+  await localState(me, project, run.id, { state: "idle" });
+
+  await open(page, `/inbox?decision=${decision}`);
+  const panel = page.getByTestId("decision-sheet");
+  await expect(panel.getByRole("heading", { level: 2, name: "Which branch do I push to?" })).toBeVisible();
+  await expect(panel.getByTestId("decision-takeover")).toHaveCount(0);
+  await panel.getByRole("radio", { name: /Fix the test/ }).check();
+  await panel.getByTestId("decision-send").click();
+  await expect(panel.getByTestId("decision-answer-option")).toContainText("Fix the test");
+
+  // A question of a session that ended gets no answer: the hub refuses it, and the form says why.
+  const gone = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000b02");
+  const late = await localAsk(me, project, gone.run.id, "Is it too late?");
+  await localState(me, project, gone.run.id, { state: "ended" });
+  await open(page, `/inbox?decision=${late}`);
+  await expect(page.getByTestId("decision-sheet").getByTestId("decision-form")).toHaveCount(0);
 });

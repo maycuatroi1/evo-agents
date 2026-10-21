@@ -16,6 +16,14 @@ const webDir = path.dirname(fileURLToPath(import.meta.url));
  */
 const apiUrl = process.env.EVO_HUB_API_INTERNAL_URL?.trim().replace(/\/+$/, "");
 
+/**
+ * The routes of the tests' fixtures, named `page.fixture.tsx` and `layout.fixture.tsx` (the native page of the core
+ * plugin notes, src/components/plugin-notes): a route only in a build with EVO_WEB_FIXTURES=1, which Playwright's
+ * build sets. A production build, the image's, has none of them.
+ */
+const fixtures = process.env.EVO_WEB_FIXTURES === "1";
+const PAGE_EXTENSIONS = ["tsx", "ts", "jsx", "js"];
+
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: webDir,
@@ -23,6 +31,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: true,
+  pageExtensions: fixtures ? ["fixture.tsx", ...PAGE_EXTENSIONS] : PAGE_EXTENSIONS,
   agentRules: false, // `next dev` would otherwise write AGENTS.md and CLAUDE.md into web/
   async headers() {
     return [{ source: "/:path*", headers: [...STATIC_SECURITY_HEADERS] }];

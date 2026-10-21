@@ -1,0 +1,48 @@
+{
+  "format": "evo-tasks/1",
+  "people": [
+    {"key": "p1", "name": "Alice Nguyen", "github": "alice"},
+    {"key": "p2", "name": "Bao Tran", "github": "bao"},
+    {"key": "p3", "name": "Chi Le", "github": null}
+  ],
+  "status_map": {"Todo": "todo", "Doing": "in_progress", "DONE": "done", "Cancel": "cancelled"},
+  "sprints": [{"key": "s7", "name": "Sprint 7", "starts_on": "2026-10-13", "ends_on": "2026-10-26", "state": "active"}],
+  "tasks": [
+    {
+      "key": "n-001",
+      "external": {"system": "notion", "id": "0000aaaa", "url": "https://example.invalid/task/0000aaaa"},
+      "type": "story",
+      "title": "Place an order with a card",
+      "description_md": "",
+      "status": "Doing",
+      "priority": "high",
+      "due_on": "2026-10-24",
+      "done_on": null,
+      "sprint": "s7",
+      "parent": null,
+      "assignees": ["p1"],
+      "roles": {"ba": ["p1"], "qa": ["p2"], "dev": []},
+      "use_cases": ["UC ORD-1"],
+      "plan_steps": [{"plan": "rollout", "step": "2"}],
+      "pulls": ["https://example.invalid/shop-api/pull/88"]
+    },
+    {
+      "key": "n-002",
+      "external": {"system": "notion", "id": "0000bbbb", "url": "https://example.invalid/task/0000bbbb"},
+      "type": "task",
+      "title": "Ship the order",
+      "status": "DONE",
+      "done_on": "2026-10-15",
+      "parent": "n-001",
+      "assignees": ["p3"],
+      "use_cases": ["UC SHIP-1"]
+    },
+    {
+      "key": "n-003",
+      "type": "bug",
+      "title": "Totals round the wrong way",
+      "status": "Todo",
+      "priority": "low"
+    }
+  ]
+}

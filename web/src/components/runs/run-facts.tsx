@@ -1,14 +1,15 @@
 "use client";
 
-import { CircleCheck, CircleX, FileDiff, GitBranch, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX, FileDiff, GitBranch, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { Identifier } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { Badge } from "@/components/ui/badge";
 import { workerHref } from "@/components/workers/queries";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { branchUrl, commitUrl, type RepoWeb } from "./forge";
@@ -26,7 +27,7 @@ import { useDuration } from "./runs-table";
  */
 
 /** A card of the side column: its title, then what it holds; a card with nothing to hold yet is its title and `status`. */
-function Card({ title, children, status, testId }: { title: string; children?: ReactNode; status?: ReactNode; testId: string }) {
+export function Card({ title, children, status, testId }: { title: string; children?: ReactNode; status?: ReactNode; testId: string }) {
   const id = useId();
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid={testId}>
@@ -59,7 +60,7 @@ function Branch({ name, web }: { name: string; web: RepoWeb | null }) {
   return <Identifier value={name} externalHref={href} linkLabel={href ? named(name) : undefined} testId="run-branch" />;
 }
 
-function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
+export function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
@@ -70,7 +71,7 @@ function Fact({ label, children, testId }: { label: string; children: ReactNode;
   );
 }
 
-function When({ at }: { at: string }) {
+export function When({ at }: { at: string }) {
   const format = useFormatter();
   const date = new Date(at);
   return (
@@ -95,10 +96,11 @@ function Lease({ run }: { run: Run }) {
   );
 }
 
-export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null }) {
+export function RunDetails({ run, viewer, more }: { run: Run; viewer: RunViewer | null; more?: ReactNode }) {
   const t = useTranslations("runs.detail.facts");
+  const [all, setAll] = useState(false);
   const tRun = useTranslations("runs");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const duration = useDuration();
   const now = useNow(isActiveState(run.state));
   const timing = runTiming(run, now);
@@ -115,15 +117,15 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             <span className="text-muted-foreground">{run.pinned_worker_id !== null ? tRun("pinnedWaiting") : tRun("noWorkerYet")}</span>
           )}
         </Fact>
-        <Fact label={t("runtime")} testId="run-runtime">
+        <Fact label={t("agent")} testId="run-runtime">
           {run.runtime === "any"
             ? t("runtimeAny", { mode: t(`mode.${run.mode}`) })
             : run.requested_runtime === "any"
               ? t("runtimePicked", { runtime: tRuntime(run.runtime), mode: t(`mode.${run.mode}`) })
               : t("runtimeMode", { runtime: tRuntime(run.runtime), mode: t(`mode.${run.mode}`) })}
-        </Fact>
-        <Fact label={t("model")} testId="run-model">
-          {run.model ? <span className="font-mono text-xs">{run.model}</span> : <span className="text-muted-foreground">{t("modelDefault")}</span>}
+          <span className="block font-mono text-xs text-muted-foreground" data-testid="run-model">
+            {run.model ?? t("modelDefault")}
+          </span>
         </Fact>
         {run.kind === "plan" || run.kind === "review" || run.kind === "judge" || run.kind === "author" ? (
           <Fact label={t("repos")} testId="run-repos">
@@ -154,86 +156,101 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             ) : null}
           </Fact>
         )}
-        {run.kind === "plan" ? (
-          <Fact label={t("sessions")} testId="run-sessions-mode">
-            {t("sessionsValue", { each: run.session_per_step ? "step" : "one" })}
-          </Fact>
-        ) : null}
-        <Fact label={t("session")}>
-          {run.session_id ? <Identifier value={run.session_id} copy copyLabel={t("copySession")} /> : <span className="text-muted-foreground">{t("none")}</span>}
-        </Fact>
-        <Fact label={t("lease")}>
-          <Lease run={run} />
-        </Fact>
-        <Fact label={t("attempt")}>
-          <span className="tabular-nums">{t("attemptValue", { attempt: run.attempt, max: run.max_attempts })}</span>
-          {run.parent_run_id !== null ? (
-            <>
-              {", "}
-              <Link href={runHref(run.project, run.parent_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-parent">
-                {t("parent", { id: run.parent_run_id })}
-              </Link>
-            </>
+        {all ? (
+          <>
+          {run.kind === "plan" ? (
+            <Fact label={t("sessions")} testId="run-sessions-mode">
+              {t("sessionsValue", { each: run.session_per_step ? "step" : "one" })}
+            </Fact>
           ) : null}
-          {run.resume_of_run_id !== null ? (
-            <>
-              {", "}
-              <Link href={runHref(run.project, run.resume_of_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-resumes">
-                {t("resumes", { id: run.resume_of_run_id })}
-              </Link>
-            </>
+          <Fact label={t("session")}>
+            {run.session_id ? <Identifier value={run.session_id} copy copyLabel={t("copySession")} /> : <span className="text-muted-foreground">{t("none")}</span>}
+          </Fact>
+          <Fact label={t("lease")}>
+            <Lease run={run} />
+          </Fact>
+          <Fact label={t("attempt")}>
+            <span className="tabular-nums">{t("attemptValue", { attempt: run.attempt, max: run.max_attempts })}</span>
+            {run.parent_run_id !== null ? (
+              <>
+                {", "}
+                <Link href={runHref(run.project, run.parent_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-parent">
+                  {t("parent", { id: run.parent_run_id })}
+                </Link>
+              </>
+            ) : null}
+            {run.resume_of_run_id !== null ? (
+              <>
+                {", "}
+                <Link href={runHref(run.project, run.resume_of_run_id)} className="text-brand underline-offset-4 hover:underline" data-testid="run-resumes">
+                  {t("resumes", { id: run.resume_of_run_id })}
+                </Link>
+              </>
+            ) : null}
+          </Fact>
+          <Fact label={t("approval")}>
+            {run.kind === "plan"
+              ? t("approvalPlan")
+              : run.kind === "review"
+                ? t("approvalReview")
+                : run.kind === "judge"
+                  ? t("approvalJudge")
+                  : run.kind === "author"
+                    ? t("approvalAuthor")
+                    : t(`approvals.${run.approval}`)}
+          </Fact>
+          <Fact label={t("timeout")} testId="run-timeout">
+            {run.kind === "plan" || run.kind === "review" || run.kind === "judge" || run.kind === "author" ? (
+              <>
+                <span>{t("timeoutHours", { hours: Math.round(run.timeout_min / 60) })}</span>
+                <span className="block text-xs text-muted-foreground tabular-nums">
+                  {t("agentTime", { used: duration(run.run_seconds * 1000) })}
+                </span>
+              </>
+            ) : (
+              t("timeoutValue", { minutes: run.timeout_min })
+            )}
+          </Fact>
+          <Fact label={t("dispatched")}>
+            <span className="font-mono text-xs">{run.dispatched_by}</span>
+            <span className="block text-xs text-muted-foreground">
+              <When at={run.queued_at} />
+            </span>
+          </Fact>
+          {timing.startedAt ? (
+            <Fact label={t("started")}>
+              <When at={timing.startedAt} />
+            </Fact>
           ) : null}
-        </Fact>
-        <Fact label={t("approval")}>
-          {run.kind === "plan"
-            ? t("approvalPlan")
-            : run.kind === "review"
-              ? t("approvalReview")
-              : run.kind === "judge"
-                ? t("approvalJudge")
-                : run.kind === "author"
-                  ? t("approvalAuthor")
-                  : t(`approvals.${run.approval}`)}
-        </Fact>
-        <Fact label={t("timeout")} testId="run-timeout">
-          {run.kind === "plan" || run.kind === "review" || run.kind === "judge" || run.kind === "author" ? (
-            <>
-              <span>{t("timeoutHours", { hours: Math.round(run.timeout_min / 60) })}</span>
-              <span className="block text-xs text-muted-foreground tabular-nums">
-                {t("agentTime", { used: duration(run.run_seconds * 1000) })}
-              </span>
-            </>
-          ) : (
-            t("timeoutValue", { minutes: run.timeout_min })
-          )}
-        </Fact>
-        <Fact label={t("dispatched")}>
-          <span className="font-mono text-xs">{run.dispatched_by}</span>
-          <span className="block text-xs text-muted-foreground">
-            <When at={run.queued_at} />
-          </span>
-        </Fact>
-        {timing.startedAt ? (
-          <Fact label={t("started")}>
-            <When at={timing.startedAt} />
-          </Fact>
-        ) : null}
-        {run.finished_at ? (
-          <Fact label={t("finished")}>
-            <When at={run.finished_at} />
-          </Fact>
-        ) : null}
-        {timing.durationMs !== null ? (
-          <Fact label={timing.waiting ? t("waited") : t("duration")}>
-            <span className="tabular-nums">{duration(timing.durationMs)}</span>
-          </Fact>
-        ) : null}
-        {run.plan_revision !== null ? (
-          <Fact label={t("revision")}>
-            <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
-          </Fact>
+          {run.finished_at ? (
+            <Fact label={t("finished")}>
+              <When at={run.finished_at} />
+            </Fact>
+          ) : null}
+          {timing.durationMs !== null ? (
+            <Fact label={timing.waiting ? t("waited") : t("duration")}>
+              <span className="tabular-nums">{duration(timing.durationMs)}</span>
+            </Fact>
+          ) : null}
+          {run.plan_revision !== null ? (
+            <Fact label={t("revision")}>
+              <Identifier value={t("revisionValue", { revision: run.plan_revision })} />
+            </Fact>
+          ) : null}
+          </>
         ) : null}
       </dl>
+      {all && more ? <div className="mt-4 flex flex-col gap-4 border-t pt-4 [&>section]:rounded-none [&>section]:border-0 [&>section]:bg-transparent [&>section]:shadow-none [&>section>div]:border-0 [&>section>div]:px-0">{more}</div> : null}
+      <button
+        type="button"
+        aria-expanded={all}
+        onClick={() => setAll((shown) => !shown)}
+        className="-mx-1 mt-3 inline-flex min-h-8 items-center gap-1 rounded-sm px-1 text-[13px] font-medium text-brand hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-ring max-md:min-h-11"
+        data-testid="run-details-toggle"
+      >
+        <ChevronDown className={cn("size-4 transition-transform", all && "rotate-180")} aria-hidden="true" />
+        {all ? t("lessDetails") : t("allDetails")}
+      </button>
     </Card>
   );
 }
@@ -253,20 +270,8 @@ export function RunResult({ run }: { run: Run }) {
   const branchHref = branchUrl(web, branch);
   const nothing = !run.error && verify.length === 0 && !run.commit_sha && !diffstat && !run.evidence && !run.diff_sha256;
 
-  if (nothing) {
-    // Nothing to show yet, or ever: the card is its title and one word of where it stands.
-    return (
-      <Card
-        title={t("title")}
-        testId="run-result"
-        status={
-          <span className="ml-auto text-xs text-fg-subtle" data-testid="run-result-empty">
-            {isActiveState(run.state) ? t("noneYet") : t("empty")}
-          </span>
-        }
-      />
-    );
-  }
+  // Nothing to show yet, or ever: no card, as a page shows what there is.
+  if (nothing) return null;
 
   return (
     <Card title={t("title")} testId="run-result">

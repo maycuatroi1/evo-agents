@@ -8,7 +8,8 @@ Each proposal has its lines in the ledger, which the hub only ever adds to: none
 acted (ACTORS): ``agent``, an agent of a run of the Curator (the Reviewer that proposed it, the Builder that built it,
 the Judge that judged it), with its run; ``user``, a member (who accepted, rejected or deferred it, or merged or closed
 its pull request by hand); ``curator``, the hub's own code (the plan it made, the pull request it opened, the signs of
-score hacking it found, the merge, the outcome, the revert it proposes). A line names what happened (ACTIONS) and,
+score hacking it found, the merge, the global skill it published from the merge, the outcome, the revert it proposes
+and the skill's version before it published again). A line names what happened (ACTIONS) and,
 when it applies, the commit, the commits before and after on the default branch (``before_sha``, ``after_sha``), the
 figures, the Judge's verdict, the pull request and when it merged.
 
@@ -20,16 +21,21 @@ a command run again and again, a correction). Each is a metric key that ``read_m
 ``outcome_of`` compares them with the same figures counted over the charter's ``outcome_days`` after the merge, per
 unit of activity (the sessions and the runs that ran in each span, ``activity``), so spans of different length and
 busyness compare: a metric is worse when its rate rose by more than WORSE_FACTOR and it counts at least its
-MIN_WORSE, better when it fell by as much. The result (OUTCOMES) is ``revert`` when a metric got worse and none got
-better, ``keep`` when none got worse, and ``unclear`` when the figures are mixed, when the proposal named no figure
-the hub counts, or when either span had less than MIN_ACTIVITY. A ``revert`` makes the hub propose a revert of the
-merge commit (``revert_draft``), a proposal of kind ``revert``, tier 1 at least.
+MIN_WORSE (MIN_WORSE_USD for one in USD), better when it fell by as much. A metric of a level rather than of activity
+(LEVEL_METRICS: the commits the knowledge graph lags, the files it lacks or holds stale, the 95th percentile of the
+sessions' peak context, the tokens of the always-loaded files) compares as it is, not per unit of activity. The metrics
+of the lenses runtime and harness (``evo_agents.hub.runtime_metrics``) read the figures' ``runtime`` and ``harness``.
+The result (OUTCOMES) is ``revert`` when a metric got worse and none got better, ``keep`` when none got worse, and
+``unclear`` when the figures are mixed, when the proposal named no figure the hub counts, or when either span had less
+than MIN_ACTIVITY. A ``revert`` makes the hub propose a revert of the merge commit (``revert_draft``), a proposal of
+kind ``revert``, tier 1 at least.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
+from evo_agents.hub import kg_coverage, runtime_metrics
 from evo_agents.hub.judge import slug
 
 ACTORS = ("curator", "agent", "user")
@@ -48,6 +54,7 @@ ACTIONS = (
     "left_open",  # its change stays open for its owner, with why (curator)
     "closed",  # its pull request was closed without a merge (user)
     "outcome",  # the figures counted again after the merge: keep, revert or unclear (curator)
+    "skill_release",  # the hub published a global skill from its merge, or its version before again (curator)
 )
 OUTCOMES = ("keep", "revert", "unclear")
 DEFAULT_OUTCOME_DAYS = 7  # the charter's outcome_days by default
@@ -68,6 +75,8 @@ LENS_METRICS: dict[str, tuple[str, ...]] = {
     "failed_runs": ("failed_runs",),
     "tech_debt": ("open_items", "stuck_steps"),
     "cost": ("cost_usd",),
+    "kg_health": tuple(kg_coverage.METRICS),
+    **runtime_metrics.LENS_METRICS,
 }
 METRIC_WORDS = {
     "tool_errors": "tool calls that failed",
@@ -77,7 +86,13 @@ METRIC_WORDS = {
     "open_items": "open items of plans",
     "stuck_steps": "steps of active plans that did not move",
     "cost_usd": "the cost of the runs, in USD",
+    **{key: words for key, (words, _) in kg_coverage.METRICS.items()},
+    **{key: words for key, (words, _) in runtime_metrics.METRICS.items()},
 }
+# Metrics of a level the graph or the sessions are at when the figures are counted rather than of the activity of the
+# span: compared as they are, not per session or run.
+LEVEL_METRICS = kg_coverage.LEVELS | runtime_metrics.LEVELS
+USD_METRICS = frozenset({"cost_usd"}) | runtime_metrics.USD  # a cost must reach MIN_WORSE_USD before it is worse
 PREFIX_WORDS = {
     "environment": "failures from the environment of cause {name}",
     "failed_runs": "runs that failed or were lost of cause {name}",
@@ -139,6 +154,10 @@ def read_metric(figures: Mapping, key: str) -> float:
         return float(len(_list(figures.get(key))))
     if key == "cost_usd":
         return _number(ran.get("cost_usd"))
+    if key in kg_coverage.METRICS:
+        return float(kg_coverage.METRICS[key][1](figures.get("kg_health")))
+    if key in runtime_metrics.METRICS:
+        return float(runtime_metrics.METRICS[key][1](figures))
     prefix, _, name = key.partition(":")
     if prefix == "environment":
         return float(sum(_int(item.get("count")) for item in _entries(figures, "environment", "cause", name)))
@@ -164,16 +183,26 @@ def _run_ids(texts: Iterable[str]) -> set[int]:
     return found
 
 
+def _cited(texts: set[str], listed) -> bool:
+    """Whether the evidence ``listed`` (a figure entry's) is among ``texts``: the same text, or a session whose line
+    of its transcript ``texts`` names (``transcript:ID:...`` cites ``session:ID`` and its entries)."""
+    found = {str(text) for text in _list(listed) if text is not None}
+    if texts & found:
+        return True
+    sessions = {text.split(":")[1] for text in texts if text.startswith("transcript:") and text.count(":") >= 2}
+    return bool(sessions) and any(text.split(":")[1] in sessions for text in found if text.startswith("session:"))
+
+
 def evidence_metrics(figures: Mapping, texts: Iterable[str]) -> list[str]:
     """The metric keys of the entries of ``figures`` that the evidence ``texts`` (as ``review.evidence_text`` writes
-    them) point at, in the figures' order."""
+    them) point at, in the figures' order; a line of a transcript points at what its session's evidence does."""
     texts = set(texts)
     run_ids = _run_ids(texts)
     keys: list[str] = []
     for item in _list(figures.get("environment")):
         if not isinstance(item, Mapping) or not isinstance(item.get("cause"), str):
             continue
-        cited = texts & {str(text) for text in _list(item.get("evidence"))}
+        cited = _cited(texts, item.get("evidence"))
         if cited or run_ids & {run for run in _list(item.get("runs")) if isinstance(run, int)}:
             keys.append(f"environment:{item['cause']}")
     for item in _list(figures.get("failed_runs")):
@@ -182,9 +211,10 @@ def evidence_metrics(figures: Mapping, texts: Iterable[str]) -> list[str]:
                 keys.append(f"failed_runs:{item['cause']}")
     for item in _list(figures.get("repeated_commands")):
         if isinstance(item, Mapping) and isinstance(item.get("command"), str):
-            if texts & {str(text) for text in _list(item.get("evidence"))}:
+            if _cited(texts, item.get("evidence")):
                 keys.append(f"repeated:{item['command']}")
-    if any(isinstance(item, Mapping) and item.get("evidence") in texts for item in _list(figures.get("corrections"))):
+    corrections = _list(figures.get("corrections"))
+    if any(isinstance(item, Mapping) and _cited(texts, [item.get("evidence")]) for item in corrections):
         keys.append("corrections")
     return keys
 
@@ -214,11 +244,16 @@ def _rate(value: float, spread: int) -> float:
     return value / spread if spread > 0 else 0.0
 
 
+def rate_of(key: str, value: float, spread: int) -> float:
+    """Metric ``key``'s ``value`` per unit of activity, or as it is for a metric of LEVEL_METRICS."""
+    return value if key in LEVEL_METRICS else _rate(value, spread)
+
+
 def compare(key: str, before: float, before_activity: int, after: float, after_activity: int) -> str:
     """``worse``, ``better`` or ``same``: how metric ``key`` moved, per unit of activity (see the module's
     docstring)."""
-    rate_before, rate_after = _rate(before, before_activity), _rate(after, after_activity)
-    least = MIN_WORSE_USD if key == "cost_usd" else MIN_WORSE
+    rate_before, rate_after = rate_of(key, before, before_activity), rate_of(key, after, after_activity)
+    least = MIN_WORSE_USD if key in USD_METRICS else MIN_WORSE
     if after >= least and rate_after > rate_before * WORSE_FACTOR:
         return "worse"
     if rate_before > 0 and rate_after * WORSE_FACTOR < rate_before:
@@ -244,8 +279,8 @@ def outcome_of(trigger: Mapping | None, after: Mapping, *, since: str | None = N
                 "what": metric_words(key),
                 "before": value,
                 "after": now,
-                "before_rate": round(_rate(value, before_activity), 4),
-                "after_rate": round(_rate(now, after_activity), 4),
+                "before_rate": round(rate_of(key, value, before_activity), 4),
+                "after_rate": round(rate_of(key, now, after_activity), 4),
                 "change": compare(key, value, before_activity, now, after_activity),
             }
         )
@@ -277,8 +312,10 @@ def outcome_of(trigger: Mapping | None, after: Mapping, *, since: str | None = N
 
 def worse_evidence(after: Mapping, outcome: Mapping) -> list[str]:
     """Evidence, as ``review.parse_evidence`` reads it, that the figures ``after`` hold for the metrics ``outcome``
-    found worse: the evidence of an environment cause, a command run again and again or a correction, and the runs of
-    a cause of failures; at most MAX_REVERT_EVIDENCE."""
+    found worse: the evidence of an environment cause, a command run again and again or a correction, the runs of a
+    cause of failures, of the knowledge graph's health the files of its git sources and the sessions and runs whose
+    lookups came back empty, and of the runtime and the harness their heaviest sessions and runs; at most
+    MAX_REVERT_EVIDENCE."""
     worse = {item.get("key") for item in _list(outcome.get("metrics")) if item.get("change") == "worse"}
     found: list[str] = []
 
@@ -298,6 +335,15 @@ def worse_evidence(after: Mapping, outcome: Mapping) -> list[str]:
             add(_list(item.get("evidence")))
     if "corrections" in worse:
         add(item.get("evidence") for item in _list(after.get("corrections")) if isinstance(item, Mapping))
+    health = after.get("kg_health") if isinstance(after.get("kg_health"), Mapping) else {}
+    if worse & kg_coverage.LEVELS:
+        for item in _list(health.get("sources")):
+            if isinstance(item, Mapping):
+                add(_list(item.get("evidence")))
+    if worse & (set(kg_coverage.METRICS) - kg_coverage.LEVELS):
+        retrieved = health.get("retrieval") if isinstance(health.get("retrieval"), Mapping) else {}
+        add(_list(retrieved.get("evidence")))
+    add(runtime_metrics.evidence(after, worse))
     return found
 
 

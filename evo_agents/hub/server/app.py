@@ -5,15 +5,21 @@ SQLAlchemy engine on it (``evo_agents.hub.db``), the GitHub client, the blob sto
 defers to, and closes them on shutdown, the engine before the pool; a database that cannot be reached or migrated stops
 the start instead of serving errors. An R2 outage does not: health reports it and the blob routes answer 503. Every
 request gets an id and one access log line without its query string, which can carry OAuth codes. Every path under /v1
-needs a credential except the few ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json
+needs a credential except the few ``security.PUBLIC_PATHS`` lists and the files of plugins' pages, which check a
+ticket of their own (``security.PUBLIC_PREFIXES``), and the routes of a feature a hub admin turned off
+answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
-503. ``app.state.github_app`` is the hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes
-the runs' GitHub tokens; the lifespan opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open
-stops the start. ``app.state.curator_app`` is the Curator's own App, evo-agents-curator, the same way with
-EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens from it alone, and the hub checks rulesets with it.
+503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
+that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugin_store``). The routes of
+plugins are included when the app is made (``evo_agents.hub.server.plugin_routes``): the core plugins' own, Telegram's
+among them, then the proxy to isolated plugins' backends under /v1/x. ``app.state.github_app`` is the hub's GitHub App
+(``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
+without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is the
+Curator's own App, evo-agents-curator, the same way with EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens
+from it alone, and the hub checks rulesets with it.
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
 
 from evo_agents import __version__
@@ -36,10 +42,18 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
+from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, user_emails, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.hub_settings import FeatureGate
+from evo_agents.hub.server.plugin_bridge import bridge_gate
+from evo_agents.hub.server.plugin_host import PluginHostClient
+
+# The hub worker runs the release pass, but evo_agents.hub.worker imports no server module beyond its job list
+# (docs/structure.md, section Package boundaries): the hub worker command takes it from here and hands it down.
+from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
+from evo_agents.plugins.signing import default_sigstore
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +144,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "blob store not configured: the blob routes answer 503",
                 extra={"missing": config.blob_store_missing()},
             )
+        await _check_plugins(app, config)
         log.info(
             "hub ready",
             extra={
@@ -143,6 +158,8 @@ def create_app(config: HubConfig) -> FastAPI:
                 "github_app_missing": config.github_app_missing(),
                 "curator_app_missing": config.curator_app_missing(),
                 "telegram_missing": config.telegram_missing(),
+                "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
+                "plugin_host_missing": config.plugin_host_missing(),
             },
         )
         try:
@@ -152,7 +169,7 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.terminals.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
-            for opened in (app.state.github_app, app.state.curator_app):
+            for opened in (app.state.github_app, app.state.curator_app, app.state.plugin_host):
                 if opened is not None:
                     await opened.aclose()
             if app.state.blobs is not None:
@@ -168,21 +185,27 @@ def create_app(config: HubConfig) -> FastAPI:
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
+        dependencies=[Depends(bridge_gate)],  # a plugin's page, through the web's bridge, gets what it was granted
     )
     app.state.config = config
+    app.add_middleware(FeatureGate)  # added first, so it runs after Authenticate and sees the caller
     app.add_middleware(Authenticate)
     from evo_agents.hub.server import mcp
 
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
-    app.include_router(health.router)
-    app.include_router(auth.router)
-    app.include_router(web_auth.router)
-    app.include_router(tokens.router)
-    app.include_router(admin.router)
-    app.include_router(projects.router)
-    app.include_router(blobs.router)
+    for routes in (
+        health.router,
+        auth.router,
+        web_auth.router,
+        tokens.router,
+        user_emails.router,
+        admin.router,
+        projects.router,
+        blobs.router,
+    ):
+        app.include_router(routes)
 
     from evo_agents.hub.server import plans
 
@@ -214,7 +237,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(workers.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
-    from evo_agents.hub.server import author_chat, listen, run_events, runs, tool_stats
+    from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
 
     app.include_router(runs.router)
     app.include_router(runs.worker_router)
@@ -226,33 +249,80 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(tool_stats.router)
     app.state.listener = listen.Listener(config.dsn)  # the process's one LISTEN, opened by the first claim or stream
     app.state.run_wakeups = runs.RunWakeups(app.state.listener)  # the claims waiting for a queued run
-    app.state.run_streams = run_events.RunStreams(app.state.listener)  # the event streams of runs
+    # the event streams of runs, and of group chats
+    app.state.run_streams, app.state.chat_streams = (
+        run_events.RunStreams(app.state.listener),
+        chat_events.ChatStreams(app.state.listener),
+    )
 
-    from evo_agents.hub.server import curator, decisions, digests, notifications, overview, proposals
+    from evo_agents.hub.server import (
+        curator,
+        decisions,
+        digests,
+        kg_worker,
+        local_runs,
+        notifications,
+        overview,
+        proposals,
+        release_claims,
+        releases,
+    )
 
-    app.include_router(decisions.router)
-    app.include_router(decisions.worker_router)
-    app.include_router(notifications.router)
-    app.include_router(notifications.worker_router)
-    app.include_router(overview.router)
-    app.include_router(curator.router)
-    app.include_router(proposals.router)
-    app.include_router(proposals.worker_router)
+    for routes in (
+        kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
+        decisions.router,
+        decisions.worker_router,
+        local_runs.router,
+        local_runs.batch_router,
+        notifications.router,
+        notifications.worker_router,
+        overview.router,
+        curator.router,
+        proposals.router,
+        proposals.worker_router,
+        releases.router,  # the daily release of a project (evo_agents.hub.releases)
+        release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
+    ):
+        app.include_router(routes)
 
-    from evo_agents.hub.server import changes, ledger
+    from evo_agents.hub.server import (
+        changes,
+        earlier,
+        history,
+        history_search,
+        kg_health,
+        ledger,
+        playbook,
+        proposal_plans,
+        protection,
+        replays,
+        transcripts,
+    )
 
-    app.include_router(changes.router)
-    app.include_router(changes.worker_router)
-    app.include_router(ledger.router)
-    app.include_router(digests.router)
+    for routes in (
+        changes.router,
+        protection.router,
+        proposal_plans.router,
+        changes.worker_router,
+        ledger.router,
+        digests.router,
+        transcripts.router,
+        kg_health.router,
+        replays.router,
+        replays.worker_router,
+        history.router,
+        history.worker_router,
+        history_search.router,
+        earlier.router,
+        playbook.router,
+        playbook.worker_router,
+    ):
+        app.include_router(routes)
 
-    from evo_agents.hub.server import telegram
+    from evo_agents.hub.server import plugin_routes
 
-    app.include_router(telegram.me_router)
-    app.include_router(telegram.webhook_router)
-    app.include_router(telegram.admin_router)
-    app.state.telegram_inbound = telegram.InboundLimit()  # updates per chat the webhook takes, in this process
-    app.state.telegram_bot = None  # the bot's username, once getMe told it
+    # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
+    app.state.core_plugins = plugin_routes.include(app)
 
     from evo_agents.hub.server import terminal
 
@@ -260,14 +330,99 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
 
-    from evo_agents.hub.server import credentials, secrets
+    from evo_agents.hub.server import (
+        account_views,
+        accounts,
+        agent_packs,
+        agent_profiles,
+        agent_types,
+        autonomy_policies,
+        branding,
+        chat_agents,
+        chat_direct,
+        chat_images,
+        chat_members,
+        chat_people,
+        chat_read,
+        chats,
+        credentials,
+        features,
+        merge_judge,
+        merge_view,
+        plugin_host,
+        plugin_ui,
+        plugins,
+        project_plugins,
+        rate_limits,
+        run_leases,
+        secrets,
+        signal_keys,
+        signals,
+        task_dispatch,
+        triage_actions,
+    )
     from evo_agents.hub.server.sealing import Sealer
 
-    app.include_router(secrets.router)
-    app.include_router(credentials.router)
-    app.include_router(credentials.worker_router)
+    for routes in (
+        secrets.router,
+        run_leases.router,
+        credentials.worker_router,
+        accounts.router,
+        account_views.router,
+        rate_limits.worker_router,
+        agent_profiles.router,
+        agent_packs.router,
+        agent_types.router,
+        task_dispatch.router,
+        task_dispatch.worker_router,
+        chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
+        chats.router,
+        chat_direct.router,
+        chat_members.router,
+        chat_images.router,
+        chat_events.router,
+        chat_events.stream_router,
+        chat_agents.worker_router,
+        chat_read.worker_router,
+        triage_actions.worker_router,
+        plugins.router,
+        plugins.publishers_router,
+        project_plugins.router,
+        plugin_ui.router,
+        plugin_host.router,
+        branding.router,
+        branding.admin_router,
+        features.router,
+        features.admin_router,
+        signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
+        signals.router,
+        signal_keys.router,
+        autonomy_policies.router,
+        merge_view.router,
+        merge_judge.worker_router,
+    ):
+        app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
+    # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
+    # signatures of their bundles, and the client to the plugin host that runs the backends of isolated plugins.
+    app.state.hub_version, app.state.plugin_sigstore, app.state.plugin_host = (
+        __version__,
+        default_sigstore(),
+        PluginHostClient(config.plugin_host_url, config.plugin_host_token),
+    )
     return app
+
+
+async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
+    """Record the core plugins of the image in the store, then turn off the installed plugins that do not run on this
+    release (``plugin_store``); a failure is logged and the hub serves on."""
+    from evo_agents.hub.server.plugin_store import disable_incompatible, register_core_plugins
+
+    try:
+        await register_core_plugins(app.state.engine, app.state.core_plugins.plugins)
+        await disable_incompatible(app.state.engine, config.admins, app.state.hub_version)
+    except Exception:
+        log.exception("cannot check the installed plugins against this release; the hub serves on")
 
 
 # What a Sentry event's request may not carry: the body (a pairing code, a GitHub token) and the query string (the

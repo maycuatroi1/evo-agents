@@ -12,6 +12,11 @@ export type ApiErrorInfo = {
   message: string;
   /** X-Request-ID of the failed call, to quote when reporting a 5xx. */
   requestId: string | null;
+  /**
+   * What the hub said beside its message, when it said more (`ErrorBody.detail`): the problems that refused a write,
+   * or the two texts of a conflict. Pages that know a route's detail read it; the others leave it.
+   */
+  detail?: unknown[];
 };
 
 export type ErrorKind = "unauthorized" | "forbidden" | "not_found" | "server" | "network" | "client";
@@ -49,13 +54,21 @@ function field(body: unknown, key: string): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function details(body: unknown): unknown[] | null {
+  if (typeof body !== "object" || body === null || !("detail" in body)) return null;
+  const value = (body as Record<string, unknown>).detail;
+  return Array.isArray(value) && value.length > 0 ? value : null;
+}
+
 /** The error of an answered call, from its JSON body when it has one and its headers otherwise. */
 export function fromResponse(response: Response, body: unknown): ApiError {
+  const detail = details(body);
   return new ApiError({
     status: response.status,
     code: field(body, "error") ?? `http_${response.status}`,
     message: field(body, "message") ?? (response.statusText || `HTTP ${response.status}`),
     requestId: field(body, "request_id") ?? response.headers.get("x-request-id"),
+    ...(detail ? { detail } : {}),
   });
 }
 

@@ -69,7 +69,7 @@ export function RunComposer({ run }: { run: Pick<Run, "project" | "id"> & Partia
   const where = run.worker ? t(interactive ? "interactiveOn" : "headlessOn", { worker: run.worker }) : t(interactive ? "interactive" : "headless");
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2 px-4 pt-1 pb-4" aria-busy={send.isPending || undefined} data-testid="run-composer">
+    <form onSubmit={submit} noValidate className="flex flex-col gap-2 pt-2" aria-busy={send.isPending || undefined} data-testid="run-composer">
       <div
         className={cn(
           "rounded-md border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",

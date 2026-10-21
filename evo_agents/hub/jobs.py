@@ -38,15 +38,33 @@ PRUNE_AUDIT = "hub.prune_audit"  # daily: audit rows older than EVO_HUB_AUDIT_DA
 DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
 FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
+PRUNE_TRANSCRIPTS = "hub.prune_transcripts"  # daily: the content of transcripts past EVO_HUB_TRANSCRIPT_DAYS
+PRUNE_SIGNALS = "hub.prune_signals"  # daily: signals measured more than EVO_HUB_SIGNAL_DAYS ago
+ANALYZE_FACETS = "hub.analyze_facets"  # every 5 minutes: the facet of each new transcript, digest and ended run
+INDEX_HISTORY = "hub.index_history"  # every 5 minutes: the words of each new part of a transcript and ended run
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
+MERGE_QUEUE = "hub.merge_queue"  # every minute: the merge requests of the merge queue on GitLab opened and gated
 CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
+REPLAY_SUITE = "curator.replay_suite"  # hourly: each charter's suite of replay tasks, from the plans' steps done
+PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
+PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
+DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
+READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
+VALUE_CHECK = "hub.value_check"  # on a batch of a project's signals: its plugins' value_check jobs, for it alone
+RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of each release schedule, at its time
 
 
 def kg_lock(project: str) -> str:
     """The lock and queueing lock of project ``project``'s kg builds."""
     return f"kg:{project}"
+
+
+def value_check_lock(project_id: int) -> str:
+    """The lock and queueing lock of project ``project_id``'s value checks: one runs at a time, and at most one
+    waits, which the batches that come meanwhile join."""
+    return f"value-check:{project_id}"
 
 
 class JobQueue:
@@ -60,6 +78,13 @@ class JobQueue:
         connector = PsycopgConnector()
         await connector.open_async(pool=pool)  # an external pool: closing the connector leaves it open
         return cls(JobManager(connector))
+
+    @classmethod
+    def in_transaction(cls) -> JobQueue:
+        """A queue with no pool, which defers only on the caller's connection (``connection=``): for code handed a
+        transaction and nothing else, such as a chat message that queues builds of the graphs holding it, wherever it
+        is sent from. Deferring through it without a connection fails."""
+        return cls(JobManager(PsycopgConnector()))
 
     async def defer(
         self,

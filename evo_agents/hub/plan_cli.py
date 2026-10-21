@@ -87,6 +87,9 @@ def _project(args) -> str:
     return harness_project(root)
 
 
+project_of_args = _project  # the public name, for the client modules written since private names stay in their module
+
+
 def _plan_id(text: str) -> str:
     if not PLAN_ID.fullmatch(text):
         raise HubError(f"{text!r} is not a plan id (a-z, 0-9 and -)")
@@ -102,6 +105,23 @@ def _warnings(result: dict) -> None:
 
 
 # Operations, each against one ``Hub`` (anything with its ``call`` and ``url``)
+
+
+def write_plan(hub, method: str, path: str, request: dict, project: str):
+    """A plan patch that names the local run of this session, when it has one (``local_sync.run_for``), so the hub
+    records the revision as the run's and sets the run's plan and step. A run the hub does not know (404) is left
+    out and the write is made as it would be without one: a session never loses a plan write to its own bookkeeping."""
+    from evo_agents.hub import local_sync
+
+    run = local_sync.run_for(hub.url, project)
+    if run is None:
+        return hub.call(method, path, request)
+    try:
+        return hub.call(method, path, {**request, "run_id": run})
+    except HubError as exc:
+        if exc.status != 404:
+            raise
+    return hub.call(method, path, request)
 
 
 def put_file(hub, path: Path, project: str | None = None, if_revision: int | None = None) -> dict:
@@ -174,11 +194,11 @@ def patch_item(
     request = {"section": section, "updates": updates}
     request.update({"step": step} if step is not None else {"index": index})
     if if_revision is not None:
-        return hub.call("PATCH", path, {**request, "if_revision": if_revision})
+        return write_plan(hub, "PATCH", path, {**request, "if_revision": if_revision}, project)
     base = hub.call("GET", path)
     for attempt in range(attempts):
         try:
-            return hub.call("PATCH", path, {**request, "if_revision": base["revision"]})
+            return write_plan(hub, "PATCH", path, {**request, "if_revision": base["revision"]}, project)
         except HubError as exc:
             if exc.code != REVISION_CONFLICT or attempt == attempts - 1:
                 raise
@@ -200,6 +220,39 @@ def complete_plan(hub, project: str, plan_id: str, if_revision: int | None = Non
             if exc.code != REVISION_CONFLICT or if_revision is not None or attempt == attempts - 1:
                 raise
     raise AssertionError("unreachable")
+
+
+def _post_revisioned(hub, project: str, plan_id: str, action: str, request: dict, if_revision, attempts: int) -> dict:
+    path = plans_path(project, plan_id)
+    for attempt in range(attempts):
+        revision = if_revision if if_revision is not None else hub.call("GET", path)["revision"]
+        try:
+            return hub.call("POST", f"{path}/{action}", {**request, "if_revision": revision})
+        except HubError as exc:
+            if exc.code != REVISION_CONFLICT or if_revision is not None or attempt == attempts - 1:
+                raise
+    raise AssertionError("unreachable")
+
+
+def abandon_plan(
+    hub,
+    project: str,
+    plan_id: str,
+    reason: str,
+    superseded_by: str | None = None,
+    if_revision: int | None = None,
+    attempts: int = ATTEMPTS,
+) -> dict:
+    """Move the plan to completed as abandoned (superseded with ``superseded_by``), steps untouched."""
+    request = {"reason": reason}
+    if superseded_by:
+        request["superseded_by"] = superseded_by
+    return _post_revisioned(hub, project, plan_id, "abandon", request, if_revision, attempts)
+
+
+def reopen_plan(hub, project: str, plan_id: str, if_revision: int | None = None, attempts: int = ATTEMPTS) -> dict:
+    """Put an abandoned plan back in active."""
+    return _post_revisioned(hub, project, plan_id, "reopen", {}, if_revision, attempts)
 
 
 @dataclass
@@ -341,9 +394,9 @@ def cmd_handoff(args) -> int:
 
 
 def _by(revision: dict) -> str:
-    """Who wrote a revision: the member, and the author run that wrote it as them."""
+    """Who wrote a revision: the member, and the run that wrote it as them (an author run, or a local session's)."""
     run_id = revision.get("run_id")
-    return revision["actor"] + (f" (author run #{run_id})" if run_id else "")
+    return revision["actor"] + (f" (run #{run_id})" if run_id else "")
 
 
 @_client_command
@@ -430,8 +483,10 @@ def cmd_patch(args) -> int:
 def cmd_step(args) -> int:
     hub, _ = _signed_in()
     updates = {"status": args.status}
-    if args.status == "done" and not args.no_date:
-        updates["done_at"] = datetime.now().strftime("%Y-%m-%d")  # the local date, as evo harness step writes it
+    if args.status in ("done", "descoped") and not args.no_date:
+        updates["done_at" if args.status == "done" else "descoped_at"] = datetime.now().strftime(
+            "%Y-%m-%d"
+        )  # the local date, as evo harness step writes it
     if args.evidence is not None:
         updates["evidence"] = args.evidence
     if args.note is not None:
@@ -460,6 +515,38 @@ def cmd_complete(args) -> int:
         )
     else:
         print(f"Plan {result['plan_id']} was completed already; nothing changed.")
+    return 0
+
+
+@_client_command
+def cmd_abandon(args) -> int:
+    hub, _ = _signed_in()
+    result = abandon_plan(hub, _project(args), _plan_id(args.plan), args.reason, args.superseded_by, args.if_revision)
+    if args.json:
+        _print_json(result)
+        return 0
+    status = result["body"].get("status", "abandoned")
+    if result["changed"]:
+        print(
+            f"Plan {result['plan_id']} is {status}: revision {result['revision']}. `evo-agents hub plan export` "
+            "moves its copy to plans/completed/."
+        )
+    else:
+        print(f"Plan {result['plan_id']} was {status} already; nothing changed.")
+    return 0
+
+
+@_client_command
+def cmd_reopen(args) -> int:
+    hub, _ = _signed_in()
+    result = reopen_plan(hub, _project(args), _plan_id(args.plan), args.if_revision)
+    if args.json:
+        _print_json(result)
+        return 0
+    print(
+        f"Reopened plan {result['plan_id']}: revision {result['revision']}. `evo-agents hub plan export` moves "
+        "its copy to plans/active/."
+    )
     return 0
 
 
@@ -529,7 +616,7 @@ def _register_reads(psub) -> None:
 
 
 def _register_writes(psub) -> None:
-    """``put``, ``patch``, ``step`` and ``complete``."""
+    """``put``, ``patch``, ``step``, ``complete``, ``abandon`` and ``reopen``."""
     put = psub.add_parser(
         "put", help="create a plan from a file, or replace it with --if-revision; the file becomes the hub's copy"
     )
@@ -559,11 +646,28 @@ def _register_writes(psub) -> None:
     _common(step, WRITTEN)
     step.set_defaults(func=cmd_step)
 
-    complete = psub.add_parser("complete", help="move a plan whose steps are all done to completed")
+    complete = psub.add_parser("complete", help="move a plan whose steps are all done or descoped to completed")
     complete.add_argument("plan", metavar="PLAN")
     complete.add_argument("--if-revision", type=int)
     _common(complete, WRITTEN)
     complete.set_defaults(func=cmd_complete)
+
+    abandon = psub.add_parser(
+        "abandon",
+        help="drop a plan: move it to completed as abandoned (or superseded), with a reason; its steps stay as they are",
+    )
+    abandon.add_argument("plan", metavar="PLAN")
+    abandon.add_argument("--reason", required=True, metavar="TEXT", help="why the plan is dropped")
+    abandon.add_argument("--superseded-by", metavar="PLAN", help="the plan that replaces it; status becomes superseded")
+    abandon.add_argument("--if-revision", type=int)
+    _common(abandon, WRITTEN)
+    abandon.set_defaults(func=cmd_abandon)
+
+    reopen = psub.add_parser("reopen", help="put an abandoned or superseded plan back to active")
+    reopen.add_argument("plan", metavar="PLAN")
+    reopen.add_argument("--if-revision", type=int)
+    _common(reopen, WRITTEN)
+    reopen.set_defaults(func=cmd_reopen)
 
 
 def register_plans(hsub) -> None:

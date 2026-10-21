@@ -64,7 +64,7 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
-from evo_agents.worker.runtimes import claude_code, common, opencode
+from evo_agents.worker.runtimes import claude_code, codex, common, opencode
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -864,8 +864,7 @@ class CodexTui(Tui):
         model, effort = self.setting("model"), self.setting("effort")
         if model:
             argv += ["-m", model]
-        if effort:
-            argv += ["-c", f"model_reasoning_effort={json.dumps(effort)}"]
+        argv += codex.config_args(self.context, effort)  # the effort, and the compaction of the headless thread
         argv += ["-C", str(self.context.worktree)]
         if not self.resumed:
             argv.append(self.prompt)
@@ -991,7 +990,8 @@ class OpencodeTui(Tui):
 
     async def start_server(self) -> opencode.Server:
         """``opencode serve`` for the UI; a test hands it a server of its own."""
-        return await opencode.start_server(self.binary, str(self.context.worktree), self.context.env)
+        env = opencode.compaction_env(self.context.env, self.context.worktree)  # prunes as the headless one does
+        return await opencode.start_server(self.binary, str(self.context.worktree), env)
 
     async def prepare(self) -> list[str]:
         self.server = await self.start_server()

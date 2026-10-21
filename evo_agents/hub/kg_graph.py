@@ -9,12 +9,28 @@ size are checked, and only then is it renamed into place, so a file in the cache
 promises. A file that does not match is deleted and never opened. The cache keeps the KEEP files installed last per
 project: an older one is deleted unless a call is reading it (an open file stays readable after it is deleted anyway).
 When the blob store does not answer, the newest build whose artifact is cached answers instead, and kg_status says
-which build that is. Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
+which build that is, and the commit each git source of it read, with how far behind its remote's default branch the
+machine that read it counted (the hub has no checkout to count again). Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
 
 ``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
-meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``). The tools, their schemas, CAP_CHARS
-and kg_more are the local server's; the handles kg_more continues live in this process for HANDLE_TTL, per user and
-project.
+meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``), whose audience is the caller's, as the
+hub computed it for this call (``evo_agents.hub.server.kg_audience``). The tools, their schemas, CAP_CHARS and kg_more
+are the local server's; the handles kg_more continues live in this process for HANDLE_TTL, per user and project, and
+continue only for a caller whose audience still holds what the result revealed.
+
+kg_status names the build's totals and the coverage of each source when the caller's audience holds every audience of
+the build. Otherwise it counts what that audience holds (``Store.seen``); of a source with items that have an audience
+it says only how many of them the caller sees; and it leaves out what the build says of all items at once: the samples,
+issues and errors of its coverage, its size and its audiences. The web's graph pages count the same way
+(``evo_agents.hub.kg_web``).
+
+``unknown`` looks node ids and paths up in the same graph, as a session of the caller reads it, for a check that only
+needs to know which of them it lacks: the sources of a finding of the core plugin srs
+(``evo_agents.hub.server.kg.unknown_refs``). An id names a node as kg_node finds it; a path, ``repo:path`` or a path
+alone, names one when a visible File or Document node carries exactly that path. It also gives the author emails of
+the LATEST_COMMITS newest commits visible to the session that changed each file or document the ids and paths name
+(``changes`` edges, newest by the committer time the Commit node keeps), each address once: the people a settle chat
+of srs invites for that source.
 
 The api runs one process: the in-use counts and the fetch locks are per process.
 """
@@ -25,23 +41,46 @@ import os
 import threading
 import time
 import uuid
-from collections import Counter, deque
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
-from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
-from evo_agents.kg.store import Store
+from evo_agents.kg import freshness
+from evo_agents.kg import store as kg_store
+from evo_agents.kg.policy import Label, Policy, audience_below
+from evo_agents.kg.serve import HANDLE_TTL, IMPACT_STATUSES, TOOLS, Session, ToolError
+from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
 MAX_HANDLES = 100  # kg_more handles kept per user and project
+LATEST_COMMITS = 3  # the newest commits of a file whose authors ``unknown`` gives
+COMMITS_PAGE = 500  # edges into a file read at once to find its commits
+MAX_COMMITS_READ = 5_000  # edges into one file read at most; a file changed more often is read that far
 
 
 class GraphUnavailable(Exception):
     """No graph of the project can be read: the blob store does not answer and none is cached."""
+
+
+class GraphOutdated(GraphUnavailable):
+    """The newest graph was written with an older store schema than this hub reads: a new build will replace it."""
+
+    def __init__(self, project: str, graph: BuiltGraph, exc: StaleSchema):
+        super().__init__(
+            f"the graph of project {project} (build {graph.build_id}) was written with store schema {exc.found}, and "
+            f"this hub reads {kg_store.SCHEMA_VERSION}: a new build of it is queued; try again once it has run"
+        )
+
+
+def open_graph(path: Path, project: str, graph: BuiltGraph) -> Store:
+    """The cached artifact of ``graph`` as a read-only store; GraphOutdated when an older schema wrote it."""
+    try:
+        return Store.open_file(path, immutable=True)
+    except StaleSchema as exc:
+        raise GraphOutdated(project, graph, exc) from None
 
 
 class ArtifactMismatch(Exception):
@@ -195,16 +234,48 @@ class HubSession(Session):
             )
         else:
             self.clearance = (ceiling.level, ceiling.location)
+            self.audience = ceiling.audience
 
-    def _store(self) -> tuple[Store, int]:
+    def _graph(self) -> tuple[Store, int]:
         b = self.graph_store.latest_ready()
         if b is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
         return self.graph_store, b
 
+    def whole(self, b: int) -> bool:
+        """Whether the session's audience holds every audience of build ``b``."""
+        return audience_below(self.graph_store.top_audience(b), self.audience)
+
+    def within(self, summary: dict) -> dict:
+        """The build's ``summary`` (``Store.summary``) as the session's audience may read it (see the module)."""
+        b = summary.get("build_id")
+        if not summary.get("ready") or self.whole(b):
+            return summary
+        self.graph_store.reader = self.audience
+        seen = self.graph_store.seen(b)
+        coverage = summary.get("coverage") or {}
+        sources = [
+            {"id": s["id"], "items": seen["items"].get(s["id"], 0)} if s["id"] in seen["audience"] else s
+            for s in coverage.get("sources", [])
+        ]
+        stats = {k: v for k, v in (summary.get("stats") or {}).items() if k not in ("size", "top_audience")}
+        kept = {k: summary[k] for k in ("ready", "build_id", "built_at", "content_hash")}
+        counts = {k: seen[k] for k in ("nodes", "edges", "units")}
+        coverage = {"sources": sources, "warnings": coverage.get("warnings", [])}
+        return {**kept, **counts, "coverage": coverage, "stats": stats}
+
+    def counted(self, graph: BuiltGraph) -> BuiltGraph:
+        """``graph`` with the nodes and edges the session's audience holds, when it does not hold every audience."""
+        b = self.graph_store.latest_ready()
+        if b is None or self.whole(b):
+            return graph
+        self.graph_store.reader = self.audience
+        seen = self.graph_store.seen(b)
+        return replace(graph, nodes=seen["nodes"], edges=seen["edges"])
+
     def tool_kg_status(self) -> tuple[str, dict]:
         clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
-        summary = self.graph_store.summary()
+        summary = self.within(self.graph_store.summary())
         coverage = summary.get("coverage") or {}
         hub_build = {
             "build_id": self.graph.build_id,
@@ -225,9 +296,13 @@ class HubSession(Session):
                 "graph cached here"
             )
         for src in coverage.get("sources", []):
+            if "mentions" not in src:  # items with an audience (``within``)
+                lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
+                continue
+            read = f", read {freshness.describe(src['read'])}" if isinstance(src.get("read"), dict) else ""
             lines.append(
                 f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
-                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling"
+                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{read}"
             )
         lines += [f"warning: {w}" for w in coverage.get("warnings", [])]
         status = {
@@ -237,10 +312,69 @@ class HubSession(Session):
             "hub_build": hub_build,
             "graph": summary,
             "warnings": coverage.get("warnings", []),
+            "reads": freshness.reads(coverage),
             "sink": {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}},
             "summary": self.project.name,
         }
         return "\n".join(lines), status
+
+    def unknown(self, ids: list[str], paths: list[str]) -> tuple[list[str], list[str], list[str]]:
+        """(of node ``ids`` and ``paths``, those no node visible to the session has; the author emails of the newest
+        commits of the files and documents they name), as the module says; ToolError when nothing of the project is
+        visible to the session, or the graph holds no ready build."""
+        if self.error:
+            raise ToolError(self.error)
+        store, b = self._store()
+        lacking, named = [], set()
+        for node_id in ids:
+            found = self._lookup(store, node_id, b)
+            if found is None:
+                lacking.append(node_id)
+            elif found["kind"] in ("File", "Document"):
+                named.add(found["id"])
+        files = [found for found in store.path_nodes(b) if self.visible(found["label"])] if paths else []
+        held: dict[tuple, set[str]] = {}
+        for found in files:
+            held.setdefault((found["props"].get("repo"), found["props"]["path"]), set()).add(found["id"])
+        bare: dict[str, set[str]] = {}
+        for (_, path), nodes in held.items():
+            bare.setdefault(path, set()).update(nodes)
+        missing = []
+        for path in paths:
+            repo, sep, rest = path.partition(":")
+            if sep and rest and (repo, rest) in held:
+                named |= held[(repo, rest)]
+            elif path in bare:
+                named |= bare[path]
+            else:
+                missing.append(path)
+        return lacking, missing, self._authors(store, b, sorted(named))
+
+    def _authors(self, store: Store, b: int, file_ids: list[str]) -> list[str]:
+        """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
+        ``file_ids``, each address once, in the order found."""
+        found: list[str] = []
+        for file_id in file_ids:
+            edges: list[dict] = []
+            while len(edges) < MAX_COMMITS_READ:
+                page = store.edges_into(
+                    file_id, b, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
+                )
+                edges += page
+                if len(page) < COMMITS_PAGE:
+                    break
+            sources = [edge["src"] for edge in edges if self.visible(edge["label"])]
+            commits = [
+                node
+                for node in store.nodes(sources, b).values()
+                if node["kind"] == "Commit" and self.visible(node["label"])
+            ]
+            commits.sort(key=lambda node: (str(node["props"].get("time") or ""), node["id"]), reverse=True)
+            for node in commits[:LATEST_COMMITS]:
+                email = node["props"].get("author_email")
+                if isinstance(email, str) and email and email not in found:
+                    found.append(email)
+        return found
 
 
 class Handles:
@@ -250,14 +384,14 @@ class Handles:
         self.ttl = ttl
         self.limit = limit
         self._lock = threading.Lock()
-        self._owned: dict[tuple, dict[str, tuple[float, deque]]] = {}
+        self._owned: dict[tuple, dict[str, tuple]] = {}  # owner: handle: as ``Session.handles`` keeps it
 
     def call(self, session: Session, owner: tuple, name: str, arguments: dict) -> dict:
         handle = arguments.get("handle") if name == "kg_more" else None
         with self._lock:
             mine = self._owned.get(owner, {})
             now = time.monotonic()
-            for key in [key for key, (made, _) in mine.items() if now - made > self.ttl]:
+            for key in [key for key, (made, *_) in mine.items() if now - made > self.ttl]:
                 del mine[key]
             if isinstance(handle, str) and handle in mine:
                 session.handles[handle] = mine[handle]
@@ -291,7 +425,7 @@ def answer(
     keeps the SQLite connection in the thread that made it."""
     path, graph = cache.acquire(store, project, graphs)
     try:
-        opened = Store.open_file(path, immutable=True)
+        opened = open_graph(path, project, graph)
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             return handles.call(session, owner, tool, arguments)
@@ -299,3 +433,44 @@ def answer(
             opened.close()
     finally:
         cache.release(path)
+
+
+@dataclass(frozen=True)
+class UnknownRefs:
+    """Of the node ids and paths looked up in a project's graph, those it lacks; ``why`` when they could not be looked
+    up at all (no graph, none readable now, nothing of the project visible), and then each counts as lacking.
+    ``authors``: the author emails of the newest commits of the files and documents found (``HubSession.unknown``)."""
+
+    ids: tuple[str, ...]
+    paths: tuple[str, ...]
+    why: str | None = None
+    authors: tuple[str, ...] = ()
+
+
+def unknown(
+    cache: GraphCache,
+    store: BlobStore | None,
+    project: str,
+    policy: Policy,
+    ceiling: Label | None,
+    sink: str,
+    graphs: list[BuiltGraph],
+    ids: list[str],
+    paths: list[str],
+) -> UnknownRefs:
+    """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
+    under ``ceiling``, with the authors of the newest commits of the files they name. Blocking, as ``answer``. Raises
+    GraphUnavailable, ArtifactMismatch."""
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
+            lacking, missing, authors = session.unknown(ids, paths)
+        except ToolError as exc:
+            return UnknownRefs(tuple(ids), tuple(paths), str(exc))
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
+    return UnknownRefs(tuple(lacking), tuple(missing), None, tuple(authors))

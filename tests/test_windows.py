@@ -9,7 +9,7 @@ import pytest
 from evo_agents.cli import WORKER_ON_WINDOWS, main
 from evo_agents.hub import hooks
 from evo_agents.hub.memory import LeftAlone, read_memory
-from evo_agents.kg import search_hint
+from evo_agents.kg import grep_command
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="what only Windows does")
 
@@ -64,7 +64,7 @@ def test_the_budget_stops_the_main_thread_without_sigalrm():
 
 
 def test_git_bash_paths_name_windows_paths():
-    assert search_hint._native("/c/Users/someone/repo") == "C:/Users/someone/repo"
-    assert search_hint._native("/d") == "D:/"
-    assert search_hint._native("/tmp/x") == "/tmp/x"
-    assert search_hint._native("C:\\Users\\someone") == "C:\\Users\\someone"
+    assert grep_command.native("/c/Users/someone/repo") == "C:/Users/someone/repo"
+    assert grep_command.native("/d") == "D:/"
+    assert grep_command.native("/tmp/x") == "/tmp/x"
+    assert grep_command.native("C:\\Users\\someone") == "C:\\Users\\someone"

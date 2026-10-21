@@ -3,12 +3,28 @@ check run and the merge, with the workers' App (evo-agents-workers); and the che
 Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides what to call when.
 
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
-and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write; read one, its files and its CI with
-pull_requests, checks and statuses read; write the Judge's check run with checks write; merge with contents and
-pull_requests write), uses it, and revokes it. The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were.
-Calls go through ``GitHubClient`` (a timeout, no redirect, one log line without the token): GitHub failing raises
-``GitHubUnavailable``, which the job takes as "try again next pass"; GitHub refusing raises ``GitHubRefused`` with a
-message safe to show.
+and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
+head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
+write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
+a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
+its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
+The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
+no redirect, one log line without the token): GitHub failing raises ``GitHubUnavailable``, which the job takes as "try
+again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
+GitHub's ``message`` and the field, code and message of each item of its ``errors`` (``Refused.errors``).
+
+``open_pull`` tries again, after HEAD_WAITS, while GitHub's errors say the head branch is not there (field ``head``),
+as it may not be for a moment after the push; any other refusal is final.
+
+For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health``) the workers' App reads, with
+``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
+(``tree``), and how many commits of the branch a commit lacks (``compare``); for the range of a release
+(``evo_agents.hub.server.release_github``), the commits a commit has that the newest release tag lacks
+(``compare_commits``), and for landing it (``evo_agents.hub.server.release_land``), the tag made on its merge commit
+(``create_ref``, with the merge's token); for the tier of a change of knowledge.yaml
+(``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
+(``file_text``); for a global skill the hub publishes from a merge commit (``evo_agents.hub.server.skill_release``),
+the files of the skill's directory at that commit, its tree and then each file's blob (``directory_files``).
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule
@@ -23,6 +39,8 @@ in part, so a pull request of more files than the hub reads, or of more check ru
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -38,15 +56,32 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 SERVER_PERMISSIONS = {
-    "open": {"pull_requests": "write", "metadata": "read"},
+    "open": {"pull_requests": "write", "contents": "read", "metadata": "read"},
     "read": {"pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"},
     "check": {"checks": "write", "metadata": "read"},
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
+    "tree": {"contents": "read", "metadata": "read"},
+    "ci": {"actions": "read", "metadata": "read"},
+    "rerun": {"actions": "write", "metadata": "read"},
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
 MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
+HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose head GitHub does not see yet
+MAX_ERRORS = 5  # items of GitHub's errors a refusal repeats
+MAX_SHOWN = 200  # characters of each text of GitHub's a refusal repeats
+FILE_MODES = ("100644", "100755")  # a regular file and an executable one, as a git tree names them
+
+
+class Refused(GitHubRefused):
+    """GitHub answered a call with a refusal: its ``status`` and the items of its ``errors``, each {field, code,
+    message} as far as GitHub gave them."""
+
+    def __init__(self, text: str, status: int | None = None, errors: list[dict] | None = None):
+        super().__init__(text)
+        self.status = status
+        self.errors = errors or []
 
 
 class Truncated(GitHubRefused):
@@ -90,15 +125,55 @@ async def _api(app: GitHubApp, token: str, method: str, path: str, doing: str, *
     return await app._call(method, f"{app.config.github_api_url}/{path}", doing, headers=headers, **kwargs)
 
 
-def _refused(response, doing: str) -> GitHubRefused:
-    message = ""
+def _shown(value) -> str:
+    return " ".join(value.split())[:MAX_SHOWN] if isinstance(value, str) else ""
+
+
+def _errors(data) -> list[dict]:
+    """The items of GitHub's ``errors``, each {field, code, message} with what GitHub gave of them; an item that is
+    text alone is its message."""
+    found = data.get("errors") if isinstance(data, dict) else None
+    items = []
+    for item in found[:MAX_ERRORS] if isinstance(found, list) else ():
+        item = item if isinstance(item, dict) else {"message": item}
+        kept = {key: _shown(item.get(key)) for key in ("field", "code", "message")}
+        if any(kept.values()):
+            items.append({key: value for key, value in kept.items() if value})
+    return items
+
+
+def _said(errors: list[dict]) -> str:
+    """GitHub's errors as a refusal says them: "field head, code invalid; code custom: Draft pull requests are ..."."""
+    said = []
+    for item in errors:
+        where = ", ".join(f"{key} {item[key]}" for key in ("field", "code") if item.get(key))
+        message = item.get("message", "")
+        said.append(f"{where}: {message}" if where and message else where or message)
+    return "; ".join(said)
+
+
+def _refused(response, doing: str) -> Refused:
     try:
         data = response.json()
-        message = data.get("message") if isinstance(data, dict) and isinstance(data.get("message"), str) else ""
     except ValueError:
-        pass
-    shown = " ".join(message.split())[:200]
-    return GitHubRefused(f"GitHub answered {response.status_code} while {doing}" + (f": {shown}" if shown else ""))
+        data = None
+    message = _shown(data.get("message")) if isinstance(data, dict) else ""
+    errors = _errors(data)
+    detail = _said(errors)
+    text = f"GitHub answered {response.status_code} while {doing}" + (f": {message}" if message else "")
+    if detail:
+        text += f" ({detail})" if message else f": {detail}"
+    return Refused(text, response.status_code, errors)
+
+
+def head_missing(errors: list[dict]) -> bool:
+    """Whether GitHub's errors say the head branch of a pull request is not there (yet): field head."""
+    return any(item.get("field") == "head" for item in errors)
+
+
+def drafts_refused(errors: list[dict]) -> bool:
+    """Whether GitHub's errors say the repo takes no draft pull request: an item about drafts."""
+    return any("draft" in f"{item.get('field', '')} {item.get('message', '')}".lower() for item in errors)
 
 
 async def repository(app: GitHubApp, token: str, owner: str, repo: str) -> dict:
@@ -109,10 +184,176 @@ async def repository(app: GitHubApp, token: str, owner: str, repo: str) -> dict:
     return app._json(response, doing)
 
 
-async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:
-    """The open pull request of ``branch`` (of owner/repo itself), or None."""
+async def branch_head(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict:
+    """The commit ``branch`` of owner/repo points at: {sha, date}, its committer time."""
+    doing = f"reading branch {branch} of {owner}/{repo}"
+    response = await _api(app, token, "GET", _path("repos", owner, repo, "branches", branch), doing)
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    commit = app._json(response, doing).get("commit")
+    commit = commit if isinstance(commit, dict) else {}
+    sha = commit.get("sha")
+    if not isinstance(sha, str):
+        raise GitHubUnavailable(f"GitHub answered without the commit while {doing}")
+    when = ((commit.get("commit") or {}).get("committer") or {}).get("date")
+    return {"sha": sha, "date": when if isinstance(when, str) else None}
+
+
+async def tree(app: GitHubApp, token: str, owner: str, repo: str, sha: str) -> dict[str, str] | None:
+    """The files of commit ``sha`` of owner/repo, {path: blob SHA}, as GitHub lists its tree whole; None when GitHub
+    cut the listing (a tree of more than 100,000 entries), which is never read in part."""
+    doing = f"reading the tree of {sha[:12]} of {owner}/{repo}"
+    path = _path("repos", owner, repo, "git", "trees", sha)
+    response = await _api(app, token, "GET", path, doing, params={"recursive": "1"})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    if data.get("truncated") is True:
+        return None
+    entries = data.get("tree")
+    if not isinstance(entries, list):
+        raise GitHubUnavailable(f"GitHub answered without a tree while {doing}")
+    return {
+        item["path"]: item["sha"]
+        for item in entries
+        if isinstance(item, dict)
+        and item.get("type") == "blob"
+        and isinstance(item.get("path"), str)
+        and isinstance(item.get("sha"), str)
+    }
+
+
+async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str) -> dict:
+    """How commit ``head`` of owner/repo stands to ``base``: GitHub's status (ahead, behind, identical, diverged), the
+    commits ``head`` has that ``base`` lacks (``ahead_by``) and those ``base`` has that ``head`` lacks (``behind_by``),
+    and the committer time of the oldest commit ``head`` has that ``base`` lacks (``oldest``), GitHub listing them
+    oldest first."""
+    doing = f"comparing {base[:12]} with {head[:12]} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    response = await _api(app, token, "GET", path, doing, params={"per_page": 1, "page": 1})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    commits = data.get("commits") if isinstance(data.get("commits"), list) else []
+    first = commits[0] if commits and isinstance(commits[0], dict) else {}
+    oldest = ((first.get("commit") or {}).get("committer") or {}).get("date")
+    ahead, behind = data.get("ahead_by"), data.get("behind_by")
+    merge_base = (data.get("merge_base_commit") or {}).get("sha")
+    return {
+        "status": data.get("status") if isinstance(data.get("status"), str) else None,
+        "ahead_by": ahead if type(ahead) is int else None,
+        "behind_by": behind if type(behind) is int else None,
+        "oldest": oldest if isinstance(oldest, str) else None,
+        "merge_base": merge_base if isinstance(merge_base, str) else None,
+    }
+
+
+async def compare_commits(
+    app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str, *, page: int, pages: int
+) -> tuple[list[dict], int | None]:
+    """The commits ``head`` of owner/repo has that ``base`` lacks, oldest first, as GitHub's comparison lists them
+    ``page`` at a time over at most ``pages`` pages (GitHub lists 250 at most), and how many there are in all
+    (``total_commits``; None when GitHub does not say)."""
+    doing = f"listing the commits from {base[:12]} to {head[:12]} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    found: list[dict] = []
+    total = None
+    for number in range(1, pages + 1):
+        response = await _api(app, token, "GET", path, doing, params={"per_page": page, "page": number})
+        if response.status_code != 200:
+            raise _refused(response, doing)
+        data = app._json(response, doing)
+        listed = data.get("commits") if isinstance(data.get("commits"), list) else []
+        found += [item for item in listed if isinstance(item, dict)]
+        total = data.get("total_commits") if type(data.get("total_commits")) is int else total
+        if len(listed) < page or (total is not None and len(found) >= total):
+            break
+    return found, total
+
+
+async def create_ref(app: GitHubApp, token: str, owner: str, repo: str, ref: str, sha: str) -> bool:
+    """Make the ref ``ref`` (refs/tags/<tag>) of owner/repo point at commit ``sha``: True when it was made now, False
+    when GitHub says it exists already; ``Refused`` for any other refusal."""
+    doing = f"making {ref} of {owner}/{repo} at {sha[:12]}"
+    payload = {"ref": ref, "sha": sha}
+    response = await _api(app, token, "POST", _path("repos", owner, repo, "git", "refs"), doing, json=payload)
+    if response.status_code == 201:
+        return True
+    refusal = _refused(response, doing)
+    if response.status_code == 422 and "already exists" in str(refusal).lower():
+        return False
+    raise refusal
+
+
+async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str, ref: str) -> str | None:
+    """The text of file ``path`` of owner/repo at commit ``ref``; None when the commit has no such file. A file GitHub
+    does not answer whole (over 1 MB), or that is not UTF-8, is a ``Refused``: it is never read in part."""
+    doing = f"reading {path} at {ref[:12]} of {owner}/{repo}"
+    response = await _api(
+        app, token, "GET", _path("repos", owner, repo, "contents", *path.split("/")), doing, params={"ref": ref}
+    )
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    content = data.get("content") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or data.get("type") != "file" or data.get("encoding") != "base64":
+        raise Refused(f"GitHub did not answer the whole file while {doing}")
+    try:
+        return base64.b64decode(content or "", validate=False).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        raise Refused(f"GitHub answered a file that is not UTF-8 text while {doing}") from None
+
+
+async def directory_files(
+    app: GitHubApp, token: str, owner: str, repo: str, sha: str, directory: str, *, most: int, most_bytes: int
+) -> list[tuple[str, bool, bytes]]:
+    """The files under ``directory`` of commit ``sha`` of owner/repo, each (its path within the directory, whether it
+    is executable, its bytes), in path order: the commit's tree, whole, then each file's blob. A tree GitHub cuts, a
+    symbolic link or a submodule there, more than ``most`` files or ``most_bytes`` bytes, or a blob GitHub does not
+    hand whole is a ``Refused``: a directory is never read in part."""
+    doing = f"reading {directory} at {sha[:12]} of {owner}/{repo}"
+    where = _path("repos", owner, repo, "git", "trees", sha)
+    response = await _api(app, token, "GET", where, doing, params={"recursive": "1"})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    if data.get("truncated") is True or not isinstance(data.get("tree"), list):
+        raise Refused(f"GitHub did not list the whole tree while {doing}")
+    prefix = directory.rstrip("/") + "/"
+    entries = [item for item in data["tree"] if isinstance(item, dict) and str(item.get("path")).startswith(prefix)]
+    files = [item for item in entries if item.get("type") != "tree"]
+    odd = next((item for item in files if item.get("type") != "blob" or item.get("mode") not in FILE_MODES), None)
+    if odd is not None:
+        raise Refused(f"{odd.get('path')} is a symbolic link or a submodule, which a skill's bundle never holds")
+    if len(files) > most or sum(int(item.get("size") or 0) for item in files) > most_bytes:
+        raise Refused(f"{directory} holds more than {most} files or {most_bytes} bytes at {sha[:12]}")
+    found = []
+    for item in sorted(files, key=lambda entry: entry["path"]):
+        reading = f"reading {item['path']} at {sha[:12]} of {owner}/{repo}"
+        answer = await _api(app, token, "GET", _path("repos", owner, repo, "git", "blobs", item["sha"]), reading)
+        if answer.status_code != 200:
+            raise _refused(answer, reading)
+        blob = app._json(answer, reading)
+        try:
+            content = base64.b64decode(blob.get("content") or "", validate=False)
+        except ValueError:
+            content = None
+        if blob.get("encoding") != "base64" or content is None or len(content) != item.get("size", len(content)):
+            raise Refused(f"GitHub did not answer the whole file while {reading}")
+        found.append((item["path"][len(prefix) :], item.get("mode") == "100755", content))
+    return found
+
+
+async def find_pull(
+    app: GitHubApp, token: str, owner: str, repo: str, branch: str, base: str | None = None
+) -> dict | None:
+    """The open pull request of ``branch`` (of owner/repo itself), into ``base`` when it is given, or None."""
     doing = f"looking for the pull request of {branch} on {owner}/{repo}"
     params = {"head": f"{owner}:{branch}", "state": "open", "per_page": 1}
+    if base is not None:
+        params["base"] = base
     response = await _api(app, token, "GET", _path("repos", owner, repo, "pulls"), doing, params=params)
     if response.status_code != 200:
         raise _refused(response, doing)
@@ -121,19 +362,39 @@ async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: s
 
 
 async def open_pull(
-    app: GitHubApp, token: str, owner: str, repo: str, *, branch: str, base: str, title: str, body: str
+    app: GitHubApp,
+    token: str,
+    owner: str,
+    repo: str,
+    *,
+    branch: str,
+    base: str,
+    title: str,
+    body: str,
+    draft: bool = False,
 ) -> dict:
-    """The pull request of ``branch`` into ``base``: opened now, or the one open already."""
+    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already into
+    that same base (one into another base is never it). Tried again after each of HEAD_WAITS while GitHub says the head
+    is not there; ``Refused`` otherwise."""
     doing = f"opening a pull request of {branch} on {owner}/{repo}"
     payload = {"title": title, "head": branch, "base": base, "body": body, "maintainer_can_modify": False}
-    response = await _api(app, token, "POST", _path("repos", owner, repo, "pulls"), doing, json=payload)
-    if response.status_code == 201:
-        return app._json(response, doing)
-    if response.status_code == 422:
-        found = await find_pull(app, token, owner, repo, branch)
+    if draft:
+        payload["draft"] = True
+    waits = list(HEAD_WAITS)
+    while True:
+        response = await _api(app, token, "POST", _path("repos", owner, repo, "pulls"), doing, json=payload)
+        if response.status_code == 201:
+            return app._json(response, doing)
+        refusal = _refused(response, doing)
+        if response.status_code != 422:
+            raise refusal
+        found = await find_pull(app, token, owner, repo, branch, base)
         if found is not None:
             return found
-    raise _refused(response, doing)
+        if not (waits and head_missing(refusal.errors)):
+            raise refusal
+        log.info("github does not see the head yet", extra={"branch": branch, "wait_s": waits[0]})
+        await asyncio.sleep(waits.pop(0))
 
 
 async def pull(app: GitHubApp, token: str, owner: str, repo: str, number: int) -> dict:

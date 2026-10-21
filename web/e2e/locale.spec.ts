@@ -17,8 +17,8 @@ test.describe("signed out", () => {
   test("without a locale cookie the sign-in page is in English @deployed", async ({ page }) => {
     await page.goto("/login");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page).toHaveTitle("Sign in | evo-agents hub");
-    await expect(page.getByRole("heading", { level: 1, name: "Sign in to evo-agents hub" })).toBeVisible();
+    await expect(page).toHaveTitle("Sign in | Evo Agent Hub");
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in to Evo Agent Hub" })).toBeVisible();
     await expect(page.getByTestId("login-github")).toHaveText("Sign in with GitHub");
   });
 
@@ -28,8 +28,8 @@ test.describe("signed out", () => {
     test("the sign-in page is in Vietnamese @deployed", async ({ page }) => {
       await page.goto("/login");
       await expect(page.locator("html")).toHaveAttribute("lang", "vi");
-      await expect(page).toHaveTitle("Đăng nhập | evo-agents hub");
-      await expect(page.getByRole("heading", { level: 1, name: "Đăng nhập vào evo-agents hub" })).toBeVisible();
+      await expect(page).toHaveTitle("Đăng nhập | Evo Agent Hub");
+      await expect(page.getByRole("heading", { level: 1, name: "Đăng nhập vào Evo Agent Hub" })).toBeVisible();
       await expect(page.getByTestId("login-github")).toHaveText("Đăng nhập bằng GitHub");
     });
   });
@@ -38,7 +38,7 @@ test.describe("signed out", () => {
     await context.addCookies([{ name: LOCALE_COOKIE, value: "fr", url: BASE_URL, sameSite: "Lax" }]);
     await page.goto("/login");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByRole("heading", { level: 1, name: "Sign in to evo-agents hub" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in to Evo Agent Hub" })).toBeVisible();
   });
 });
 

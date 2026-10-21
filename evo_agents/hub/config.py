@@ -11,15 +11,23 @@ The GitHub URLs are configurable so tests and Playwright can point the hub at a 
 The blob store (Cloudflare R2, or any S3 API) is configured by the four EVO_HUB_S3_* variables together: none of
 them leaves it unconfigured, so the blob routes answer 503 and ``hub worker`` refuses to start; some but not all of
 them is a ConfigError naming the first one missing. The key pair is registered as secrets like the DSN password.
+EVO_HUB_S3_INTERNAL_ENDPOINT, optional, is where the api and the worker reach the same store themselves, such as the
+store's address on the platform's network when EVO_HUB_S3_ENDPOINT is a public hostname behind a proxy that caps a
+request's body; the presigned URLs handed to clients keep EVO_HUB_S3_ENDPOINT. Set without the four, it is a
+ConfigError.
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
 EVO_HUB_RUN_LOG_DAYS is how many days the events of a finished run are kept before the daily hub.prune_run_events
 deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_AUDIT_DAYS is how many days an audit row is kept before
 the daily hub.prune_audit deletes it (``evo_agents.hub.worker``): 365 by default, from 30 to 3650, so a month of the
-trail always stays. EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for
-(``runs.LEASE_SECONDS`` by default); the reaper finds a run lost once its lease ran out, so tests shorten it, and it
-must stay well above the daemon's heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
+trail always stays. EVO_HUB_TRANSCRIPT_DAYS is how many days the hub keeps a session's transcript after its last part
+came before the daily hub.prune_transcripts deletes its content (``evo_agents.hub.server.transcripts``): 365 by
+default, from 30 to 3650. EVO_HUB_SIGNAL_DAYS is how many days the hub keeps a signal after it was measured before
+the daily hub.prune_signals deletes it (``evo_agents.hub.signals``): 400 by default, from 30 to 3650.
+EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for (``runs.LEASE_SECONDS`` by default);
+the reaper finds a run lost once its lease ran out, so tests shorten it, and it must stay well above the daemon's
+heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
 for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
 (``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
 
@@ -31,7 +39,8 @@ in deploy/hub/.env.example.
 EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxies whose X-Forwarded-For uvicorn
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
 keeps uvicorn's own default (its FORWARDED_ALLOW_IPS variable, else the loopback addresses), so nothing new is
-trusted. The session secret also keys the hashes of pairing codes, which therefore need it.
+trusted. The session secret also keys the hashes of pairing codes, which therefore need it, and the split of the
+Curator's replay suites (``evo_agents.hub.replay.split_of``), which no hub builds without it.
 
 Credentials of runs (``docs/credentials.md``) are optional configuration too. EVO_HUB_SECRETS_KEY is the AES-256-GCM
 key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: without it a route that writes a
@@ -43,12 +52,26 @@ EVO_HUB_CURATOR_APP_PRIVATE_KEY are the second App, evo-agents-curator, read the
 their tokens from it alone (``evo_agents.hub.judge``), and without it they get none, while every other run keeps the
 first App's.
 
-The Telegram channel (``evo_agents.hub.server.telegram``) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN is the token of
-the hub's one bot, as BotFather gives it, and EVO_HUB_TELEGRAM_WEBHOOK_SECRET the secret_token the hub sets with
-setWebhook and checks on every update (1 to 256 characters of A-Z, a-z, 0-9, _ and -). Both are registered as secrets.
-Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once, and the
-hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the hub
-at a fake one.
+The Telegram channel (the core plugin telegram of evo-agents-core-plugins) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN
+is the token of the hub's one bot, as BotFather gives it, and EVO_HUB_TELEGRAM_WEBHOOK_SECRET the secret_token the hub
+sets with setWebhook and checks on every update (1 to 256 characters of A-Z, a-z, 0-9, _ and -). Both are registered as
+secrets. Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once,
+and the hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the
+hub at a fake one.
+
+Plugins (``evo_agents.plugins``) are optional too. EVO_HUB_PLUGIN_PUBLISHERS lists the publishers whose signed bundles
+the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (a GitHub Actions workflow that
+signs keyless with Sigstore) or ``ID=ed25519:KEY`` (a public key, 32 bytes in base64) entries, several for one id when
+it has several workflows or keys (``evo_agents.plugins.signing.parse_publishers``). Unset, the hub trusts nobody and
+refuses every bundle. EVO_HUB_PLUGIN_CORE_PUBLISHERS lists, comma-separated, the ids among them whose plugins may be
+core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS.
+
+The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
+holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
+compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOKEN the secret the two share, at least
+32 characters and not the value an example once showed, registered as a secret: the host sends it to the api's
+/internal/plugin-host/ routes, which the reverse proxy does not forward, and the api to the host. Without both the api
+runs no backend: those routes answer 503, and so does a call to a plugin.
 """
 
 from __future__ import annotations
@@ -64,6 +87,8 @@ from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
+from evo_agents.plugins.host import MIN_HOST_TOKEN, host_token_problem
+from evo_agents.plugins.signing import PUBLISHER_ID, Publisher, parse_publishers
 
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
 DEFAULT_BLOB_CONCURRENCY = 32
@@ -78,6 +103,14 @@ MAX_RUN_LOG_DAYS = 3650
 DEFAULT_AUDIT_DAYS = 365
 MIN_AUDIT_DAYS = 30
 MAX_AUDIT_DAYS = 3650
+# Days a session's transcript stays after its last part came (evo_agents.hub.server.transcripts.prune_transcripts).
+DEFAULT_TRANSCRIPT_DAYS = 365
+MIN_TRANSCRIPT_DAYS = 30
+MAX_TRANSCRIPT_DAYS = 3650
+# Days a signal stays after it was measured (evo_agents.hub.signals.prune_signals).
+DEFAULT_SIGNAL_DAYS = 400
+MIN_SIGNAL_DAYS = 30
+MAX_SIGNAL_DAYS = 3650
 # Seconds a claim and each heartbeat lease a run for (evo_agents.hub.server.runs).
 MIN_RUN_LEASE_SECONDS = 5
 MAX_RUN_LEASE_SECONDS = 3600
@@ -93,8 +126,11 @@ DEFAULT_GITHUB_URL = "https://github.com"
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
 MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
+MIN_PLUGIN_HOST_TOKEN = MIN_HOST_TOKEN  # characters of the secret the api and the plugin host share
+PLUGIN_HOST_VARIABLES = ("EVO_HUB_PLUGIN_HOST_URL", "EVO_HUB_PLUGIN_HOST_TOKEN")
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
+S3_INTERNAL_ENDPOINT = "EVO_HUB_S3_INTERNAL_ENDPOINT"  # optional: where the hub itself reaches the store
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
 SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
@@ -139,10 +175,13 @@ class HubConfig:
     s3_bucket: str | None = None
     s3_access_key_id: str | None = None  # never logged
     s3_secret_access_key: str | None = None  # never logged or returned
+    s3_internal_endpoint: str | None = None  # where the api and worker call the store; None: s3_endpoint
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
     audit_days: int = DEFAULT_AUDIT_DAYS  # days an audit row is kept
+    transcript_days: int = DEFAULT_TRANSCRIPT_DAYS  # days a transcript is kept after its last part came
+    signal_days: int = DEFAULT_SIGNAL_DAYS  # days a signal is kept after it was measured
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
@@ -154,6 +193,10 @@ class HubConfig:
     telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
     telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
+    plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
+    plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
+    plugin_host_url: str | None = None  # where the api reaches the plugin host
+    plugin_host_token: str | None = None  # the secret the api and the plugin host share; never logged or returned
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -179,6 +222,11 @@ class HubConfig:
     def credentials_missing(self) -> list[str]:
         """The variable the hub needs to keep secrets and lease credentials; empty when it can."""
         return [] if self.secrets_key else ["EVO_HUB_SECRETS_KEY"]
+
+    def plugin_host_missing(self) -> list[str]:
+        """The EVO_HUB_PLUGIN_HOST_* variables the backends of isolated plugins still need; empty when they run."""
+        values = (self.plugin_host_url, self.plugin_host_token)
+        return [name for name, value in zip(PLUGIN_HOST_VARIABLES, values, strict=True) if not value]
 
     def telegram_missing(self) -> list[str]:
         """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
@@ -244,6 +292,22 @@ def _audit_days(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_AUDIT_DAYS, minimum=MIN_AUDIT_DAYS)
     if value > MAX_AUDIT_DAYS:
         raise ConfigError(name, f"{name} must be at most {MAX_AUDIT_DAYS}, got {value}")
+    return value
+
+
+def _transcript_days(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_TRANSCRIPT_DAYS"
+    value = _number(env, name, DEFAULT_TRANSCRIPT_DAYS, minimum=MIN_TRANSCRIPT_DAYS)
+    if value > MAX_TRANSCRIPT_DAYS:
+        raise ConfigError(name, f"{name} must be at most {MAX_TRANSCRIPT_DAYS}, got {value}")
+    return value
+
+
+def _signal_days(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_SIGNAL_DAYS"
+    value = _number(env, name, DEFAULT_SIGNAL_DAYS, minimum=MIN_SIGNAL_DAYS)
+    if value > MAX_SIGNAL_DAYS:
+        raise ConfigError(name, f"{name} must be at most {MAX_SIGNAL_DAYS}, got {value}")
     return value
 
 
@@ -313,7 +377,8 @@ def _secret(env: Mapping[str, str], name: str, minimum: int = 1) -> str | None:
 
 
 def _blob_store(env: Mapping[str, str]) -> dict:
-    """The S3 settings, all four or none; the key pair is registered as secrets before anything can fail."""
+    """The S3 settings, all four or none, and the optional internal endpoint; the key pair is registered as secrets
+    before anything can fail."""
     endpoint_name, bucket_name, key_name, secret_name = S3_VARIABLES
     key_id, secret = _secret(env, key_name), _secret(env, secret_name)
     values = {
@@ -330,7 +395,13 @@ def _blob_store(env: Mapping[str, str]) -> dict:
         )
     if values["s3_bucket"] and not BUCKET.fullmatch(values["s3_bucket"]):
         raise ConfigError(bucket_name, f"{bucket_name} must be an S3 bucket name, got {values['s3_bucket']!r}")
-    return values
+    internal = _url(env, S3_INTERNAL_ENDPOINT, None)
+    if internal and missing:
+        raise ConfigError(
+            S3_INTERNAL_ENDPOINT,
+            f"{S3_INTERNAL_ENDPOINT} is set but the blob store is not: set {', '.join(S3_VARIABLES)} too, or unset it",
+        )
+    return {**values, "s3_internal_endpoint": internal}
 
 
 def _secrets_key(env: Mapping[str, str]) -> bytes | None:
@@ -411,6 +482,35 @@ def _telegram(env: Mapping[str, str]) -> dict:
     }
 
 
+def _plugins(env: Mapping[str, str]) -> dict:
+    """The publishers of plugins the hub trusts, and the ids among them whose plugins may be core plugins."""
+    name, core_name = "EVO_HUB_PLUGIN_PUBLISHERS", "EVO_HUB_PLUGIN_CORE_PUBLISHERS"
+    try:
+        publishers = parse_publishers(_text(env, name))
+    except ValueError as exc:
+        raise ConfigError(name, str(exc)) from None
+    core = [part.strip() for part in (_text(env, core_name) or "").split(",") if part.strip()]
+    known = {publisher.id for publisher in publishers}
+    for publisher_id in core:
+        if not PUBLISHER_ID.fullmatch(publisher_id):
+            raise ConfigError(core_name, f"{core_name} lists publisher ids, such as acme, not {publisher_id!r}")
+        if publisher_id not in known:
+            raise ConfigError(
+                core_name, f"{core_name} names {publisher_id}, which {name} does not list: a core publisher signs too"
+            )
+    url_name, token_name = PLUGIN_HOST_VARIABLES
+    token = _secret(env, token_name, MIN_PLUGIN_HOST_TOKEN)
+    problem = host_token_problem(token) if token else None
+    if problem:
+        raise ConfigError(token_name, f"{token_name} {problem}")
+    return {
+        "plugin_publishers": publishers,
+        "plugin_core_publishers": frozenset(core),
+        "plugin_host_url": _url(env, url_name, None),
+        "plugin_host_token": token,
+    }
+
+
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
     env = os.environ if env is None else env
     level = (_text(env, "EVO_HUB_LOG_LEVEL") or "INFO").upper()
@@ -481,6 +581,8 @@ def load_config(
         kg_keep_artifacts=_kg_keep_artifacts(env),
         run_log_days=_run_log_days(env),
         audit_days=_audit_days(env),
+        transcript_days=_transcript_days(env),
+        signal_days=_signal_days(env),
         run_lease_seconds=_run_lease_seconds(env),
         decision_wait_seconds=_decision_wait_seconds(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),
@@ -488,4 +590,5 @@ def load_config(
         secrets_key=_secrets_key(env),
         **_apps(env),
         **_telegram(env),
+        **_plugins(env),
     )

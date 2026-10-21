@@ -8,7 +8,8 @@ import pytest
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors._files import LANGUAGE_BY_SUFFIX
 from evo_agents.kg.extract import graphify as gfy
-from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, language_of
+from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, coverage_of, language_of
+from evo_agents.kg.impact import coverage_line
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
@@ -38,6 +39,7 @@ FIXTURES = {
             ("pyapp/b.py::absolute", "pyapp/a.py::helper"),
             ("pyapp/b.py::module_alias", "pyapp/a.py::other"),
             ("pyapp/b.py::relative", "pyapp/a.py::Repo"),
+            ("pyapp/b.py::relative", "pyapp/a.py::Repo.find"),  # a.Repo().find(): through what the call returns
             ("pyapp/b.py::local_import", "pyapp/a.py::other"),
         ],
         [("pyapp/b.py::no_evidence", "pyapp/a.py::other"), ("pyapp/b.py::shadowed", "pyapp/a.py::helper")],
@@ -198,8 +200,201 @@ FIXTURES = {
         [("sql/b.sql::caller", "sql/a.sql::helper")],
     ),
 }
+# Python calls through a receiver whose class the file states, and receivers it does not state.
+PYTYPED_STORE = """from __future__ import annotations
+
+
+class Base:
+    def ping(self):
+        return 1
+
+
+class Store(Base):
+    def __init__(self, path):
+        self.path = path
+
+    @classmethod
+    def open(cls, path) -> Store | None:
+        return cls(path)
+
+    def search(self, query):
+        return [query]
+
+    def nodes(self, ids):
+        return ids
+
+
+class Other:
+    def search(self, query):
+        return []
+
+
+def make_store(path) -> "Store":
+    return Store(path)
+
+
+def pair(path) -> tuple[Store, int]:
+    return Store(path), 1
+"""
+PYTYPED_USE = """from pytyped import store as smod
+from pytyped.store import Other, Store, make_store, pair
+
+DEFAULT = Store("default")
+
+
+class Session:
+    store: Store
+
+    def __init__(self, store: Store, other: Other):
+        self.store = store
+        self.other = other
+
+    @property
+    def backing(self) -> Store:
+        return self.store
+
+    def _open(self) -> tuple[Store, int]:
+        return Store("p"), 1
+
+    def by_attribute(self):
+        return self.store.search("x")
+
+    def by_property(self):
+        return self.backing.search("x")
+
+    def by_other(self):
+        return self.other.search("x")
+
+    def by_self_return(self):
+        store, b = self._open()
+        return store.search(b)
+
+
+def by_constructor():
+    s = Store("p")
+    return s.search("q")
+
+
+def by_classmethod():
+    s = None
+    s = Store.open("p")
+    if s is None:
+        return []
+    return s.search("q")
+
+
+def by_parameter(s: Store):
+    return s.search("q")
+
+
+def by_optional(s: Store | None = None):
+    return s.nodes([]) if s else []
+
+
+def by_annotation():
+    s: "Store" = make_store("p")
+    return s.search("q")
+
+
+def by_return():
+    s = make_store("p")
+    return s.search("q")
+
+
+def by_tuple():
+    s, n = pair("p")
+    return s.nodes([n])
+
+
+def by_module():
+    s = smod.make_store("p")
+    return s.search("q")
+
+
+def by_chain():
+    return Store.open("p").search("q")
+
+
+def inherited():
+    s = Store("p")
+    return s.ping()
+
+
+def by_alias():
+    s = Store("p")
+    t = s
+    return t.search("q")
+
+
+def by_either(flag):
+    s = Store("p") if flag else make_store("q")
+    return s.search("q")
+
+
+def by_module_variable():
+    return DEFAULT.search("q")
+
+
+def other_class(o: Other):
+    return o.search("q")
+
+
+def untyped(s):
+    return s.search("q")
+
+
+def conflicting(flag):
+    s = Store("p") if flag else Other()
+    return s.search("q")
+
+
+def rebound(items):
+    s = Store("p")
+    for s in items:
+        pass
+    return s.search("q")
+
+
+def lambda_shadow():
+    s = Store("p")
+    return lambda s: s.search("q")
+"""
+TYPED = [
+    ("Session.by_attribute", "Store.search"),
+    ("Session.by_property", "Store.search"),
+    ("Session.by_other", "Other.search"),
+    ("Session.by_self_return", "Store.search"),
+    ("by_constructor", "Store.search"),
+    ("by_constructor", "Store.__init__"),  # Store(...) runs Store.__init__
+    ("by_classmethod", "Store.open"),
+    ("by_classmethod", "Store.search"),
+    ("by_parameter", "Store.search"),
+    ("by_optional", "Store.nodes"),
+    ("by_annotation", "Store.search"),
+    ("by_return", "Store.search"),
+    ("by_tuple", "Store.nodes"),
+    ("by_module", "Store.search"),
+    ("by_chain", "Store.search"),
+    ("inherited", "Base.ping"),
+    ("by_alias", "Store.search"),
+    ("by_either", "Store.search"),  # two bindings, one class
+    ("by_module_variable", "Store.search"),
+    ("other_class", "Other.search"),
+]
+UNTYPED = [
+    ("other_class", "Store.search"),  # the same method name on another class
+    ("Session.by_other", "Store.search"),
+    ("untyped", "Store.search"),  # a parameter without an annotation
+    ("conflicting", "Store.search"),  # two bindings, two classes
+    ("conflicting", "Other.search"),
+    ("rebound", "Store.search"),  # a loop rebinds it
+    ("lambda_shadow", "Store.search"),  # the lambda's own parameter
+]
 # Beyond the two-file fixtures: the scope a language gives without an import, and a Python src/ layout.
 EXTRAS = {
+    "pytyped/__init__.py": "",
+    "pytyped/store.py": PYTYPED_STORE,
+    "pytyped/use.py": PYTYPED_USE,
     "pysrc/src/core/log.py": "def get_logger(name):\n    return name\n",
     "pysrc/src/api/view.py": "from core.log import get_logger\n\n\ndef handler():\n    return get_logger('api')\n",
     "go/b/util.go": "package b\n\nfunc Local() int { return 3 }\n",
@@ -299,3 +494,22 @@ def test_cross_file_calls_through_a_src_layout(poly):
     # src/ is on sys.path: `from core.log import ...` names src/core/log.py, whose module path is src.core.log.
     calls, _ = poly
     assert calls.get((sym("pysrc/src/api/view.py::handler"), sym("pysrc/src/core/log.py::get_logger"))) == "resolved"
+
+
+def test_python_calls_through_a_typed_receiver(poly):
+    calls, _ = poly
+    for caller, callee in TYPED:
+        edge = (sym(f"pytyped/use.py::{caller}"), sym(f"pytyped/store.py::{callee}"))
+        assert calls.get(edge) == "resolved", (caller, callee)
+    for caller, callee in UNTYPED:
+        assert (sym(f"pytyped/use.py::{caller}"), sym(f"pytyped/store.py::{callee}")) not in calls, (caller, callee)
+    # In the file itself: a classmethod's own class, a function's constructor call.
+    assert calls.get((sym("pytyped/store.py::make_store"), sym("pytyped/store.py::Store.__init__"))) == "resolved"
+
+
+def test_the_python_row_names_the_receivers_it_cannot_type():
+    row = CROSS_FILE_CALLS["python"]
+    assert row.supported and "x.m()" in row.note and "unannotated parameter" in row.missing
+    line = coverage_line({"language": "python", **coverage_of("python")})
+    assert f"calls across files yes, not: {row.missing};" in line
+    assert all(not table.missing for lang, table in CROSS_FILE_CALLS.items() if lang != "python")

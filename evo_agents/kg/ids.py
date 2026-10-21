@@ -31,8 +31,25 @@ def uuid7() -> str:
     return str(uuid.UUID(int=value))
 
 
+def uuid7_time(value: str) -> dt.datetime | None:
+    """The time a UUIDv7 such as a run id holds (its first 48 bits, milliseconds since the epoch); None for any other
+    value."""
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if parsed.version != 7:
+        return None
+    return dt.datetime.fromtimestamp((parsed.int >> 80) / 1000, dt.UTC)
+
+
 def utc_now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def utc_text(moment: dt.datetime) -> str:
+    """``moment`` in the format of ``utc_now``, which sorts as text in time order."""
+    return moment.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def parse_utc(value: str) -> dt.datetime:

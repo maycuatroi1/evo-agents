@@ -147,7 +147,7 @@ def test_the_lenses_of_the_nights_take_turns_and_each_comes_round():
     for offset in range(len(review.LENSES)):
         seen |= set(review.lenses_for(night + timedelta(days=offset), 3))
     assert seen == set(review.LENSES)
-    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 11
+    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 14
 
 
 @pytest.mark.parametrize(
@@ -251,12 +251,24 @@ RUN_16 = (
         (RUN_16, "push_conflict"),
         ("Updates were rejected because a pushed branch tip is behind its remote counterpart.", "push_conflict"),
         ("! [rejected] feat/x -> feat/x (fetch first)", "push_conflict"),
+        ("! [remote rejected] main -> main (protected branch hook declined)", "push_declined"),
+        (
+            "git push of alpha to chat/7 failed: git push failed (1): remote: no write access to alpha error: failed "
+            "to push some refs to '/srv/alpha.git' (origin declined it: pre-receive hook declined)",
+            "push_declined",
+        ),
         ("git fetch failed (128): git@github.com: Permission denied (publickey).", "credentials"),
         ("no credential reads evo-agents: could not read Password for 'https://github.com'", "credentials"),
         ("project evo-lms lists no origin for evo-agents", "origin"),
         ("verify command `rg -q x` exited 127; nothing was pushed", "missing_tool"),
         ("verify command `pnpm test` calls pnpm, which is not on this worker's PATH", "missing_tool"),
         ("git fetch in /src/evo-agents failed: could not resolve host", "checkout"),
+        (
+            "the worktree is on refs/heads/other, not refs/heads/feat/x: the agent switched branches, and the worker "
+            "does not push it",
+            "branch_mismatch",
+        ),
+        ("the agent's account failed to authenticate (Failed to authenticate. API Error: 401 ...)", "account_auth"),
     ],
 )
 def test_the_cause_of_runs_9_and_16_and_of_the_preflight_is_read_from_their_error(error, cause):
@@ -321,7 +333,12 @@ def test_the_prompt_of_a_review_run_says_it_reads_only_and_treats_what_it_reads_
 def test_the_commands_the_prompt_of_a_review_run_names_are_in_the_contract():
     prompt = review.build_review_prompt("evo-agents", date(2026, 10, 8), ["tool_errors"], ["evo-agents"], {})
     found = [item.text for item in find_commands(prompt, "prompt")]
-    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose"}
+    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose", "playbook"}
+    assert {" ".join(text.split()[2:4]) for text in found if text.split()[2] == "playbook"} == {
+        "playbook add",
+        "playbook helpful",
+        "playbook retire",
+    }  # harmful is named beside helpful, in the same sentence
     assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 

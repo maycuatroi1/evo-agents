@@ -147,22 +147,26 @@
   }
 }
 
-/* Light. Graphite surfaces, ink for the primary action, cobalt for live agent work, amber when a person is needed. */
+/*
+ * Light. Paper and ink, as omelet.tech: the page is white paper (canvas and surface alike, so a page needs no grey band
+ * around its content), greys are zinc (neutral, no blue in them), rules are #e4e4e7. Ink for the primary action, cobalt
+ * for live agent work, amber when a person is needed.
+ */
 :root {
-  --canvas: #f5f6f8;
+  --canvas: #ffffff;
   --surface: #ffffff;
-  --surface-sunken: #eef0f3;
+  --surface-sunken: #f4f4f5;
   --surface-raised: #ffffff;
-  --surface-hover: #f0f2f5;
-  --surface-selected: #e9edfd;
-  --border: #e2e5ea;
-  --border-strong: #d3d7de;
-  --border-control: #858c99;
-  --fg: #0e1116;
-  --fg-muted: #4b5362;
-  --fg-subtle: #646c7b;
-  --action: #0e1116;
-  --action-hover: #2a303a;
+  --surface-hover: #f4f4f5;
+  --surface-selected: #eef0fd;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-control: #8b8b94;
+  --fg: #09090b;
+  --fg-muted: #52525b;
+  --fg-subtle: #6b6b73;
+  --action: #09090b;
+  --action-hover: #27272a;
   --on-action: #ffffff;
   --brand: #2f4bd8;
   --brand-hover: #263fba;
@@ -181,11 +185,12 @@
   --danger-soft: #fcebea;
   --danger-solid: #d93a2f;
   --on-danger: #ffffff;
-  --neutral-solid: #858c99;
+  --neutral-solid: #85858d;
   --chart-3: #0f8c80;
-  --elevation-raised: 0 1px 2px rgba(14, 17, 22, 0.05);
-  --elevation-popover: 0 1px 3px rgba(14, 17, 22, 0.08), 0 8px 24px rgba(14, 17, 22, 0.1);
-  --elevation-dialog: 0 2px 6px rgba(14, 17, 22, 0.08), 0 24px 48px rgba(14, 17, 22, 0.18);
+  /* Paper lies flat: a card is its rule, with no shadow; what floats (menus, dialogs) keeps one. */
+  --elevation-raised: 0 0 #0000;
+  --elevation-popover: 0 1px 3px rgba(9, 9, 11, 0.08), 0 8px 24px rgba(9, 9, 11, 0.1);
+  --elevation-dialog: 0 2px 6px rgba(9, 9, 11, 0.08), 0 24px 48px rgba(9, 9, 11, 0.18);
 
   /* The terminal surface is the same in both themes. */
   --term-bg: #0b0d11;
@@ -242,27 +247,30 @@
   color-scheme: light;
 }
 
-/* Dark. surface-raised is lighter than surface, so overlays separate without heavy shadows. */
+/*
+ * Dark. The same paper in zinc ink: canvas and surface alike, rules of zinc-800, surface-raised lighter so overlays
+ * separate without heavy shadows.
+ */
 .dark {
-  --canvas: #0a0c10;
-  --surface: #111419;
-  --surface-sunken: #0c0e12;
-  --surface-raised: #181b22;
-  --surface-hover: #1a1e26;
-  --surface-selected: #1a2246;
-  --border: #22262f;
-  --border-strong: #2e333d;
-  --border-control: #626a7a;
-  --fg: #e9ecf1;
-  --fg-muted: #a4acba;
-  --fg-subtle: #868f9e;
-  --action: #e9ecf1;
-  --action-hover: #c9cfd9;
-  --on-action: #0a0c10;
+  --canvas: #09090b;
+  --surface: #09090b;
+  --surface-sunken: #18181b;
+  --surface-raised: #18181b;
+  --surface-hover: #18181b;
+  --surface-selected: #1c2147;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --border-control: #71717a;
+  --fg: #fafafa;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #8b8b94;
+  --action: #fafafa;
+  --action-hover: #d4d4d8;
+  --on-action: #09090b;
   --brand: #8c9dff;
   --brand-hover: #a3b0ff;
   --brand-soft: #19204a;
-  --on-brand: #0a0c10;
+  --on-brand: #09090b;
   --attention: #f2b54a;
   --attention-soft: #2d2210;
   --attention-solid: #e9a23b;
@@ -275,10 +283,10 @@
   --danger: #ff8178;
   --danger-soft: #33161a;
   --danger-solid: #ef5a4e;
-  --on-danger: #0a0c10;
-  --neutral-solid: #6b7383;
+  --on-danger: #09090b;
+  --neutral-solid: #71717a;
   --chart-3: #2dc2b0;
-  --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elevation-raised: 0 0 #0000;
   --elevation-popover: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.55);
   --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
@@ -329,9 +337,17 @@
   }
 }
 
-/* The actions of a table row (DataTable, meta.actions) show while the row is hovered or holds focus, or while a menu
-   they opened is open. Where nothing can hover (touch) and under 768 px they always show. Hidden ones still take
-   their room, so showing them never moves the row. */
+/* A table whose rows have a detail under them (DataTable, detail): its scroll region is a size container, so the
+   detail's content takes the region's width (100cqw) and stays in view while a wide table scrolls sideways. */
+@layer components {
+  [data-slot="table-container"]:has([data-row-detail]) {
+    container-type: inline-size;
+  }
+}
+
+/* The actions of a table row (DataTable, meta.actions) show while the row, or the group of a row and its detail, is
+   hovered or holds focus, or while a menu they opened is open. Where nothing can hover (touch) and under 768 px they
+   always show. Hidden ones still take their room, so showing them never moves the row. */
 @layer components {
   @media (hover: hover) and (min-width: 48rem) {
     .row-actions {
@@ -340,6 +356,8 @@
     }
     tr:hover .row-actions,
     tr:focus-within .row-actions,
+    [data-row-group]:hover .row-actions,
+    [data-row-group]:focus-within .row-actions,
     .row-actions:has([aria-expanded="true"]) {
       opacity: 1;
     }
@@ -390,4 +408,21 @@
 }
 .wterm.hub-terminal ::selection {
   background: rgb(140 157 255 / 35%);
+}
+
+/* The Graph of a plan's steps (React Flow, components/plans/step-graph.tsx). Plain CSS rather than arbitrary variants,
+   since Tailwind reads the underscores of React Flow's class names as spaces; unlayered, so it wins over React Flow's
+   own unlayered base.css by specificity. A step's focus is the kit's 2 px ring; the attribution stays, in fg-muted
+   on the card rather than React Flow's white box. */
+.plan-graph .react-flow__node:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.plan-graph .react-flow__attribution {
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+  border-top-left-radius: 6px;
+}
+.plan-graph .react-flow__attribution a {
+  color: var(--muted-foreground);
 }

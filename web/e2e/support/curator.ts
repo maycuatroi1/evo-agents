@@ -127,9 +127,36 @@ export async function pushDigest(owner: Account, project: string): Promise<void>
   );
 }
 
+/**
+ * Passes of a job a spec tries before it gives up, and the pause between two. Every spec's pass of curator.collect walks
+ * every schedule of the stack, each under its row lock with skip_locked, as the hub's job does: a schedule another
+ * spec's pass holds at that moment is skipped, and on the hub the next minute's pass takes it. A spec tries again
+ * instead of waiting a minute.
+ */
+const PASSES = 20;
+const pause = () => new Promise((resolve) => setTimeout(resolve, 250));
+
 /** One pass of curator.collect on the stack: the night's figures, and its review run queued. */
 export async function collect(): Promise<Record<string, number>> {
   return stack("/curator/collect", {});
+}
+
+/** `owner`'s answer to proposal `id` of `project` through the API, as an admin answers from the command line. */
+export async function answerAs(owner: Account, project: string, id: number, action: "accept" | "defer" | "reject"): Promise<Proposal> {
+  const api = bearerClient(await machineToken(owner));
+  return call(api.POST("/v1/projects/{project}/curator/proposals/{proposal_id}/answer", { params: { path: { project, proposal_id: id } }, body: { action } }));
+}
+
+/**
+ * One pass of the night shift for `project` alone (hub_stack POST /curator/fire), on the stack's hub, which has no
+ * Curator App: what it did, a word per schedule ("review", "builder", "no_plan" and so on).
+ */
+export async function fireNight(project: string): Promise<string[]> {
+  for (let attempt = 1; ; attempt += 1) {
+    const { outcomes } = await stack<{ outcomes: string[] }>("/curator/fire", { project });
+    if (!outcomes.includes("locked") || attempt === PASSES) return outcomes;
+    await pause(); // another spec's pass of curator.collect holds this schedule's row a moment
+  }
 }
 
 const DRAFT = {
@@ -155,8 +182,12 @@ export type Night = { live: LiveWorker; runId: number; findingId: number; propos
  * each tier recorded, then done. Its tier 2 proposal reaches the Inbox of the charter's owner.
  */
 export async function reviewNight(live: LiveWorker, { finish = true }: { finish?: boolean } = {}): Promise<Night> {
-  await collect();
-  const claimed = await claimRun(live);
+  let claimed: Awaited<ReturnType<typeof claimRun>> = null;
+  for (let attempt = 1; claimed === null && attempt <= PASSES; attempt += 1) {
+    if (attempt > 1) await pause();
+    await collect();
+    claimed = await claimRun(live);
+  }
   if (!claimed) throw new Error("the night's review run was not queued for this worker");
   const runId = claimed.id;
   await reviewHeartbeat(live, [runId]);

@@ -4,7 +4,9 @@ For a project: send its knowledge config (``evo_agents.hub.kg_ingest.knowledge_c
 then push every finished run here that it has not ingested, oldest first, in the three steps the hub takes
 (``evo_agents.hub.server.kg``): upload the log through a presigned PUT, have the hub check it, upload and commit the
 blobs it says it lacks, commit the run. A log the hub holds already from an attempt that stopped half way is named by
-its hash instead of being uploaded again.
+its hash instead of being uploaded again. Every run the hub says it has ingested, of those whose log is here, is
+recorded in the corpus (``Corpus.record_on_hub``): retention deletes no log the hub has not received
+(``evo_agents.kg.retention``).
 
 The hub reads every upload back from its blob store when it is committed, a few round trips each, so a commit takes
 longer the more it carries: 0.2.0 hubs on R2 needed about 90 ms per upload, and one commit of 459 outlasted the
@@ -24,7 +26,9 @@ A run of a source whose own label the project's hub sink does not clear never le
 kept here, not sent to be refused. A run the hub refuses (an item raised above the hub sink, a blob over the size
 limit) is reported and the next run goes on. A hub that cannot be reached or refuses the project stops that project;
 a credential it refuses stops everything. ``push_all`` pushes every project of this machine's projects.json that the
-caller may push to on the hub and says why it skipped the others.
+caller may push to on the hub and says why it skipped the others. The worker on duty for a project's night shift pushes
+the same way with its own token, through ``worker_routes`` and without sending the config
+(``evo_agents.worker.kg_sync``).
 
 Standard library only, like the rest of the client.
 """
@@ -149,7 +153,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def member_routes(project: str) -> tuple[str, str]:
+    """Where a member pushes the runs of ``project``: the kg routes of the project, and the hub's blob routes."""
+    return f"/v1/kg/{quote(project, safe='')}", "/v1/blobs"
+
+
+def worker_routes(project: str) -> tuple[str, str]:
+    """Where the worker on duty for ``project`` pushes with its own token (``evo_agents.hub.server.kg_worker``): the
+    same steps under /v1/worker/kg/{project}, blobs included."""
+    base = f"/v1/worker/kg/{quote(project, safe='')}"
+    return base, f"{base}/blobs"
+
+
 class Pusher:
+    """The push of one project's runs. ``routes`` (``member_routes`` by default, ``worker_routes`` for a worker) names
+    where the kg steps and the blob steps go; ``send_config`` False leaves the knowledge config the hub holds as it is,
+    as a worker's push does: the config is its members' to send."""
+
     def __init__(
         self,
         hub: Hub,
@@ -158,11 +178,14 @@ class Pusher:
         progress: Callable[[str], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        routes: tuple[str, str] | None = None,
+        send_config: bool = True,
     ):
         self.hub = hub
         self.project = project
         self.name = project.name
-        self.base = f"/v1/kg/{quote(project.name, safe='')}"
+        self.base, self.blobs = routes or member_routes(project.name)
+        self.send_config = send_config
         self.progress = progress
         self.sleep = sleep
         self.clock = clock
@@ -216,7 +239,7 @@ class Pusher:
         timeout = commit_timeout(len(tickets), sum(sizes[digest] for digest in hashes))
         body = {"project": self.name, "upload_ids": [ticket["upload_id"] for ticket in tickets]}
         try:
-            self.hub.call("POST", "/v1/blobs/commit", body, timeout=timeout)
+            self.hub.call("POST", f"{self.blobs}/commit", body, timeout=timeout)
         except HubError as exc:
             if not unanswered(exc) or not self._held_within(hashes, timeout):
                 raise
@@ -234,7 +257,7 @@ class Pusher:
         done = 0
         for batch in batches(sizes):
             items = [{"sha256": digest, "size": sizes[digest], "kind": "kg-blob"} for digest in batch]
-            asked = self.hub.call("POST", "/v1/blobs/uploads", {"project": self.name, "items": items})
+            asked = self.hub.call("POST", f"{self.blobs}/uploads", {"project": self.name, "items": items})
             tickets = asked["uploads"]
             if tickets:
                 with ThreadPoolExecutor(max_workers=PARALLEL_PUTS, thread_name_prefix="kg-push") as pool:
@@ -253,7 +276,7 @@ class Pusher:
         digest, size = _sha256(path), path.stat().st_size
         asked = self.hub.call(
             "POST",
-            "/v1/blobs/uploads",
+            f"{self.blobs}/uploads",
             {"project": self.name, "items": [{"sha256": digest, "size": size, "kind": "kg-log"}]},
         )
         if asked["uploads"]:
@@ -268,6 +291,7 @@ class Pusher:
                 report.pushed.append(run_id)
             else:
                 report.present += 1
+            corpus.record_on_hub([run_id], self.hub.url)
             self._say(f"{label}: on the hub already")
             return
         if state["missing"]:
@@ -275,20 +299,18 @@ class Pusher:
             self._upload_blobs(corpus, state["missing"], report, label)
         committed = self.hub.call("POST", f"{self.base}/runs/{run_id}/commit")
         report.pushed.append(run_id)
+        corpus.record_on_hub([run_id], self.hub.url)
         if committed.get("build"):
             report.build = committed["build"]
         self._say(f"{label}: ingested")
 
     def _uncleared_source(self, path: Path) -> str | None:
         """The source of the run logged at ``path`` when the project's hub sink does not clear its label."""
-        policy = self.project.policy
-        hub = next((sink for sink in policy.sinks.values() if sink.kind == "hub"), None)
         header = log_header(path)
         source = header.get("source") if header else None
-        if hub is None or not isinstance(source, str):
+        if not isinstance(source, str):
             return None  # the hub says what is wrong
-        label = policy.source_label(source)
-        return None if label.level <= hub.level and label.location <= hub.location else source
+        return source if self.project.policy.hub_clears(source) is False else None
 
     def push(self) -> PushReport:
         report = PushReport(self.name)
@@ -302,8 +324,10 @@ class Pusher:
             logs = sorted((run_id, path) for path in corpus.log_dir.iterdir() if (run_id := run_id_of(path)))
             report.local_runs = len(logs)
             where = f"project {self.name}"
-            self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", config))
+            if self.send_config:
+                self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", config))
             held = set(self._retrying(where, lambda again: self.hub.call("GET", f"{self.base}/runs"))["ingested"])
+            corpus.record_on_hub(sorted(held.intersection(run_id for run_id, _ in logs)), self.hub.url)
             todo = []
             for run_id, path in logs:
                 if run_id in held:

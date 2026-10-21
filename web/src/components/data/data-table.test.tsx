@@ -2,6 +2,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SearchX } from "lucide-react";
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { EmptyState, TableSkeleton } from "@/components/states/states";
@@ -76,6 +77,60 @@ describe("DataTable", () => {
     await user.click(sort);
     expect(within(table).getAllByRole("columnheader")[1]).toHaveAttribute("aria-sort", "ascending");
     expect(within(within(table).getAllByRole("row")[1]).getByRole("link")).toHaveTextContent("Bảng theo kit");
+  });
+
+  it("puts a row's detail under it, across every column, the two a group of their own", () => {
+    const detail = (row: Row) => (row.id === 1 ? <p>Usage of {row.title}</p> : null);
+    renderVi(<DataTable data={rows} columns={columns()} caption="Accounts" detail={detail} />);
+    const table = screen.getByRole("table", { name: "Accounts" });
+    const groups = within(table).getAllByRole("rowgroup").slice(1); // the header first
+    expect(groups).toHaveLength(2);
+    const [first, second] = groups.map((group) => within(group).getAllByRole("row"));
+    expect(first).toHaveLength(2);
+    const [cell] = within(first[1]).getAllByRole("cell");
+    expect(cell).toHaveAttribute("colspan", "3");
+    expect(cell).toHaveTextContent("Usage of Web shell");
+    expect(second).toHaveLength(1);
+    expect(groups[1]).toHaveAttribute("data-row-group");
+  });
+
+  it("keeps what a cell holds when its columns are rebuilt around fresh data", async () => {
+    const user = userEvent.setup();
+    function Toggle({ id }: { id: number }) {
+      const [open, setOpen] = useState(false);
+      return (
+        <button type="button" onClick={() => setOpen(true)}>
+          {open ? `Dialog ${id} open` : `Open ${id}`}
+        </button>
+      );
+    }
+    // A page that refreshes its runs every few seconds builds new columns, with new cell functions, on each refresh.
+    function Refreshing() {
+      const [refreshes, setRefreshes] = useState(0);
+      const helper = dataTableColumns<Row>();
+      const refreshed = helper.columns([
+        helper.accessor("title", { header: () => "Step", meta: { primary: true }, cell: (info) => `${info.getValue()} ${refreshes}` }),
+        helper.display({
+          id: "actions",
+          header: () => <span className="sr-only">Actions</span>,
+          meta: { actions: true },
+          cell: (info) => <Toggle id={info.row.original.id} />,
+        }),
+      ]);
+      return (
+        <>
+          <button type="button" onClick={() => setRefreshes((count) => count + 1)}>
+            Refresh
+          </button>
+          <DataTable data={rows.map((row) => ({ ...row }))} columns={refreshed} caption="Plans" getRowId={(row) => String(row.id)} />
+        </>
+      );
+    }
+    renderVi(<Refreshing />);
+    await user.click(screen.getByRole("button", { name: "Open 1" }));
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.getByRole("cell", { name: "Web shell 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dialog 1 open" })).toBeInTheDocument();
   });
 });
 

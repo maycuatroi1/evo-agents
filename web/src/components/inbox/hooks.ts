@@ -92,9 +92,18 @@ export function useAnswerDecision(
         queryClient.invalidateQueries({ queryKey: inboxKeys.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.overview }),
         queryClient.invalidateQueries({ queryKey: runKeys.all(decision.project) }),
-        queryClient.invalidateQueries({ queryKey: planKeys.one(decision.project, decision.plan_id) }),
+        decision.plan_id !== null ? queryClient.invalidateQueries({ queryKey: planKeys.one(decision.project, decision.plan_id) }) : null,
       ]),
   });
+}
+
+/**
+ * The title of the author run a decision without a plan comes from, which says what it is about where a plan run's
+ * decision names its plan; null while it is read, for a run without a title, and for a plan run's decision.
+ */
+export function useDecisionRunTitle(decision: Pick<Decision, "project" | "run_id" | "plan_id">): string | null {
+  const run = useQuery({ ...runQuery(browserApi, decision.project, decision.run_id), enabled: decision.plan_id === null, refetchInterval: false });
+  return decision.plan_id === null ? (run.data?.title ?? null) : null;
 }
 
 /**

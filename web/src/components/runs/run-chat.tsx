@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ArrowUp, Bot, CircleCheck, FileText, MessageCircleOff, MessageSquare, RotateCw, Square, User, WifiOff } from "lucide-react";
+import { ArrowRight, ArrowUp, Bot, CircleCheck, FileText, MessageCircleOff, RotateCw, Square, User, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { InlineError, type WriteFailure } from "@/components/admin/notice";
@@ -21,12 +21,12 @@ import { LOGIN_PATH } from "@/lib/config";
 import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
+import { ChatStatusPill, Typing } from "./chat-parts";
 import { useRunFailure } from "./hooks";
 import {
   type ChatMessage,
   chatKey,
   chatQuery,
-  type ChatStatus,
   finishChat,
   MAX_MESSAGE_BYTES,
   type Run,
@@ -35,16 +35,11 @@ import {
   type RunChat,
   sendRunMessage,
 } from "./queries";
-import { chatEndable, chatReplyable, utf8Bytes } from "./run-model";
+import { ChatDecision, useChatDecisions } from "./run-decisions";
+import { chatDecisionSlots, chatEndable, chatReplyable, utf8Bytes } from "./run-model";
 
 /** The byte count shows once a reply passes this share of the limit. */
 const COUNT_FROM = 0.75;
-
-const STATUS_LOOK: Record<ChatStatus, string> = {
-  working: "border-running/30 bg-running-soft text-running",
-  waiting: "border-attention/30 bg-attention-soft text-attention",
-  ended: "border-border bg-muted text-muted-foreground",
-};
 
 /**
  * The Chat tab of an author run (docs/workers.md, Author runs): the member's request, then the agent's messages and
@@ -53,14 +48,16 @@ const STATUS_LOOK: Record<ChatStatus, string> = {
  * the chat ended); the plan the run wrote or revises; the owner's reply box, which posts to the run that takes the
  * next message; and End chat, which ends the run done once the agent's turn is over. With `fill`, from xl the panel
  * fills the session card, as the Trace, Raw log and Terminal do: the messages take what the head and the reply box
- * leave, and scroll on their own; below xl, and without it, they keep their own height.
+ * leave, and scroll on their own; below xl, and without it, they keep their own height. Each decision the agent asked
+ * shows as the kit's DecisionCard after the agent's message that ended the turn which asked it.
  */
 export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; owner: boolean; shown: boolean; fill?: boolean }) {
   const t = useTranslations("runs.author.chat");
   const format = useFormatter();
   const chat = useQuery(chatQuery(browserApi, run.project, run.id));
   const scrollRef = useRef<HTMLDivElement>(null);
-  const count = chat.data?.messages.length ?? 0;
+  const decisions = useChatDecisions(run, chat.data);
+  const count = (chat.data?.messages.length ?? 0) + decisions.list.length;
 
   // The newest message in view when one arrives, and when the tab is shown again (hidden, it cannot scroll).
   useLayoutEffect(() => {
@@ -93,6 +90,8 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
   }
   const data = chat.data!;
   const stale = chat.isError; // a read failed after one worked: what shows is the chat as last read
+  const slots = chatDecisionSlots(data.messages, decisions.list);
+  const card = (decision: (typeof decisions.list)[number]) => <ChatDecision key={decision.id} decision={decision} onSettled={decisions.keep} />;
   return (
     <div
       className={cn("flex min-w-0 flex-col", fill && "xl:min-h-0 xl:flex-1")}
@@ -100,7 +99,7 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
       data-status={data.status}
       data-run-id={data.run_id}
     >
-      <ChatHead run={run} chat={data} owner={owner} />
+      <ChatHead run={run} chat={data} owner={owner} open={decisions.open} />
       {stale ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-danger-soft px-4 py-2 text-xs text-danger" role="status" data-testid="run-chat-offline">
           <WifiOff className="size-3.5 shrink-0" aria-hidden="true" />
@@ -129,13 +128,12 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
         {data.more ? <p className="text-center text-xs text-fg-subtle">{t("more")}</p> : null}
         {run.request ? <Message author="owner" name={t("request")} at={run.queued_at} text={run.request} testId="run-chat-request" /> : null}
         {data.messages.map((message, index) => (
-          <ChatLine
-            key={`${message.run_id}:${message.seq}`}
-            message={message}
-            viewer={owner}
-            asks={data.status === "waiting" && message.author === "agent" && index === data.messages.length - 1}
-          />
+          <Fragment key={`${message.run_id}:${message.seq}`}>
+            <ChatLine message={message} viewer={owner} asks={data.status === "waiting" && message.author === "agent" && index === data.messages.length - 1} />
+            {slots.after.get(index)?.map(card)}
+          </Fragment>
         ))}
+        {slots.last.map(card)}
         {data.messages.length === 0 && data.status === "working" ? (
           <p className="text-sm text-pretty text-muted-foreground" data-testid="run-chat-empty">
             {run.state === "queued" ? t("emptyQueued") : t("emptyWorking")}
@@ -159,32 +157,14 @@ export function RunChatPanel({ run, owner, shown, fill = false }: { run: Run; ow
 }
 
 /** Whose turn it is, the plan the run wrote or revises, the run the chat goes on in, and End chat for the owner. */
-function ChatHead({ run, chat, owner }: { run: Run; chat: RunChat; owner: boolean }) {
+function ChatHead({ run, chat, owner, open }: { run: Run; chat: RunChat; owner: boolean; open: number }) {
   const t = useTranslations("runs.author.chat");
   const ending = Boolean(run.finish_requested_at) && chat.status !== "ended";
-  const status = (
-    <span
-      className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium", STATUS_LOOK[chat.status])}
-      data-testid="run-chat-status"
-      data-status={chat.status}
-    >
-      {chat.status === "working" ? (
-        <span className="relative inline-flex size-2 rounded-full bg-running">
-          <span className="absolute inset-0 animate-live-ping rounded-full bg-running" aria-hidden="true" />
-        </span>
-      ) : chat.status === "waiting" ? (
-        <MessageSquare className="size-3.5" aria-hidden="true" />
-      ) : (
-        <CircleCheck className="size-3.5" aria-hidden="true" />
-      )}
-      {ending ? t("status.ending") : t(`status.${chat.status}`, { login: chat.owner, you: owner ? "yes" : "no" })}
-    </span>
-  );
   return (
     <div className="flex flex-col gap-2 border-b px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span role="status" className="inline-flex">
-          {status}
+          <ChatStatusPill chat={chat} owner={owner} ending={ending} open={open} />
         </span>
         <PlanLink run={run} chat={chat} />
         {owner && chatEndable(chat, run) ? <EndChat run={run} chat={chat} /> : null}
@@ -299,23 +279,6 @@ function Message({
         </div>
       </div>
     </article>
-  );
-}
-
-function Typing() {
-  const t = useTranslations("runs.author.chat");
-  return (
-    <div className="flex items-center gap-3" data-testid="run-chat-typing">
-      <span className="grid size-7 shrink-0 place-items-center rounded-full border border-running bg-card text-running" aria-hidden="true">
-        <Bot className="size-4" />
-      </span>
-      <span className="flex items-center gap-[3px]">
-        <span className="sr-only">{t("typing")}</span>
-        {[0, 1, 2].map((dot) => (
-          <i key={dot} aria-hidden="true" className="size-[5px] animate-typing rounded-full bg-running" style={{ animationDelay: `${dot * 0.2}s` }} />
-        ))}
-      </span>
-    </div>
   );
 }
 

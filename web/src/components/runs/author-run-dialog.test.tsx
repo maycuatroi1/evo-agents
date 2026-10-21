@@ -136,7 +136,10 @@ describe("AuthorRunDialog", () => {
     expect(api.seen.some((request) => request.method === "POST" && request.url.endsWith("/author-runs"))).toBe(false);
 
     await user.type(within(dialog).getByTestId("author-run-request"), "Let members write plans from the web.");
-    await user.type(within(dialog).getByTestId("plan-run-model-input"), "opus");
+    // The models the worker lists for Claude Code are offered in the model dropdown.
+    const model = within(dialog).getByTestId("plan-run-model-select");
+    await waitFor(() => expect(within(model).getByRole("option", { name: "opus" })).toBeInTheDocument());
+    await user.selectOptions(model, within(model).getByRole("option", { name: "opus" }));
     await user.selectOptions(within(dialog).getByLabelText("Thời gian tối đa"), "4");
     await user.click(within(dialog).getByTestId("author-run-submit"));
 

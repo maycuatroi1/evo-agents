@@ -1,27 +1,38 @@
 name: images
 
 # The hub's two images: ghcr.io/maycuatroi1/evo-agents-hub (api and worker, deploy/hub/Dockerfile) and
-# ghcr.io/maycuatroi1/evo-agents-hub-web (web/Dockerfile). A push to a branch builds both, smoke-tests them and pushes
-# nothing. A v* tag builds both and pushes them to GHCR tagged with the version (v0.2.0 -> 0.2.0), which
-# deploy/hub/docker-compose.yml pulls as EVO_HUB_VERSION; the deployment never builds. Both runs share layers through
-# the GitHub Actions cache.
+# ghcr.io/maycuatroi1/evo-agents-hub-web (web/Dockerfile). A pull request that changes what goes into an image other
+# than the code (a Dockerfile, its ignore file, the compose files, the dependencies) builds both, smoke-tests them and
+# pushes nothing; the code itself is the tests' and the deploy's, since the hub on Dokploy builds main from source
+# (.github/workflows/deploy.yml). A v* tag builds both and pushes them to GHCR tagged with the version
+# (v0.2.0 -> 0.2.0), which deploy/hub/docker-compose.yml pulls as EVO_HUB_VERSION when it is not told to build. Both
+# runs share layers through the GitHub Actions cache.
 
 on:
+  pull_request:
+    paths:
+      - "deploy/hub/**"
+      - "web/Dockerfile"
+      - "web/.dockerignore"
+      - "web/package.json"
+      - "web/pnpm-lock.yaml"
+      - "pyproject.toml"
+      - "MANIFEST.in"
+      - ".github/workflows/images.yml"
   push:
-    branches: ["**"]
     tags: ["v*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: images-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+  group: images-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     name: build ${{ matrix.image }}
-    if: github.ref_type == 'branch'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

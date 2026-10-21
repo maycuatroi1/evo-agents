@@ -1,44 +1,44 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Info, Send, X } from "lucide-react";
-import Link from "next/link";
+import { Send, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
-import { InlineError, useWriteFailure } from "@/components/admin/notice";
-import { type StepStatus, useStatusText } from "@/components/status/status-badge";
-import { Badge } from "@/components/ui/badge";
+import { InlineError, useWriteFailure } from "@/components/feedback/notice";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
+import { agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
-import { Choice, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
-import { type PlanRunHold, planRunReason, readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
+import { AccountField, useAccountChoice } from "./account-field";
+import { accountField } from "./account-model";
+import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
+import { Outlook, Section, Tile, WorkerField, type WorkerChoice } from "./dispatch-fields";
+import { FieldLabel } from "./field-label";
+import { StepPicker } from "./dispatch-step-picker";
+import { readySelection, selectedRepos } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { dispatchOutlook, dispatchWorkers } from "./model";
+import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, outlookFine, runtimeCount } from "./model";
 import {
   type Approval,
   APPROVALS,
   DEFAULT_TIMEOUT,
   MAX_DISPATCH_STEPS,
-  MODES,
   readyStepsQuery,
   type RequestedRuntime,
   type Run,
-  runHref,
   type RunMode,
   RUNTIMES,
-  type StepReadiness,
   TIMEOUT_CHOICES,
 } from "./queries";
+import { ModeField, RuntimeField } from "./runtime-field";
 
 type Props = {
   project: string;
@@ -55,8 +55,9 @@ type Props = {
 
 /**
  * Dispatching runs: the ready steps of an active plan, each one queued as a run that a worker of the visitor claims.
- * Steps that are not ready are listed with the reason and cannot be picked. The footer says which of the visitor's
- * workers could take the runs now. The content mounts each time the dialog opens, so it starts from the defaults.
+ * Steps that are not ready are listed with the reason and cannot be picked. The dialog fills the worker and the account
+ * with the ones it finds for the runs, which the visitor may change; what a field means shows from its info icon. The
+ * content mounts each time the dialog opens, so it starts from the defaults.
  */
 export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan, step, onCloseAutoFocus }: Props) {
   const write = useDispatch(project);
@@ -128,15 +129,20 @@ function DispatchForm({
 
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [mode, setMode] = useState<RunMode>("headless");
-  const [target, setTarget] = useState<Target>("auto");
-  const [pinnedChoice, setPinnedChoice] = useState<number | null>(null);
+  const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
+  const agents = useAgentChoice(project);
 
-  const mine = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
-  const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
-  const repos = selectedRepos(selected, steps);
-  const outlook = dispatchOutlook(selected.length, mine, { project, runtime, repos }, pinned);
+  // The workers of the visitor's for the project, then those the agent lets claim the runs, and the one found for them.
+  const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const mine = agentWorkers(own, agents.agent);
+  const problems = agentProblems(agents.agent, { runtime, workers: own });
+  const request = { project, runtime, repos: selectedRepos(selected, steps) };
+  const pinned = chosenWorker(mine, request, workerPick, Math.max(selected.length, 1));
+  const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
+  const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
+  const outlook = dispatchOutlook(selected.length, mine, request, pinned);
   const tooMany = selected.length > MAX_DISPATCH_STEPS;
   const pending = write.isPending;
 
@@ -152,7 +158,7 @@ function DispatchForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pending || plan === null || selected.length === 0 || tooMany) return;
+    if (pending || plan === null || selected.length === 0 || tooMany || problems.length > 0) return;
     let runs: Run[];
     try {
       runs = await write.mutateAsync({
@@ -163,6 +169,8 @@ function DispatchForm({
         approval,
         timeout_min: timeout,
         worker_id: pinned,
+        ...accountField(account),
+        ...profileField(agents.agent),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -174,7 +182,7 @@ function DispatchForm({
   const error = write.isError
     ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") })
     : null;
-  const apiDetail = write.isError && isApiError(write.error) && write.error.info.status === 409 ? t("errors.hubSays", { message: write.error.info.message }) : null;
+  const apiDetail = write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status) ? t("errors.hubSays", { message: write.error.info.message }) : null;
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex min-h-0 flex-1 flex-col" aria-busy={pending || undefined}>
@@ -184,7 +192,7 @@ function DispatchForm({
             <Send className="size-5 text-muted-foreground" aria-hidden="true" />
             {t("title")}
           </DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
+          <DialogDescription className="sr-only">{t("description")}</DialogDescription>
         </div>
         <DialogClose asChild>
           <Button type="button" variant="ghost" size="icon-lg" className="-mt-1 -mr-1 shrink-0" aria-label={t("close")} disabled={pending}>
@@ -226,15 +234,12 @@ function DispatchForm({
             )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">
-              {t("timeout")}
-            </label>
+            <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="dispatch-timeout-info" />
             <NativeSelect
               id={`${ids}-timeout`}
               value={String(timeout)}
               onChange={(event) => setTimeoutMinutes(Number(event.target.value))}
               className="w-full md:[&_select]:h-9"
-              aria-describedby={`${ids}-timeout-hint`}
               data-testid="dispatch-timeout"
             >
               {TIMEOUT_CHOICES.map((minutes) => (
@@ -243,9 +248,6 @@ function DispatchForm({
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-            <p id={`${ids}-timeout-hint`} className="text-xs text-muted-foreground">
-              {t("timeoutHint")}
-            </p>
           </div>
         </div>
 
@@ -261,64 +263,40 @@ function DispatchForm({
           />
         ) : null}
 
-        <Section legend={t("runtime")} testId="dispatch-runtime">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(["any", ...RUNTIMES] as const).map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="runtime"
-                value={value}
-                checked={runtime === value}
-                onChange={() => setRuntime(value)}
-                title={value === "any" ? t("runtimeAny") : KNOWN_RUNTIMES[value]}
-                hint={<RuntimeHint runtime={value} workers={mine} loaded={workersState.isSuccess} />}
-              />
-            ))}
-          </div>
-        </Section>
+        <AgentField choice={agents} problems={problems} disabled={pending} />
 
-        <Section legend={t("mode")} testId="dispatch-mode">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {MODES.map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="mode"
-                value={value}
-                checked={mode === value}
-                onChange={() => setMode(value)}
-                title={t(`modes.${value}`)}
-                hint={t(`modes.${value}Hint`)}
-              />
-            ))}
-          </div>
-        </Section>
+        <RuntimeField value={runtime} onChange={setRuntime} reach={reach} />
 
-        <WorkerPicker
-          project={project}
-          workers={mine}
-          loading={workersState.isPending || me.isPending}
-          target={target}
-          pinned={pinned}
-          onTarget={setTarget}
-          onPinned={setPinnedChoice}
-        />
-
-        <Section legend={t("approval")} testId="dispatch-approval">
-          {APPROVALS.map((value) => (
-            <Choice
-              key={value}
-              type="radio"
-              name="approval"
-              value={value}
-              checked={approval === value}
-              onChange={() => setApproval(value)}
-              title={t(`approvals.${value}`)}
-              hint={t(`approvals.${value}Hint`)}
-            />
-          ))}
-        </Section>
+        <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+          <WorkerField
+            project={project}
+            fits={mine.map((worker) => fitWorker(worker, request))}
+            value={pinned}
+            onChange={setWorkerPick}
+            loading={workersState.isPending || me.isPending}
+            registered={own.length}
+            subject="runs"
+            note={outlookFine(outlook) || outlook.kind === "noWorker" ? null : <Outlook outlook={outlook} project={project} className="text-xs" />}
+            disabled={pending}
+          />
+          <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+          <ModeField value={mode} onChange={setMode} />
+          <Section legend={t("approval")} info={t("approvalInfo")} testId="dispatch-approval">
+            <div className="grid grid-cols-2 gap-2">
+              {APPROVALS.map((value) => (
+                <Tile
+                  key={value}
+                  name="approval"
+                  value={value}
+                  checked={approval === value}
+                  onChange={() => setApproval(value)}
+                  title={t(`approvals.${value}`)}
+                  testId={`dispatch-approval-${value}`}
+                />
+              ))}
+            </div>
+          </Section>
+        </div>
 
         {tooMany ? (
           <p className="text-sm font-medium text-danger" role="alert">
@@ -328,8 +306,8 @@ function DispatchForm({
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
-      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        <Outlook outlook={outlook} project={project} />
+      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button
@@ -346,7 +324,7 @@ function DispatchForm({
           <Button
             type="submit"
             size="lg"
-            disabled={selected.length === 0 || tooMany || plan === null}
+            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0}
             busy={pending}
             data-testid="dispatch-submit"
           >
@@ -356,192 +334,5 @@ function DispatchForm({
         </div>
       </div>
     </form>
-  );
-}
-
-/** "Plan run #12 (Waiting) holds this plan's steps until it ends.", linked to the run. */
-export function PlanRunHoldNote({ project, hold, testId }: { project: string; hold: PlanRunHold; testId?: string }) {
-  const t = useTranslations("runs.planRun");
-  const tState = useStatusText("run");
-  return (
-    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
-      <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>
-        {t.rich("holds", {
-          id: hold.run.id,
-          state: tState(hold.run.state),
-          login: hold.run.dispatched_by,
-          link: (chunks) => (
-            <Link href={runHref(project, hold.run.id)} className="font-medium text-brand underline-offset-4 hover:underline">
-              {chunks}
-            </Link>
-          ),
-        })}
-      </span>
-    </p>
-  );
-}
-
-function StepPicker({
-  project,
-  state,
-  planRun,
-  steps,
-  selected,
-  onToggle,
-  onPickAll,
-}: {
-  project: string;
-  state: { isPending: boolean; isError: boolean };
-  planRun: PlanRunHold | null;
-  steps: StepReadiness[];
-  selected: string[];
-  onToggle: (key: string, on: boolean) => void;
-  onPickAll: (keys: string[]) => void;
-}) {
-  const t = useTranslations("runs.dispatch");
-  const { open, settled } = splitSteps(steps);
-  const readyKeys = steps.filter((step) => step.ready).map((step) => step.key);
-  const allPicked = readyKeys.length > 0 && readyKeys.every((key) => selected.includes(key));
-
-  return (
-    <Section legend={t("steps")} hint={t("stepsHint")} testId="dispatch-steps">
-      {state.isPending && steps.length === 0 ? (
-        <div className="flex flex-col gap-2" aria-hidden="true">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : state.isError && steps.length === 0 ? (
-        <p className="text-sm text-danger" role="alert">
-          {t("stepsFailed")}
-        </p>
-      ) : (
-        <>
-          {planRun ? <PlanRunHoldNote project={project} hold={planRun} testId="dispatch-plan-run" /> : null}
-          {readyKeys.length > 1 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="dispatch-picked">
-                {t("picked", { count: selected.length, ready: readyKeys.length })}
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={() => onPickAll(allPicked ? [] : readyKeys)}>
-                {allPicked ? t("pickNone") : t("pickAll", { count: readyKeys.length })}
-              </Button>
-            </div>
-          ) : null}
-          {open.length === 0 ? (
-            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
-              {t("noOpen")}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2" data-testid="dispatch-open-steps">
-              {open.map((step) => (
-                <li key={step.key}>
-                  <StepChoice step={step} planRun={planRun} checked={selected.includes(step.key)} onToggle={onToggle} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {open.length > 0 && readyKeys.length === 0 ? (
-            <p className="flex items-start gap-2 text-sm text-muted-foreground" data-testid="dispatch-none-ready">
-              <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              {t("noReady")}
-            </p>
-          ) : null}
-          {settled.length > 0 ? (
-            <details className="group rounded-md border" data-testid="dispatch-settled">
-              <summary className="flex min-h-10 cursor-pointer max-md:min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
-                {t("settled", { count: settled.length })}
-              </summary>
-              <ul className="flex flex-col gap-2 border-t p-2">
-                {settled.map((step) => (
-                  <li key={step.key}>
-                    <StepChoice step={step} planRun={planRun} checked={false} onToggle={onToggle} />
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </>
-      )}
-    </Section>
-  );
-}
-
-/**
- * Why a step cannot be dispatched now, in the visitor's language where the hub's answer says enough. `planRun` is the
- * plan's active plan run, when ready-steps names one: a step it holds says so.
- */
-export function useNotReadyReason() {
-  const t = useTranslations("runs.dispatch.reason");
-  const tStatus = useStatusText("step");
-  const tState = useStatusText("run");
-  return (step: StepReadiness, planRun: PlanRunHold | null = null): string => {
-    if (step.ready) return "";
-    if (step.active_run) {
-      return t("activeRun", { id: step.active_run.id, state: tState(step.active_run.state), login: step.active_run.dispatched_by });
-    }
-    if (step.status && step.status !== "pending") {
-      const known = ["in_progress", "blocked", "done"].includes(step.status);
-      return t("status", { status: known ? tStatus(step.status as StepStatus) : step.status });
-    }
-    if (planRun && step.reason === planRunReason(planRun)) {
-      return t("planRun", { id: planRun.run.id, state: tState(planRun.run.state), login: planRun.run.dispatched_by });
-    }
-    const reason = step.reason ?? "";
-    return reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : t("unknown");
-  };
-}
-
-function StepChoice({
-  step,
-  planRun,
-  checked,
-  onToggle,
-}: {
-  step: StepReadiness;
-  planRun: PlanRunHold | null;
-  checked: boolean;
-  onToggle: (key: string, on: boolean) => void;
-}) {
-  const t = useTranslations("runs.dispatch");
-  const reason = useNotReadyReason();
-  return (
-    <Choice
-      type="checkbox"
-      name="steps"
-      value={step.key}
-      checked={checked}
-      disabled={!step.ready}
-      onChange={(on) => onToggle(step.key, on)}
-      testId={`dispatch-step-${step.key}`}
-      title={
-        <>
-          <span className="mr-1.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
-          {step.title ?? t("untitled")}
-        </>
-      }
-      hint={
-        step.ready ? (
-          step.repo ? (
-            t("repo", { repo: step.repo })
-          ) : null
-        ) : (
-          <span data-testid="dispatch-step-reason">{reason(step, planRun)}</span>
-        )
-      }
-      badge={
-        step.ready ? (
-          <Badge variant="success" className="shrink-0">
-            <CircleCheck aria-hidden="true" />
-            {t("ready")}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="shrink-0 text-muted-foreground">
-            <CircleDashed aria-hidden="true" />
-            {t("notReady")}
-          </Badge>
-        )
-      }
-    />
   );
 }

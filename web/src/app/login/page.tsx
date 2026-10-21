@@ -4,13 +4,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
-import { BrandMark, GitHubMark } from "@/components/brand";
+import { GitHubMark, HubMark } from "@/components/brand";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { call } from "@/lib/api/client";
 import { isApiError } from "@/lib/api/errors";
 import { serverApi } from "@/lib/api/server";
 import { API_LOGIN_PATH, hasSession, SESSION_COOKIE } from "@/lib/config";
+import { serverBranding } from "@/lib/hub-settings-server";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("login");
@@ -48,14 +49,20 @@ const FEATURES = [
 
 export default async function LoginPage() {
   if (await signedIn()) redirect("/");
-  const [t, tApp, status] = await Promise.all([getTranslations("login"), getTranslations("app"), availability()]);
+  const [t, tApp, status, branding] = await Promise.all([
+    getTranslations("login"),
+    getTranslations("app"),
+    availability(),
+    serverBranding(),
+  ]);
+  const name = branding?.name ?? tApp("name"); // the hub's branding names the product when it sets a name
 
   return (
     <main className="grid min-h-svh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <section className="hidden flex-col justify-between border-r bg-surface-sunken p-10 lg:flex">
         <div className="flex items-center gap-3">
-          <BrandMark />
-          <span className="text-lg font-semibold tracking-tight">{tApp("name")}</span>
+          <HubMark logoUrl={branding?.logo_url} />
+          <span className="text-lg font-semibold tracking-tight">{name}</span>
         </div>
         <div className="flex max-w-md flex-col gap-6">
           <p className="text-2xl leading-snug font-semibold text-balance">{tApp("description")}</p>
@@ -74,11 +81,11 @@ export default async function LoginPage() {
       <section className="flex items-center justify-center px-4 py-12 sm:px-8">
         <div className="flex w-full max-w-sm flex-col gap-8">
           <div className="flex items-center gap-3 lg:hidden">
-            <BrandMark />
-            <span className="text-lg font-semibold tracking-tight">{tApp("name")}</span>
+            <HubMark logoUrl={branding?.logo_url} />
+            <span className="text-lg font-semibold tracking-tight">{name}</span>
           </div>
           <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">{t("heading")}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">{t("heading", { name })}</h1>
             <p className="text-sm text-pretty text-muted-foreground">{t("description")}</p>
           </div>
 

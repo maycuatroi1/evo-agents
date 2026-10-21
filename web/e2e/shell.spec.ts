@@ -215,26 +215,35 @@ test.describe("shell", () => {
 
     await open(page, `/p/${project}/runs`);
     const sidebar = page.getByRole("navigation", { name: "Điều hướng chính" });
-    await expect(sidebar.getByRole("link")).toHaveCount(15);
-    const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
-    expect(order).toEqual([
+    // One list gives both the count and the order, so a new nav item cannot leave one of them behind.
+    const expected = [
       "nav-home",
       "nav-inbox",
       "nav-monitor",
       "nav-overview",
       "nav-plans",
       "nav-runs",
+      "nav-mergeQueue",
       "nav-insights",
+      "nav-signals",
       "nav-curator",
+      "nav-releases",
+      "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",
+      "nav-plugins",
+      "nav-chats",
       "nav-workers",
       "nav-secrets",
+      "nav-accounts",
       "nav-myMemories",
       "nav-globalSkills",
-    ]);
-    await expect(page.getByTestId("brand")).toHaveText("evo-agents hub");
+    ];
+    await expect(sidebar.getByRole("link")).toHaveCount(expected.length);
+    const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
+    expect(order).toEqual(expected);
+    await expect(page.getByTestId("brand")).toHaveText("Evo Agent Hub");
 
     // Inbox counts the open decision (attention), Runs the active run (running); both said in words.
     await expect(page.getByTestId("nav-inbox-count")).toHaveText("1");
@@ -273,7 +282,7 @@ test.describe("shell", () => {
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(56);
     await expect(page.getByTestId("nav-inbox-count")).toBeHidden();
     await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
-    await expect(page.getByTestId("brand")).toHaveAccessibleName("evo-agents hub");
+    await expect(page.getByTestId("brand")).toHaveAccessibleName("Evo Agent Hub");
     await toggle.click();
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(240);
 

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents import __version__
-from evo_agents.hub import contract, kg_cli, memory, skill_sync
+from evo_agents.hub import contract, kg_cli, memory, skill_sync, transcript_sync
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_cli import ImportResult
@@ -35,6 +35,8 @@ BUILT_HERE = {
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
     "hub kg push": lambda: kg_cli.push_json([]),
     "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
+    "hub sessions backfill": lambda: transcript_sync.Report(HUB_URL).as_json(),
+    "hub sessions sync": lambda: transcript_sync.Report(HUB_URL).as_json(),
 }
 
 
@@ -97,7 +99,7 @@ def test_every_hub_command_is_in_the_contract_with_its_options():
         "value": "string",
         "required": True,
         "repeatable": False,
-        "choices": ["done", "in_progress", "pending", "blocked"],
+        "choices": ["done", "in_progress", "pending", "blocked", "descoped"],
     }
     limit = next(o for o in printed["hub memory search"]["options"] if o["flags"] == ["--limit"])
     assert (limit["minimum"], limit["maximum"], limit["default"]) == (1, 50, 10)
@@ -144,7 +146,8 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     } <= set(printed)
     flags = {o["flags"][0]: o for o in printed["hub run plan"]["options"]}
     assert flags["--timeout-h"]["choices"] == [2, 4, 8, 24]
-    assert flags["--runtime"]["choices"] == ["any", "claude-code", "opencode", "codex"]
+    # any, a runtime of the core, or a plugin's <plugin>/<name>: an open set, so no choices (hub-agent-plugins a6)
+    assert flags["--runtime"]["value"] == "string" and "choices" not in flags["--runtime"]
     assert {"--worker", "--model", "--mode", "--project", "--json"} <= set(flags)
     assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
     assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}
@@ -173,13 +176,34 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     printed = commands()
     assert sorted(key for key in printed if not key.startswith("hub ")) == [
         "worker ask",
+        "worker chat create",
+        "worker chat mention",
+        "worker chat post",
+        "worker chat react",
+        "worker chat read",
         "worker finding",
         "worker notify",
         "worker plan",
+        "worker playbook add",
+        "worker playbook harmful",
+        "worker playbook helpful",
+        "worker playbook retire",
         "worker propose",
         "worker put",
+        "worker repo open",
         "worker step",
+        "worker triage invite",
+        "worker triage plan",
+        "worker triage rerun",
     ]
+    added = printed["worker playbook add"]
+    assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
+    assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
+        ("entry", None)
+    ]
+    opened = printed["worker repo open"]
+    assert [(p["name"], p["required"]) for p in opened["positionals"]] == [("repo", True)]
+    assert opened["options"] == [] and opened["json"] is None, "it prints the worktree's path alone"
     put = printed["worker put"]
     assert [p["name"] for p in put["positionals"]] == ["file"]
     assert [o["flags"] for o in put["options"] if o["flags"] != ["--json"]] == [["--if-revision"]]
@@ -200,11 +224,15 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "spend_money",
         "architecture",
         "scope",
+        "triage",
     ]
     notify = {o["flags"][0]: o for o in printed["worker notify"]["options"]}
     assert notify["--kind"]["choices"] == ["push_default_branch", "merge_default_branch"]
     assert printed["worker plan"]["json"]["schema"] == "Plan"
     assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
+    read = printed["worker chat read"]
+    assert [p["name"] for p in read["positionals"]] == ["message"] and read["json"] is None
+    assert [o["flags"] for o in read["options"]] == [["--thread"]]
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
@@ -404,6 +432,8 @@ def test_the_docs_of_this_repository_pass():
         docs / "workers.md",
         docs / "notifications.md",
         docs / "credentials.md",
+        docs / "releases.md",
+        docs / "merge-queue.md",
     ]
     count, problems = contract.check_files(commands(), [str(path) for path in files])
     assert problems == []

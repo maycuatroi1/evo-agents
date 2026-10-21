@@ -2,8 +2,9 @@ import type { Page } from "@playwright/test";
 
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
+import { localAsk, localEvents, localState, registerLocal } from "./support/local";
 import { open } from "./support/plans";
-import { claimRun, dispatch, liveWorker, runPath, runsOf, seedRunPlan, startRun } from "./support/runs";
+import { claimRun, dispatch, liveWorker, RUN_PLAN, runPath, runsOf, say, seedRunPlan, startRun } from "./support/runs";
 import { toast } from "./support/toast";
 
 /**
@@ -105,4 +106,42 @@ test("Dispatch says in a toast which run it queued, with a link to it", async ({
   await done.getByRole("link", { name: "Open run" }).click();
   await page.waitForURL(`**${runPath(project, run.id)}`);
   await expect(page.locator("#main").getByRole("heading", { level: 1 })).toContainText(`Run #${run.id}`);
+});
+
+test("the runs list and a local session's page follow the session live, and the list filters by kind and account", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  await dispatch(me, project, ["2"]);
+  const { run } = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000d01", { machine: "laptop-binh", email: "binh@work.example", title: "Fix the queue" });
+  const other = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000d02", { machine: "desktop-home", email: "binh@home.example", title: "Tidy the docs" });
+  await localState(me, project, run.id, { state: "running", plan_id: RUN_PLAN, step_key: "2" });
+
+  await open(page, `/p/${project}/runs`);
+  const main = page.locator("#main");
+  const row = main.getByTestId("runs-table").locator("tbody tr").filter({ has: page.locator(`[data-run-id="${run.id}"]`) });
+  await expect(row.getByTestId("run-kind")).toHaveText("Local session");
+  await expect(row.getByTestId("run-where")).toHaveText(`laptop-binh, binh@work.example, plan ${RUN_PLAN}, step 2`);
+  await expect(row.getByTestId("run-state")).toHaveText("Running");
+
+  // The state changes reach the list without a reload.
+  await localState(me, project, run.id, { state: "idle" });
+  await expect(row.getByTestId("run-state")).toHaveText("Idle", { timeout: 15_000 });
+
+  // Filter by kind, then by account.
+  await main.getByTestId("runs-kinds").getByRole("button", { name: /Local sessions/ }).click();
+  await expect(main.getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
+  await main.getByTestId("runs-account").fill("binh@home.example");
+  await expect(main.getByTestId("runs-table").locator("tbody tr")).toHaveCount(1);
+  await expect(page).toHaveURL(/kind=local&account=binh%40home\.example/);
+
+  // The run's page follows the session's stream, and the session ending shows as Ended.
+  await open(page, runPath(project, other.run.id));
+  await expect(main.getByTestId("run-detail")).toHaveAttribute("data-state", "running");
+  await localEvents(me, project, other.run.id, [say("Tidying the docs.")]);
+  await expect(main.getByTestId("trace").getByTestId("trace-message")).toHaveText("Tidying the docs.");
+  await localAsk(me, project, other.run.id, "Rename the guide?");
+  await localState(me, project, other.run.id, { state: "ended" });
+  await expect(main.getByTestId("run-detail")).toHaveAttribute("data-state", "ended", { timeout: 15_000 });
+  await expect(main.getByTestId("run-status-line")).toContainText("Ended after");
 });

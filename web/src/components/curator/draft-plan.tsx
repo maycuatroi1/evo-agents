@@ -12,7 +12,8 @@ import { isObject, parsePlan } from "@/lib/plans";
 /**
  * A proposal's draft plan, as the plan pages show a plan: its title, goal and steps in outcome form (what, the verify
  * command, the acceptance the step is done by), and the sections it adds; or the JSON the review run wrote, as it is.
- * Accepting a proposal turns this draft into a plan on the hub (a later step of the night shift).
+ * Accepting a proposal of tier 0 to 2 makes this draft the Curator's plan on the hub at once, which the night shift
+ * builds on a branch of its own; a proposal of tier 3 is never built.
  */
 export function DraftPlan({ plan }: { plan: Record<string, unknown> }) {
   const t = useTranslations("curator.draft");

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type Cell,
   createColumnHelper,
   createSortedRowModel,
   metaHelper,
@@ -70,6 +71,11 @@ type DataTableProps<TData extends RowData> = {
    * opening the object's page, where the other columns are. Without it the table stays a table at every width.
    */
   mobile?: (row: TData) => DataListRow;
+  /**
+   * What a row shows under its cells, the whole width of the table (an account's usage limits), or null for nothing.
+   * The row and its detail form one group, hovered together; the detail stays in view while the table scrolls sideways.
+   */
+  detail?: (row: TData) => ReactNode;
 };
 
 /**
@@ -111,13 +117,24 @@ export function CellMain({
 }
 
 /**
+ * A cell's content, from its column's `cell`. FlexRender mounts that function as a component of its own, so columns
+ * rebuilt around fresh data (a page that refreshes its runs every 5 seconds) would remount every cell and drop what it
+ * holds, such as an open Run plan dialog. Called inside this one component, the cell keeps its state across rebuilds.
+ */
+function CellContent<TData extends RowData>({ cell }: { cell: Cell<DataTableFeatures, TData> }) {
+  const render = cell.column.columnDef.cell;
+  return typeof render === "function" ? render(cell.getContext()) : (render ?? null);
+}
+
+/**
  * The kit's table, accessible: real <table> markup with a caption, aria-sort on sorted headers and sort buttons
  * reachable by keyboard. The header sits on `surface-sunken` in 12 px `fg-muted`; rows are 44 px (36 px `compact`)
  * with cells in `fg-muted` and the title cell in `fg`; numbers line up on the right in tabular figures; the actions
  * of a row show while it is hovered or holds focus. Inside a `DataCard` the table draws no frame of its own; alone,
  * it is a card. Narrow screens hide the columns listed in `columnClassNames` (e.g. "hidden md:table-cell"); with
  * `mobile`, screens under 768 px get a list of rows instead (`DataList`), in the table's order, under the same test id
- * with `data-layout="list"`.
+ * with `data-layout="list"`. With `detail`, each row is a group of its own (a `tbody`), with a second row across every
+ * column when `detail` gives something for it.
  */
 export function DataTable<TData extends RowData>({
   data,
@@ -130,6 +147,7 @@ export function DataTable<TData extends RowData>({
   testId,
   columnClassNames = {},
   mobile,
+  detail,
 }: DataTableProps<TData>) {
   const t = useTranslations("table");
   const inCard = useInCard();
@@ -158,6 +176,52 @@ export function DataTable<TData extends RowData>({
       </div>
     );
   }
+  const cells = (row: (typeof rows)[number]) =>
+    row.getAllCells().map((cell) => {
+      const meta = cell.column.columnDef.meta;
+      return (
+        <TableCell
+          key={cell.id}
+          className={cn(
+            "px-3 text-muted-foreground first:pl-4 last:pr-4",
+            compact ? "h-9 py-1" : "h-11 py-1.5",
+            meta?.primary && "min-w-40",
+            meta?.numeric && "text-right tabular-nums",
+            meta?.actions && "w-px",
+            columnClassNames[cell.column.id],
+          )}
+        >
+          {meta?.actions ? (
+            <div className="row-actions flex items-center justify-end gap-1">
+              <CellContent cell={cell} />
+            </div>
+          ) : (
+            <CellContent cell={cell} />
+          )}
+        </TableCell>
+      );
+    });
+  const span = table.getAllLeafColumns().length;
+  // With `detail`, each row is a tbody of its own, so a row and its detail hover and part from the next as one. The
+  // detail's content is as wide as the scroll region (a size container then, globals.css) and sticks to its left
+  // edge, so a table wider than the screen never scrolls it out of view.
+  const group = (row: (typeof rows)[number], more: ReactNode) => (
+    <tbody
+      key={row.id}
+      data-slot="table-body"
+      data-row-group=""
+      className="border-b transition-colors last:border-0 hover:bg-accent has-aria-expanded:bg-accent"
+    >
+      <TableRow className="border-0 hover:bg-transparent has-aria-expanded:bg-transparent">{cells(row)}</TableRow>
+      {more === null || more === undefined || more === false ? null : (
+        <TableRow className="border-0 hover:bg-transparent" data-row-detail="">
+          <TableCell colSpan={span} className="p-0 whitespace-normal text-muted-foreground">
+            <div className="sticky left-0 w-[100cqw] px-4 pb-3">{more}</div>
+          </TableCell>
+        </TableRow>
+      )}
+    </tbody>
+  );
   return (
     <div className={frame} data-testid={testId} data-density={density} data-layout="table">
       <Table scrollLabel={caption} className="text-[13px] leading-[18px]">
@@ -211,47 +275,23 @@ export function DataTable<TData extends RowData>({
             </TableRow>
           ))}
         </TableHeader>
-        <TableBody>
-          {rows.length === 0 && empty ? (
+        {rows.length === 0 && empty ? (
+          <TableBody>
             <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={table.getAllLeafColumns().length}
-                className="h-16 px-4 text-center whitespace-normal text-muted-foreground"
-              >
+              <TableCell colSpan={span} className="h-16 px-4 text-center whitespace-normal text-muted-foreground">
                 {empty}
               </TableCell>
             </TableRow>
-          ) : (
-            rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getAllCells().map((cell) => {
-                  const meta = cell.column.columnDef.meta;
-                  return (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        "px-3 text-muted-foreground first:pl-4 last:pr-4",
-                        compact ? "h-9 py-1" : "h-11 py-1.5",
-                        meta?.primary && "min-w-40",
-                        meta?.numeric && "text-right tabular-nums",
-                        meta?.actions && "w-px",
-                        columnClassNames[cell.column.id],
-                      )}
-                    >
-                      {meta?.actions ? (
-                        <div className="row-actions flex items-center justify-end gap-1">
-                          <table.FlexRender cell={cell} />
-                        </div>
-                      ) : (
-                        <table.FlexRender cell={cell} />
-                      )}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
+          </TableBody>
+        ) : detail ? (
+          rows.map((row) => group(row, detail(row.original)))
+        ) : (
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.id}>{cells(row)}</TableRow>
+            ))}
+          </TableBody>
+        )}
       </Table>
     </div>
   );

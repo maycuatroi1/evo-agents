@@ -6,7 +6,10 @@ GitHub allows. With it the hub finds the App's installation that covers a repo (
 kept 10 minutes per owner/repo, and asks that installation for a token (POST /app/installations/{id}/access_tokens)
 naming the run's repos of that installation and the permissions ``GITHUB_PERMISSIONS``, nothing more (a review run's
 ``GITHUB_READ_PERMISSIONS``, which only read): GitHub makes a token that lives an hour and opens those repos alone.
-A token is revoked with itself (DELETE /installation/token).
+A token that writes, of the workers' App, asks ``GITHUB_WORKFLOW_PERMISSIONS`` as well when the installation holds it
+(the ``permissions`` GitHub answers for it), so a run may push a change to .github/workflows, unless the ask says
+``workflows=False`` (a release run's, ``credentials.github_workflows``); the Curator's App never asks it. A token is
+revoked with itself (DELETE /installation/token).
 
 The calls go through ``GitHubClient`` of ``evo_agents.hub.server.github``: a timeout each, no redirect followed, one log
 line with the method, the path and the status, GitHub failing or not answering as ``GitHubUnavailable``. GitHub
@@ -46,7 +49,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from evo_agents.hub.config import CURATOR_APP_VARIABLES, GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
-from evo_agents.hub.credentials import GITHUB_PERMISSIONS
+from evo_agents.hub.credentials import GITHUB_PERMISSIONS, GITHUB_WORKFLOW_PERMISSIONS
 from evo_agents.hub.server.github import API_HEADERS, GitHubClient, GitHubRefused, GitHubUnavailable
 
 JWT_BACKDATE_SECONDS = 60  # iat this far back, for a hub clock ahead of GitHub's
@@ -66,6 +69,12 @@ class Installation:
 
     id: int
     account: str  # the login it is installed on
+    permissions: tuple[tuple[str, str], ...] = field(default=(), compare=False)  # what the App holds there, by name
+
+    def holds(self, permissions: dict[str, str]) -> bool:
+        """Whether the App holds each of ``permissions`` at that level here; ``write`` holds ``read`` too."""
+        held = dict(self.permissions)
+        return all(held.get(name) in (level, "write", "admin") for name, level in permissions.items())
 
 
 @dataclass(frozen=True)
@@ -232,7 +241,9 @@ class GitHubApp(GitHubClient):
         if type(installation_id) is not int or installation_id <= 0:
             raise GitHubUnavailable(f"GitHub answered without a usable installation id while {doing}")
         login = account if isinstance(account, str) and LOGIN.fullmatch(account) else owner
-        found = Installation(installation_id, login)
+        granted = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
+        held = tuple(sorted((k, v) for k, v in granted.items() if isinstance(k, str) and isinstance(v, str)))
+        found = Installation(installation_id, login, held)
         self._installations[key] = (self._clock() + INSTALLATION_CACHE_SECONDS, found)
         return found
 
@@ -336,11 +347,14 @@ class GitHubApp(GitHubClient):
         pusher: Pusher,
         missing: dict[str, str],
         permissions: dict[str, str] | None = None,
+        *,
+        workflows: bool = True,
     ) -> InstallationToken | None:
         """A token of ``installation`` for those of ``members`` (owner, repo) ``pusher`` may push to, or None when it
         may push to none; the reason of each other one goes into ``missing``. The token made for all of them answers
         the question for the repos not kept yet, and is revoked and made again without the ones refused.
         ``GitHubRefused`` and ``GitHubUnavailable`` go to the caller, with any token made here revoked."""
+        permissions = self.run_permissions(installation, permissions, workflows=workflows)
         token = await self.create_token(installation, [repo for _, repo in members], permissions)
         allowed = []
         try:
@@ -360,6 +374,19 @@ class GitHubApp(GitHubClient):
             return None
         return await self.create_token(installation, [repo for _, repo in allowed], permissions)
 
+    def run_permissions(
+        self, installation: Installation, permissions: dict[str, str] | None, *, workflows: bool = True
+    ) -> dict[str, str]:
+        """``permissions`` (GITHUB_PERMISSIONS by default), with ``GITHUB_WORKFLOW_PERMISSIONS`` too for a token that
+        writes contents, of the workers' App, on an installation that holds them, unless ``workflows`` is False:
+        GitHub refuses a token naming a permission the installation lacks, and a push that edits .github/workflows
+        with a token without it."""
+        permissions = dict(permissions or GITHUB_PERMISSIONS)
+        writes = permissions.get("contents") == "write"
+        if writes and workflows and not self.curator and installation.holds(GITHUB_WORKFLOW_PERMISSIONS):
+            permissions.update(GITHUB_WORKFLOW_PERMISSIONS)
+        return permissions
+
     async def _revoke_quietly(self, token: InstallationToken) -> None:
         """Revoke a token made for a repo its pusher may not push to; GitHub failing leaves it to expire unused."""
         try:
@@ -368,11 +395,17 @@ class GitHubApp(GitHubClient):
             log.warning("a GitHub token made and not handed out is left to expire", extra={"why": str(exc)})
 
     async def tokens(
-        self, repos: Iterable[tuple[str, str]], pusher: Pusher, permissions: dict[str, str] | None = None
+        self,
+        repos: Iterable[tuple[str, str]],
+        pusher: Pusher,
+        permissions: dict[str, str] | None = None,
+        *,
+        workflows: bool = True,
     ) -> AppTokens:
         """A token for each installation that covers some of ``repos`` ((owner, repo) on github.com), naming those
         repos alone, and only those ``pusher`` may push to (``push_refusal``), with ``permissions`` (GITHUB_PERMISSIONS
-        by default); the reason each repo left without one has none.
+        by default), and GITHUB_WORKFLOW_PERMISSIONS as ``run_permissions`` says; the reason each repo left without one
+        has none.
 
         It never raises for GitHub: a refusal is the reason of the repos it concerns, and GitHub failing or not
         answering is the reason of that repo and of every one not asked yet, which are not asked."""
@@ -400,7 +433,9 @@ class GitHubApp(GitHubClient):
             reason = outage
             if reason is None:
                 try:
-                    token = await self._token_for_pushers(installation, members, pusher, missing, permissions)
+                    token = await self._token_for_pushers(
+                        installation, members, pusher, missing, permissions, workflows=workflows
+                    )
                     if token is not None:
                         made.append(token)
                     continue

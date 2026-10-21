@@ -7,6 +7,19 @@ here.
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
   hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
+  (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
+  their own names, and their instructions after the profile's in the appended system prompt. A run of the Curator
+  gets the hub's MCP server there too, unless the owner's Claude Code gives it one (``hub_tools``).
+- The system prompt holds nothing of the machine, the worktree or the step, so a new session reads it from the cache a
+  session in another worktree, run or step wrote: the preset leaves its dynamic sections out
+  (``exclude_dynamic_sections``, sent in the SDK's initialize request; the CLI's
+  ``--exclude-dynamic-system-prompt-sections``). Claude Code 2.1.296 then moves its auto memory section, whose path
+  names the worktree, into the first user message, which already holds CLAUDE.md, the git status snapshot and the
+  prompt; the working directory and the platform come in the context it sends after the prompt. Measured on 2026-10-18
+  with one-turn sessions: the first request in a second worktree read 11,504 tokens from the cache instead of 10,488,
+  the tools and the system prompt; the rest, from the first user message on, was written anew, even in the same
+  worktree with a prompt that differed only in its last words.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
@@ -43,7 +56,9 @@ here.
   the exit code: Claude Code exits 0 when it is interrupted.
 - The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
   ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
-  cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``).
+  cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``); and the
+  cache read and cache creation tokens of the first of those messages, the agent's first request
+  (``first_request_of``, ``common.FIRST_REQUEST``).
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
 - Claude Code authenticates with the machine's own login, unless the environment says otherwise. A lease of the run
   may set CLAUDE_CODE_OAUTH_TOKEN, a token of ``claude setup-token`` (docs/credentials.md). Claude Code takes
@@ -62,9 +77,12 @@ here.
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
   ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
   an outcome that names the cap, ``cost`` or ``turns``.
-- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) has the tools that ask the person at
-  the terminal a question turned off (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``):
-  nobody at the worker's machine answers it, and the agent asks its owner in its last message instead.
+- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``), a chat run (``chat``,
+  ``evo_agents.hub.chat_runs``), a task run and a release run have the tools that ask the person at the terminal a
+  question turned off
+  (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
+  it, and the agent asks in its last message instead. A chat run's prompt is delivered verbatim
+  (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
 - The agent compacts its context as it nears its auto-compact window: the run's environment
   (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
   from ``compact_window``, which keeps the daemon's own, else takes EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -75,6 +93,17 @@ here.
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
   the CLI takes.
+- A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
+  ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
+  reports them and moves the run to another account. One whose error reads as the account failing to authenticate
+  (``auth_failure_of``: "Failed to authenticate. API Error: 401 OAuth access token is invalid.") gives an outcome with
+  ``auth`` set, which ``limits`` reports and moves the same way. A result whose subtype is ``success`` but is an error
+  is said as "ended its turn with an error", never "with success".
+- A run under an agent profile that limits tool, skill or model, or has instructions, gets them in the session as
+  ``evo_agents.worker.runtimes.profiles`` says: ``tools``, ``skills`` and ``setting_sources``, ``allowedMcpServers``
+  and ``availableModels`` in ``settings``, a PreToolUse hook, the model, and the instructions after SYSTEM_NOTE. With a
+  tool allowlist, the adapter asks the CLI for its MCP servers once it is connected, before the prompt, and raises
+  ``ProfileRefused`` on one the profile leaves out (the owner's own settings may allow more).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -96,10 +125,13 @@ import sys
 import tempfile
 import uuid
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import author, curator, digest, runs
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker import packs
+from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, ProfileRefused, RunContext, command_output
+from evo_agents.worker.runtimes import hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -109,6 +141,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    first_request,
     larger,
     message_chunk,
     plan,
@@ -118,7 +151,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
     write_launcher,
 )
@@ -159,6 +191,18 @@ FOLLOW_UP_AFTER = 15.0
 TURN_GRACE = 5.0
 # The results of a session the run's budget stopped, and the cap each one names (Outcome.cap).
 CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
+# The text of a turn that ended on the account's usage limit, as Claude Code words it: "Claude AI usage limit
+# reached|1791507000" (the reset as a unix time), "5-hour limit reached ∙ resets 3pm", "You've hit your limit".
+USAGE_LIMIT = re.compile(r"usage limit|hit your (?:usage )?limit|\blimit reached\b|out of extra usage", re.I)
+RESET_STAMP = re.compile(r"\|\s*(\d{9,11})\b")
+# The text of a turn that ended because the API refused the account's token, as Claude Code words it: "Failed to
+# authenticate. API Error: 401 OAuth access token is invalid." (2.1, run #58 of 2026-10-14), "OAuth token has expired".
+AUTH_FAILURE = re.compile(
+    r"failed to authenticate|api error: 401\b|oauth (?:access )?token (?:is invalid|has expired|has been revoked)"
+    r"|authentication_error|invalid api key",
+    re.I,
+)
+AUTH_CHARS = 300  # of the error kept as the reason
 # The statuses of a task that has ended: task_notification says stopped, task_updated killed, for the same end.
 TERMINAL_TASK = frozenset({"completed", "failed", "stopped", "killed"})
 # The id of a background command in the text of its Bash result.
@@ -441,6 +485,34 @@ def _opens_turn(message) -> bool:
     return isinstance(message, sdk.SystemMessage) and message.subtype == "init"
 
 
+def unix_time(value) -> str | None:
+    """A unix time of the CLI as ISO 8601 in UTC; None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, UTC).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def limit_of_text(text: str | None) -> dict | None:
+    """The limit an error of the agent's turn names, when it reads as the account's usage limit: ``{status:
+    rejected}``, with resets_at when the text carries the reset as a unix time; None otherwise."""
+    if not text or not USAGE_LIMIT.search(text):
+        return None
+    found = RESET_STAMP.search(text)
+    resets_at = unix_time(int(found[1])) if found else None
+    return {"status": "rejected", **({"resets_at": resets_at} if resets_at else {})}
+
+
+def auth_failure_of(text: str | None) -> str | None:
+    """The error of the agent's turn, on one line, when it reads as its account failing to authenticate (the API
+    refused its token); None otherwise."""
+    if not text or not AUTH_FAILURE.search(text):
+        return None
+    return " ".join(text.split())[:AUTH_CHARS]
+
+
 def _raw_of(message) -> dict:
     """A message of the SDK as the CLI wrote it, as far as the SDK keeps it."""
     data = getattr(message, "data", None)
@@ -465,6 +537,15 @@ def context_of(message) -> int | None:
     if message.model == digest.SYNTHETIC_MODEL:
         return None
     return digest.context_tokens(getattr(message, "usage", None))
+
+
+def first_request_of(message) -> dict | None:
+    """The FIRST_REQUEST keys of the run's usage from a message ``context_of`` reads, the first of which is the agent's
+    first request: the tokens it read from the cache and wrote to it. None for any other message."""
+    if context_of(message) is None:
+        return None
+    usage = message.usage
+    return first_request(usage.get("cache_read_input_tokens"), usage.get("cache_creation_input_tokens"))
 
 
 def events_of(message) -> list[AgentEvent]:
@@ -522,6 +603,8 @@ class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    pack_kinds = packs.KINDS
+    pack_transports = packs.TRANSPORTS
     background_wait = BACKGROUND_WAIT
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE
@@ -543,7 +626,11 @@ class ClaudeCodeAdapter(QueueAdapter):
 
     @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
-        return auth_notes(context)
+        return auth_notes(context) + profiles.claude_notes(profiles.profile_of(context))
+
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        return profiles.model_refusal(profiles.Profile.of(run), run)
 
     @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:
@@ -557,6 +644,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._end_input = asyncio.Event()
         self._results: list = []
         self._peak: int | None = None  # the largest context of a message of the model in the main thread
+        self._first: dict | None = None  # the cache tokens of the first of those messages (FIRST_REQUEST)
         self._error: str | None = None
         self._stderr: collections.deque[str] = collections.deque(maxlen=20)
         self._dir: Path | None = None
@@ -581,11 +669,18 @@ class ClaudeCodeAdapter(QueueAdapter):
         from claude_agent_sdk import ClaudeAgentOptions
 
         dropped = dropped_env(self.context)
+        profile = profiles.profile_of(self.context)
+        append = packs.with_instructions(profiles.with_instructions(SYSTEM_NOTE, profile), self.context.packs)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
-            "system_prompt": {"type": "preset", "preset": "claude_code", "append": SYSTEM_NOTE},
+            "system_prompt": {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": append,
+                "exclude_dynamic_sections": True,  # the same system prompt in every worktree (module docstring)
+            },
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
         }
@@ -593,12 +688,28 @@ class ClaudeCodeAdapter(QueueAdapter):
             settings["resume"] = self._session
         else:
             settings["session_id"] = self._session
-        for key in ("model", "effort"):
-            value = run_setting(self.context, self.runtime, key)
+        for key, value in (
+            ("model", profiles.session_model(self.context, self.runtime)),
+            ("effort", run_setting(self.context, self.runtime, "effort")),
+        ):
             if value:
                 settings[key] = value
-        if self.context.run.get("kind") == "author":  # nobody at this machine answers a question tool
-            settings["disallowed_tools"] = list(author.QUESTION_TOOLS)
+        limits = profiles.claude_settings(profile)
+        disallowed = limits.pop("disallowed_tools", [])
+        kind = self.context.run.get("kind")
+        if kind in ("author", "chat", "task", "release"):  # nobody at this machine answers a question tool
+            disallowed = [*author.QUESTION_TOOLS, *disallowed]
+        if disallowed:
+            settings["disallowed_tools"] = disallowed
+        if kind in ("chat", "task"):  # an @handle or @path in the chat's words or the task never makes it read a file
+            settings["verbatim_prompts"] = True
+        settings.update(limits)
+        settings.update(packs.claude_options(self.context.packs))
+        servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
+        settings.update({"mcp_servers": servers} if servers else {})
+        hooks = profiles.claude_hooks(profile)
+        if hooks is not None:
+            settings["hooks"] = hooks
         if self.budget is not None:
             usd = curator.usd_left(self.budget, self.context.spent_usd)
             if usd is not None:
@@ -615,16 +726,40 @@ class ClaudeCodeAdapter(QueueAdapter):
         yield {}  # an async generator
 
     async def _open(self) -> None:
-        program = which(self.binary, self.context.env)
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
         unset = (API_KEY,) if drops_api_key(self.context) else ()  # the SDK passes on the daemon's own
-        self.options = self.build_options(str(write_launcher(self._dir, program, unset=unset)))
+        command = environment.command(program, context=self.context, directory=self._dir)
+        self.options = self.build_options(str(write_launcher(self._dir, *command, unset=unset)))
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())
+        await self._check_servers()
         self._turn_open = True
         await self._client.query(self.context.prompt)
+
+    async def _check_servers(self) -> None:
+        """ProfileRefused when the CLI has an MCP server the run's profile leaves out, which the session's
+        ``allowedMcpServers`` does not keep out when the owner's own settings name more; nothing for a profile that
+        allows every tool."""
+        profile = profiles.profile_of(self.context)
+        if profile is None or profile.servers() is None:
+            return
+        try:
+            status = await self._client.get_mcp_status()
+        except Exception as exc:  # unchecked, the session might offer a server the profile leaves out
+            why = f"claude-code did not list its MCP servers for agent profile {profile.label}: {exc}"
+            raise ProfileRefused(why) from None
+        extra = profiles.claude_extra_servers(profile, status)
+        if extra:
+            raise ProfileRefused(
+                f"claude-code would offer the tools of MCP server(s) {', '.join(extra)}, which agent profile "
+                f"{profile.label} leaves out (the worker's own Claude Code settings may allow more servers in "
+                "allowedMcpServers): take them out of the worker's Claude Code configuration, or allow them in the "
+                "profile"
+            )
 
     async def _drive(self) -> None:
         from claude_agent_sdk import types as sdk
@@ -637,6 +772,7 @@ class ClaudeCodeAdapter(QueueAdapter):
                         self._session = session
                 self.emit(events_of(message))
                 self._peak = larger(self._peak, context_of(message))
+                self._first = self._first or first_request_of(message)
                 ended = self.background.see(message)
                 if isinstance(message, sdk.ResultMessage):
                     self._results.append(message)
@@ -656,13 +792,15 @@ class ClaudeCodeAdapter(QueueAdapter):
             add_numbers(usage, result.usage)
         if self._results and self._results[-1].total_cost_usd is not None:
             usage["total_cost_usd"] = self._results[-1].total_cost_usd  # the session's, counted by the CLI
-        usage = with_peak(usage, self._peak)
+        usage = with_peak(usage, self._peak, self._first)
         if not self._results:
             why = self._error or "the CLI ended without finishing its turn"
             tail = " | ".join(list(self._stderr)[-3:])
             if tail and not self.interrupted:
                 why += f" (stderr: {tail})"
-            return Outcome(False, "interrupted" if self.interrupted else cut(f"claude-code: {why}"), usage)
+            if self.interrupted:
+                return Outcome(False, "interrupted", usage)
+            return Outcome(False, cut(f"claude-code: {why}"), usage, auth=auth_failure_of(why))
         last = self._results[-1]
         summary = last.result.strip() if isinstance(last.result, str) and last.result.strip() else None
         if self.interrupted:
@@ -671,8 +809,10 @@ class ClaudeCodeAdapter(QueueAdapter):
         if cap is not None:
             return Outcome(False, cut(self._cap_error(cap, last)), usage, summary, cap=cap)
         if last.is_error or last.subtype != "success":
-            detail = last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason
-            return Outcome(False, cut(f"claude-code ended its turn with {last.subtype}: {detail}"), usage, summary)
+            detail = str(last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason or "")
+            ended = "an error" if last.subtype == "success" else last.subtype  # is_error on a result of success
+            error = cut(f"claude-code ended its turn with {ended}: {detail}")
+            return Outcome(False, error, usage, summary, limit=limit_of_text(detail), auth=auth_failure_of(detail))
         return Outcome(True, None, usage, summary)
 
     def _cap_error(self, cap: str, last) -> str:

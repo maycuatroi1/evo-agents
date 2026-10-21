@@ -149,6 +149,33 @@ def sql(db: pg.Database, statement, params=()):
         return [tuple(row) for row in result] if result.returns_rows else None
 
 
+def image_plugins() -> list[str]:
+    """The core plugins of the hub's image that projects enable, by name: each is in every project's list of plugins,
+    and the hub audits its install by nobody as it starts on a new database (``plugin_store.register_core_plugins``)."""
+    from evo_agents.plugins import core
+
+    return sorted(plugin.manifest.id for plugin in core.core_plugins() if plugin.manifest.per_project())
+
+
+def image_installs() -> int:
+    """How many audit rows the hub writes by itself as it starts on a new database: one for each of ``image_plugins``."""
+    return len(image_plugins())
+
+
+def image_actions() -> list[str]:
+    """The actions of the rows of ``image_installs``, as the trail's list of actions holds them."""
+    return ["plugin.install"] if image_installs() else []
+
+
+def not_by_the_image():
+    """A clause on the audit table that leaves out the rows of ``image_installs``, for a test that reads the trail of
+    what people did."""
+    from evo_agents.hub import tables
+
+    audit = tables.audit
+    return ~((audit.c.action == "plugin.install") & audit.c.actor_id.is_(None) & audit.c.target.endswith(" via=image"))
+
+
 def _user_id(conn, login: str) -> int:
     """The id of the user ``login``, added when there is none."""
     from sqlalchemy import select

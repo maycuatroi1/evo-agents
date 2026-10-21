@@ -19,6 +19,7 @@ import { StatusBadge, StatusIcon } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { workerHref } from "@/components/workers/queries";
 import { queryKeys } from "@/lib/queries";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { canRerun, decisionOfRun, isRunningState, type Overview, type OverviewRun, ranFor } from "./model";
@@ -95,7 +96,7 @@ function InFlightEnd({ run, overview, viewer, now }: { run: OverviewRun; overvie
 
 export function InFlight({ overview, viewer }: { overview: Overview; viewer: string | null }) {
   const t = useTranslations("home.flight");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const where = useRunWhere();
   const now = useNow(overview.active_runs.some((run) => isRunningState(run.state)));
   if (overview.active_runs.length === 0) return null;

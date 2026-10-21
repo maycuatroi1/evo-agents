@@ -6,7 +6,9 @@ source's), its repos, and where the harness and the repos sit relative to a work
 needs a hub admin; registering it again, to bring the hub up to date with its harness, needs a hub admin or the
 admin role on the project. The same body twice changes nothing and writes no audit row. A change replaces the sinks
 and repos in the same transaction and adds one audit row naming the project, never what it holds; a change that
-drops a level some grant reaches is refused until the grant is changed.
+drops a level some grant reaches is refused until the grant is changed. A new project gets its default agent profile
+(``profile_store.ensure_default``), whose handle is the project's name; a name that is the handle of another project's
+agent is refused (409), since @<name> would name both.
 
 GET /v1/projects lists the projects the caller holds a grant on, all of them for a hub admin, with the caller's
 role and max level; GET /v1/projects/{project} is one of them. A project that is not registered and one the caller
@@ -41,6 +43,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Page, Paging
+from evo_agents.hub.server.profile_store import ensure_default, handle_owner
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -430,6 +433,17 @@ async def show(request: Request, project: ProjectName, user: CurrentUser) -> Pro
     return found[0]
 
 
+async def _refuse_agent_handle(conn: AsyncConnection, name: str) -> None:
+    """409 when ``name`` is the handle of an agent of another project: a project's default agent is @<its name>."""
+    owner = await handle_owner(conn, name)
+    if owner is not None:
+        raise HTTPException(
+            409,
+            f"{name} is the handle of an agent of project {owner}, and @{name} would name both: register the project "
+            "under another name; nothing was registered",
+        )
+
+
 def _locked(name: str):
     """The id of project ``name``, its row locked until the transaction ends."""
     projects = tables.projects
@@ -457,6 +471,7 @@ async def register(request: Request, body: Registration, project: ProjectName, u
         if project_id is None:
             if not user.admin:
                 raise HTTPException(403, _refusal(project))
+            await _refuse_agent_handle(conn, project)
             inserted = await conn.execute(
                 pg_insert(projects)
                 .values(name=project, created_by=user.user_id, **fields)
@@ -483,6 +498,8 @@ async def register(request: Request, body: Registration, project: ProjectName, u
                 await conn.execute(
                     update(projects).values(**fields, updated_at=func.now()).where(projects.c.id == project_id)
                 )
+        if created:
+            await ensure_default(conn, project_id)
         if changed:
             await _write_children(conn, project_id, desired)
             action = audit.PROJECT_REGISTER if created else audit.PROJECT_UPDATE

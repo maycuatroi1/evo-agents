@@ -66,11 +66,15 @@ export function workerRuntimes(worker: Pick<Worker, "runtimes">): RuntimeName[] 
   return RUNTIMES.filter((runtime) => runtimeAvailable(worker.runtimes[runtime]));
 }
 
-/** The workers a dispatch of `login` in `project` may go to: theirs, registered for the project, not revoked. */
+/**
+ * The workers a dispatch of `login` in `project` may go to: theirs and those another member shares with them, registered
+ * for the project, not revoked; theirs first, then by name. The hub lists a shared worker only to the writers of its
+ * projects, with the projects they hold a grant on.
+ */
 export function dispatchWorkers(workers: readonly Worker[], login: string, project: string): Worker[] {
   return workers
-    .filter((worker) => worker.owner === login && worker.status !== "revoked" && worker.projects.includes(project))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter((worker) => (worker.owner === login || worker.shared) && worker.status !== "revoked" && worker.projects.includes(project))
+    .sort((a, b) => Number(a.owner !== login) - Number(b.owner !== login) || a.name.localeCompare(b.name));
 }
 
 export type FitProblem =
@@ -148,6 +152,23 @@ export function dispatchOutlook(
   const later = fits.filter((fit) => fit.fit === "busy" || fit.fit === "offline");
   if (later.length) return { kind: "later", fits: later };
   return { kind: "none", fits };
+}
+
+/** Whether `outlook` says nothing is wrong: a worker takes the runs now, or there is nothing to dispatch yet. */
+export function outlookFine(outlook: DispatchOutlook): boolean {
+  return outlook.kind === "now" || outlook.kind === "nothing" || (outlook.kind === "pinned" && outlook.fit.fit === "now");
+}
+
+/**
+ * The worker `runs` runs go to: the one picked while it is still among `workers`, null for any worker that fits when
+ * that was picked, else the first of `workers` (theirs first, then by name) that could take them all now, else null,
+ * which leaves the choice to the hub until a worker frees up.
+ */
+export function chosenWorker(workers: readonly Worker[], request: FitRequest, picked: number | "any" | null, runs = 1): number | null {
+  if (picked === "any") return null;
+  if (picked !== null && workers.some((worker) => worker.id === picked)) return picked;
+  const found = workers.map((worker) => fitWorker(worker, request)).find((fit) => fit.fit === "now" && fit.free >= runs);
+  return found ? found.worker.id : null;
 }
 
 // Models. A dispatch may name the model its runtime uses; the heartbeat reports, per runtime, the models it lists on
@@ -331,4 +352,12 @@ export function readRequest(text: string): { request: string; problem: RequestPr
   if (!text.trim()) return { request: text, problem: "blank" };
   if (new TextEncoder().encode(text).length > MAX_REQUEST_BYTES) return { request: text, problem: "long" };
   return { request: text, problem: null };
+}
+
+// Task runs. A task run is one turn of a plugin's agent type on a task the plugin handed it (task_dispatch.py), on the
+// branch task/<id of the run the dispatch made> of each repo; a lost run's next attempt is a new run on the same branch.
+
+/** The branch a task run works on: the one the hub recorded, else the one its own id names (a first attempt). */
+export function taskBranch(run: Pick<Run, "id" | "branch">): string {
+  return run.branch ?? `task/${run.id}`;
 }

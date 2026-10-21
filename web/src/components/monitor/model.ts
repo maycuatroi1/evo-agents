@@ -140,3 +140,23 @@ export function worstSignal(signals: readonly LiveSignal[]): LiveSignal | null {
 export function tailStart(lastSeq: number): number {
   return Math.max(0, lastSeq - TAIL_EVENTS);
 }
+
+/** What the Monitor's list and grid are narrowed to: local sessions only, and one Claude account of them. */
+export type MonitorFilters = { local: boolean; account: string };
+export const NO_MONITOR_FILTERS: MonitorFilters = { local: false, account: "" };
+
+export function isMonitorFiltered(filters: MonitorFilters): boolean {
+  return filters.local || filters.account !== "";
+}
+
+/** Whether a run passes the filters: an account is a local run's, so choosing one leaves out every other kind. */
+export function matchesMonitorFilters(run: Pick<OverviewRun, "kind" | "claude_email"> | null, filters: MonitorFilters): boolean {
+  if (!isMonitorFiltered(filters)) return true;
+  if (run === null || run.kind !== "local") return false;
+  return filters.account === "" || (run.claude_email ?? "").toLowerCase() === filters.account.toLowerCase();
+}
+
+/** The Claude accounts of the local runs, each once, sorted. */
+export function localAccounts(runs: readonly Pick<OverviewRun, "kind" | "claude_email">[]): string[] {
+  return [...new Set(runs.flatMap((run) => (run.kind === "local" && run.claude_email ? [run.claude_email] : [])))].sort();
+}

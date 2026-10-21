@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import { type ApiClient, call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
@@ -385,9 +385,10 @@ export async function reportStep(live: LiveWorker, runId: number, key: string, s
   await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
 }
 
-/** What an agent's ask may say beyond the default: its category, context, options and pick. */
+/** What an agent's ask may say beyond the default: its category, context, options and pick; no step for an author run's. */
 export type DecisionAsk = {
   category?: string;
+  step_key?: string | null;
   context?: string | null;
   options?: { key: string; label: string; description?: string }[];
   recommended?: string | null;
@@ -479,4 +480,50 @@ export async function answerByApi(account: Account, project: string, decision: n
 export async function decisionOf(account: Account, project: string, decision: number) {
   const api = bearerClient(await machineToken(account));
   return call(api.GET("/v1/projects/{project}/decisions/{decision_id}", { params: { path: { project, decision_id: decision } } }));
+}
+
+/** Open a toggle (a button with aria-expanded), again until the page took the click: it may come before hydration. */
+async function openToggle(toggle: Locator): Promise<void> {
+  await expect(async () => {
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+  }).toPass();
+}
+
+/**
+ * Open a run page's Details, the side column behind the toggle at the end of its head; with `all`, every detail
+ * behind Show all details too (the session, lease, timeout, and the owner's accounts and credentials). The page does
+ * not keep them open across a navigation: call it after each open.
+ */
+export async function openRunDetails(page: Page, { all = false }: { all?: boolean } = {}): Promise<void> {
+  const main = page.locator("#main");
+  await openToggle(main.getByTestId("run-details-open"));
+  if (all) await openToggle(main.getByTestId("run-details-toggle"));
+}
+
+/**
+ * Open the folds of a plan run's steps in `scope` ("6 done", "14 to do"), so every step of the plan is a row; the steps
+ * in progress, blocked or of another status are rows already.
+ */
+export async function openPlanStepFolds(scope: Locator): Promise<void> {
+  const steps = scope.getByTestId("run-plan-steps");
+  await expect(steps.getByTestId("run-plan-steps-count")).toBeVisible(); // the plan is read, its folds drawn
+  for (const testId of ["run-plan-steps-done-toggle", "run-plan-steps-todo-toggle"]) {
+    const fold = steps.getByTestId(testId);
+    if ((await fold.count()) > 0) await openToggle(fold);
+  }
+}
+
+/**
+ * Choose a control from the run page's menu of actions ("More actions for the run"), whose items render outside #main.
+ * The trigger's aria-expanded says whether the menu is open: a menu closing (after Escape) still shows its items while
+ * it fades out, so their being visible is no sign it will stay open for the click.
+ */
+export async function chooseRunAction(page: Page, testId: string): Promise<void> {
+  const trigger = page.locator("#main").getByTestId("run-actions-menu");
+  const item = page.getByTestId(testId);
+  await expect(async () => {
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+    await item.click({ timeout: 1_000 });
+  }).toPass();
 }

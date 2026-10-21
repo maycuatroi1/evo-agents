@@ -58,7 +58,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from evo_agents import filelock
+from evo_agents import __version__, filelock
 from evo_agents.harness import MANIFEST
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.client import LOOPBACK, Hub, HubError, hub_dir, write_atomic
@@ -153,6 +153,9 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _OPENER = urllib.request.build_opener(_NoRedirect)
+# urllib would send Python-urllib/<version>, which some proxies in front of a store refuse (Cloudflare's Browser
+# Integrity Check answers 403, error 1010); every transfer names evo-agents, as the calls to the hub do.
+USER_AGENT = f"evo-agents/{__version__}"
 
 
 def _origin(url: str) -> str:
@@ -185,7 +188,7 @@ def _open(request: urllib.request.Request, doing: str):
 
 def put_bundle(url: str, data: bytes) -> None:
     """PUT ``data`` to a presigned upload URL."""
-    headers = {"Content-Type": "application/octet-stream"}
+    headers = {"Content-Type": "application/octet-stream", "User-Agent": USER_AGENT}
     request = urllib.request.Request(_transfer_url(url), data=data, method="PUT", headers=headers)
     with _open(request, "the upload") as response:
         status = response.status
@@ -195,7 +198,7 @@ def put_bundle(url: str, data: bytes) -> None:
 
 def get_bundle(url: str, size: int) -> bytes:
     """The bytes at a presigned download URL, reading at most ``size`` + 1 of them."""
-    request = urllib.request.Request(_transfer_url(url), method="GET")
+    request = urllib.request.Request(_transfer_url(url), method="GET", headers={"User-Agent": USER_AGENT})
     chunks, read = [], 0
     try:
         with _open(request, "the download") as response:

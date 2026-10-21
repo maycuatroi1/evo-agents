@@ -45,7 +45,8 @@ import {
   VIRTUAL_THRESHOLD,
 } from "./log-model";
 import type { RunEventKind } from "./queries";
-import type { LogStatus, RunLog } from "./use-run-log";
+import { LogStreamState } from "./log-stream-state";
+import type { RunLog } from "./use-run-log";
 
 /**
  * A run's log as the page shows it: the lines of every event in seq order in a `role="log"` region (polite, so a
@@ -266,29 +267,6 @@ function GroupMenu({
   );
 }
 
-/** The stream's state as the kit's live state beside the tabs: a dot in its tone (pulsing while live) and a word. */
-const STATUS_DOT: Record<LogStatus, string> = {
-  connecting: "bg-neutral-solid",
-  live: "bg-success-solid",
-  reconnecting: "bg-attention-solid",
-  polling: "bg-attention-solid",
-  ended: "bg-neutral-solid",
-  failed: "bg-danger-solid",
-};
-
-function LogStreamState({ status }: { status: LogStatus }) {
-  const t = useTranslations("runs.detail.log.status");
-  return (
-    <span className="inline-flex items-center gap-2 text-xs whitespace-nowrap text-fg-subtle" data-testid="log-status" data-status={status}>
-      <span className="relative inline-flex size-2 shrink-0" aria-hidden="true">
-        <span className={cn("size-2 rounded-full", STATUS_DOT[status])} />
-        {status === "live" ? <span className={cn("absolute inset-0 animate-live-ping rounded-full", STATUS_DOT.live)} /> : null}
-      </span>
-      {t(status)}
-    </span>
-  );
-}
-
 export type SessionTab = "chat" | "trace" | "log" | "terminal";
 
 export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "log", "terminal"];
@@ -338,7 +316,7 @@ export function RunLogCard({
    * window allows) and the panel shown fills it, above the composer; below xl, and without it, the panels keep their
    * own heights.
    */
-  fill?: boolean;
+  fill?: boolean | "always";
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
@@ -395,7 +373,8 @@ export function RunLogCard({
   const filtered = group !== null || deferredQuery.trim() !== "";
   const empty = shown.length === 0;
   // The panel shown fills the card above the composer; its own scroll region takes what the bars leave.
-  const panelFill = fill ? "xl:min-h-0 xl:flex-1" : undefined;
+  // "always": at every width, for a phone's trace screen, which is as tall as the window.
+  const panelFill = fill === "always" ? "min-h-0 flex-1" : fill ? "xl:min-h-0 xl:flex-1" : undefined;
 
   const status = (
     <span role="status" className="inline-flex">
@@ -410,7 +389,7 @@ export function RunLogCard({
 
   const logBody = (
     <>
-      <div className="flex flex-col gap-3 border-b px-4 py-3">
+      <div className="flex flex-col gap-3 border-b py-3">
         {phone ? null : (
           <FacetGroup
             label={t("filter")}
@@ -469,8 +448,8 @@ export function RunLogCard({
         tabIndex={0}
         onScroll={onScroll}
         className={cn(
-          "h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain bg-term-bg py-2 font-mono text-[12.5px] leading-[1.6] text-term-fg [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]",
-          fill && "xl:h-auto xl:min-h-0 xl:flex-1",
+          "mt-3 h-[min(60vh,32rem)] min-h-64 overflow-y-auto overscroll-contain rounded-md bg-term-bg py-2 font-mono text-[12.5px] leading-[1.6] text-term-fg [font-variant-ligatures:none] focus-visible:outline-offset-[-2px]",
+          fill === "always" ? "h-auto min-h-0 flex-1" : fill && "xl:h-auto xl:min-h-0 xl:flex-1",
         )}
         data-testid="log-lines"
         data-virtual={virtual || undefined}
@@ -485,7 +464,7 @@ export function RunLogCard({
           <PlainRows lines={shown} query={deferredQuery} />
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-4 py-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-xs text-muted-foreground">
         <span aria-live="polite" data-testid="log-paused">
           {frozenAt !== null ? t("paused", { count: waiting }) : log.status === "polling" ? t("pollingHint") : ""}
         </span>
@@ -498,10 +477,10 @@ export function RunLogCard({
     return (
       <section
         aria-labelledby={`${ids}-title`}
-        className={cn("flex min-w-0 flex-col rounded-md border bg-card shadow-raised", fill && "xl:min-h-0 xl:flex-1")}
+        className={cn("flex min-w-0 flex-col", panelFill)}
         data-testid="run-log"
       >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b py-3">
           <h2 id={`${ids}-title`} className="text-[15px] leading-[22px] font-semibold">
             {t("title")}
           </h2>
@@ -525,14 +504,14 @@ export function RunLogCard({
     >
       <section
         aria-labelledby={`${ids}-title`}
-        className={cn("flex min-w-0 flex-col rounded-md border bg-card shadow-raised", fill && "xl:min-h-0 xl:flex-1")}
+        className={cn("flex min-w-0 flex-col", panelFill)}
         data-testid="run-log"
         data-tab={tab}
       >
         <h2 id={`${ids}-title`} className="sr-only">
           {tTabs("heading", { id: runId })}
         </h2>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b">
           {/* The bar's border is the line here: the list reaches 1 px into it, so the underline covers it. */}
           <TabsList aria-label={tTabs("label")} className="-mb-px w-auto max-w-full self-end shadow-none">
             {chat ? (

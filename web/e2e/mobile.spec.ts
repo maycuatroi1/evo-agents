@@ -1,6 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { createAgentByApi } from "./support/agents";
+import { agentAnswers, chatPageOf, chatPath, chatWorker, claimChatRun, openDirectByApi, sendByApi } from "./support/chats";
 import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -11,6 +13,7 @@ import {
   decisionOf,
   dispatch,
   liveWorker,
+  openRunDetails,
   planRunUnderway,
   reportState,
   runPath,
@@ -27,8 +30,10 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 /**
  * The hub on a phone (steps 14 and 15 of hub-ui-kit): a 375 x 812 screen with a phone's user agent and touch, so the
  * server renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
- * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its decision and side
- * column before the trace, and a decision from the Inbox is a screen of its own with its answer in a bar at the foot.
+ * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its head, its decision and
+ * its trace's latest rows before its details and opens the full trace on a screen of its own, a decision from the
+ * Inbox is a screen of its own with its answer in a bar at the foot, the Chats list's row of agents scrolls sideways
+ * on its own, and a direct chat's bubbles fit the screen with React and Reply under each.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -147,27 +152,93 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await expect(main(page).getByTestId("run-detail")).toBeVisible();
 });
 
-test("a run's decision and side column come before its trace, and the raw log's groups are a menu", async ({ page, member }) => {
+test("a run's head, decision and latest trace rows come before its details, its full trace is a screen of its own, and the raw log's groups are a menu", async ({
+  page,
+  member,
+}) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedPlanRunPlan(me, project);
   const { live, run } = await planRunUnderway(me, project, uniqueName("phone"), { waiting: true });
-  await sendEvents(live, run.id, [say("Reading the plan."), tool("Bash", "pnpm test")]);
+  const inWorktree = (command: string) => `cd /home/me/.evo/worker/worktrees/demo && export PATH=/tmp/venv/bin:$PATH && ${command}`;
+  await sendEvents(live, run.id, [
+    say("Reading the plan."),
+    tool("Bash", "pnpm test"),
+    { kind: "output", body: { type: "system", subtype: "task_progress" } },
+    tool("Bash", inWorktree("ruff check .")),
+    tool("Bash", inWorktree("pytest -q tests/hub")),
+  ]);
 
+  // The overview: the head (the plan, its step and progress), the decision, then the trace's latest rows, newest first,
+  // each a group of calls named by what it did with its command without the setup; the session is not on this page.
   await open(page, runPath(project, run.id));
+  const head = main(page).getByTestId("run-header");
+  await expect(head.getByTestId("run-current-step")).toHaveText("Step 2: Run plan dialog");
+  await expect(head.getByTestId("run-progress-text")).toHaveText("1/4 steps");
+  await expect(head.getByTestId("run-status-line")).toContainText("Waiting for an answer for");
   const decision = main(page).getByTestId("run-decisions");
   await expect(decision.getByTestId("decision-form")).toBeVisible();
-  const trace = main(page).getByTestId("run-log");
-  await expect(main(page).getByTestId("trace-item").first()).toBeVisible();
-  const order = [decision, main(page).getByTestId("run-side"), trace];
+  const preview = main(page).getByTestId("run-trace-preview");
+  const rows = preview.getByTestId("run-trace-preview-row");
+  await expect(rows).toHaveCount(4);
+  expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-type")))).toEqual(["group", "group", "group", "agent"]);
+  await expect(rows.nth(0)).toContainText("Ran tests");
+  await expect(rows.nth(0)).toContainText("pytest -q tests/hub");
+  await expect(rows.nth(1)).toContainText("Ran a check");
+  await expect(rows.nth(1)).toContainText("ruff");
+  await expect(rows.nth(2)).toContainText("Ran tests");
+  await expect(rows.nth(2)).toContainText("pnpm test");
+  await expect(rows.nth(3)).toContainText("Reading the plan.");
+  await expect(preview).not.toContainText("cd /home");
+  await expect(preview).not.toContainText("export PATH");
+  await expect(preview).toContainText("3 tool calls");
+  await expect(main(page).getByTestId("run-log")).toHaveCount(0);
+  await expect(main(page).getByTestId("trace-raw-left")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-side")).toHaveCount(0);
+  const order = [head, decision, preview];
   const tops = [];
   for (const part of order) tops.push((await box(part)).y);
-  expect(tops[0], "the decision before the side column").toBeLessThan(tops[1]);
-  expect(tops[1], "the side column before the trace").toBeLessThan(tops[2]);
-  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(tops, "the head, the decision, then the trace's preview").toEqual([...tops].sort((a, b) => a - b));
+  let width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width, "nothing scrolls sideways").toBeLessThanOrEqual(PHONE.width);
+  await touchSized(head.getByTestId("run-details-open"), "the Details toggle");
+  await touchSized(head.getByTestId("run-actions-menu"), "the menu of the run's actions");
+  await touchSized(preview.getByTestId("run-open-trace"), "Open the full trace");
+  await expectNoSeriousViolations(page, "run page at 375 px");
 
-  // The raw log: its groups in one menu instead of a row of chips.
+  // Details opens the side cards after the preview.
+  await openRunDetails(page);
+  const side = main(page).getByTestId("run-side");
+  await expect(side.getByTestId("run-plan-steps")).toBeVisible();
+  expect((await box(side)).y, "the side cards after the trace's preview").toBeGreaterThan((await box(preview)).y);
+
+  // Open the full trace: a screen of its own with a way back, the calls as one row per kind of work, each named once,
+  // its command without its setup, and the runtime event the trace does not read left to the Raw log.
+  await preview.getByTestId("run-open-trace").click();
+  const screen = main(page).getByTestId("run-detail");
+  await expect(screen).toHaveAttribute("data-screen", "session");
+  await expect(screen.getByRole("heading", { level: 1 })).toHaveText(`Run #${run.id}`);
+  await expect(main(page).getByTestId("run-trace-preview")).toHaveCount(0);
+  const trace = main(page).getByTestId("run-log");
+  await expect(trace.getByTestId("run-tab-trace")).toHaveAttribute("aria-selected", "true");
+  const groups = trace.getByTestId("trace-group");
+  await expect(groups).toHaveCount(3);
+  expect(await groups.evaluateAll((items) => items.map((item) => item.getAttribute("data-intent")))).toEqual(["test", "check", "test"]);
+  await expect(trace.getByTestId("trace-group-title")).toHaveText(["Ran tests", "Ran a check", "Ran tests"]);
+  await expect(trace.getByTestId("trace-group-detail")).toHaveText(["pnpm test", "ruff", "pytest -q tests/hub"]);
+  await expect(groups.last()).toHaveAttribute("data-running", "true");
+  await expect(trace.getByTestId("trace-typing")).toHaveCount(0); // the running group's clock is what moves
+  await expect(trace.getByTestId("trace-raw-left")).toContainText("1 runtime event");
+  await touchSized(groups.nth(1).getByTestId("trace-group-toggle"), "a row of the trace");
+  await groups.nth(1).getByTestId("trace-group-toggle").click();
+  await expect(groups.nth(1).getByTestId("trace-tool-arg")).toHaveText("ruff check .");
+  await touchSized(groups.nth(1).locator("summary"), "a call of a row of the trace");
+  width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width, "nothing scrolls sideways on the trace's screen").toBeLessThanOrEqual(PHONE.width);
+  await touchSized(main(page).getByTestId("run-screen-back"), "the way back to the run");
+  await expectNoSeriousViolations(page, "the trace's screen at 375 px");
+
+  // The raw log, a tab of the screen: its groups in one menu instead of a row of chips.
   await trace.getByTestId("run-tab-log").click();
   await expect(trace.getByTestId("log-line").first()).toBeVisible();
   await expect(trace.getByTestId("log-facets")).toHaveCount(0);
@@ -185,6 +256,17 @@ test("a run's decision and side column come before its trace, and the raw log's 
   const kinds = await trace.getByTestId("log-line").evaluateAll((lines) => lines.map((line) => line.getAttribute("data-kind")));
   expect(kinds.length).toBeGreaterThan(0);
   expect(new Set(kinds)).toEqual(new Set(["tool_call"]));
+
+  // Back, the button or the browser's, leads to the overview; the session's tab is the Trace again.
+  await main(page).getByTestId("run-screen-back").click();
+  await expect(main(page).getByTestId("run-detail")).not.toHaveAttribute("data-screen", "session");
+  await expect(main(page).getByTestId("run-trace-preview")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
+  await main(page).getByTestId("run-open-trace").click();
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
+  await page.goBack();
+  await expect(main(page).getByTestId("run-trace-preview")).toBeVisible();
+  await expect(main(page).getByTestId("run-log")).toHaveCount(0);
 });
 
 test("every list is a list of rows that open their page", async ({ page, member }) => {
@@ -225,6 +307,36 @@ test("every list is a list of rows that open their page", async ({ page, member 
   const sheet = page.getByTestId("memories-filters");
   await expect(sheet.getByRole("group", { name: "Type" })).toBeVisible();
   await expectNoSeriousViolations(page, "memories filter sheet at 375 px");
+});
+
+test("the plan's graph opens a step in a bottom sheet, its controls 44 px, and gives the focus back on close", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "customer" }]);
+  const project = me.projects[0];
+  await seedPlans(me, project);
+  await open(page, `/p/${project}/plans/${ACTIVE_PLAN}?view=graph`);
+  const canvas = main(page).getByTestId("step-graph-canvas");
+  await expect(canvas).toHaveAttribute("data-ready", "true");
+  // The zoom buttons sit in the bar above the canvas, so no step is ever under them.
+  const bar = main(page).getByTestId("graph-legend");
+  for (const name of ["Zoom in", "Zoom out", "Fit the plan"]) await touchSized(bar.getByRole("button", { name, exact: true }), name);
+
+  const node = canvas.locator('[data-testid="graph-step"][data-step="10"]');
+  await node.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByTestId("inspector-body")).toHaveAttribute("data-step", "10");
+  await expect(page).toHaveURL(/[?&]step=10(&|$)/);
+  await expect(sheet.getByTestId("inspector-title")).toBeFocused();
+  for (const id of ["inspector-previous", "inspector-next", "inspector-close", "inspector-open-page"]) await touchSized(sheet.getByTestId(id), id);
+  for (const button of await sheet.getByRole("button", { name: /^Select step/ }).all()) {
+    await touchSized(button, `the step button ${await button.getAttribute("data-step")}`);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(PHONE.width);
+  await expectNoSeriousViolations(page, "step inspector sheet at 375 px");
+
+  await sheet.getByTestId("inspector-close").click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]step=/);
+  await expect(page.locator(".react-flow__node:focus").getByTestId("graph-step")).toHaveAttribute("data-step", "10");
 });
 
 test("the admin lists are rows, and their filter forms apply from the sheet", async ({ page, signInAs }) => {
@@ -355,4 +467,103 @@ test("a decision is answered on a screen of its own, its bar in reach while the 
   await expect(page).toHaveURL(/\/inbox$/);
   await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
   await expect(main(page).locator(`[data-decision-link="${decision}"]`)).toBeFocused();
+});
+
+test("the chats list's row of agents scrolls sideways on its own while the page does not, and an agent opens its chat as a page", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  for (const name of ["Code reviewer", "Docs writer", "Release captain", "Flaky test hunter", "Triage desk", "Night shift"]) {
+    await createAgentByApi(me, project, { handle: uniqueName(name.split(" ")[0].toLowerCase()), name });
+  }
+
+  await open(page, "/chats");
+  const row = main(page).getByTestId("agent-strip-agents");
+  const agents = row.getByTestId("agent-strip-agent");
+  await expect(agents).toHaveCount(7);
+  const widths = await row.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(widths.scroll, "the row holds more than the screen").toBeGreaterThan(widths.client);
+  await row.evaluate((element) => element.scrollBy({ left: 240 }));
+  await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const layout = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: window.innerWidth, x: window.scrollX }));
+  expect(layout.scroll, "the page never scrolls sideways").toBeLessThanOrEqual(layout.width);
+  expect(layout.x).toBe(0);
+  await touchSized(agents.first(), "an agent of the row");
+
+  // The last agent, out of view at first: tapped, its chat is the page, its composer focused, a way back before its face.
+  await agents.last().tap();
+  await page.waitForURL(/\/chats\/[0-9]+$/);
+  await expect(main(page).getByTestId("chats-list")).toBeHidden();
+  await expect(main(page).getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
+  await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
+  await expect(main(page).getByTestId("chat-back")).toBeVisible();
+  // The way back, the face, the name and Details (its icon, a touch target) share one row; the handle, the project
+  // and the visibility sit under the name, so the head stays a small part of the screen.
+  const back = await box(main(page).getByTestId("chat-back"));
+  const title = await box(main(page).getByTestId("chat-title"));
+  const details = main(page).getByTestId("chat-details-open");
+  const detailsBox = await box(details);
+  expect(Math.abs(back.y + back.height / 2 - (title.y + title.height / 2)), "the way back sits on the name's row").toBeLessThan(8);
+  expect(back.x + back.width, "the way back stands before the name").toBeLessThanOrEqual(title.x);
+  expect(Math.abs(detailsBox.y + detailsBox.height / 2 - (title.y + title.height / 2)), "Details sits on the name's row").toBeLessThan(8);
+  expect(detailsBox.x, "Details ends the name's row").toBeGreaterThanOrEqual(title.x + title.width);
+  await expect(details).toHaveAccessibleName("Details");
+  await touchSized(details, "Details in a direct chat's head");
+  const visibility = await box(main(page).getByTestId("chat-visibility").first());
+  expect(visibility.y, "the visibility sits under the name").toBeGreaterThan(title.y + title.height);
+  const head = await box(main(page).getByTestId("chat-head"));
+  expect(head.height, "the head takes less than a sixth of the screen").toBeLessThan(PHONE.height / 6);
+  await expectNoSeriousViolations(page, "a direct chat at 375 px");
+});
+
+test("a direct chat at 375 px: the member's bubbles on the right, the agent's under them on the left, nothing sideways, Reply a touch target", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const live = await chatWorker(me, project, uniqueName("phone-chat"));
+  const chat = await openDirectByApi(me, project);
+  const asked = await sendByApi(me, chat.id, "Why did https://github.com/example-org/api/actions/runs/123456789012345/job/987654321098765 fail?");
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the message made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, `The clock ran out:\n\n\`\`\`ts\nawait clock.tickAsync(500); // ${"waits on the clock ".repeat(8)}\n\`\`\``);
+
+  await open(page, chatPath(chat.id));
+  const log = main(page).getByTestId("chat-log");
+  const mine = log.locator('[data-testid="chat-message"][data-mine="true"]');
+  const theirs = log.locator('[data-testid="chat-message"][data-author="agent"]');
+  await expect(theirs).toHaveCount(1);
+  const area = await box(log);
+  const ours = await box(mine.getByTestId("message-bubble"));
+  const answer = await box(theirs.getByTestId("message-bubble"));
+  expect(area.x + area.width - (ours.x + ours.width), "the member's bubble ends at the right").toBeLessThan(24);
+  expect(ours.width, "the member's bubble leaves the left of the screen free").toBeLessThan(area.width * 0.9);
+  expect(answer.x, "the agent's bubble starts at the left, after its face").toBeLessThan(ours.x);
+  expect(answer.y, "the answer sits under the message").toBeGreaterThan(ours.y);
+  expect(answer.x + answer.width, "the agent's bubble fits the screen").toBeLessThanOrEqual(area.x + area.width);
+  const widths = await log.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(widths.scroll, "the messages never scroll sideways").toBeLessThanOrEqual(widths.client);
+  const layout = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: window.innerWidth }));
+  expect(layout.scroll, "the page never scrolls sideways").toBeLessThanOrEqual(layout.width);
+
+  // React and Reply sit under each message on a phone, each a touch target; Reply puts the answer above the box.
+  const reply = theirs.getByTestId("message-reply");
+  await expect(reply).toBeVisible();
+  await touchSized(reply, "Reply under the agent's answer");
+  await touchSized(theirs.getByTestId("reaction-add"), "React under the agent's answer");
+  await reply.tap();
+  await expect(main(page).getByTestId("chat-composer-replying")).toContainText("The clock ran out:");
+  await touchSized(main(page).getByTestId("chat-composer-reply-cancel"), "Cancel the reply");
+  const composer = main(page).getByTestId("chat-composer-text");
+  expect(await fieldText(composer)).toBe("16px");
+  await expectNoSeriousViolations(page, "a direct chat with answers at 375 px");
+
+  // A phone's keyboard has no Shift with Enter: Enter adds a line there, and Send sends.
+  await expect(composer).toHaveAttribute("aria-keyshortcuts", "Meta+Enter Control+Enter");
+  await composer.fill("Then raise the timeout.");
+  await composer.press("Enter");
+  await composer.pressSequentially("To 2 s.");
+  await expect(composer).toHaveValue("Then raise the timeout.\nTo 2 s.");
+  await expect(composer).toBeFocused();
+  await main(page).getByTestId("chat-composer-send").tap();
+  await expect(composer).toHaveValue("");
+  await expect.poll(async () => (await chatPageOf(me, chat.id, asked.id)).messages.map((item) => item.body)).toContain("Then raise the timeout.\nTo 2 s.");
 });

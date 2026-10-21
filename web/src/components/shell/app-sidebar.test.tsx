@@ -7,6 +7,7 @@ import { InboxBell } from "@/components/inbox/inbox-bell";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createApiClient } from "@/lib/api/client";
+import { queryKeys } from "@/lib/queries";
 import { renderVi } from "@/test/render";
 
 import { AppSidebar } from "./app-sidebar";
@@ -65,8 +66,10 @@ function baseAnswers(): Answers {
   };
 }
 
+let client: QueryClient;
+
 function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderVi(
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -84,6 +87,7 @@ beforeEach(() => {
   api.fail = new Set();
   nav.pathname = "/p/demo/runs";
   nav.project = "demo";
+  window.localStorage.clear();
   window.matchMedia ??= ((query: string) => ({
     matches: false,
     media: query,
@@ -108,13 +112,20 @@ describe("AppSidebar", () => {
       "nav-overview",
       "nav-plans",
       "nav-runs",
+      "nav-mergeQueue",
       "nav-insights",
+      "nav-signals",
       "nav-curator",
+      "nav-releases",
+      "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",
+      "nav-plugins",
+      "nav-chats",
       "nav-workers",
       "nav-secrets",
+      "nav-accounts",
       "nav-myMemories",
       "nav-globalSkills",
     ]);
@@ -127,6 +138,76 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("nav-plans")).not.toHaveAttribute("aria-current");
   });
 
+  it("lists the pages of the project's enabled plugins before its Plugins, each with its manifest's title", async () => {
+    const page = (name: string, extra = {}) => ({ name, title: `Page ${name}`, description: "", icon: "kanban", menu: true, native: false, url: `/v1/plugin-ui/x/demo/1.a/${name}.html`, ...extra });
+    const plugin = (name: string, extra = {}) => ({
+      name,
+      title: name,
+      description: "",
+      tier: "isolated",
+      publisher: "acme",
+      version: "1.0.0",
+      state: "installed",
+      disabled_reason: null,
+      enabled: true,
+      permissions: [],
+      granted: [],
+      pending: [],
+      config_schema: null,
+      pages: [page("board"), page("hidden", { menu: false })],
+      enabled_by: null,
+      enabled_at: null,
+      granted_by: null,
+      granted_at: null,
+      ...extra,
+    });
+    api.answers["/v1/projects/demo/plugins"] = [
+      plugin("sample"),
+      plugin("notes", { tier: "core", pages: [page("entries", { icon: "notebook-pen", native: true, url: null })] }),
+      plugin("off", { enabled: false }),
+      plugin("broken", { state: "disabled", disabled_reason: "incompatible" }),
+    ];
+    nav.pathname = "/p/demo/x/sample/board";
+    setup();
+    const board = await screen.findByTestId("nav-plugin-sample-board");
+    expect(board).toHaveAttribute("href", "/p/demo/x/sample/board");
+    expect(board).toHaveAttribute("aria-current", "page");
+    expect(board).toHaveTextContent("Page board");
+    const links = within(screen.getByRole("navigation", { name: "Điều hướng chính" })).getAllByRole("link");
+    const ids = links.map((link) => link.getAttribute("data-testid"));
+    expect(ids.slice(ids.indexOf("nav-kg"), ids.indexOf("nav-plugins") + 1)).toEqual([
+      "nav-kg",
+      "nav-plugin-sample-board",
+      "nav-plugin-notes-entries",
+      "nav-plugins",
+    ]);
+  });
+
+  it("leaves out the areas a hub admin turned off and shows the name and logo of the hub's branding", async () => {
+    api.answers["/v1/features"] = {
+      features: [
+        { id: "chats", layers: ["instance"], enabled: false },
+        { id: "curator", layers: ["instance", "project"], enabled: false },
+        { id: "kg", layers: ["instance", "project"], enabled: true },
+        { id: "monitor", layers: ["instance"], enabled: false },
+      ],
+      projects: [{ project: "demo", values: { kg: false, curator: true } }],
+    };
+    api.answers["/v1/branding"] = {
+      name: "Acme Agents",
+      logo_url: "/v1/branding/logo?v=0123456789abcdef",
+      favicon_url: null,
+      colors: { light: {}, dark: {} },
+      version: 2,
+    };
+    setup();
+    await waitFor(() => expect(screen.queryByTestId("nav-kg")).toBeNull());
+    for (const gone of ["nav-chats", "nav-monitor"]) expect(screen.queryByTestId(gone)).toBeNull();
+    expect(screen.getByTestId("nav-curator")).toBeInTheDocument(); // the project's layer turns it back on
+    expect(screen.getByTestId("brand")).toHaveTextContent("Acme Agents");
+    expect(screen.getByTestId("hub-logo")).toHaveAttribute("src", "/v1/branding/logo?v=0123456789abcdef");
+  });
+
   it("counts open decisions in attention and active runs in running, in words for screen readers", async () => {
     setup();
     await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toHaveTextContent("2"));
@@ -135,6 +216,24 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("nav-runs-count")).toHaveTextContent("3"));
     expect(screen.getByTestId("nav-runs-count").className).toContain("bg-running-soft");
     expect(screen.getByTestId("nav-runs")).toHaveAccessibleName("Run, 3 run đang hoạt động");
+  });
+
+  it("counts the unread messages of the visitor's chats on Chats, in attention, and hides the count at zero", async () => {
+    api.answers["/v1/chats"] = [
+      { id: 1, title: "Release", unread: 2, people: ["octo"], agents: ["reviewer"] },
+      { id: 2, title: "Docs", unread: 3, people: ["octo"], agents: [] },
+    ];
+    const { unmount } = setup();
+    await waitFor(() => expect(screen.getByTestId("nav-chats-count")).toHaveTextContent("5"));
+    expect(screen.getByTestId("nav-chats-count").className).toContain("bg-attention-soft");
+    expect(screen.getByTestId("nav-chats")).toHaveAttribute("href", "/chats");
+    expect(screen.getByTestId("nav-chats")).toHaveAccessibleName("Chat, 5 tin chat chưa đọc");
+    unmount();
+    api.answers["/v1/chats"] = [{ id: 1, title: "Release", unread: 0, people: ["octo"], agents: [] }];
+    setup();
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
+    expect(screen.queryByTestId("nav-chats-count")).toBeNull();
+    expect(screen.getByTestId("nav-chats")).toHaveAccessibleName("Chat");
   });
 
   it("counts the runs at work in every project on Monitor, in running, and hides the count at zero", async () => {
@@ -159,7 +258,7 @@ describe("AppSidebar", () => {
     expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
   });
 
-  it("hides a count at zero, and the project's group outside a project", async () => {
+  it("hides a count at zero, and outside a project shows the group of the project the switcher stands in with", async () => {
     api.answers["/v1/me/notifications/count"] = { unread: 0, open_decisions: 0 };
     nav.pathname = "/inbox";
     nav.project = undefined;
@@ -167,8 +266,18 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "0"));
     expect(screen.queryByTestId("nav-inbox-count")).toBeNull();
     expect(screen.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox");
-    expect(screen.queryByTestId("nav-runs")).toBeNull();
     expect(screen.getByTestId("nav-inbox")).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByTestId("nav-runs")).toHaveAttribute("href", "/p/demo/runs");
+    expect(screen.getByTestId("nav-runs")).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows no project's group outside a project when the visitor can open none", async () => {
+    api.answers["/v1/projects"] = [];
+    nav.pathname = "/inbox";
+    nav.project = undefined;
+    setup();
+    await waitFor(() => expect(client.getQueryState(queryKeys.projects)?.status).toBe("success"));
+    expect(screen.queryByTestId("nav-runs")).toBeNull();
   });
 
   it("shows the fleet line from the workers list, linked to the Workers page", async () => {

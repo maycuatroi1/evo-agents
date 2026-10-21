@@ -3,7 +3,8 @@
 Every row carries ``tx_from`` and ``tx_to`` (build ids). A build writes only what changed: rows that
 disappeared or changed get ``tx_to``, new versions get ``tx_from``; then the build flips to ``ready``.
 Readers pin the latest ready build B and see rows with ``tx_from <= B < tx_to``, so a build in progress
-is never visible, and retracting a fact keeps its history queryable.
+is never visible, and retracting a fact keeps its history queryable until retention deletes the builds older than
+its period, but the latest two, and the rows only they read (``history_floor``, ``drop_history``).
 
 Provenance is stored as a circuit: each element has derivations, and a derivation is the AND of its
 ownership units and of the elements it needs. An element is alive while one derivation holds (OR).
@@ -11,21 +12,41 @@ ownership units and of the elements it needs. An element is alive while one deri
 Keys (PG-Keys): a node of a keyed kind carries ``props.key``, and no two live, non-proposed nodes of that
 kind share one. A Symbol's key is ``[repo, path, qualname]``, so two sources reading the same file of the
 same repo cannot both put the same function in the graph.
+
+Search (``evo_agents.kg.search``): the full-text index ``node_fts`` and the aliases ``node_alias`` hold the latest
+build only. A build rewrites the aliases, and only the rows of ``node_fts`` whose content changed: ``node_fts_rows``
+keeps the rowid and digest of each node's row. A node is found by its id, its name or an alias through an index,
+then by its words.
+
+A build's ``stats`` also hold its ``size`` (live nodes, edges and units) and ``top_label``, the highest level and
+the highest location any of its nodes, edges and units carries: a reader whose clearance covers both sees everything,
+and need not test each label (``evo_agents.kg.serve``); and ``top_audience``, the join of their audiences, when one has
+an audience.
+
+Audience (``evo_agents.kg.policy``): a unit, node or edge with one keeps it in ``label_aud``, a sorted JSON list, and
+NULL otherwise. ``reader`` is the audience of whoever reads the store, none until set: every read of units, nodes and
+edges, their counts and the full-text search leave out the rows whose audience is not within it, so a hidden element
+never fills a limit, a count or a page. The full-text rows of nodes with an audience sit in ``node_fts_aud``, apart from
+``node_fts``: they never weigh in the ranking of what a reader without that audience finds. ``counts`` and ``summary``
+stay the build's totals; ``seen`` counts what the reader's audience holds.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents.kg import search as text_search
 from evo_agents.kg.ids import utc_now
+from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "4"  # 4: units, nodes and edges gained label_aud, node_fts_aud came; 3: node_fts kind and path
 KEYED_KINDS = ("Symbol",)  # kinds whose props.key is unique; keep in step with the nodes_key index
 
 SCHEMA = """
@@ -43,17 +64,17 @@ CREATE TABLE IF NOT EXISTS builds (
 CREATE TABLE IF NOT EXISTS units (
     unit_id TEXT NOT NULL, item_id TEXT NOT NULL, anchor TEXT NOT NULL, rev TEXT, hash TEXT, source TEXT,
     span TEXT, label_lvl INTEGER, label_loc INTEGER, label_int TEXT, content TEXT NOT NULL,
-    tx_from INTEGER NOT NULL, tx_to INTEGER
+    tx_from INTEGER NOT NULL, tx_to INTEGER, label_aud TEXT
 ) STRICT;
 CREATE TABLE IF NOT EXISTS nodes (
     node_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT, props TEXT, status TEXT, conf REAL,
     label_lvl INTEGER, label_loc INTEGER, label_int TEXT, aliases TEXT, content TEXT NOT NULL,
-    tx_from INTEGER NOT NULL, tx_to INTEGER
+    tx_from INTEGER NOT NULL, tx_to INTEGER, label_aud TEXT
 ) STRICT;
 CREATE TABLE IF NOT EXISTS edges (
     edge_id TEXT NOT NULL, src TEXT NOT NULL, rel TEXT NOT NULL, dst TEXT NOT NULL, props TEXT, status TEXT,
     conf REAL, label_lvl INTEGER, label_loc INTEGER, label_int TEXT, content TEXT NOT NULL,
-    tx_from INTEGER NOT NULL, tx_to INTEGER
+    tx_from INTEGER NOT NULL, tx_to INTEGER, label_aud TEXT
 ) STRICT;
 CREATE TABLE IF NOT EXISTS derivations (
     elem_id TEXT NOT NULL, deriv_id TEXT NOT NULL, units TEXT NOT NULL, needs TEXT NOT NULL,
@@ -67,6 +88,7 @@ CREATE INDEX IF NOT EXISTS nodes_live ON nodes(node_id) WHERE tx_to IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS nodes_key ON nodes(kind, json_extract(props, '$.key'))
     WHERE kind = 'Symbol' AND tx_to IS NULL AND status <> 'proposed';
 CREATE INDEX IF NOT EXISTS nodes_tx ON nodes(node_id, tx_from);
+CREATE INDEX IF NOT EXISTS nodes_name ON nodes(name, tx_from);
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src, tx_from);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, tx_from);
 CREATE INDEX IF NOT EXISTS edges_id ON edges(edge_id, tx_from);
@@ -74,16 +96,48 @@ CREATE INDEX IF NOT EXISTS deriv_elem ON derivations(elem_id, tx_from);
 CREATE INDEX IF NOT EXISTS where_elem ON where_prov(elem_id, tx_from);
 CREATE INDEX IF NOT EXISTS units_id ON units(unit_id, tx_from);
 CREATE INDEX IF NOT EXISTS units_item ON units(item_id, tx_from);
+CREATE TABLE IF NOT EXISTS node_alias (alias TEXT PRIMARY KEY, node_id TEXT NOT NULL) STRICT, WITHOUT ROWID;
 CREATE VIRTUAL TABLE IF NOT EXISTS node_fts USING fts5(
-    node_id UNINDEXED, name, body, tokenize = 'unicode61 remove_diacritics 2'
+    node_id UNINDEXED, kind UNINDEXED, name, path, body, tokenize = 'unicode61 remove_diacritics 2'
 );
+CREATE VIRTUAL TABLE IF NOT EXISTS node_fts_aud USING fts5(
+    node_id UNINDEXED, kind UNINDEXED, name, path, body, aud UNINDEXED, tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE TABLE IF NOT EXISTS node_fts_rows (
+    node_id TEXT PRIMARY KEY, fts_rowid INTEGER NOT NULL, digest TEXT NOT NULL, aud INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
 """
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
+SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is within the store's reader
+FTS_TABLES = ("node_fts", "node_fts_aud")  # the full-text rows of nodes without an audience, and with one
+NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
+EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
+HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov")  # the tables whose rows carry tx_from, tx_to
+# Builds retention always keeps: the latest, and the one before it, which a reader that read the latest build id just
+# before a build landed may still be reading.
+KEEP_BUILDS = 2
 
 
 def edge_id(src: str, rel: str, dst: str) -> str:
     return "e:" + sha256(f"{src}\x1f{rel}\x1f{dst}")[7:23]
+
+
+def label_columns(label) -> dict:
+    """The label columns of a row: ``label_aud`` only when the label names an audience, so a row without one keeps
+    the content it had before audiences came."""
+    columns = {"label_lvl": label.level, "label_loc": label.location, "label_int": label.integrity}
+    return {**columns, "label_aud": json.dumps(sorted(label.audience))} if label.audience else columns
+
+
+def stored_audience(text: str | None) -> frozenset[str]:
+    """The audience a ``label_aud`` holds; the highest for one that cannot be read."""
+    if text is None:
+        return frozenset()
+    try:
+        return audience_of(json.loads(text))
+    except ValueError:
+        return TOP_AUDIENCE
 
 
 @dataclass
@@ -95,7 +149,8 @@ class Graph:
     derivations: dict[str, list[dict]] = field(default_factory=dict)  # elem id -> [{units, needs}]
     where: dict[str, list[list[str]]] = field(default_factory=dict)  # elem id -> [[unit, span]]
     units: dict[str, dict] = field(default_factory=dict)
-    texts: dict[str, str] = field(default_factory=dict)  # node id -> searchable text
+    texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
+    paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
 
 
 def _content(row: dict) -> str:
@@ -140,6 +195,7 @@ class Store:
         if found is not None and found != SCHEMA_VERSION:
             self.db.close()
             raise StaleSchema(path, found)  # before SCHEMA runs: an old file is never half-migrated
+        self._reads()
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=OFF")
         self.db.executescript(SCHEMA)
@@ -177,7 +233,13 @@ class Store:
         if found != SCHEMA_VERSION:
             store.db.close()
             raise StaleSchema(path, found or "none")
+        store._reads()
         return store
+
+    def _reads(self) -> None:
+        """Read as a reader with no audience until ``reader`` is set: rows with one are left out (fail closed)."""
+        self.reader: frozenset[str] = frozenset()
+        self.db.create_function("aud_seen", 1, lambda text: audience_below(stored_audience(text), self.reader))
 
     @staticmethod
     def stored_schema(path: Path) -> str | None:
@@ -236,6 +298,22 @@ class Store:
         out["stats"] = json.loads(out["stats"] or "{}")
         return out
 
+    def top_label(self, build_id: int) -> tuple[int, int] | None:
+        """The highest level and location of build ``build_id``'s labels (its ``stats``); None for a build written
+        before builds recorded it."""
+        row = self.db.execute(
+            "SELECT json_extract(stats, '$.top_label[0]'), json_extract(stats, '$.top_label[1]') FROM builds"
+            " WHERE build_id = ?",
+            (build_id,),
+        ).fetchone()
+        return (row[0], row[1]) if row and isinstance(row[0], int) and isinstance(row[1], int) else None
+
+    def top_audience(self, build_id: int) -> frozenset[str]:
+        """The join of the audiences of build ``build_id``'s nodes, edges and units (its ``stats``)."""
+        sql = "SELECT json_extract(stats, '$.top_audience') FROM builds WHERE build_id = ?"
+        found = self.db.execute(sql, (build_id,)).fetchone()
+        return stored_audience(found[0] if found else None)
+
     def write(self, graph: Graph, *, state_digest: str, coverage: dict, stats: dict, policy) -> int:
         """Write a graph as a new build, diffing against the previous one, in one transaction."""
         db = self.db
@@ -261,6 +339,7 @@ class Store:
                     "label_lvl",
                     "label_loc",
                     "label_int",
+                    "label_aud",
                 ],
             )
             self._diff(
@@ -275,7 +354,7 @@ class Store:
                         "props": json.dumps(n["props"], ensure_ascii=False, sort_keys=True),
                         "status": n["status"],
                         "conf": n["conf"],
-                        **self._label(n["label"]),
+                        **label_columns(n["label"]),
                         "aliases": json.dumps(n.get("aliases", [])),
                     }
                     for nid, n in graph.nodes.items()
@@ -291,6 +370,7 @@ class Store:
                     "label_loc",
                     "label_int",
                     "aliases",
+                    "label_aud",
                 ],
             )
             self._diff(
@@ -306,11 +386,12 @@ class Store:
                         "props": json.dumps(e["props"], ensure_ascii=False, sort_keys=True),
                         "status": e["status"],
                         "conf": e["conf"],
-                        **self._label(e["label"]),
+                        **label_columns(e["label"]),
                     }
                     for eid, e in graph.edges.items()
                 },
-                ["edge_id", "src", "rel", "dst", "props", "status", "conf", "label_lvl", "label_loc", "label_int"],
+                ["edge_id", "src", "rel", "dst", "props", "status", "conf"]
+                + ["label_lvl", "label_loc", "label_int", "label_aud"],
             )
             derivs = {}
             for elem, ds in graph.derivations.items():
@@ -324,12 +405,9 @@ class Store:
                 for unit, span in entries:
                     wheres[f"{elem}\x1f{unit}\x1f{span}"] = {"elem_id": elem, "unit_id": unit, "span": span}
             self._diff("where_prov", None, b, wheres, ["elem_id", "unit_id", "span"])
-            db.execute("DELETE FROM node_fts")
-            db.executemany(
-                "INSERT INTO node_fts (node_id, name, body) VALUES (?, ?, ?)",
-                [(nid, n["name"] or "", graph.texts.get(nid, "")[:4000]) for nid, n in sorted(graph.nodes.items())],
-            )
-            content_hash = self.content_hash(b)
+            searched = self._write_search(graph)
+            content_hash = self.content_hash(b, searched)
+            stats = {**stats, "size": _size(graph), "top_label": _top_label(graph), **_top_audience(graph)}
             db.execute(
                 "UPDATE builds SET status = 'ready', finished_at = ?, content_hash = ?, coverage = ?, stats = ?"
                 " WHERE build_id = ?",
@@ -337,9 +415,60 @@ class Store:
             )
         return b
 
-    @staticmethod
-    def _label(label) -> dict:
-        return {"label_lvl": label.level, "label_loc": label.location, "label_int": label.integrity}
+    def _write_search(self, graph: Graph) -> str:
+        """Bring the full-text index to ``graph``'s nodes, deleting and inserting only the rows that changed, and
+        replace the aliases; the digest of what the index holds. A row of a node with an audience ends with it."""
+        rows = [
+            (
+                nid,
+                n["kind"],
+                text_search.index_text(n["name"] or ""),
+                text_search.fold(graph.paths.get(nid, "")),
+                text_search.index_text(graph.texts.get(nid, "")),
+            )
+            + ((label_columns(n["label"])["label_aud"],) if n["label"].audience else ())
+            for nid, n in sorted(graph.nodes.items())
+        ]
+        self._update_fts(rows)
+        self.db.execute("DELETE FROM node_alias")
+        self.db.executemany(
+            "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
+            sorted((alias, nid) for nid, n in graph.nodes.items() for alias in n.get("aliases", [])),
+        )
+        return sha256(canonical_json(rows))
+
+    def _update_fts(self, rows: list[tuple]) -> None:
+        """Make the full-text tables hold ``rows`` and nothing else, a row with an audience (six columns) in
+        ``node_fts_aud``: the rows whose digest ``node_fts_rows`` does not hold go, new and changed ones come in. An
+        index whose rows ``node_fts_rows`` does not account for is written again whole."""
+        db = self.db
+        digests = {row[0]: sha256(canonical_json(row)) for row in rows}
+        held = {
+            nid: (rowid, d, aud)
+            for nid, rowid, d, aud in db.execute("SELECT node_id, fts_rowid, digest, aud FROM node_fts_rows")
+        }
+        if sum(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in FTS_TABLES) != len(held):
+            for table in (*FTS_TABLES, "node_fts_rows"):
+                db.execute(f"DELETE FROM {table}")
+            held = {}
+        gone = [(nid, rowid, aud) for nid, (rowid, d, aud) in held.items() if digests.get(nid) != d]
+        for aud, table in enumerate(FTS_TABLES):
+            db.executemany(f"DELETE FROM {table} WHERE rowid = ?", [(rowid,) for _, rowid, a in gone if a == aud])
+        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(nid,) for nid, _, _ in gone])
+        fresh = [row for row in rows if held.get(row[0], (0, None))[1] != digests[row[0]]]
+        for aud, table in enumerate(FTS_TABLES):
+            mine = [row for row in fresh if (len(row) > 5) == bool(aud)]
+            last = db.execute(f"SELECT rowid FROM {table} ORDER BY rowid DESC LIMIT 1").fetchone()
+            start = (last[0] if last else 0) + 1
+            columns = "rowid, node_id, kind, name, path, body" + (", aud" if aud else "")
+            marks = ", ".join("?" for _ in columns.split(", "))
+            db.executemany(
+                f"INSERT INTO {table} ({columns}) VALUES ({marks})", [(start + i, *row) for i, row in enumerate(mine)]
+            )
+            db.executemany(
+                "INSERT INTO node_fts_rows VALUES (?, ?, ?, ?)",
+                [(row[0], start + i, digests[row[0]], aud) for i, row in enumerate(mine)],
+            )
 
     def _diff(self, table: str, key_col: str | None, b: int, rows: dict[str, dict], cols: list[str]) -> None:
         """Close rows that vanished or changed, insert rows that are new or changed."""
@@ -367,9 +496,11 @@ class Store:
 
     # -- reading --------------------------------------------------------------------------------
 
-    def content_hash(self, b: int) -> str:
-        """Hash of everything alive at build b, independent of how the build got there."""
-        parts = []
+    def content_hash(self, b: int, searched: str) -> str:
+        """Hash of everything alive at build b, independent of how the build got there, with the store's schema and
+        ``searched``, the digest of what its full-text index holds: two builds with the same hash read the same, so
+        the hub may serve one's file for the other."""
+        parts: list = [SCHEMA_VERSION, searched]
         for table, order in (
             ("units", "unit_id"),
             ("nodes", "node_id"),
@@ -381,6 +512,44 @@ class Store:
             parts.append([r[0] for r in rows])
         return sha256(canonical_json(parts))
 
+    # -- history -------------------------------------------------------------------------------
+
+    def history_floor(self, cutoff: str, keep: int = KEEP_BUILDS) -> int | None:
+        """The oldest build retention keeps (``evo_agents.kg.retention``): of the latest ``keep`` ready builds and
+        every ready build finished at ``cutoff`` or later, the first. None when the store has no ready build."""
+        latest = self.db.execute(
+            "SELECT build_id FROM builds WHERE status = 'ready' ORDER BY build_id DESC LIMIT ?", (keep,)
+        ).fetchall()
+        if not latest:
+            return None
+        recent = self.db.execute(
+            "SELECT min(build_id) FROM builds WHERE status = 'ready' AND finished_at >= ?", (cutoff,)
+        ).fetchone()[0]
+        return min(row[0] for row in latest) if recent is None else min(recent, *(row[0] for row in latest))
+
+    def history(self, floor: int) -> dict[str, int]:
+        """What no build from ``floor`` on reads: per table, the rows closed at ``floor`` or before, and the builds
+        before ``floor``."""
+        out = {
+            table: self.db.execute(
+                f"SELECT count(*) FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)
+            ).fetchone()[0]
+            for table in HISTORY_TABLES
+        }
+        out["builds"] = self.db.execute("SELECT count(*) FROM builds WHERE build_id < ?", (floor,)).fetchone()[0]
+        return out
+
+    def drop_history(self, floor: int) -> dict[str, int]:
+        """Delete what ``history(floor)`` counts, in one transaction; what went. Every row a build from ``floor`` on
+        reads stays, so its content hash and the next build's diff are those they were."""
+        with self.db:
+            out = {
+                table: self.db.execute(f"DELETE FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)).rowcount
+                for table in HISTORY_TABLES
+            }
+            out["builds"] = self.db.execute("DELETE FROM builds WHERE build_id < ?", (floor,)).rowcount
+        return out
+
     def counts(self, b: int) -> dict:
         out = {}
         for table in ("nodes", "edges", "units", "derivations", "where_prov"):
@@ -388,13 +557,27 @@ class Store:
         return out
 
     def kind_counts(self, b: int) -> list[tuple[str, int, int, str, int]]:
-        """How many nodes live at build b each kind has under each label: rows of (kind, level, location,
-        integrity, count), in no particular order."""
+        """How many nodes live at build b, of an audience within ``reader``, each kind has under each label: rows of
+        (kind, level, location, integrity, count), in no particular order."""
         return self.db.execute(
-            f"SELECT kind, label_lvl, label_loc, label_int, count(*) FROM nodes WHERE {LIVE}"
+            f"SELECT kind, label_lvl, label_loc, label_int, count(*) FROM nodes WHERE {LIVE} AND {SEEN}"
             " GROUP BY kind, label_lvl, label_loc, label_int",
             {"b": b},
         ).fetchall()
+
+    def seen(self, b: int) -> dict:
+        """What build b holds within ``reader``'s audience, whatever their level: its live nodes, edges and units;
+        ``items``, per source, its items with a unit so seen; and ``audience``, the sources with a unit that has an
+        audience, the reader's or not."""
+        out = {
+            table: self.db.execute(f"SELECT count(*) FROM {table} WHERE {LIVE} AND {SEEN}", {"b": b}).fetchone()[0]
+            for table in ("nodes", "edges", "units")
+        }
+        sql = f"SELECT source, count(DISTINCT item_id) FROM units WHERE {LIVE} AND {SEEN} GROUP BY source"
+        out["items"] = dict(self.db.execute(sql, {"b": b}).fetchall())
+        sql = f"SELECT DISTINCT source FROM units WHERE {LIVE} AND label_aud IS NOT NULL"
+        out["audience"] = {row[0] for row in self.db.execute(sql, {"b": b})}
+        return out
 
     def summary(self) -> dict:
         b = self.latest_ready()
@@ -418,8 +601,7 @@ class Store:
 
     def node(self, node_id: str, b: int) -> dict | None:
         row = self.db.execute(
-            f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases FROM nodes"
-            f" WHERE node_id = :id AND {LIVE}",
+            f"SELECT {NODE_COLUMNS} FROM nodes WHERE node_id = :id AND {LIVE} AND {SEEN}",
             {"id": node_id, "b": b},
         ).fetchone()
         return _node_row(row) if row else None
@@ -431,8 +613,8 @@ class Store:
             chunk = ids[start : start + 500]
             marks = ", ".join("?" for _ in chunk)
             for row in self.db.execute(
-                f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases"
-                f" FROM nodes WHERE node_id IN ({marks}) AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)",
+                f"SELECT {NODE_COLUMNS} FROM nodes WHERE node_id IN ({marks})"
+                f" AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?) AND {SEEN}",
                 (*chunk, b, b),
             ):
                 out[row[0]] = _node_row(row)
@@ -441,8 +623,7 @@ class Store:
     def edges_of(self, node_id: str, b: int, direction: str = "both", limit: int = 200) -> list[dict]:
         clauses = {"out": "src = :id", "in": "dst = :id", "both": "(src = :id OR dst = :id)"}[direction]
         rows = self.db.execute(
-            f"SELECT edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int FROM edges"
-            f" WHERE {clauses} AND {LIVE} ORDER BY rel, src, dst LIMIT :lim",
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE {clauses} AND {LIVE} AND {SEEN} ORDER BY rel, src, dst LIMIT :lim",
             {"id": node_id, "b": b, "lim": limit},
         )
         return [_edge_row(r) for r in rows]
@@ -450,7 +631,7 @@ class Store:
     @staticmethod
     def _into(node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> tuple[str, dict]:
         """The WHERE clause of the live edges into a node with one of ``rels`` and ``statuses`` whose label is at
-        most ``ceiling`` (level, location), and its parameters."""
+        most ``ceiling`` (level, location) and whose audience is within ``reader``, and its parameters."""
         params = {"id": node_id, "b": b, "lvl": ceiling[0], "loc": ceiling[1]}
         marks = []
         for name, values in (("r", rels), ("s", statuses)):
@@ -458,7 +639,7 @@ class Store:
             marks.append(", ".join(f":{name}{i}" for i in range(len(values))))
         where = (
             f"dst = :id AND {LIVE} AND rel IN ({marks[0]}) AND status IN ({marks[1]})"
-            " AND label_lvl <= :lvl AND label_loc <= :loc"
+            f" AND label_lvl <= :lvl AND label_loc <= :loc AND {SEEN}"
         )
         return where, params
 
@@ -468,8 +649,7 @@ class Store:
         """One page of the edges ``count_into`` counts, in the order of ``edges_of``."""
         where, params = self._into(node_id, b, rels, statuses, ceiling)
         rows = self.db.execute(
-            f"SELECT edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int FROM edges"
-            f" WHERE {where} ORDER BY rel, src, dst LIMIT :lim OFFSET :off",
+            f"SELECT {EDGE_COLUMNS} FROM edges WHERE {where} ORDER BY rel, src, dst LIMIT :lim OFFSET :off",
             {**params, "lim": limit, "off": offset},
         )
         return [_edge_row(r) for r in rows]
@@ -482,8 +662,7 @@ class Store:
     def path_nodes(self, b: int) -> list[dict]:
         """Live File and Document nodes that carry a path: what a changed path can name."""
         rows = self.db.execute(
-            f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases FROM nodes"
-            f" WHERE kind IN ('File', 'Document') AND {LIVE} ORDER BY node_id",
+            f"SELECT {NODE_COLUMNS} FROM nodes WHERE kind IN ('File', 'Document') AND {LIVE} AND {SEEN} ORDER BY node_id",
             {"b": b},
         )
         return [n for n in map(_node_row, rows) if n["props"].get("path")]
@@ -496,9 +675,8 @@ class Store:
             chunk = ids[start : start + 500]
             marks = ", ".join("?" for _ in chunk)
             for row in self.db.execute(
-                f"SELECT node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases"
-                f" FROM nodes WHERE kind = 'Symbol' AND json_extract(props, '$.file') IN ({marks})"
-                f" AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?) ORDER BY node_id",
+                f"SELECT {NODE_COLUMNS} FROM nodes WHERE kind = 'Symbol' AND json_extract(props, '$.file') IN ({marks})"
+                f" AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?) AND {SEEN} ORDER BY node_id",
                 (*chunk, b, b),
             ):
                 n = _node_row(row)
@@ -507,34 +685,107 @@ class Store:
 
     def degree(self, node_id: str, b: int) -> int:
         return self.db.execute(
-            f"SELECT count(*) FROM edges WHERE (src = :id OR dst = :id) AND {LIVE}", {"id": node_id, "b": b}
+            f"SELECT count(*) FROM edges WHERE (src = :id OR dst = :id) AND {LIVE} AND {SEEN}", {"id": node_id, "b": b}
         ).fetchone()[0]
 
-    def search(self, query: str, b: int, limit: int = 50) -> list[str]:
-        """Node ids matching a query: exact id or name first, then full-text."""
-        hits: list[str] = []
-        exact = self.db.execute(
-            f"SELECT node_id FROM nodes WHERE (node_id = :q OR name = :q) AND {LIVE} ORDER BY node_id LIMIT :lim",
-            {"q": query, "b": b, "lim": limit},
-        )
-        hits.extend(r[0] for r in exact)
-        terms = [t for t in "".join(c if c.isalnum() else " " for c in query).split() if t]
-        # Whole tokens first, so "KB-01" does not drown in KB-010..KB-019; prefixes only fill the rest.
-        for fts_query in (" ".join(f'"{t}"' for t in terms), " ".join(f'"{t}"*' for t in terms)):
-            if not terms or len(hits) >= limit * 3:
+    def search(
+        self, query: str, b: int, limit: int = 50, *, kinds: list[str] | None = None, any_word: bool = True
+    ) -> list[str]:
+        """Ids of the nodes matching a query, best first, at most ``limit * 3``: a node whose id, alias or name is the
+        query, then the full-text matches of all its words, of all its words as prefixes, and (``any_word``) of any
+        of its words, ranked together by BM25 times the prior and the weight of the way that scores them best
+        (``evo_agents.kg.search``). ``kinds`` keeps only nodes of those kinds."""
+        want = limit * 3
+        kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
+        hits = self.exact(query, b, want, kinds)
+        queries = list(text_search.fts_queries(text_search.query_words(query)))
+        scores: dict[str, float] = {}
+        for weight, fts_query in zip(text_search.STAGE_WEIGHTS, queries if any_word else queries[:2], strict=False):
+            if len(hits) + len(scores.keys() - set(hits)) >= want:
                 break
+            for node_id, score in self._ranked(fts_query, want, kinds):
+                scores[node_id] = min(score * weight, scores.get(node_id, math.inf))  # bm25 is negative
+        ranked = sorted(scores, key=lambda node_id: (scores[node_id], node_id))
+        return [*hits, *(h for h in ranked if h not in hits)][:want]
+
+    def exact(self, query: str, b: int, limit: int, kinds: list[str] = ()) -> list[str]:
+        """Live nodes whose id, alias or name is ``query``, by id; each through an index, never a scan of nodes."""
+        params = {"q": query, "b": b, "lim": limit, **{f"k{i}": k for i, k in enumerate(kinds)}}
+        of_kind = f" AND nodes.kind IN ({', '.join(f':k{i}' for i in range(len(kinds)))})" if kinds else ""
+        live = "nodes.tx_from <= :b AND (nodes.tx_to IS NULL OR nodes.tx_to > :b)" + of_kind
+        live += " AND (nodes.label_aud IS NULL OR aud_seen(nodes.label_aud))"
+        rows = self.db.execute(
+            f"SELECT node_id FROM nodes WHERE node_id = :q AND {live}"
+            f" UNION SELECT node_id FROM nodes WHERE name = :q AND {live}"
+            " UNION SELECT nodes.node_id FROM node_alias JOIN nodes ON nodes.node_id = node_alias.node_id"
+            f" WHERE node_alias.alias = :q AND {live} ORDER BY 1 LIMIT :lim",
+            params,
+        )
+        return [r[0] for r in rows]
+
+    def alias_of(self, alias: str, b: int) -> str | None:
+        """The live node that holds ``alias`` (an id merged into it), or None."""
+        row = self.db.execute(
+            "SELECT nodes.node_id FROM node_alias JOIN nodes ON nodes.node_id = node_alias.node_id"
+            " WHERE node_alias.alias = :a AND nodes.tx_from <= :b AND (nodes.tx_to IS NULL OR nodes.tx_to > :b)"
+            " AND (nodes.label_aud IS NULL OR aud_seen(nodes.label_aud))",
+            {"a": alias, "b": b},
+        ).fetchone()
+        return row[0] if row else None
+
+    def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float]]:
+        """(node id, score) of the nodes matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored
+        again with the prior by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
+        for a reader with an audience, and only those within it, each with the score ``node_fts`` would give it
+        (``_as_public``)."""
+        of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        rows = []
+        for table in FTS_TABLES if self.reader else FTS_TABLES[:1]:
+            seen = " AND aud_seen(aud)" if table == "node_fts_aud" else ""
             try:
-                rows = self.db.execute(
-                    "SELECT node_id FROM node_fts WHERE node_fts MATCH ?"
-                    " ORDER BY bm25(node_fts, 0, 5.0, 1.0), node_id LIMIT ?",
-                    (fts_query, limit * 3),
-                )
-                for r in rows:
-                    if r[0] not in hits:
-                        hits.append(r[0])
+                found = self.db.execute(
+                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid FROM {table} WHERE {table} MATCH ?"
+                    f"{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
+                    (fts_query, *kinds, max(limit, text_search.RERANK_POOL)),
+                ).fetchall()
             except sqlite3.OperationalError:
-                pass
-        return hits[: limit * 3]
+                return []
+            rows += self._as_public(fts_query, found) if table == "node_fts_aud" else found
+        prior = text_search.PRIOR
+        scored = sorted(((r[0], r[2] * prior.get(r[1], 1.0)) for r in rows), key=lambda r: (r[1], r[0]))
+        return scored[:limit]  # bm25 is negative: lower is better
+
+    def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
+        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
+        adds up, over the phrases of the query, the phrase's IDF times a part that only the row's own counts and
+        length make. ``node_fts_aud`` holds few rows (a project's chat messages), so the IDF it gives a word is a
+        fraction of what ``node_fts`` gives it, and a message would rank below any symbol or section that matches no
+        better. Each phrase's part is read back from the BM25 of the phrase alone and weighed with the phrase's IDF
+        in ``node_fts``, so no row of an audience the reader lacks weighs in it through the IDF either."""
+        if not rows:
+            return rows
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        marks = ", ".join("?" for _ in rows)
+        held = dict(self.db.execute("SELECT aud, count(*) FROM node_fts_rows GROUP BY aud").fetchall())
+        totals = {table: held.get(aud, 0) for aud, table in enumerate(FTS_TABLES)}  # its rows, as _update_fts keeps
+        scores = dict.fromkeys((r[3] for r in rows), 0.0)
+        for phrase in text_search.phrases(fts_query):
+            weight = self._idf("node_fts", phrase, totals) / self._idf("node_fts_aud", phrase, totals)
+            for rowid, part in self.db.execute(
+                f"SELECT rowid, bm25(node_fts_aud, {weights}) FROM node_fts_aud WHERE node_fts_aud MATCH ?"
+                f" AND rowid IN ({marks})",
+                (phrase, *scores),
+            ):
+                scores[rowid] += part * weight
+        return [(r[0], r[1], scores[r[3]], r[3]) for r in rows]
+
+    def _idf(self, table: str, phrase: str, totals: dict[str, int]) -> float:
+        """The IDF FTS5's bm25 gives ``phrase`` in ``table``: ln((N - n + 0.5) / (n + 0.5)) for its N rows, n of which
+        hold the phrase, or 1e-6 when that is not above 0."""
+        held = self.db.execute(f"SELECT count(*) FROM {table} WHERE {table} MATCH ?", (phrase,)).fetchone()[0]
+        idf = math.log((totals[table] - held + 0.5) / (held + 0.5))
+        return idf if idf > 0 else 1e-6
 
     def derivations(self, elem_id: str, b: int) -> list[dict]:
         rows = self.db.execute(
@@ -552,7 +803,8 @@ class Store:
 
     def unit(self, unit_id: str, b: int) -> dict | None:
         row = self.db.execute(
-            f"SELECT unit_id, item_id, anchor, rev, hash, source, span FROM units WHERE unit_id = :u AND {LIVE}",
+            f"SELECT unit_id, item_id, anchor, rev, hash, source, span FROM units WHERE unit_id = :u AND {LIVE}"
+            f" AND {SEEN}",
             {"u": unit_id, "b": b},
         ).fetchone()
         keys = ("unit", "item", "anchor", "rev", "hash", "source", "span")
@@ -582,6 +834,27 @@ class Store:
         return set(derivs) - alive
 
 
+def _size(graph: Graph) -> dict:
+    return {"nodes": len(graph.nodes), "edges": len(graph.edges), "units": len(graph.units)}
+
+
+def _top_label(graph: Graph) -> list[int]:
+    """The highest level and the highest location among the labels of ``graph``'s nodes, edges and units."""
+    pairs = [(e["label"].level, e["label"].location) for e in (*graph.nodes.values(), *graph.edges.values())]
+    pairs += [(u["label_lvl"], u["label_loc"]) for u in graph.units.values()]
+    return [max((p[0] for p in pairs), default=0), max((p[1] for p in pairs), default=0)]
+
+
+def _top_audience(graph: Graph) -> dict:
+    """``top_audience``, the join of the audiences of ``graph``'s nodes, edges and units, when one of them has one."""
+    found = frozenset()
+    for audience in [e["label"].audience for e in (*graph.nodes.values(), *graph.edges.values())] + [
+        stored_audience(u.get("label_aud")) for u in graph.units.values()
+    ]:
+        found = audience_join(found, audience)
+    return {"top_audience": sorted(found)} if found else {}
+
+
 def _node_row(row) -> dict:
     return {
         "id": row[0],
@@ -590,7 +863,7 @@ def _node_row(row) -> dict:
         "props": json.loads(row[3] or "{}"),
         "status": row[4],
         "conf": row[5],
-        "label": (row[6], row[7], row[8]),
+        "label": (row[6], row[7], row[8], stored_audience(row[10])),
         "aliases": json.loads(row[9] or "[]"),
     }
 
@@ -604,5 +877,5 @@ def _edge_row(row) -> dict:
         "props": json.loads(row[4] or "{}"),
         "status": row[5],
         "conf": row[6],
-        "label": (row[7], row[8], row[9]),
+        "label": (row[7], row[8], row[9], stored_audience(row[10])),
     }

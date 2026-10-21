@@ -19,12 +19,33 @@ the CLI prints is parsed here.
   interrupts the turn once the agent used the budget's ``max_seconds``, and the outcome names the cap ``time``.
 - The run's usage is the thread's total of the last ``thread/tokenUsage/updated``, in snake_case, with
   ``peak_context_tokens``, the largest ``last.inputTokens`` (the input of one request of the model, the cached part
-  in it), and ``context_window``, the model's (``modelContextWindow``).
+  in it), ``context_window``, the model's (``modelContextWindow``), and the first request's cache tokens, the
+  ``cachedInputTokens`` and ``cacheWriteInputTokens`` of the first ``last`` (``common.FIRST_REQUEST``).
 - The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
   there (``models_cache.json``: each entry's ``slug`` whose ``visibility`` is ``list``). A file that is missing or not
   in that shape adds nothing.
+
+A run under an agent profile that limits tool or model, or has instructions, gets them as
+``evo_agents.worker.runtimes.profiles`` says: the thread's ``config`` turns off the features and the MCP servers of what
+the profile leaves out (``profiles.codex_config``), the model is one of its allowlist, and the instructions follow
+DEVELOPER_NOTE; a profile that leaves out ``edit`` or limits skills, which Codex cannot turn off, fails the run before
+its agent starts (``profile_refusal``).
+
+The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) give Codex their skills, their
+stdio and http MCP servers and their instructions: each pack's ``skills/`` is an extra root of the app-server's skills
+(``skills/extraRoots/set``, before the thread starts), each server an entry of ``mcp_servers`` in the thread's
+``config``, and the instructions follow the profile's in the developer instructions. A pack with subagents, hooks or an
+SSE server fails the run before its agent starts (``pack_refusal``). A run of the Curator gets the hub's MCP server in
+``mcp_servers`` too, unless the owner's codex config names one (``hub_tools``).
+
+The thread compacts its history as it nears ``model_auto_compact_token_limit`` and keeps ``tool_output_token_limit``
+tokens of each tool output in it: the thread's ``config`` gets both from ``compact_config``, the daemon's
+EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT and EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT (``off`` or ``0`` leaves codex's
+own), else COMPACT_SETTINGS' defaults, 200,000 and 8,000 (docs/workers.md says why). A key the owner's codex config
+sets (``owner_compact_keys``) is left out, since the thread's ``config`` overrides ``config.toml``; the profile's
+``config`` is merged last.
 
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
@@ -44,7 +65,9 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.runtimes import hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -53,6 +76,7 @@ from evo_agents.worker.runtimes.common import (
     QueueAdapter,
     cut,
     detect_runtime,
+    first_request,
     larger,
     message_chunk,
     new_session_argv,
@@ -64,7 +88,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
 )
 
@@ -99,6 +122,14 @@ SKIPPED = frozenset(
 )
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
 MODELS_CACHE = "models_cache.json"
+# What the thread's config gets for compaction (``compact_config``): each key of codex's config, the variable of the
+# daemon's environment that changes it, and its default, in tokens.
+AUTO_COMPACT_LIMIT = "model_auto_compact_token_limit"
+TOOL_OUTPUT_LIMIT = "tool_output_token_limit"
+COMPACT_SETTINGS = (
+    (AUTO_COMPACT_LIMIT, "EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT", 200_000),
+    (TOOL_OUTPUT_LIMIT, "EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT", 8_000),
+)
 
 
 def codex_home(env: Mapping[str, str]) -> Path:
@@ -146,6 +177,55 @@ def home_models(home: Path) -> list[str]:
             continue
         found += read(text)
     return list(dict.fromkeys(found))
+
+
+def owner_compact_keys(home: Path, worktree: Path) -> set[str]:
+    """The keys of COMPACT_SETTINGS the owner's codex config sets: at the top of ``config.toml`` in ``home`` or in the
+    profile its ``profile`` names, or in the worktree's ``.codex/config.toml``."""
+    keys = {key for key, _, _ in COMPACT_SETTINGS}
+    found: set[str] = set()
+    for path in (home / "config.toml", worktree / ".codex" / "config.toml"):
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        tables = [data]
+        named, tables_by_name = data.get("profile"), data.get("profiles")
+        if isinstance(named, str) and isinstance(tables_by_name, dict) and isinstance(tables_by_name.get(named), dict):
+            tables.append(tables_by_name[named])
+        found |= {key for table in tables for key in keys if key in table}
+    return found
+
+
+def compact_config(env: Mapping[str, str], owned: set[str] | frozenset[str] = frozenset()) -> dict[str, int]:
+    """What the thread's ``config`` gains for compaction: each key of COMPACT_SETTINGS that ``owned`` (the owner's
+    config) leaves unset, at its variable's value when that is a whole number of tokens, else at its default; nothing
+    for a key whose variable is ``off`` or ``0``, which leaves codex's own. Codex caps the compaction limit at 90% of
+    the model's context window."""
+    found: dict[str, int] = {}
+    for key, setting, default in COMPACT_SETTINGS:
+        if key in owned:
+            continue
+        value = env.get(setting, "").strip().lower()
+        if value in ("off", "0"):
+            continue
+        found[key] = int(value) if value.isascii() and value.isdigit() else default
+    return found
+
+
+def thread_compaction(context: RunContext) -> dict[str, int]:
+    """``compact_config`` for the run of ``context``, the keys its owner's codex config sets left out; the terminal UI
+    passes the same with ``-c``."""
+    owned = owner_compact_keys(codex_home(context.env), Path(context.worktree))
+    return compact_config(context.env, owned)
+
+
+def config_args(context: RunContext, effort: str | None) -> list[str]:
+    """The ``-c`` options of the terminal UI on the run of ``context``: the reasoning effort ``effort``, then
+    ``thread_compaction``, as the headless thread's config has them."""
+    settings: dict[str, object] = {"model_reasoning_effort": json.dumps(effort)} if effort else {}
+    settings.update(thread_compaction(context))
+    return [part for key, value in settings.items() for part in ("-c", f"{key}={value}")]
 
 
 def wire(payload) -> dict:
@@ -239,6 +319,8 @@ class CodexAdapter(QueueAdapter):
     runtime = "codex"
     binary = "codex"
     interactive = True
+    pack_kinds = ("skills", "mcp_servers", "instructions")
+    pack_transports = ("stdio", "http")
 
     @classmethod
     def detect(cls) -> Detection:
@@ -255,6 +337,11 @@ class CodexAdapter(QueueAdapter):
 
         return CodexTui(context, session_id)
 
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        profile = profiles.Profile.of(run)
+        return profiles.model_refusal(profile, run) or profiles.codex_refusal(profile)
+
     def __init__(self, context: RunContext):
         super().__init__(context)
         self._session = context.resume_session
@@ -268,6 +355,7 @@ class CodexAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict | None = None
         self._peak: int | None = None  # the largest context of one request of the model: ``last.inputTokens``
+        self._first: dict | None = None  # the cache tokens of the first ``last`` (FIRST_REQUEST)
         self._window: int | None = None  # the model's context window, as the app-server reports it
         self._summary: str | None = None
         self._dir: Path | None = None
@@ -279,22 +367,47 @@ class CodexAdapter(QueueAdapter):
     def session_id(self) -> str | None:
         return self._session
 
+    def mcp_servers(self) -> list[str]:
+        """The MCP servers of the owner's codex config and of the worktree's (``profiles.codex_servers``)."""
+        return profiles.codex_servers(codex_home(self.context.env), Path(self.context.worktree))
+
     def make_codex(self, config):
         """The SDK's client; a test hands it one of its own."""
         from openai_codex import AsyncCodex
 
         return AsyncCodex(config)
 
+    async def add_packs(self, config: dict) -> None:
+        """Give the thread the run's agent packs: their MCP servers in its ``config``, their skill directories as extra
+        roots of the app-server's skills; and to a run of the Curator the hub's MCP server (``hub_tools``)."""
+        profile = profiles.profile_of(self.context)
+        hub = hub_tools.codex_servers(self.context, self.mcp_servers(), profile)
+        servers = {**hub, **packs.codex_servers(self.context.packs)}
+        if servers:
+            config["mcp_servers"] = {**config.get("mcp_servers", {}), **servers}
+        roots = packs.skill_roots(self.context.packs)
+        if roots:
+            await self.set_skill_roots(roots)
+
+    async def set_skill_roots(self, roots: list[str]) -> None:
+        """The app-server's ``skills/extraRoots/set``, which the SDK has no method for; a test records it."""
+        from openai_codex.generated.v2_all import SkillsExtraRootsSetResponse
+
+        params = {"extraRoots": roots}
+        await self._codex._client.request("skills/extraRoots/set", params, response_model=SkillsExtraRootsSetResponse)
+
     async def _open(self) -> None:
         from openai_codex import ApprovalMode, CodexConfig, Sandbox
 
-        program = which(self.binary, self.context.env)
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-codex-"))
         self.pid_file = self._dir / "pid"
         worktree = str(self.context.worktree)
+        command = environment.command(program, APP_SERVER, context=self.context, directory=self._dir)
         self.config = CodexConfig(
             codex_bin=program,
-            launch_args_override=tuple(new_session_argv(self.pid_file, program, *APP_SERVER)),
+            launch_args_override=tuple(new_session_argv(self.pid_file, *command)),
             cwd=worktree,
             env=dict(self.context.env),
         )
@@ -303,13 +416,23 @@ class CodexAdapter(QueueAdapter):
         with contextlib.suppress(Exception):  # "0.153.4 (Mac OS 26.5.2; arm64) ..."
             self.server_version = self._codex.metadata.serverInfo.version.split()[0]
         effort = run_setting(self.context, self.runtime, "effort")
+        profile = profiles.profile_of(self.context)
+        config = {
+            **thread_compaction(self.context),
+            **profiles.codex_config(profile, self.mcp_servers() if profile is not None else ()),
+        }
+        if effort:
+            config["model_reasoning_effort"] = effort
+        await self.add_packs(config)
         self.thread_options = {
             "approval_mode": ApprovalMode.deny_all,
             "sandbox": Sandbox.full_access,
             "cwd": worktree,
-            "developer_instructions": DEVELOPER_NOTE,
-            "model": run_setting(self.context, self.runtime, "model"),
-            "config": {"model_reasoning_effort": effort} if effort else None,
+            "developer_instructions": packs.with_instructions(
+                profiles.with_instructions(DEVELOPER_NOTE, profile), self.context.packs
+            ),
+            "model": profiles.session_model(self.context, self.runtime),
+            "config": config or None,
         }
         if self.context.resume_session:
             self._thread = await self._codex.thread_resume(self.context.resume_session, **self.thread_options)
@@ -357,16 +480,19 @@ class CodexAdapter(QueueAdapter):
 
     def _tokens(self, usage: dict) -> None:
         """A ``thread/tokenUsage/updated``: the thread's total so far, and the context of its last request
-        (``last.inputTokens``, the cached part counted in it) for the peak."""
+        (``last.inputTokens``, the cached part counted in it) for the peak; the cache tokens of the first request that
+        read any context for FIRST_REQUEST."""
         total, last = usage.get("total"), usage.get("last")
         if isinstance(total, dict):
             self._usage = snake(total)
         if isinstance(last, dict):
             self._peak = larger(self._peak, token_sum(last.get("inputTokens")))
+            if self._first is None and token_sum(last.get("inputTokens")):
+                self._first = first_request(last.get("cachedInputTokens"), last.get("cacheWriteInputTokens"))
         self._window = token_sum(usage.get("modelContextWindow")) or self._window
 
     def _outcome(self) -> Outcome:
-        usage, summary = with_peak(self._usage, self._peak, context_window=self._window), self._summary
+        usage, summary = with_peak(self._usage, self._peak, self._first, context_window=self._window), self._summary
         if self.interrupted:
             return Outcome(False, "interrupted", usage, summary)
         if self._error:

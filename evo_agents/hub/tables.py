@@ -1,15 +1,9 @@
-"""The hub's 45 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
-the next migration from (``evo_agents/hub/migrations/env.py``).
-
-The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
-equal (Alembic's ``compare_metadata`` on a database migrated to head finds no difference). Columns, types,
-nullability, server defaults, identities, the generated column, keys, foreign keys and indexes are here, with the
-names the migrations gave them. CHECK constraints and triggers live in the migrations only: Alembic does not compare
-them, and a query has no use for them. procrastinate's tables belong to procrastinate and are not here.
-
-Each table is a module attribute named as the table. Import the module (``from evo_agents.hub import tables``) rather
-than the names, which would shadow modules such as ``secrets`` or ``evo_agents.hub.runs``.
-"""
+"""The hub's tables as SQLAlchemy Core metadata, which queries are written on and Alembic autogenerates the next
+migration from (``migrations/env.py``); the modules ``tables_<area>`` imported below hold them by area, and
+``tables.srs``, ``tables.tasks`` and ``tables.canvas`` are core plugins'. The migrations make the schema and this
+module describes it; ``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server
+defaults, identities, keys and indexes, named as the migrations name them (CHECK constraints and triggers live in the
+migrations only). A table is an attribute of its name."""
 
 from __future__ import annotations
 
@@ -40,6 +34,22 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
+from evo_agents.hub import (
+    tables_accounts,
+    tables_curator,
+    tables_kg,
+    tables_merge,
+    tables_plugins,
+    tables_profiles,
+    tables_release,
+    tables_sessions,
+    tables_settings,
+    tables_signals,
+    tables_triage,
+    tables_workers,
+)
+from evo_agents.hub.tables_chats import chat_tables
+
 metadata = MetaData()
 
 # Run states the partial indexes of runs name (evo_agents/hub/migrations/versions/0010_plan_runs.py and 0014).
@@ -63,7 +73,6 @@ def _id() -> Column:
 
 
 # Accounts and access (0001)
-
 users = Table(
     "users",
     metadata,
@@ -178,8 +187,7 @@ memories = Table(
     _stamp("created_at"),
     _stamp("updated_at"),
     Column("updated_by", BigInteger, nullable=False),
-    # Alembic compares a generated column's expression as text and warns at the casts Postgres adds to it
-    # ('simple'::regconfig); it cannot alter one anyway.
+    # Alembic compares a generated column's expression as text, warns at Postgres's casts and cannot alter it anyway
     Column(
         "search",
         TSVECTOR,
@@ -295,12 +303,7 @@ skills = Table(
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
 )
-Index(
-    "skills_global_key",
-    func.lower(skills.c.name),
-    unique=True,
-    postgresql_where=skills.c.scope == "global",
-)
+Index("skills_global_key", func.lower(skills.c.name), unique=True, postgresql_where=skills.c.scope == "global")
 Index(
     "skills_project_key",
     skills.c.project_id,
@@ -328,22 +331,7 @@ skill_versions = Table(
     PrimaryKeyConstraint("skill_id", "version", name="skill_versions_pkey"),
 )
 
-# Knowledge graph ingests and audit (0001, 0007)
-
-kg_ingests = Table(
-    "kg_ingests",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("run_id", Uuid, nullable=False),
-    Column("source", Text, nullable=False),
-    Column("log_sha256", Text, nullable=False),
-    Column("log_size", BigInteger, nullable=False),
-    Column("pushed_by", BigInteger, nullable=False),
-    _stamp("received_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_ingests_project_id_fkey"),
-    ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="RESTRICT", name="kg_ingests_pushed_by_fkey"),
-    PrimaryKeyConstraint("project_id", "run_id", name="kg_ingests_pkey"),
-)
+# The audit (0001, 0007); the knowledge graph's tables are in tables_kg
 
 audit = Table(
     "audit",
@@ -419,169 +407,9 @@ Index(
     postgresql_where=blob_deletions.c.deleted_at.is_(None),
 )
 
-# Knowledge graph builds (0006, 0008)
-
-kg_configs = Table(
-    "kg_configs",
-    metadata,
-    Column("project_id", BigInteger, nullable=False, autoincrement=False),
-    Column("digest", Text, nullable=False),
-    Column("knowledge", JSONB, nullable=False),
-    Column("ontology", JSONB),
-    Column("updated_by", BigInteger, nullable=False),
-    _stamp("updated_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_configs_project_id_fkey"),
-    ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="RESTRICT", name="kg_configs_updated_by_fkey"),
-    PrimaryKeyConstraint("project_id", name="kg_configs_pkey"),
-)
-
-kg_pending_runs = Table(
-    "kg_pending_runs",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("run_id", Uuid, nullable=False),
-    Column("source", Text, nullable=False),
-    Column("log_sha256", Text, nullable=False),
-    Column("log_size", BigInteger, nullable=False),
-    Column("blobs", ARRAY(Text), nullable=False),
-    Column("pushed_by", BigInteger, nullable=False),
-    _stamp("created_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_pending_runs_project_id_fkey"),
-    ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="CASCADE", name="kg_pending_runs_pushed_by_fkey"),
-    PrimaryKeyConstraint("project_id", "run_id", name="kg_pending_runs_pkey"),
-)
-
-kg_builds = Table(
-    "kg_builds",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("job_id", BigInteger),
-    Column("status", Text, nullable=False),
-    Column("requested_by", BigInteger),
-    Column("config_digest", Text),
-    Column("runs", Integer),
-    Column("artifact_sha256", Text),
-    Column("artifact_size", BigInteger),
-    Column("content_hash", Text),
-    Column("nodes", Integer),
-    Column("edges", Integer),
-    Column("error", Text),
-    _stamp("queued_at"),
-    _when("started_at"),
-    _when("finished_at"),
-    Column("artifact_reused_from", BigInteger),
-    _when("artifact_pruned_at"),
-    ForeignKeyConstraint(
-        ["artifact_reused_from"], ["kg_builds.id"], ondelete="RESTRICT", name="kg_builds_artifact_reused_from_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_builds_project_id_fkey"),
-    ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="RESTRICT", name="kg_builds_requested_by_fkey"),
-    PrimaryKeyConstraint("id", name="kg_builds_pkey"),
-    UniqueConstraint("job_id", name="kg_builds_job_id_key"),
-)
-Index("kg_builds_project_idx", kg_builds.c.project_id, kg_builds.c.id.desc())
-Index(
-    "kg_builds_succeeded_idx",
-    kg_builds.c.project_id,
-    kg_builds.c.id.desc(),
-    postgresql_where=kg_builds.c.status == "succeeded",
-)
-Index(
-    "kg_builds_artifact_idx",
-    kg_builds.c.project_id,
-    kg_builds.c.id.desc(),
-    postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
-)
-Index(
-    "kg_builds_artifact_sha256_idx",
-    kg_builds.c.artifact_sha256,
-    postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
-)
-
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers = Table(
-    "workers",
-    metadata,
-    _id(),
-    Column("owner_id", BigInteger, nullable=False),
-    Column("token_id", BigInteger, nullable=False),
-    Column("name", Text, nullable=False),
-    Column("hostname", Text, nullable=False),
-    Column("os", Text, nullable=False),
-    Column("arch", Text, nullable=False),
-    Column("agent_version", Text, nullable=False),
-    Column("slots", SmallInteger, nullable=False, server_default="1"),
-    Column("labels", ARRAY(Text), nullable=False, server_default="{}"),
-    Column("runtimes", JSONB, nullable=False, server_default="{}"),
-    Column("checkouts", JSONB, nullable=False, server_default="{}"),
-    Column("free_slots", SmallInteger),
-    Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
-    _stamp("created_at"),
-    _when("last_heartbeat_at"),
-    _when("drained_at"),
-    _when("revoked_at"),
-    Column("dispatch_from", Text, nullable=False, server_default="any"),
-    Column("run_kinds", ARRAY(Text)),
-    Column("features", ARRAY(Text)),  # what its daemon says it does besides its kinds of run (0025)
-    _when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
-    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
-    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
-    PrimaryKeyConstraint("id", name="workers_pkey"),
-    UniqueConstraint("token_id", name="workers_token_id_key"),
-)
-Index(
-    "workers_name_key",
-    workers.c.owner_id,
-    func.lower(workers.c.name),
-    unique=True,
-    postgresql_where=workers.c.revoked_at.is_(None),
-)
-
-worker_projects = Table(
-    "worker_projects",
-    metadata,
-    Column("worker_id", BigInteger, nullable=False),
-    Column("project_id", BigInteger, nullable=False),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="worker_projects_project_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="worker_projects_worker_id_fkey"),
-    PrimaryKeyConstraint("worker_id", "project_id", name="worker_projects_pkey"),
-)
-
-worker_pairings = Table(
-    "worker_pairings",
-    metadata,
-    _id(),
-    Column("code_selector", Text, nullable=False),
-    Column("code_hash", Text, nullable=False),
-    Column("owner_id", BigInteger, nullable=False),
-    Column("name", Text, nullable=False),
-    Column("projects", ARRAY(BigInteger), nullable=False),
-    Column("slots", SmallInteger, nullable=False, server_default="1"),
-    Column("labels", ARRAY(Text), nullable=False, server_default="{}"),
-    Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
-    Column("attempts", SmallInteger, nullable=False, server_default="0"),
-    _stamp("created_at"),
-    Column("expires_at", DateTime(timezone=True), nullable=False),
-    _when("used_at"),
-    Column("worker_id", BigInteger),
-    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="CASCADE", name="worker_pairings_owner_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="worker_pairings_worker_id_fkey"),
-    PrimaryKeyConstraint("id", name="worker_pairings_pkey"),
-    UniqueConstraint("worker_id", name="worker_pairings_worker_id_key"),
-)
-Index(
-    "worker_pairings_selector_key",
-    worker_pairings.c.code_selector,
-    unique=True,
-    postgresql_where=worker_pairings.c.used_at.is_(None),
-)
-Index(
-    "worker_pairings_owner_idx",
-    worker_pairings.c.owner_id,
-    postgresql_where=worker_pairings.c.used_at.is_(None),
-)
+workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0065
 
 runs = Table(
     "runs",
@@ -641,6 +469,13 @@ runs = Table(
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
+    # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
+    # Claude Code session id, and its worker_id stays NULL.
+    Column("machine", Text),
+    Column("cwd", Text),
+    Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
+    Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
+    _when("last_activity_at"),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -683,25 +518,26 @@ Index(  # a project has one judge run active at a time (0017)
     unique=True,
     postgresql_where=(runs.c.kind == "judge") & runs.c.state.in_(RUN_ACTIVE),
 )
-Index(
-    "runs_claim_idx",
+Index(  # a session registers once per project, however often it says so again (0033)
+    "runs_local_session_key",
     runs.c.project_id,
-    runs.c.dispatched_by,
-    runs.c.id,
-    postgresql_where=runs.c.state == "queued",
+    runs.c.session_id,
+    unique=True,
+    postgresql_where=runs.c.kind == "local",
 )
+Index(  # the reaper finds the local runs that went silent (0033)
+    "runs_local_silent_idx",
+    runs.c.last_activity_at,
+    postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
+)
+Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))
 Index("runs_project_idx", runs.c.project_id, runs.c.id.desc())
 Index("runs_step_idx", runs.c.project_id, runs.c.plan_id, runs.c.step_key, runs.c.id.desc())
 Index("runs_waiting_idx", runs.c.waiting_since, postgresql_where=runs.c.state == "waiting")
 Index("runs_parked_idx", runs.c.parked_at, postgresql_where=runs.c.state == "parked")
-Index(
-    "runs_schedule_idx",
-    runs.c.schedule_id,
-    runs.c.schedule_night,
-    postgresql_where=runs.c.schedule_id.is_not(None),
-)
+Index("runs_schedule_idx", runs.c.schedule_id, runs.c.schedule_night, postgresql_where=runs.c.schedule_id.is_not(None))
 
 run_events = Table(
     "run_events",
@@ -724,7 +560,7 @@ decisions = Table(
     _id(),
     Column("run_id", BigInteger, nullable=False),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text, nullable=False),
+    Column("plan_id", Text),  # NULL for a decision an author run asked before it put a plan (schema 0029)
     Column("step_key", Text),
     Column("category", Text, nullable=False),
     Column("question", Text, nullable=False),
@@ -761,12 +597,7 @@ run_inbox = Table(
     ForeignKeyConstraint(["sent_by"], ["users.id"], ondelete="RESTRICT", name="run_inbox_sent_by_fkey"),
     PrimaryKeyConstraint("id", name="run_inbox_pkey"),
 )
-Index(
-    "run_inbox_pending_idx",
-    run_inbox.c.run_id,
-    run_inbox.c.id,
-    postgresql_where=run_inbox.c.delivered_at.is_(None),
-)
+Index("run_inbox_pending_idx", run_inbox.c.run_id, run_inbox.c.id, postgresql_where=run_inbox.c.delivered_at.is_(None))
 
 notifications = Table(
     "notifications",
@@ -1002,31 +833,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# Session digests and the tool figures of runs (0013, and the skills of 0026)
-
-session_digests = Table(
-    "session_digests",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("session_id", Text, nullable=False),
-    Column("user_id", BigInteger, nullable=False),
-    Column("label", JSONB, nullable=False),
-    Column("cwd", Text, nullable=False),
-    Column("messages", Integer, nullable=False),
-    Column("model", Text),
-    _when("started_at"),
-    _when("ended_at"),
-    Column("body", JSONB, nullable=False),
-    _stamp("created_at"),
-    _stamp("updated_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="session_digests_project_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT", name="session_digests_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="session_digests_pkey"),
-    UniqueConstraint("project_id", "session_id", name="session_digests_project_id_session_id_key"),
-    Index("session_digests_project_idx", "project_id", "updated_at"),
-    Index("session_digests_updated_idx", "updated_at"),
-)
+# The tool figures of runs (0013, and the skills of 0085); the session digests are in tables_sessions
 
 run_tool_stats = Table(
     "run_tool_stats",
@@ -1137,30 +944,10 @@ Index(
     postgresql_where=proposals.c.inbox_at.is_not(None),
 )
 
-# The Curator's morning briefs, and the one-time codes that link a Telegram chat (0015)
+curator_briefs = tables_curator.briefs_table(metadata)  # the Curator's morning briefs (0015)
 
-curator_briefs = Table(
-    "curator_briefs",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("day", Date, nullable=False),
-    Column("night", Date, nullable=False),
-    Column("user_id", BigInteger, nullable=False),
-    Column("body", JSONB, nullable=False),
-    Column("notification_id", BigInteger),
-    _stamp("created_at"),
-    ForeignKeyConstraint(
-        ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
-    UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
-)
-
-telegram_links = Table(
-    "telegram_links",
+channel_link_codes = Table(  # the one-time codes that link a member's channel: telegram_links until 0063
+    "channel_link_codes",
     metadata,
     _id(),
     Column("user_id", BigInteger, nullable=False),
@@ -1169,117 +956,32 @@ telegram_links = Table(
     Column("expires_at", DateTime(timezone=True), nullable=False),
     _when("used_at"),
     Column("token_id", BigInteger),  # the web session that made the code (0016)
-    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="telegram_links_token_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="telegram_links_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="telegram_links_pkey"),
-    UniqueConstraint("code_hash", name="telegram_links_code_hash_key"),
-    Index("telegram_links_user_idx", "user_id"),
+    Column("kind", Text, nullable=False),  # the kind of members' channel it links (0063)
+    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="channel_link_codes_token_id_fkey"),
+    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="channel_link_codes_user_id_fkey"),
+    PrimaryKeyConstraint("id", name="channel_link_codes_pkey"),
+    UniqueConstraint("code_hash", name="channel_link_codes_code_hash_key"),
+    Index("channel_link_codes_user_idx", "user_id"),
 )
 
-# The Curator's changes: an accepted proposal's plan, pull request, Judge and merge; repos with a checked ruleset (0017)
-
-curator_changes = Table(
-    "curator_changes",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("proposal_id", BigInteger, nullable=False),
-    Column("plan_id", Text),
-    Column("repo", Text),
-    Column("branch", Text),
-    Column("forge", Text),
-    Column("tier", SmallInteger, nullable=False),
-    Column("state", Text, nullable=False, server_default="planned"),
-    Column("reason", Text),
-    Column("builder_run_id", BigInteger),
-    Column("judge_run_id", BigInteger),
-    Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
-    Column("pr_number", Integer),
-    Column("pr_url", Text),
-    Column("base_branch", Text),
-    Column("head_sha", Text),
-    Column("hidden_count", SmallInteger),
-    Column("verdict", JSONB),
-    Column("passed", Boolean),
-    Column("check_run_id", BigInteger),
-    _when("merged_at"),
-    Column("merge_sha", Text),
-    _stamp("created_at"),
-    _stamp("updated_at"),
-    Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
-    ForeignKeyConstraint(
-        ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
-    ),
-    ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_judge_run_id_fkey"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_changes_project_id_fkey"),
-    ForeignKeyConstraint(
-        ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_changes_proposal_id_fkey"
-    ),
-    PrimaryKeyConstraint("id", name="curator_changes_pkey"),
-    UniqueConstraint("proposal_id", name="curator_changes_proposal_id_key"),
-    UniqueConstraint("project_id", "plan_id", name="curator_changes_project_id_plan_id_key"),
-    Index("curator_changes_state_idx", "state", "id"),
-)
-
-curator_repo_checks = Table(
-    "curator_repo_checks",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("repo", Text, nullable=False),
-    Column("github_repo", Text, nullable=False),
-    Column("default_branch", Text),
-    Column("protected", Boolean, nullable=False),
-    Column("reason", Text, nullable=False),
-    Column("rulesets", JSONB, nullable=False),
-    Column("checked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    Column("checked_by", BigInteger),
-    ForeignKeyConstraint(["checked_by"], ["users.id"], ondelete="RESTRICT", name="curator_repo_checks_checked_by_fkey"),
-    ForeignKeyConstraint(
-        ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_repo_checks_project_id_fkey"
-    ),
-    PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
-)
-
-# The Curator's ledger: what happened to each proposal, line by line, never changed or deleted; and the outcome of each
-# merged change (0018)
-
-curator_ledger = Table(
-    "curator_ledger",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("proposal_id", BigInteger, nullable=False),
-    Column("change_id", BigInteger),
-    Column("action", Text, nullable=False),
-    Column("actor", Text, nullable=False),
-    Column("actor_id", BigInteger),
-    Column("run_id", BigInteger),
-    Column("what", Text, nullable=False),
-    Column("commit_sha", Text),
-    Column("before_sha", Text),
-    Column("after_sha", Text),
-    Column("figures", JSONB),
-    Column("verdict", JSONB),
-    Column("pr_url", Text),
-    Column("pr_number", Integer),
-    _when("merged_at"),
-    Column("outcome", Text),
-    Column("details", JSONB),
-    _stamp("created_at"),
-    ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="curator_ledger_actor_id_fkey"),
-    ForeignKeyConstraint(
-        ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_ledger_change_id_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_ledger_project_id_fkey"),
-    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_ledger_proposal_id_fkey"),
-    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_ledger_run_id_fkey"),
-    PrimaryKeyConstraint("id", name="curator_ledger_pkey"),
-    Index("curator_ledger_proposal_idx", "proposal_id", "id"),
-)
-Index("curator_ledger_project_idx", curator_ledger.c.project_id, curator_ledger.c.created_at)
-Index(  # a merged change has one outcome
-    "curator_ledger_outcome_key",
-    curator_ledger.c.change_id,
-    unique=True,
-    postgresql_where=curator_ledger.c.action == "outcome",
+accounts, account_policies, run_accounts, user_emails = tables_accounts.account_tables(metadata)  # 0027, 0066, 0068
+agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
+chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
+plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
+plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
+hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
+triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
+srs, tasks, canvas = tables_plugins.core_plugin_tables(metadata)  # srs (0046), tasks (0047), canvas (0073)
+signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
+session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
+history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059
+history_lines, history_indexed = tables_sessions.search_tables(metadata)  # the words of the history (0060)
+curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_replays = tables_curator.tables(
+    metadata, runs, RUN_ACTIVE
+)  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
+curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
+merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
+release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
+    metadata, runs, RUN_ACTIVE
 )

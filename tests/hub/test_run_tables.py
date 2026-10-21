@@ -92,12 +92,30 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "review":  # on no plan, queued by a schedule (0014)
         row |= {"kind": "review", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "dispatched_via": "schedule", "schedule_night": now.date()}
-    elif kind == "judge":  # the Judge of a change of the Curator's plan, queued by a schedule (0017)
-        row |= {"kind": "judge", "step_key": None, "repo": None, "branch": None, "repos": REPOS}
+    elif kind in ("judge", "replay"):  # the Judge (0017) or a replay (0056) of a change of the Curator's plan
+        row |= {"kind": kind, "step_key": None, "repo": None, "branch": None, "repos": REPOS}
         row |= {"dispatched_via": "schedule", "schedule_night": now.date()}
+    elif kind == "history":  # the night's reading of the history with a model, on no plan and no repo (0059)
+        row |= {"kind": "history", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": None, "repos": None, "dispatched_via": "schedule", "schedule_night": now.date()}
     elif kind == "author":  # a plan written from a member's request, on no plan when it writes a new one (0020)
         row |= {"kind": "author", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "request": "Plan the chat of an author run."}
+    elif kind == "chat":  # one turn of an agent mentioned in a group chat, on no plan (0032): its columns name the chat
+        row |= {"kind": "chat", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": "chat/1", "repos": REPOS, "hop": 1}
+    elif kind == "local":  # a session on a member's machine: no worker, lease or finish but its own (0033)
+        row |= {"kind": "local", "worker_id": None, "leased_at": None, "lease_expires_at": None, "finished_at": None}
+        row |= {"runtime": "claude-code", "repo": None, "branch": None, "session_id": f"session-{state}"}
+        row |= {"machine": "mac", "cwd": "/work/evo", "claude_email": "a@example.com", "last_activity_at": now}
+        if state == "ended":
+            row["finished_at"] = now
+    elif kind == "task":  # the work a plugin hands an agent type of its own, on no plan, its text the request (0042)
+        row |= {"kind": "task", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": "task/1", "repos": REPOS, "request": "Fix the wait.", "pulls": []}
+    elif kind == "release":  # a cut or a fix of a release cycle, on no plan, dispatched by its schedule (0067)
+        row |= {"kind": "release", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": None, "repos": REPOS, "dispatched_via": "release"}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -105,6 +123,24 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     row.setdefault("requested_runtime", "any" if row.get("worker_id") is not None else row["runtime"])
     # None is SQL NULL, in the JSONB column repos too, where SQLAlchemy would write the JSON null
     return new_id(conn, tables.runs, **{name: null() if value is None else value for name, value in row.items()})
+
+
+def add_agent_type(conn, ids) -> int:
+    """Agent type triager of plugin sandbox, enabled in the seeded project under its own profile; its id."""
+    axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    plugin = new_id(conn, tables.plugins, name="sandbox", publisher="acme")
+    profile = new_id(
+        conn,
+        tables.agent_profiles,
+        project_id=ids["project"],
+        handle="triager",
+        name="Triager",
+        color="#475569",
+        permissions={axis: {"mode": "all"} for axis in axes},
+        created_by=ids["user"],
+    )
+    values = {"project_id": ids["project"], "plugin_id": plugin, "name": "triager", "profile_id": profile}
+    return new_id(conn, tables.project_agent_types, run_as=ids["user"], daily_usd=5.0, enabled_by=ids["user"], **values)
 
 
 def add_worker(conn, ids, name: str, token_hash: str) -> int:
@@ -287,10 +323,25 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="review", schedule_id=schedule)
     for state in ("queued", *runs.TERMINAL_STATES):  # and one judge run (0017)
         add_run(conn, ids, state, kind="judge", schedule_id=schedule)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one replay run (0056)
+        add_run(conn, ids, state, kind="replay", schedule_id=schedule)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one history run (0059)
+        add_run(conn, ids, state, kind="history", schedule_id=schedule)
     for state in runs.RUN_STATES:  # author runs, as many as their owners dispatch (0020)
         add_run(conn, ids, state, kind="author")
-    assert query_kinds(conn) == set(runs.RUN_KINDS)
-    for runtime in ("any", *runs.RUNTIMES):
+    chat_id = new_id(conn, tables.chats, title="Release talk", created_by=ids["user"])
+    message = new_id(conn, tables.chat_messages, chat_id=chat_id, seq=1, body="@reviewer look", label=[])
+    for state in runs.RUN_STATES:  # chat runs, one a mention (0032)
+        add_run(conn, ids, state, kind="chat", chat_id=chat_id, chat_message_id=message)
+    for state in runs.LOCAL_STATES:  # local runs, a session each (0033)
+        add_run(conn, ids, state, kind="local")
+    agent_type = add_agent_type(conn, ids)
+    for state in runs.RUN_STATES:  # task runs, the work a plugin hands an agent type of its own (0042)
+        add_run(conn, ids, state, kind="task", agent_type_id=agent_type)
+    for state in ("queued", *runs.TERMINAL_STATES):  # a project has one release run active at a time (0067)
+        add_run(conn, ids, state, kind="release")
+    assert query_kinds(conn) == set(runs.SHOWN_KINDS)
+    for runtime in ("any", *runs.RUNTIMES, "sandbox/fake"):  # a plugin's runtime, <plugin>/<name> (0039)
         for mode in runs.MODES:
             for approval in runs.APPROVALS:
                 step = f"{runtime}-{mode}-{approval}"
@@ -502,7 +553,9 @@ def pairing(selector: str, name: str, **values):
             errors.CheckViolation,
             id="pairing-used-without-worker",
         ),
-        pytest.param(update_of(tables.worker_pairings, PAIRING, slots=9), errors.CheckViolation, id="pairing-slots-9"),
+        pytest.param(
+            update_of(tables.worker_pairings, PAIRING, slots=17), errors.CheckViolation, id="pairing-slots-17"
+        ),
         # runs
         pytest.param(update_of(tables.runs, RUN, timeout_s=299), errors.CheckViolation, id="timeout-299"),
         pytest.param(update_of(tables.runs, RUN, timeout_s=14401), errors.CheckViolation, id="timeout-14401"),
@@ -559,7 +612,7 @@ def pairing(selector: str, name: str, **values):
         pytest.param(
             update_of(tables.runs, RUN, requested_runtime="gemini"), errors.CheckViolation, id="requested-gemini"
         ),
-        pytest.param(update_of(tables.workers, WORKER, free_slots=9), errors.CheckViolation, id="free-slots-9"),
+        pytest.param(update_of(tables.workers, WORKER, free_slots=17), errors.CheckViolation, id="free-slots-17"),
         pytest.param(
             update_of(tables.runs, DONE_RUN, finished_at=None), errors.CheckViolation, id="done-without-finished-at"
         ),
@@ -647,12 +700,13 @@ def test_constraints_refuse_bad_rows(db, statement, error):
         conn.execute(refused)
 
 
-@pytest.mark.parametrize("slots", [0, 9])
-def test_a_worker_has_one_to_eight_slots(db, slots):
+@pytest.mark.parametrize("slots", [0, 17])
+def test_a_worker_has_one_to_sixteen_slots(db, slots):  # eight until schema 0026
     conn, ids = db
     refused = spare_worker(slots=slots)(ids)
     with pytest.raises(errors.CheckViolation):
         conn.execute(refused)
+    conn.execute(spare_worker(slots=16)(ids))
 
 
 def test_constraints_accept_good_rows(db):

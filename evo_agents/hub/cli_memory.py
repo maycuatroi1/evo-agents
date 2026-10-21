@@ -4,18 +4,20 @@
 would change without writing anything here or on the hub, and ``--prune`` to let deletions cross. They print one
 summary line and the notes that need a person; ``--quiet`` prints nothing but conflicts and errors, on stderr, for
 the hooks that run them at every session. Exit status 1 when a file could not be synced, 0 otherwise, conflicts
-included: a conflict is resolved by keeping both versions.
+included: a conflict is resolved by keeping both versions. Run inside a Claude Code session (CLAUDE_CODE_SESSION_ID),
+``push`` sends the audience of the session's label with each file, as the Stop hook does (``evo_agents.hub.hooks``).
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from urllib.parse import urlencode
 
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
-from evo_agents.hub.client import HubError
+from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.memory import AGENT_SINK, MemorySync, Report, frontmatter, search
+from evo_agents.hub.memory import AGENT_SINK, MemorySync, Report, frontmatter, well_formed
 
 # What push, pull and search print with --json (the contract, `evo-agents hub contract print`).
 SYNC_OUTPUT = returns_object("command", "hub", "dry_run", "counts", "places", "conflicts", "errors", "notes")
@@ -75,7 +77,8 @@ def _sync(args, command: str) -> int:
     if args.all and args.dir:
         raise HubError("pass a directory or --all, not both")
     hub, credentials = _signed_in()
-    sync = MemorySync(hub, credentials.login, sink=args.sink, dry_run=args.dry_run, prune=args.prune)
+    audience = session_audience() if command == "push" else []
+    sync = MemorySync(hub, credentials.login, sink=args.sink, dry_run=args.dry_run, prune=args.prune, audience=audience)
     target = Path(args.dir) if args.dir else None
     report = sync.push(target, everything=args.all) if command == "push" else sync.pull(target, everything=args.all)
     if args.json:
@@ -93,6 +96,30 @@ def _sync(args, command: str) -> int:
     for error in report.errors:
         print(f"error: {error}", file=sys.stderr)
     return EXIT_FAILED if report.errors else 0
+
+
+def session_audience(payload: dict | None = None) -> list[str]:
+    """The audience of the label of the Claude Code session ``payload`` (a hook's) or the environment names, which a
+    push sends with each file; HubError when the label cannot be read, so nothing leaves without it."""
+    from evo_agents.kg.sessions import current_session_id
+    from evo_agents.kg.sessions import session_audience as recorded
+
+    try:
+        return recorded(current_session_id(payload))
+    except ValueError as exc:
+        raise HubError(
+            f"{exc}: memories were not pushed, since they would leave without the audience it read"
+        ) from None
+
+
+def search(hub: Hub, query: str, *, project: str | None = None, limit: int = 10, sink: str = AGENT_SINK) -> list:
+    """The memories one sees whose name or text matches ``query``, best first."""
+    params = {"q": query, "limit": limit, "sink": sink, **({"project": project} if project else {})}
+    found = hub.call("GET", "/v1/memories/search?" + urlencode(params))
+    items = found.get("items") if isinstance(found, dict) else None
+    if not isinstance(items, list) or not all(well_formed(item) for item in items):
+        raise HubError(f"the hub at {hub.url} answered a search this client cannot read")
+    return items
 
 
 @_client_command

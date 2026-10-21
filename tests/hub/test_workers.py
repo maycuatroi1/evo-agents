@@ -14,7 +14,20 @@ joins are limited per client address, a code is kept as an HMAC under the sessio
 worker, and a locked code counts against the member's five until it expires.
 
 And step 10 of the worker-credentials plan: only the owner, from a web session, sets who may dispatch to a worker,
-and a machine token gets 403 there."""
+and a machine token gets 403 there.
+
+And step 1 of the worker-settings-web plan: only the owner, from a web session or with their machine token, changes
+a worker's slots (up to 16), labels and name with PATCH /v1/workers/{id}; each change is audited, the values it has
+change nothing, and the next heartbeat answer carries them.
+
+And step 1 of the auto-update-nightly plan: the owner locks a worker's version the same way, the heartbeat answer
+carries the lock, and the hub keeps and shows the commit a daemon runs and what it found of updating itself, which a
+daemon that sends neither leaves empty.
+
+And step 1 of the nightly-within-a-minute plan: the heartbeat answer carries where nightly points once the hub read it;
+the owner or a hub admin asks for and cancels an Update now as they drain, audited once and refused with why when the
+worker is locked, its daemon too old or already current; the answer carries the open request, and the hub ends it on
+the heartbeat that shows it ended."""
 
 import hashlib
 import hmac
@@ -29,7 +42,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.log import scrub
@@ -579,6 +592,464 @@ def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(c
     assert gone.status_code == 409 and "revoked" in gone.json()["message"]
 
 
+# Settings: slots, labels and name
+
+
+def settings_of(db, worker_id: int) -> tuple:
+    workers = tables.workers
+    return sql(db, select(workers.c.slots, workers.c.labels, workers.c.name).where(workers.c.id == worker_id))[0]
+
+
+def test_the_owner_patches_the_worker_settings_from_the_web_or_a_machine_token_and_each_change_is_audited(
+    client, hub, hub_db, github
+):
+    answer = joined(client, paired(client, hub["owner"], labels=["mac"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+
+    changed = client.patch(path, json={"slots": 16, "labels": ["gpu", "mac", "gpu"]}, headers=owner_web)
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["slots"], changed.json()["labels"], changed.json()["name"]) == (
+        16,
+        ["gpu", "mac"],
+        "mac-mini",
+    )
+    assert settings_of(hub_db, worker_id) == (16, ["gpu", "mac"], "mac-mini")
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.update") == [(f"{target} slots=1->16 labels=[mac]->[gpu,mac]", OWNER)]
+
+    # the values it has already change nothing and write no audit row, from either credential
+    for headers in (owner_web, hub["owner"]):
+        same = client.patch(path, json={"slots": 16, "labels": ["gpu", "mac"], "name": "mac-mini"}, headers=headers)
+        assert same.status_code == 200 and same.json()["slots"] == 16, same.text
+    assert len(audit_rows(hub_db, "worker.update")) == 1
+
+    # the owner's machine token changes them too; a name differing only in case is a change of the worker's own name
+    renamed = client.patch(path, json={"name": "Mac-Mini", "slots": 3, "labels": []}, headers=hub["owner"])
+    assert renamed.status_code == 200, renamed.text
+    assert (renamed.json()["name"], renamed.json()["slots"], renamed.json()["labels"]) == ("Mac-Mini", 3, [])
+    assert (f"{target} slots=16->3 labels=[gpu,mac]->[] name=mac-mini->Mac-Mini", OWNER) in audit_rows(
+        hub_db, "worker.update"
+    )
+    assert client.get(path, headers=hub["owner"]).json()["name"] == "Mac-Mini"
+    assert [w["slots"] for w in client.get("/v1/workers", headers=hub["owner"]).json()] == [3]
+    assert len(audit_rows(hub_db, "worker.update")) == 2
+
+
+def test_a_patch_of_the_worker_settings_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    joined(client, paired(client, hub["owner"], name="build-box")["code"])
+
+    # a hub admin sees the worker and may drain it, never change it: 403, by token or on the web; anyone else 404
+    for headers in (hub["admin"], web_writes(client, github, ADMIN, ADMIN_ID)):
+        refused = client.patch(path, json={"slots": 4}, headers=headers)
+        assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    for headers in (hub["other"], web_writes(client, github, OTHER, OTHER_ID)):
+        assert client.patch(path, json={"slots": 4}, headers=headers).status_code == 404
+    assert client.patch("/v1/workers/999999", json={"slots": 4}, headers=hub["owner"]).status_code == 404
+    # a web session writes only with its CSRF header; the worker's own token works on its routes only
+    assert client.patch(path, json={"slots": 4}, headers={"Cookie": owner_web["Cookie"]}).status_code == 403
+    assert client.patch(path, json={"slots": 4}, headers=worker_headers(answer["token"])).status_code == 403
+
+    # a name another live worker of the owner holds, in any case, is 409
+    taken = client.patch(path, json={"name": "BUILD-BOX", "slots": 4}, headers=owner_web)
+    assert taken.status_code == 409 and "BUILD-BOX" in taken.json()["message"]
+
+    # values out of range, or none at all, are 422
+    for body in (
+        {"slots": 0},
+        {"slots": 17},
+        {"slots": "many"},
+        {"labels": ["no spaces"]},
+        {"labels": [f"l{n}" for n in range(17)]},
+        {"name": "-starts-with-a-dash"},
+        {"name": "x" * 101},
+        {},
+        {"slots": None},
+    ):
+        refused = client.patch(path, json=body, headers=owner_web)
+        assert refused.status_code == 422, (body, refused.text)
+    assert settings_of(hub_db, worker_id) == (1, [], "mac-mini")
+    assert audit_rows(hub_db, "worker.update") == []
+
+    # a revoked worker is 409, and its name is free for another worker of the owner
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.patch(path, json={"slots": 4}, headers=owner_web)
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    box = [w for w in client.get("/v1/workers", headers=hub["owner"]).json() if w["name"] == "build-box"][0]
+    reused = client.patch(f"/v1/workers/{box['id']}", json={"name": "mac-mini"}, headers=owner_web)
+    assert reused.status_code == 200 and reused.json()["name"] == "mac-mini"
+
+
+def test_pairings_registrations_and_heartbeats_take_up_to_sixteen_slots(client, hub, hub_db):
+    assert pair(client, hub["owner"], slots=17).status_code == 422
+    answer = joined(client, paired(client, hub["owner"], slots=16)["code"])
+    assert answer["worker"]["slots"] == 16
+    body = {"name": "build-box", "projects": ["demo"], **HOST}
+    assert client.post("/v1/workers", json={**body, "slots": 17}, headers=hub["owner"]).status_code == 422
+    registered = client.post("/v1/workers", json={**body, "slots": 16}, headers=hub["owner"])
+    assert registered.status_code == 201 and registered.json()["worker"]["slots"] == 16
+    beat = {"free_slots": 16}
+    assert client.post("/v1/worker/heartbeat", json=beat, headers=worker_headers(answer["token"])).status_code == 200
+    assert client.get(f"/v1/workers/{answer['worker']['id']}", headers=hub["owner"]).json()["free_slots"] == 16
+    too_many = client.post("/v1/worker/heartbeat", json={"free_slots": 17}, headers=worker_headers(answer["token"]))
+    assert too_many.status_code == 422
+
+
+def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"], slots=2, labels=["mac"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+
+    def beat(free_slots: int) -> dict:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": free_slots}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    settings = {"plugins": [], "version_locked": False}
+    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], **settings}
+    patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
+    assert patched.status_code == 200, patched.text
+    first = beat(2)  # what the daemon held before it read the answer
+    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"], **settings}
+    assert first["drain"] is False and first["runs"] == []
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 2
+    beat(6)
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 6
+    # fewer slots than the daemon reported free: the hub keeps free_slots within the slots it holds
+    client.patch(f"/v1/workers/{worker_id}", json={"slots": 1}, headers=hub["owner"])
+    assert beat(6)["settings"]["slots"] == 1
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 1
+
+
+# The version lock, and what a daemon says of its install and of updating itself
+
+COMMIT = "ca3e9af" + "0" * 33
+NIGHTLY = "f" * 40
+
+
+def locked_of(db, worker_id: int) -> bool:
+    workers = tables.workers
+    return sql(db, select(workers.c.version_locked).where(workers.c.id == worker_id))[0][0]
+
+
+def test_the_owner_locks_the_worker_version_with_a_patch_audited_once_and_the_heartbeat_answer_carries_the_lock(
+    client, hub, hub_db, github
+):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    # every worker starts unlocked: one that joined, and one its owner registered with a machine token
+    assert answer["worker"]["version_locked"] is False
+    body = {"name": "build-box", "projects": ["demo"], **HOST}
+    registered = client.post("/v1/workers", json=body, headers=hub["owner"])
+    assert registered.status_code == 201 and registered.json()["worker"]["version_locked"] is False
+
+    def beat() -> dict:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()["settings"]
+
+    assert beat()["version_locked"] is False
+
+    locked = client.patch(path, json={"version_locked": True}, headers=owner_web)
+    assert locked.status_code == 200, locked.text
+    assert locked.json()["version_locked"] is True and locked_of(hub_db, worker_id) is True
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.update") == [(f"{target} version_locked=false->true", OWNER)]
+    assert beat()["version_locked"] is True
+    assert client.get(path, headers=hub["owner"]).json()["version_locked"] is True
+    shown = {w["id"]: w["version_locked"] for w in client.get("/v1/workers", headers=hub["owner"]).json()}
+    assert shown == {worker_id: True, registered.json()["worker"]["id"]: False}
+
+    # the lock it has already changes nothing and writes no audit row, from either credential
+    for credential in (owner_web, hub["owner"]):
+        same = client.patch(path, json={"version_locked": True, "slots": 1}, headers=credential)
+        assert same.status_code == 200 and same.json()["version_locked"] is True, same.text
+    assert len(audit_rows(hub_db, "worker.update")) == 1
+
+    # the owner's machine token unlocks it, with another setting in the same change
+    unlocked = client.patch(path, json={"version_locked": False, "slots": 2}, headers=hub["owner"])
+    assert unlocked.status_code == 200, unlocked.text
+    assert (unlocked.json()["version_locked"], unlocked.json()["slots"]) == (False, 2)
+    assert (f"{target} slots=1->2 version_locked=true->false", OWNER) in audit_rows(hub_db, "worker.update")
+    assert beat() == {"slots": 2, "name": "mac-mini", "labels": [], "plugins": [], "version_locked": False}
+
+
+def test_a_patch_of_the_version_lock_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    lock = {"version_locked": True}
+
+    for headers in (hub["admin"], web_writes(client, github, ADMIN, ADMIN_ID)):
+        refused = client.patch(path, json=lock, headers=headers)
+        assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    for headers in (hub["other"], web_writes(client, github, OTHER, OTHER_ID)):
+        assert client.patch(path, json=lock, headers=headers).status_code == 404
+    assert client.patch(path, json=lock, headers=worker_headers(answer["token"])).status_code == 403
+    for body in ({"version_locked": "maybe"}, {"version_locked": None}, {"version_locked": [True]}):
+        refused = client.patch(path, json=body, headers=owner_web)
+        assert refused.status_code == 422, (body, refused.text)
+    assert locked_of(hub_db, worker_id) is False
+    assert audit_rows(hub_db, "worker.update") == []
+
+    assert client.post(f"{path}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.patch(path, json=lock, headers=owner_web)
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    assert locked_of(hub_db, worker_id) is False
+
+
+def test_a_heartbeat_keeps_the_commit_and_the_self_update_state_and_the_worker_views_show_them(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path, w = f"/v1/workers/{worker_id}", tables.workers
+    assert (answer["worker"]["agent_commit"], answer["worker"]["self_update"]) == (None, None)
+
+    def beat(**body) -> None:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": 1, **body}, headers=headers)
+        assert response.status_code == 200, response.text
+
+    def shown() -> dict:
+        one = client.get(path, headers=hub["owner"]).json()
+        listed = [x for x in client.get("/v1/workers", headers=hub["owner"]).json() if x["id"] == worker_id]
+        assert listed == [one]
+        return one
+
+    checked = "2026-10-19T10:00:00+00:00"
+    waiting = {"state": "waiting", "nightly_commit": NIGHTLY, "checked_at": checked}
+    beat(agent_commit=COMMIT, self_update=waiting)
+    worker = shown()
+    assert worker["agent_commit"] == COMMIT
+    report = worker["self_update"]
+    since = report.pop("since")
+    assert report == {
+        **waiting,
+        "checked_at": "2026-10-19T10:00:00Z",
+        "reason": None,
+        "error": None,
+        "error_at": None,
+        "update_now": None,
+    }
+    assert since is not None
+
+    # the same state keeps since, however many heartbeats say it; another state moves it to now
+    hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    sql(hub_db, update(w).values(self_update_since=hour_ago).where(w.c.id == worker_id))
+    failed = {**waiting, "error": "uv tool install failed (2): no network", "error_at": "2026-10-19T10:05:00+00:00"}
+    beat(agent_commit=COMMIT, self_update=failed)
+    report = shown()["self_update"]
+    assert datetime.fromisoformat(report["since"]) == hour_ago
+    assert (report["error"], report["error_at"]) == (failed["error"], "2026-10-19T10:05:00Z")
+    beat(agent_commit=COMMIT, self_update={"state": "unsupported", "reason": "an editable install of evo-ak"})
+    report = shown()["self_update"]
+    assert (report["state"], report["reason"], report["error"]) == (
+        "unsupported",
+        "an editable install of evo-ak",
+        None,
+    )
+    assert datetime.fromisoformat(report["since"]) > hour_ago
+
+    # a state this hub does not know is kept as named; a commit of a SHA-256 repository is taken
+    beat(agent_commit="a" * 64, self_update={"state": "paused_by_owner"})
+    worker = shown()
+    assert (worker["agent_commit"], worker["self_update"]["state"]) == ("a" * 64, "paused_by_owner")
+
+    # a heartbeat that says neither, as an older daemon's, clears both
+    beat()
+    worker = shown()
+    assert (worker["agent_commit"], worker["self_update"]) == (None, None)
+    kept = sql(hub_db, select(w.c.agent_commit, w.c.self_update, w.c.self_update_since).where(w.c.id == worker_id))
+    assert kept == [(None, None, None)]
+
+
+def test_a_heartbeat_with_a_malformed_commit_or_self_update_is_422_and_changes_nothing(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    good = {"free_slots": 1, "agent_commit": COMMIT, "self_update": {"state": "current", "nightly_commit": COMMIT}}
+    assert client.post("/v1/worker/heartbeat", json=good, headers=headers).status_code == 200
+    for bad in (
+        {"agent_commit": "ca3e9af"},
+        {"agent_commit": COMMIT.upper()},
+        {"self_update": {}},
+        {"self_update": {"state": "Not A State"}},
+        {"self_update": {"state": "unsupported", "reason": ""}},
+        {"self_update": {"state": "unsupported", "reason": "r" * 501}},
+        {"self_update": {"state": "waiting", "error": "e" * 2001}},
+        {"self_update": {"state": "waiting", "nightly_commit": "nightly"}},
+        {"self_update": {"state": "waiting", "error_at": "yesterday"}},
+    ):
+        refused = client.post("/v1/worker/heartbeat", json={"free_slots": 1, **bad}, headers=headers)
+        assert refused.status_code == 422, (bad, refused.text)
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert (worker["agent_commit"], worker["self_update"]["state"]) == (COMMIT, "current")
+
+
+# The hub's read of nightly, and the owner's Update now
+
+
+def read_nightly(db, commit: str = NIGHTLY) -> None:
+    """What the job hub.read_nightly keeps when nightly points to ``commit``."""
+    nightly = tables.hub_nightly
+    sql(db, delete(nightly))
+    sql(db, insert(nightly).values(commit_sha=commit, read_at=func.now()))
+
+
+def test_the_heartbeat_answer_carries_nightly_once_the_hub_read_it_and_the_worker_views_show_it(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    beat = {"free_slots": 1}
+    before = client.post("/v1/worker/heartbeat", json=beat, headers=headers)
+    assert before.status_code == 200 and "nightly" not in before.json() and "update_now" not in before.json()
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert (worker["nightly"], worker["update_now"]) == (None, None)
+    read_nightly(hub_db)
+    nightly = client.post("/v1/worker/heartbeat", json=beat, headers=headers).json()["nightly"]
+    assert nightly["commit"] == NIGHTLY and datetime.fromisoformat(nightly["read_at"])
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert worker["nightly"] == nightly
+    assert [x["nightly"] for x in client.get("/v1/workers", headers=hub["owner"]).json()] == [nightly]
+
+
+def update_now_of(db, worker_id: int) -> tuple:
+    w = tables.workers
+    shown = select(w.c.update_requested_at, w.c.update_ended_at, w.c.update_outcome, w.c.update_reason)
+    return sql(db, shown.where(w.c.id == worker_id))[0]
+
+
+def test_an_update_now_is_asked_and_cancelled_with_the_rights_of_drain_and_audited_once(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path, target = f"/v1/workers/{worker_id}/update-now", f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    beat = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    assert client.post("/v1/worker/heartbeat", json=beat, headers=headers).status_code == 200
+    read_nightly(hub_db)
+    for credential in (hub["other"], worker_headers(answer["token"])):
+        assert client.post(path, headers=credential).status_code in (403, 404)
+        assert client.post(f"{path}/cancel", headers=credential).status_code in (403, 404)
+    assert client.post("/v1/workers/999999/update-now", headers=hub["owner"]).status_code == 404
+    assert update_now_of(hub_db, worker_id) == (None, None, None, None)
+
+    for _ in range(2):  # the second request finds one open: nothing changes, no audit row
+        asked = client.post(path, headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        shown = asked.json()["update_now"]
+        assert (shown["ended_at"], shown["outcome"], shown["reason"]) == (None, None, None)
+    assert audit_rows(hub_db, "worker.update_now") == [(target, OWNER)]
+    requested_at = update_now_of(hub_db, worker_id)[0]
+    assert datetime.fromisoformat(shown["requested_at"]) == requested_at
+
+    for _ in range(2):  # cancelling when none is open changes nothing either
+        cancelled = client.post(f"{path}/cancel", headers=hub["owner"])
+        assert cancelled.status_code == 200 and cancelled.json()["update_now"]["outcome"] == "cancelled"
+    assert audit_rows(hub_db, "worker.update_now_cancel") == [(target, OWNER)]
+    assert update_now_of(hub_db, worker_id)[2:] == ("cancelled", None)
+
+    # a hub admin may ask for and cancel another member's Update now, as they may drain
+    assert client.post(path, headers=hub["admin"]).json()["update_now"]["outcome"] is None
+    assert client.post(f"{path}/cancel", headers=hub["admin"]).json()["update_now"]["outcome"] == "cancelled"
+    assert [login for _, login in audit_rows(hub_db, "worker.update_now")] == [OWNER, ADMIN]
+    assert [login for _, login in audit_rows(hub_db, "worker.update_now_cancel")] == [OWNER, ADMIN]
+
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    for route in (path, f"{path}/cancel"):
+        gone = client.post(route, headers=hub["owner"])
+        assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    assert len(audit_rows(hub_db, "worker.update_now")) == 2
+
+
+def test_an_update_now_is_refused_with_why_when_locked_too_old_or_current(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}/update-now"
+
+    def refused(why: str) -> None:
+        response = client.post(path, headers=hub["owner"])
+        assert response.status_code == 409 and why in response.json()["message"], response.text
+
+    # a daemon that does not say update_now, as an older one: it still updates itself once idle
+    client.post("/v1/worker/heartbeat", json={"free_slots": 1, "agent_commit": COMMIT}, headers=headers)
+    refused("does not say update_now")
+    beat = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    client.post("/v1/worker/heartbeat", json=beat, headers=headers)
+    assert client.patch(f"/v1/workers/{worker_id}", json={"version_locked": True}, headers=hub["owner"]).is_success
+    refused("locked")
+    client.patch(f"/v1/workers/{worker_id}", json={"version_locked": False}, headers=hub["owner"])
+    read_nightly(hub_db, COMMIT)
+    refused("already")
+    assert update_now_of(hub_db, worker_id) == (None, None, None, None)
+    assert audit_rows(hub_db, "worker.update_now") == []
+    # before the hub has read nightly once, it cannot say the worker is current, and takes the request
+    sql(hub_db, delete(tables.hub_nightly))
+    assert client.post(path, headers=hub["owner"]).status_code == 200
+
+
+def test_the_heartbeat_answer_carries_an_open_update_now_until_a_heartbeat_shows_it_ended(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}"
+    says = {"free_slots": 1, "agent_commit": COMMIT, "features": ["update_now"]}
+    read_nightly(hub_db)
+
+    def beat(**body) -> dict:
+        response = client.post("/v1/worker/heartbeat", json={**says, **body}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def ask() -> str:
+        asked = client.post(f"{path}/update-now", headers=hub["owner"])
+        assert asked.status_code == 200, asked.text
+        return asked.json()["update_now"]["requested_at"]
+
+    def ended() -> tuple:
+        shown = client.get(path, headers=hub["owner"]).json()["update_now"]
+        listed = [x["update_now"] for x in client.get("/v1/workers", headers=hub["owner"]).json()]
+        assert listed == [shown]
+        return shown["outcome"], shown["reason"]
+
+    beat()
+    requested_at = ask()
+    for _ in range(2):  # a daemon that carries it out says so in self_update; the hub keeps it open
+        answer = beat(self_update={"state": "waiting", "update_now": {"requested_at": requested_at}})
+        assert datetime.fromisoformat(answer["update_now"]["requested_at"]) == datetime.fromisoformat(requested_at)
+    assert ended() == (None, None)
+    # current: the daemon runs the commit of nightly the hub read
+    assert "update_now" not in beat(agent_commit=NIGHTLY, self_update={"state": "current"})
+    assert ended() == ("current", None)
+    assert "update_now" not in beat()  # an ended request is never carried again
+
+    # failed and impossible as the daemon reports them for this request, with why
+    read_nightly(hub_db, "e" * 40)
+    for outcome, report in (
+        ("failed", {"state": "waiting", "error": "uv tool install failed (2): no network"}),
+        ("impossible", {"state": "waiting", "reason": "a process of the install would not stop"}),
+    ):
+        requested_at = ask()
+        # an end it reports for an earlier request is not this one's
+        stale = {**report, "update_now": {"requested_at": "2026-01-01T00:00:00+00:00", "ended": outcome}}
+        assert "update_now" in beat(self_update=stale)
+        mine = {**report, "update_now": {"requested_at": requested_at, "ended": outcome}}
+        assert "update_now" not in beat(self_update=mine)
+        assert ended() == (outcome, report.get("error") or report["reason"])
+
+    # impossible, as the hub sees it: a daemon that says locked or unsupported, or drops update_now
+    for report, why in (
+        ({"state": "unsupported", "reason": "an editable install of evo-agents"}, "an editable install of evo-agents"),
+        ({"state": "locked"}, "its daemon says locked"),
+    ):
+        ask()
+        assert "update_now" not in beat(self_update=report)
+        assert ended() == ("impossible", why)
+    ask()
+    assert "update_now" not in beat(features=[])
+    assert ended() == ("impossible", "its daemon does not say update_now in its features")
+
+
 def seed_plan(db, project: str = "demo") -> dict:
     """The plan worker-fleet at revision 1 in ``project``, as ``add_run`` expects it."""
     projects, users = tables.projects, tables.users
@@ -670,7 +1141,9 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
         pinned_held: (1, "leased", "failed", "reaper"),
         pinned_queued: (1, "queued", "failed", "reaper"),
     }
-    assert count(hub_db, runs, runs.c.event_seq == 1) == [(5,)]
+    # a run that failed got a second event, the system line that says its cause was inferred (plan run-failure-triage)
+    assert count(hub_db, runs, runs.c.event_seq == 1) == [(2,)]
+    assert count(hub_db, runs, runs.c.event_seq == 2) == [(3,)]
     assert audit_rows(hub_db, "worker.revoke") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", ADMIN)]
 
     # a revoked worker leaves the list unless asked for, and its name is free again

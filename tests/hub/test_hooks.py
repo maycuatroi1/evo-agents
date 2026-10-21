@@ -29,7 +29,7 @@ import yaml
 from evo_agents.cli import main
 from evo_agents.harness import plan_digest, validate_harness
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import hooks
+from evo_agents.hub import hooks, local_sync
 from evo_agents.hub import memory as hub_memory
 from evo_agents.hub.mcp_tools import TOOLS
 from evo_agents.hub.memory import INDEX, MemorySync, slug
@@ -383,7 +383,12 @@ def plugin_hooks() -> dict:
 
 def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget():
     found = plugin_hooks()
-    assert sorted(found) == ["PostToolUse", "SessionStart", "Stop"]  # PostToolUse: tests/hub/test_spool.py
+    # PostToolUse: tests/hub/test_spool.py; the others: tests/hub/test_local_sync.py and test_local_ask.py
+    assert sorted(found) == ["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]
+    (ask,) = found["PreToolUse"]
+    assert ask["matcher"] == "AskUserQuestion"
+    assert ask["hooks"][0]["command"].endswith(" evo-agents hub hook local-ask || true")
+    assert ask["hooks"][0]["timeout"] >= local_sync.BUDGET["ask"] + 5
     (start,) = found["SessionStart"]
     assert start["matcher"] == "startup|resume|clear"
     (stop,) = found["Stop"]
@@ -393,11 +398,25 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
         assert hook["type"] == "command" and hook["command"].endswith(f" evo-agents hub hook {name} || true")
         assert hook["timeout"] >= hooks.BUDGETS[name] + 5  # uvx and the interpreter start inside Claude Code's limit
     assert hooks.REQUEST_TIMEOUT < min(hooks.BUDGETS.values())
+    local = {"UserPromptSubmit": "user-prompt", "SessionEnd": "session-end"}
+    for event, name in local.items():
+        (group,) = found[event]
+        (hook,) = group["hooks"]
+        assert (
+            hook["command"].endswith(f" evo-agents hub hook {name} || true")
+            and "--offline --from evo-ak==" in hook["command"]
+        )
+        assert hook["timeout"] >= local_sync.BUDGET[name] + 5
+    tool = [g for g in found["PostToolUse"] if g["hooks"][0]["command"].endswith(" hub hook local-tool || true")]
+    assert (
+        len(tool) == 1 and "matcher" not in tool[0] and tool[0]["hooks"][0]["timeout"] >= local_sync.BUDGET["tool"] + 5
+    )
 
 
 def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, tmp_path):
     payload = json.dumps({"session_id": "s1", "cwd": str(own_home), "hook_event_name": "SessionStart"})
     commands = {name: group[0]["hooks"][0]["command"] for name, group in plugin_hooks().items()}
+    commands["LocalTool"] = plugin_hooks()["PostToolUse"][1]["hooks"][0]["command"]
 
     def run(command: str, path: str) -> subprocess.CompletedProcess:
         env = pg.clean_env(HOME=str(own_home), PATH=path)
@@ -415,6 +434,9 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
     assert started.returncode == 0 and "not signed in" in context_of(started.stdout)["context"]
     stopped = run(commands["Stop"], working)
     assert (stopped.returncode, stopped.stdout, stopped.stderr) == (0, "", "")
+    for name in ("UserPromptSubmit", "LocalTool", "SessionEnd"):  # not signed in: nothing sent, nothing said
+        ended = run(commands[name], working)
+        assert (ended.returncode, ended.stdout, ended.stderr) == (0, "", "")
 
 
 # Plan copies the export leaves alone

@@ -16,6 +16,9 @@ first, before its agent starts, and the hub queues no next attempt of a failed r
 - ``missing_tool``: a program a verify command calls (``evo_agents.hub.judge.programs``) is not on the run's PATH. A
   judge run checks the project's hidden checks the same way, and names a hidden check by its place alone, never its
   command or its program.
+- ``environment``: the run's claim names a plugin's environment, a container, that this worker cannot run the agent
+  in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does
+  not take (``evo_agents.worker.environments.Container.preflight``, which ``runner.access`` asks).
 """
 
 from __future__ import annotations

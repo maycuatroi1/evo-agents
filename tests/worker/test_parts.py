@@ -455,3 +455,33 @@ def test_session_per_step_usage_of_the_run_adds_up_its_sessions_and_lists_them()
     usage = sessions.sessions_usage(many)
     assert usage["input_tokens"] == 130 and len(usage["sessions"]) == sessions.MAX_LISTED
     assert usage["sessions"][0]["step"] == "30" and usage["sessions_left_out"] == 30
+
+
+READ, CREATION = "first_request_cache_read_input_tokens", "first_request_cache_creation_input_tokens"
+
+
+def test_the_first_request_of_a_session_is_its_first_turns_and_never_a_sum():
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.runner.sessions import session_usage
+
+    turns = [
+        {"input_tokens": 2, READ: None, CREATION: None},  # a turn that ended before any request
+        {"input_tokens": 5, READ: 0, CREATION: 41_000},
+        {"input_tokens": 3, READ: 40_500, CREATION: 600},
+    ]
+    assert session_usage(turns) == {"input_tokens": 10, READ: 0, CREATION: 41_000}
+    assert session_usage(turns[:1]) == {"input_tokens": 2, READ: None, CREATION: None}, "null until one reports"
+    assert session_usage([{"input_tokens": 1}]) == {"input_tokens": 1}, "an older daemon's usage gets no such key"
+
+
+def test_each_session_of_a_run_lists_its_own_first_request_and_the_run_its_first_sessions():
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.runner import sessions
+
+    entries = [
+        {"step": "1", "session_id": "s1", "run_id": 7, "usage": {"input_tokens": 5, READ: 0, CREATION: 41_000}},
+        {"step": "2", "session_id": "s2", "run_id": 7, "usage": {"input_tokens": 4, READ: 39_000, CREATION: 2_100}},
+    ]
+    usage = sessions.sessions_usage(entries)
+    assert (usage[READ], usage[CREATION]) == (0, 41_000), "the run's first request: its first session's"
+    assert [(item[READ], item[CREATION]) for item in usage["sessions"]] == [(0, 41_000), (39_000, 2_100)]

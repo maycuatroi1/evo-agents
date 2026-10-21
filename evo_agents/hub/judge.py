@@ -4,8 +4,8 @@ on a pull request, and when the hub may merge one. Pure functions over JSON valu
 the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.server.changes`` holds the routes and
 the job built on them; ``docs/curator.md`` the design.
 
-A proposal of tier 0 or 1 that an admin accepts becomes a plan on the hub (``curator_plan_id``), the Curator's, which
-works in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``) and never on a default branch. The
+A proposal of tier 0 to 2 (PLANNED_TIERS) that an admin accepts becomes a plan on the hub (``curator_plan_id``), the
+Curator's, in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``), never a default branch. The
 night shift runs it as a plan run (the Builder); once that run ends done with every step of the plan done, the hub
 opens a pull request on GitHub (a merge request on GitLab opens with the push, ``GITLAB_PUSH_OPTIONS``), and queues a
 judge run on the worker on duty. The Judge reads the proposal, the diff, the plan's verify and the project's hidden
@@ -18,13 +18,17 @@ imported on its own included), a number changed on an assertion's line of a test
 on a line of its own, a golden or snapshot file of the tests changed, an assertion's failure caught, a file the plan's
 verify runs or a plan's copy changed (the Makefile, justfile, noxfile or script of package.json a verify command runs
 included), a CI workflow or the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__``
-overloaded, the process exited from a test, a file of the charter's protected paths touched, or a diff that cannot be
-read: a binary or unknown file where tests, CI or configuration live counts, an image of the docs does not. One sign is
-enough: the proposal goes to tier 3 and the Judge fails it.
+overloaded, the process exited from a test, a file of the charter's protected paths touched, an instruction of a
+harness (a skill's file, an AGENTS.md or a CLAUDE.md) to test or verify weakened (``weakened``: a line added that lets
+an agent skip them, or more lines about them removed than added), or a diff that cannot be read: a binary or unknown
+file where tests, CI, configuration or a harness live counts, an image of the docs does not. One sign is enough: the
+proposal goes to tier 3 and the Judge fails it. What a verify command runs is read from its shell words
+(``evo_agents.hub.verify_words``).
 
 ``judge_runtime`` says what the Judge runs on: Codex when the project's policy declares a sink for Codex (an id
 ``codex@...``) whose clearance covers the project's label and the worker on duty has it, else Claude Code with a model
-other than the Builder's. ``final_verdict`` passes a change only when the Judge's agent passed it, every verify command
+other than the Builder's (``evo_agents.hub.judges``, with ``codex_cleared``, where the Judges of the merge queue are
+chosen too). ``final_verdict`` passes a change only when the Judge's agent passed it, every verify command
 of the plan and every hidden check ran and exited 0, the diff showed no sign, and the commit judged is the pull
 request's head. The Judge's agent gives its verdict as the JSON object that ends its last message
 (``verdict_from_message``): it travels in the daemon's memory, never through a file the code under test could write.
@@ -33,7 +37,9 @@ requires, it is green only when each of them passed (a check run of the App the 
 never when the ruleset requires none or the head commit's message asks CI to skip it (SKIP_CI). ``merge_decision`` says
 whether the hub merges a pull request now, waits, or leaves it open for its owner: only a tier 0 change on GitHub,
 passed by the Judge at the pull request's head, with CI green, no protected path touched, a repo whose ruleset the hub
-checked, and tier 0 among the charter's ``auto_merge``.
+checked, and tier 0 among the charter's ``auto_merge``. A merge request on GitLab the Judge passed goes to the hub's
+merge queue when the project's autonomy policy has its repo in mode auto and a forge secret covers it
+(``evo_agents.hub.merge_gate``), whatever its tier; otherwise it stays open, as before the policy.
 
 A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
 done_at, evidence and note of its steps and the plan's status, nothing else; and a plan whose id starts with
@@ -42,16 +48,19 @@ CURATOR_PLAN_PREFIX is made from an accepted proposal alone.
 
 from __future__ import annotations
 
-import itertools
 import json
 import re
-import shlex
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from evo_agents.hub import tiers
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
+from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home before evo_agents.hub.judges
+from evo_agents.hub.judges import judge_runtime as judge_runtime
+from evo_agents.hub.replay import harness_path
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
+from evo_agents.hub.verify_words import programs as programs  # its home before evo_agents.hub.verify_words
+from evo_agents.hub.verify_words import verify_paths, verify_runners
 
 CHANGE_STATES = (
     "planned",  # the plan is on the hub: the night shift may queue its Builder
@@ -64,7 +73,7 @@ CHANGE_STATES = (
     "closed",  # its pull request was closed without a merge
 )
 ACTIVE_CHANGE_STATES = ("pr_pending", "judge_pending", "judging", "judged")  # what the job still moves on
-PLANNED_TIERS = (0, 1)  # the tiers whose accepted proposals become the Curator's plans
+PLANNED_TIERS = (0, 1, 2)  # the tiers whose accepted proposals become the Curator's plans; tier 3 the owner makes
 FORGES = ("github", "gitlab")  # where a Curator change goes: a pull request, or a merge request (never merged)
 BRANCH_PREFIX = "curator/"
 CURATOR_PLAN_PREFIX = "curator-"  # the ids of the Curator's plans, which the hub alone makes
@@ -81,7 +90,6 @@ MAX_SIGNS = 50
 MAX_SIGN_TEXT = 200
 MAX_PATHS = 3000  # changed paths a verdict names, as GitHub lists at most 3000 files of a pull request
 MAX_CHECK_OUTPUT_CHARS = 60_000  # GitHub takes 65535 in a check run's summary
-CODEX_SINK = "codex@"  # the start of the id of a sink of the Codex runtime in a project's policy
 CI_OK = frozenset({"success", "neutral", "skipped"})  # a check run's conclusion that lets a merge go
 REQUIRED_OK = frozenset({"success"})  # what a check the ruleset requires must have concluded
 GITLAB_PUSH_OPTIONS = ("merge_request.create", "merge_request.target={target}", "merge_request.remove_source_branch")
@@ -109,6 +117,7 @@ SIGN_KINDS: dict[str, str] = {
     "expected_changed": "an expected value of a test changed",
     "golden_changed": "a golden, snapshot or data file of the tests changed",
     "assert_caught": "the failure of an assertion caught",
+    "instruction_weakened": "an instruction of a skill, an AGENTS.md or a CLAUDE.md to test or verify weakened",
 }
 
 CI_PATHS = (
@@ -232,49 +241,6 @@ SOURCE_SUFFIXES = (
     ".vue",
     ".svelte",
 )
-# The runners a verify command may call, and the files that say what each one runs.
-RUNNER_FILES = {
-    "make": ("Makefile", "**/Makefile", "makefile", "**/makefile", "GNUmakefile", "**/GNUmakefile", "**/*.mk"),
-    "gmake": ("Makefile", "**/Makefile", "makefile", "**/makefile", "GNUmakefile", "**/GNUmakefile", "**/*.mk"),
-    "just": ("justfile", "**/justfile", "Justfile", "**/Justfile", ".justfile", "**/.justfile"),
-    "nox": ("noxfile.py", "**/noxfile.py"),
-    "tox": ("tox.ini", "**/tox.ini"),
-    "invoke": ("tasks.py", "**/tasks.py"),
-    "inv": ("tasks.py", "**/tasks.py"),
-    "task": ("Taskfile.yml", "**/Taskfile.yml", "Taskfile.yaml", "**/Taskfile.yaml"),
-}
-PACKAGE_RUNNERS = ("npm", "pnpm", "yarn", "bun")  # their scripts live in package.json
-# Words before the command a verify command runs: wrappers that run what follows.
-WRAPPERS = {"uv": ("run",), "poetry": ("run",), "pipenv": ("run",), "hatch": ("run",), "pdm": ("run",)}
-PASS_THROUGH = ("env", "time", "nice", "exec", "command", "npx", "timeout", "xvfb-run")
-SHELL_OPERATOR = re.compile(r"&&|\|\||[;|&\n()]")
-# What ``programs`` reads in a command line. The shell's builtins and the words that end a compound command run no
-# program from PATH; after a keyword that starts one (if, while, !, ...) the next word is the program; a simple command
-# that may change PATH (source, ., eval, export PATH=..., PATH=... alone) ends the reading of the line.
-SHELL_BUILTINS = frozenset(
-    {
-        ":", "[", "[[", "alias", "bg", "break", "cd", "continue", "declare", "echo", "exit", "export", "false", "fg",
-        "getopts", "hash", "jobs", "kill", "let", "local", "popd", "printf", "pushd", "pwd", "read", "readonly",
-        "return", "set", "shift", "test", "trap", "true", "type", "typeset", "ulimit", "umask", "unalias", "unset",
-        "wait", "for", "case", "select", "function", "in", "fi", "done", "esac", "}", "]]",
-    }
-)  # fmt: skip
-SHELL_LEADS = frozenset({"if", "then", "else", "elif", "while", "until", "do", "!", "{", "time", "exec", "command"})
-SHELL_PATH_CHANGES = frozenset({"source", ".", "eval"})
-# Programs that run the program after them: the options of each that take a value, and whether a word (the duration
-# of timeout) comes before that program.
-RUNS_ANOTHER: dict[str, tuple[frozenset[str], bool]] = {
-    "env": (frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}), False),
-    "nice": (frozenset({"-n", "--adjustment"}), False),
-    "nohup": (frozenset(), False),
-    "timeout": (frozenset({"-s", "--signal", "-k", "--kill-after"}), True),
-    "xvfb-run": (
-        frozenset({"-e", "--error-file", "-f", "--auth-file", "-n", "--server-num", "-p", "-s", "--server-args", "-w"}),
-        False,
-    ),
-}
-ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.S)
-
 ASSERTION = re.compile(
     r"\bassert\b|\bself\.assert\w*\s*\(|\bassert\w*\s*\(|\bexpect\s*\(|\bpytest\.raises\b|\.should\b"
 )
@@ -310,6 +276,22 @@ CATCH = re.compile(
 DEAD_GUARD = re.compile(
     r"^\s*(?:el)?if\s*\(?\s*(?:False|false|0|None|null|undefined|not\s+True|!\s*true|!\s*1)\s*\)?\s*"
     r"(?::|\{|$)|^\s*while\s*\(?\s*(?:False|false|0)\s*\)?\s*(?::|\{|$)"
+)
+# What an instruction of a harness says of testing and verifying, and the words of one that lets an agent skip it
+# rather than forbids skipping it (``weakened``).
+_CHECKS = r"(?:tests?|testing|pytest|vitest|jest|verify|verifying|verification|lint|linting|linters?|typecheck\w*|ci)\b"
+TESTING = re.compile(r"\b" + _CHECKS, re.IGNORECASE)
+SKIPPING = re.compile(
+    r"--no-verify\b|\b(?:skip|skipping|omit|omitting|bypass|bypassing|ignore|ignoring|disable|disabling|drop|dropping)"
+    r"\b[^.\n]{0,40}?\b" + _CHECKS + r"|\b(?:no need to|not necessary to|needn't|unnecessary|optional(?:ly)?)\b"
+    r"[^.\n]{0,40}?\b" + _CHECKS + r"|\b" + _CHECKS + r"[^.\n]{0,30}?\b(?:is|are)\s+(?:optional|not (?:needed|required"
+    r"|necessary))\b",
+    re.IGNORECASE,
+)
+NEGATED = re.compile(
+    r"\b(?:do not|don't|never|must not|mustn't|should not|shouldn't|no)\s+(?:\w+\s+){0,2}?(?:skip|omit|bypass|ignore"
+    r"|disable|drop)\b",
+    re.IGNORECASE,
 )
 TOLERANCE = re.compile(
     r"approx|isclose|allclose|toleran|\brel\s*=|\babs\s*=|atol|rtol|\bdelta\b|\bplaces\b|threshold|timeout"
@@ -577,175 +559,40 @@ def _masked(text: str) -> str:
     return NUMBER.sub("#", " ".join(text.split()))
 
 
-def verify_paths(commands: list[str]) -> set[str]:
-    """The files the verify commands name: each word that looks like a path, without a leading ``./``."""
-    found = set()
-    for command in commands or []:
-        try:
-            words = shlex.split(command)
-        except ValueError:
-            words = command.split()
-        for word in words:
-            word = word.split("::", 1)[0]  # pytest's tests/test_x.py::test_y
-            if word.startswith("-") or "=" in word or "$" in word:
-                continue
-            if "/" in word or re.search(r"\.[A-Za-z0-9]{1,5}$", word) or word in ("Makefile", "justfile"):
-                normal = tiers.normalize_path(word)
-                if normal is not None:
-                    found.add(normal)
+def _added_signs(sign, path: str, diff: FileDiff, test: bool) -> None:
+    """The signs of the lines ``diff`` of a file that is neither documentation nor a test's data adds."""
+    for number, text in diff.added:
+        if SKIP.search(text) or (test and TEST_SKIP.search(text)):
+            sign("skip_added", path, number, text)
+        if SUPPRESS.search(text):
+            sign("lint_suppressed", path, number, text)
+        if EQ_OVERLOAD.search(text):
+            sign("eq_overridden", path, number, text)
+        if test and EXIT.search(text):
+            sign("exit_in_test", path, number, text)
+        if test and CATCH.search(text):
+            sign("assert_caught", path, number, text)
+        if test and DEAD_GUARD.search(text):
+            sign("assert_removed", path, number, f"a guard that never runs what it holds: {text}")
+
+
+def weakened(diff: FileDiff) -> list[tuple[int | None, str]]:
+    """(line, text) of what a diff of a harness file (``replay.harness_path``: a skill's file, an AGENTS.md or a
+    CLAUDE.md) does to its instructions to test or verify: each line it adds that lets an agent skip them (SKIPPING,
+    unless it forbids that, NEGATED), and, when it removes more lines that speak of them (TESTING) than it adds, the
+    first of those it removes. A line kept as it was, blanks aside, counts neither way."""
+    added = {" ".join(text.split()) for _, text in diff.added}
+    removed = {" ".join(text.split()) for _, text in diff.removed}
+    found = [
+        (number, text)
+        for number, text in diff.added
+        if SKIPPING.search(text) and not NEGATED.search(text) and " ".join(text.split()) not in removed
+    ]
+    gone = [(n, text) for n, text in diff.removed if TESTING.search(text) and " ".join(text.split()) not in added]
+    kept = [text for _, text in diff.added if TESTING.search(text) and " ".join(text.split()) not in removed]
+    if len(gone) > len(kept):
+        found.append((gone[0][0], f"an instruction removed: {gone[0][1]}"))
     return found
-
-
-def _simple_commands(command: str) -> list[list[str]]:
-    """The words of each simple command of a shell command line, split at its operators; words of a quoted
-    ``sh -c`` or ``bash -c`` argument read as commands too."""
-    found: list[list[str]] = []
-    try:
-        lexer = shlex.shlex(command or "", posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:  # an open quote: read it as words between the operators
-        tokens = [word for part in SHELL_OPERATOR.split(command or "") for word in [*part.split(), ";"]]
-    groups: list[list[str]] = [[]]
-    for token in tokens:
-        if token and all(char in "&|;()<>" for char in token):
-            groups.append([])
-        else:
-            groups[-1].append(token)
-    for words in groups:
-        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):  # FOO=bar before the command
-            words = words[1:]
-        if not words:
-            continue
-        if words[0].rsplit("/", 1)[-1] in ("sh", "bash", "zsh", "dash") and "-c" in words[1:-1]:
-            found += _simple_commands(words[words.index("-c") + 1])
-            continue
-        found.append(words)
-    return found
-
-
-def _shell_words(command: str) -> list[list[str]] | None:
-    """The words of each simple command of a shell command line, split at its operators, a redirection's target left
-    out, assignments before a command kept; words of a quoted ``sh -c`` argument are not read here. None for a line the
-    shell would not read (an open quote)."""
-    try:
-        lexer = shlex.shlex(command or "", posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return None
-
-    def redirection(token: str) -> bool:
-        return bool(token) and all(char in "&|;()<>" for char in token) and ("<" in token or ">" in token)
-
-    groups: list[list[str]] = [[]]
-    target = False  # the token after a redirection names a file
-    for index, token in enumerate(tokens):
-        if target:
-            target = False
-            continue
-        if token and all(char in "&|;()<>" for char in token):
-            if redirection(token):
-                target = True
-            else:
-                groups.append([])
-            continue
-        if token.isdigit() and index + 1 < len(tokens) and redirection(tokens[index + 1]):
-            continue  # the descriptor of 2>&1
-        groups[-1].append(token)
-    return [words for words in groups if words]
-
-
-def _past_options(head: str, words: list[str]) -> tuple[list[str], bool]:
-    """(the words after the options of ``head``, a program of RUNS_ANOTHER, and its duration for timeout: the program
-    it runs and that program's arguments; whether ``env`` set PATH for that program)."""
-    valued, duration = RUNS_ANOTHER[head]
-    rest, path_set = list(words), False
-    while rest and (rest[0].startswith("-") or (head == "env" and ASSIGNMENT.fullmatch(rest[0]))):
-        option = rest.pop(0)
-        if option == "--":
-            break
-        path_set = path_set or option.startswith("PATH=")
-        if option in valued and rest:
-            rest.pop(0)
-    return (rest[1:] if duration and rest else rest), path_set
-
-
-def programs(command: str) -> list[str]:
-    """The programs a shell command line runs from PATH, each once, in order: the first word of each simple command
-    (past assignments, and past the keywords that start a compound command), and of the program a wrapper of
-    RUNS_ANOTHER runs (``timeout 60 pytest`` names timeout and pytest), and of a ``sh -c`` argument. Not counted: the
-    shell's builtins and keywords, a word the shell expands (``$``, a backtick, a glob), a relative path (a file of the
-    worktree, which the preflight cannot see yet), the program of a command with ``PATH=...`` before it, and anything
-    after a simple command that may change PATH (``source``, ``.``, ``eval``, ``export PATH=...``, ``PATH=...``). An
-    absolute path counts as itself. ``python -m pytest`` names python, and ``uv run pytest`` uv: what those run is not
-    looked for on PATH."""
-    found: list[str] = []
-    for words in _shell_words(command) or []:
-        assigned = [word.split("=", 1)[0] for word in itertools.takewhile(ASSIGNMENT.fullmatch, words)]
-        rest = words[len(assigned) :]
-        if "PATH" in assigned and not rest:
-            break
-        while rest:
-            head = rest[0]
-            if head in SHELL_PATH_CHANGES or (head == "export" and any(w.startswith("PATH=") for w in rest[1:])):
-                return list(dict.fromkeys(found))
-            if head in SHELL_LEADS:
-                rest = rest[1:]
-                continue
-            if head in SHELL_BUILTINS or "PATH" in assigned or re.search(r"[$`*?\[\]]", head):
-                break
-            if "/" in head and not head.startswith("/"):
-                break
-            name = head.rsplit("/", 1)[-1]
-            found.append(head)
-            if name in ("sh", "bash", "zsh", "dash") and "-c" in rest[1:-1]:
-                found += programs(rest[rest.index("-c") + 1])
-                break
-            if name not in RUNS_ANOTHER:
-                break
-            rest, path_set = _past_options(name, rest[1:])
-            if path_set:
-                break
-    return list(dict.fromkeys(found))
-
-
-def _runner(words: list[str]) -> tuple[str | None, list[str]]:
-    """(the program a simple command runs, its arguments), past the wrappers that run another program."""
-    while words:
-        head = words[0].rsplit("/", 1)[-1]
-        if head in PASS_THROUGH:
-            words = [word for word in words[1:] if not word.startswith("-")] if head != "timeout" else words[2:]
-            continue
-        if head in WRAPPERS and len(words) > 1 and words[1] in WRAPPERS[head]:
-            words = words[2:]
-            continue
-        if re.fullmatch(r"python[0-9.]*", head) and len(words) > 2 and words[1] == "-m":
-            return words[2], words[3:]
-        return head, words[1:]
-    return None, []
-
-
-def verify_runners(commands: list[str]) -> tuple[set[str], set[str]]:
-    """(globs of the files that say what the verify commands run, such as the Makefile of ``make check``; the names of
-    the package.json scripts they run, such as ``test`` of ``pnpm test``)."""
-    globs: set[str] = set()
-    scripts: set[str] = set()
-    for command in commands or []:
-        for words in _simple_commands(command):
-            program, args = _runner(words)
-            if program is None:
-                continue
-            globs.update(RUNNER_FILES.get(program, ()))
-            if program in PACKAGE_RUNNERS:
-                args = [arg for arg in args if not arg.startswith("-")]
-                if args[:1] == ["run"]:
-                    args = args[1:]
-                if args and args[0] not in ("exec", "dlx", "install", "ci", "add", "x"):
-                    scripts.add(args[0])
-                elif not args:
-                    scripts.add("test" if program == "npm" else "install")
-    return globs, scripts
 
 
 def hack_signs(
@@ -787,7 +634,10 @@ def hack_signs(
         test = any(_is_test(repo, item) for item in paths)
         golden = any(_matches(GOLDEN_PATHS, repo, item) for item in paths)
         data = test and not doc and not any(item.lower().endswith(SOURCE_SUFFIXES) for item in paths)
-        guarded = test or golden or ci or lint or runs_it or any(_matches(protected, repo, item) for item in paths)
+        harness = any(harness_path(item) for item in paths)
+        guarded = (
+            test or golden or ci or lint or runs_it or harness or any(_matches(protected, repo, item) for item in paths)
+        )
         if (golden or data) and diff.status != "added":
             sign("golden_changed", path, None, "what a test compares with")
         if not diff.readable:
@@ -807,21 +657,11 @@ def hack_signs(
                     if script_key.search(text):
                         sign("verify_changed", path, number, text)
                         break
+        for number, text in weakened(diff) if harness else ():
+            sign("instruction_weakened", path, number, text)
         if doc or (test and data):
             continue
-        for number, text in diff.added:
-            if SKIP.search(text) or (test and TEST_SKIP.search(text)):
-                sign("skip_added", path, number, text)
-            if SUPPRESS.search(text):
-                sign("lint_suppressed", path, number, text)
-            if EQ_OVERLOAD.search(text):
-                sign("eq_overridden", path, number, text)
-            if test and EXIT.search(text):
-                sign("exit_in_test", path, number, text)
-            if test and CATCH.search(text):
-                sign("assert_caught", path, number, text)
-            if test and DEAD_GUARD.search(text):
-                sign("assert_removed", path, number, f"a guard that never runs what it holds: {text}")
+        _added_signs(sign, path, diff, test)
         if not test:
             continue
         # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
@@ -864,54 +704,6 @@ def raised_reason(signs: list[dict]) -> str:
     kinds = sorted({item["kind"] for item in signs})
     shown = ", ".join(SIGN_KINDS.get(kind, kind) for kind in kinds)
     return f"the diff of the Builder shows signs of score hacking ({shown}): tier 3"
-
-
-# Who judges
-
-
-def codex_cleared(rules, label: dict | None) -> bool:
-    """Whether the project's policy (``rules``, an ``access.ProjectRules``) declares a sink for Codex whose clearance
-    covers ``label``, the project's label as stored: an id starting with CODEX_SINK, of a level and location the
-    project's ladder knows, at or above the label's."""
-    stored = rules.stored(label) if label is not None else rules.top()
-    if stored is None or not stored.projects <= {rules.name}:
-        return False
-    closed = getattr(rules, "_closed", set())
-    for sink_id, clearance in rules.policy.sinks.items():
-        if not str(sink_id).lower().startswith(CODEX_SINK) or sink_id in closed:
-            continue
-        if stored.level <= clearance.level and stored.location <= clearance.location:
-            return True
-    return False
-
-
-def _other_model(model: str | None) -> str:
-    """A Claude model other than ``model`` (the Builder's; None is the runtime's default, Opus)."""
-    return "sonnet" if model is None or "opus" in model.lower() else "opus"
-
-
-def judge_runtime(
-    judge: dict, builder: dict, *, codex_allowed: bool, worker_runtimes: set[str] | frozenset[str]
-) -> tuple[str, str | None, str]:
-    """(runtime, model, why) of the Judge, from the charter's ``judge`` and ``builder`` roles: Codex when the policy
-    clears it and the worker on duty has it, else Claude Code with a model other than the Builder's."""
-    wanted_model = judge.get("model")
-    if codex_allowed and "codex" in worker_runtimes:
-        model = wanted_model if judge.get("runtime") == "codex" else None
-        return "codex", model, "the project's policy clears Codex for its label"
-    why = (
-        "the project's policy declares no sink for Codex that clears its label"
-        if not codex_allowed
-        else "the worker on duty has no Codex"
-    )
-    builder_model = builder.get("model")
-    if builder.get("runtime", "claude-code") == "claude-code":
-        chosen = wanted_model if judge.get("runtime") == "claude-code" else None
-        if chosen is None or chosen == builder_model:
-            chosen = _other_model(builder_model)
-        return "claude-code", chosen, f"{why}: Claude Code with a model other than the Builder's"
-    chosen = wanted_model if judge.get("runtime") == "claude-code" else None
-    return "claude-code", chosen, f"{why}: Claude Code, another runtime than the Builder's"
 
 
 # The verdict
@@ -1090,12 +882,16 @@ class MergeFacts:
     ci: str  # ci_state's
     ci_reasons: tuple[str, ...] = ()
     mergeable: bool | None = None
+    queue: bool = False  # GitLab: the policy has the repo in mode auto and a forge secret covers its origin
 
 
 def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
-    """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running, and
-    ``("open", why)`` when it stays open for its owner. Every condition fails closed."""
+    """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running,
+    ``("queue", why)`` when a merge request on GitLab goes to the merge queue, and ``("open", why)`` when it stays open
+    for its owner. Every condition fails closed."""
     if facts.forge != "github":
+        if facts.queue and facts.passed:
+            return "queue", ["its repo is in mode auto with a forge secret: the merge queue gates and merges it"]
         return "open", ["a merge request on GitLab stays open: the hub never merges one"]
     if facts.pr_merged:
         return "open", ["the pull request was merged already, not by the hub"]

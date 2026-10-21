@@ -1,5 +1,10 @@
-"""What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, extends the leases
-of the runs it holds and answers what to do with each, and the move of a run it holds (POST
+"""What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, the commit its daemon
+runs, what the daemon found of updating itself and what it last did for the graphs it keeps fresh (kg_sync), extends
+the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
+where the tag nightly pointed when the hub last read it, the owner's open Update now
+(``evo_agents.hub.server.update_now``, which the heartbeat may end), for a daemon that runs them the runtimes of the
+plugins its owner accepted (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph
+it keeps fresh (``kg_duties``); and the move of a run it holds (POST
 /v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
 
 from __future__ import annotations
@@ -9,12 +14,24 @@ from dataclasses import replace
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, exists, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.server import update_now
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
-from evo_agents.hub.server.runs.models import NOT_HELD, HeartbeatAnswer, HeartbeatRequest, Run, RunControl, StateReport
+from evo_agents.hub.server.runs.models import (
+    NOT_HELD,
+    HeartbeatAnswer,
+    HeartbeatRequest,
+    PluginRuntime,
+    Run,
+    RunControl,
+    StateReport,
+    WorkerSettings,
+)
+from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
 
@@ -27,6 +44,27 @@ def _steady_since():
     w = tables.workers
     late = or_(w.c.steady_since.is_(None), w.c.last_heartbeat_at.is_(None), ~beating(w))
     return case((late, func.now()), else_=w.c.steady_since)
+
+
+def _self_update(body: HeartbeatRequest) -> dict:
+    """What a heartbeat sets of the daemon's install: the commit it runs and what it found of updating itself, each as
+    this heartbeat says, none clearing it; self_update_since moves to now when the state differs from the one before
+    (which the SET reads as the row was), and stays otherwise."""
+    w = tables.workers
+    report = body.self_update
+    if report is None:
+        return {"agent_commit": body.agent_commit, "self_update": null(), "self_update_since": None}  # SQL NULL
+    same = w.c.self_update["state"].astext == report.state
+    return {
+        "agent_commit": body.agent_commit,
+        "self_update": report.model_dump(mode="json"),
+        "self_update_since": case((same, func.coalesce(w.c.self_update_since, func.now())), else_=func.now()),
+    }
+
+
+def _kg_sync(body: HeartbeatRequest):
+    """What a heartbeat sets workers.kg_sync to: the report it carries, or SQL NULL when it carries none."""
+    return null() if body.kg_sync is None else body.kg_sync.model_dump(mode="json", exclude_none=True)
 
 
 def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
@@ -77,7 +115,7 @@ async def record_heartbeat(
     async with engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await worker_of(conn, user)
         w = tables.workers
-        await conn.execute(
+        held = await conn.execute(
             update(w)
             .values(
                 last_heartbeat_at=func.now(),
@@ -87,10 +125,23 @@ async def record_heartbeat(
                 free_slots=func.least(body.free_slots, w.c.slots),
                 agent_version=func.coalesce(body.agent_version, w.c.agent_version),
                 run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
-                features=None if body.features is None else [k for k in body.features if k in runs.WORKER_FEATURES],
+                features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
+                **_self_update(body),
+                kg_sync=_kg_sync(body),
             )
             .where(w.c.id == worker_id)
+            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
         )
+        settings = WorkerSettings(**held.one()._mapping)
+        nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
+        asked = await update_now.settle(conn, worker_id, body, nightly)
+        declared = []
+        if runs.PLUGIN_RUNTIMES in (body.features or ()):
+            declared = [
+                PluginRuntime(**runtime.to_json())
+                for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
+            ]
+        duties = await kg_duties(conn, worker_id) if runs.KG_SYNC in (body.features or ()) else []
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -138,7 +189,15 @@ async def record_heartbeat(
             )
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
-    return HeartbeatAnswer(drain=drained_at is not None, runs=controls)
+    return HeartbeatAnswer(
+        drain=drained_at is not None,
+        runs=controls,
+        settings=settings,
+        plugin_runtimes=declared,
+        kg_sync=duties,
+        nightly=nightly,
+        update_now=asked,
+    )
 
 
 SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
@@ -283,7 +342,7 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author"):
+    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release"):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

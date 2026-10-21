@@ -5,7 +5,9 @@ A call answers the decoded JSON, or raises:
 
 - ``Unreachable`` when no answer came (refused, reset, timed out) or the hub answered 5xx or 429: the call may be
   sent again later, and ``Backoff`` says when (1 second, doubling up to 60, with a little jitter).
-- ``Refused`` for any other 4xx, with the status, the hub's error code and message, and ``Retry-After``.
+- ``Refused`` for any other 4xx, with the status, the hub's error code and message, and ``Retry-After``. A 4xx
+  without the hub's own error body (``HubProblem.from_hub``) came from a proxy in front of it, which answers 404 for a
+  moment while the hub is redeployed.
 - ``Outdated`` (a ``Refused``) for 426: the hub speaks another protocol version and this daemon must be upgraded.
 
 Redirects are not followed: they would hand the token to whatever host they name. The URL is https, or http to a
@@ -48,6 +50,16 @@ class HubProblem(Exception):
         if isinstance(self, Unreachable) and self.status is None:
             return HubUnreachable(text)
         return HubError(text, self.status, self.code)
+
+    @property
+    def from_hub(self) -> bool:
+        """The answer is the hub's own error, ``{error, message}`` (``evo_agents.hub.server.errors``), and not a page
+        of a proxy in front of it."""
+        return (
+            isinstance(self.code, str)
+            and isinstance(self.payload, dict)
+            and isinstance(self.payload.get("message"), str)
+        )
 
 
 class Unreachable(HubProblem):
@@ -189,6 +201,12 @@ class WorkerHub:
         answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
         return answer if isinstance(answer, dict) else {}
 
+    async def rate_limit(self, run_id: int, body: dict) -> dict:
+        """Say what the agent's CLI said of the account behind a lease of the run (``evo_agents.worker.runner.limits``):
+        ``{action, secret_id, failovers, ...}``; an older hub without the route answers 404 (Refused)."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/rate-limit", body)
+        return answer if isinstance(answer, dict) else {}
+
     # A plan run: its plan, its steps, its decisions and its notices
 
     async def plan(self, run_id: int) -> dict:
@@ -199,8 +217,20 @@ class WorkerHub:
         return await self.call("PUT", f"/v1/worker/runs/{int(run_id)}/plan", body)
 
     async def chat(self, run_id: int, text: str) -> dict:
-        """The last message of a turn of an author run's agent, kept as a message of the run's chat."""
+        """The last message of a turn of an author run's agent, kept as a message of the run's chat; a chat run's,
+        its reply in the thread of its group chat."""
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/chat", {"text": text})
+
+    async def in_chats(self, run_id: int, route: str, body: dict) -> dict:
+        """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chat_agents``): ``route``
+        is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run, or
+        chat/repos for a repo the daemon opens in a chat run for its agent."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/{route}", body)
+
+    async def release_branch(self, run_id: int, body: dict) -> dict:
+        """Tell the hub release run ``run_id`` pushed ``body``: its repo, branch release/<version>, head, version and
+        the agent's Decision line (``evo_agents.hub.server.release_claims``)."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/release/branch", body)
 
     async def step(self, run_id: int, key: str, body: dict) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
@@ -228,6 +258,35 @@ class WorkerHub:
 
     async def verdict(self, run_id: int, body: dict, key: str | None) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body, headers=_judge_key(key))
+
+    async def merge_judge_inputs(self, run_id: int, key: str | None) -> dict:
+        """What a judge run of the hub's merge queue reads, with the run's own key."""
+        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/merge-judge", headers=_judge_key(key))
+
+    async def merge_verdict(self, run_id: int, body: dict, key: str | None) -> dict:
+        """The verdict of a judge run of the hub's merge queue, with the run's own key."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-verdict", body, headers=_judge_key(key))
+
+    async def replay(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST one arm of a replay run, or why it replays nothing, with the run's own key."""
+        from evo_agents.hub.replay import REPLAY_KEY_HEADER
+
+        headers = {REPLAY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/replay", body, headers=headers)
+
+    async def history_next(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST for the next batch of a history run, with the run's own key."""
+        from evo_agents.hub.history import HISTORY_KEY_HEADER
+
+        headers = {HISTORY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/next", body, headers=headers)
+
+    async def history_report(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST the facets and the names a history run's model wrote, with the run's own key."""
+        from evo_agents.hub.history import HISTORY_KEY_HEADER
+
+        headers = {HISTORY_KEY_HEADER: key} if key else {}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/report", body, headers=headers)
 
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})

@@ -1,0 +1,103 @@
+# The CI of an evo-agents plugin's repository: test, sign and publish (skill plugin-authoring of @builder).
+#
+# Copy it to .github/workflows/ci.yml and set PLUGIN_DIR to the plugin's directory. Pin each action to the commit
+# SHA of the tag named here before relying on it.
+#
+# - test: every push and pull request. The plugin's tests, `evo-agents plugin test`, and the bundle's name and SHA-256.
+# - sign: the default branch only, the only job with id-token: write. It runs none of the plugin's code: it packs
+#   again, checks the SHA-256 is the one test packed, and signs keyless with Sigstore. The hub's operator trusts this
+#   workflow as the publisher (`<publisher>=sigstore:<owner>/<repo>/.github/workflows/ci.yml`).
+# - publish: after sign, in the GitHub Environment evo-hub, whose required reviewers and secrets the repository's owner
+#   sets: EVO_HUB_URL, EVO_HUB_LOGIN and EVO_HUB_TOKEN, the machine token of a hub admin account kept for publishing.
+#   The hub checks the signature, then keeps the version as available: nothing is installed until a hub admin upgrades
+#   to it (`evo-agents hub plugin upgrade <id>`).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PLUGIN_DIR: . # the plugin's directory, evo-plugin.json at its top
+  EVO_AK: evo-ak # evo-ak of a release that has `evo-agents plugin`; pin its version
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      bundle: ${{ steps.pack.outputs.bundle }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0 # a standalone Python, on a self-hosted runner too
+      - run: uv venv --seed --python 3.12 "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: python -m pip install "$EVO_AK" pytest
+      - run: if [ -d "$PLUGIN_DIR/tests" ]; then python -m pytest -q "$PLUGIN_DIR/tests"; fi
+      - run: evo-agents plugin test "$PLUGIN_DIR"
+      - id: pack
+        run: |
+          mkdir dist
+          (cd dist && evo-agents plugin pack "$GITHUB_WORKSPACE/$PLUGIN_DIR")
+          bundle="$(cd dist && ls *.tar.gz)"
+          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "dist/$bundle" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+  sign:
+    needs: test
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # the OIDC token Sigstore's Fulcio turns into this workflow's signing certificate
+    env:
+      BUNDLE: ${{ needs.test.outputs.bundle }}
+      TESTED: ${{ needs.test.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv venv --seed --python 3.12 "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: python -m pip install "$EVO_AK" "sigstore>=4.5,<5"
+      - run: mkdir dist && (cd dist && evo-agents plugin pack "$GITHUB_WORKSPACE/$PLUGIN_DIR")
+      - run: test "$(sha256sum "dist/$BUNDLE" | cut -d' ' -f1)" = "$TESTED"
+      - run: python -m sigstore sign "dist/$BUNDLE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-bundle
+          path: dist/
+
+  publish:
+    needs: [test, sign]
+    runs-on: ubuntu-latest
+    environment: evo-hub # required reviewers and the hub's secrets live here
+    permissions:
+      contents: read
+    env:
+      BUNDLE: ${{ needs.test.outputs.bundle }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-bundle
+          path: dist/
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv venv --seed --python 3.12 "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: python -m pip install "$EVO_AK"
+      - name: hub credentials
+        env:
+          EVO_HUB_URL: ${{ secrets.EVO_HUB_URL }}
+          EVO_HUB_LOGIN: ${{ secrets.EVO_HUB_LOGIN }}
+          EVO_HUB_TOKEN: ${{ secrets.EVO_HUB_TOKEN }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.evo/hub"
+          python -c 'import json, os; print(json.dumps({"url": os.environ["EVO_HUB_URL"], "login": os.environ["EVO_HUB_LOGIN"]}))' > "$HOME/.evo/hub/config.json"
+          printf '%s\n' "$EVO_HUB_TOKEN" > "$HOME/.evo/hub/token"
+      - run: evo-agents hub plugin publish "dist/$BUNDLE" --signature "dist/$BUNDLE.sigstore.json"
+      - if: always()
+        run: rm -rf "$HOME/.evo/hub"

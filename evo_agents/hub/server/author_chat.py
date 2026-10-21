@@ -2,10 +2,13 @@
 and its end. ``docs/workers.md`` (Author runs) is the protocol.
 
 POST /v1/worker/runs/{id}/chat takes the last message of a turn of the agent of an author run the worker holds (404
-for any other run), at most ``author.MAX_CHAT_BYTES`` of UTF-8, and keeps it as a ``system`` event of the hub's own
+for any other run but a chat run, whose message is its reply in the thread of its group chat, ``chat_runs``), at most
+``author.MAX_CHAT_BYTES`` of UTF-8, and keeps it as a ``system`` event of the hub's own
 whose body holds ``"chat": "agent"``, numbered in the run's log as every event is. The worker posts it before it
 reports ``waiting``. The owner's messages are the run's ``user_message`` events, which POST .../runs/{id}/messages
-writes (``run_events``): so the chat is in the order of the log, the agent's messages between the owner's.
+writes (``run_events``): so the chat is in the order of the log, the agent's messages between the owner's. The
+owner's answer to a decision of the run (``decisions``), a ``user_message`` event that names the decision, is no
+message of the chat: the decision shows it.
 
 GET /v1/projects/{p}/runs/{id}/chat (a reader of the run, ``runs.readable_run``) returns the chat of an author run: its
 messages and those of the runs it resumes and that resume it (a parked run and the run a reply queued, through
@@ -17,8 +20,9 @@ events of runs that ended EVO_HUB_RUN_LOG_DAYS ago.
 When the worker reports ``waiting`` for an author run (``runs.report_state``), the hub sends its owner the notice
 ``author_waiting`` (``notify_waiting``) with the agent's last message, which the web shows and Telegram sends as its
 label rule lets it: a restricted project's message holds its name, the kind of thing that waits and the link alone
-(``evo_agents.hub.telegram.minimal_message``). The notices of the run its owner has not read yet are read then: one
-waits at a time.
+(``minimal_message`` of the core plugin telegram's ``model``). The notices of the run its owner has not read yet are
+read then: one waits at a time. A run that moves to waiting with a decision of its own still open sends no notice: the
+decision's notification told its owner already, and Home lists the run through the decision.
 
 POST /v1/projects/{p}/runs/{id}/finish is the owner's end of the chat (another member 403, a run of another kind 409):
 a parked author run ends ``done`` at once; for one a worker holds, the hub records the ask (``finish_requested_at``),
@@ -35,7 +39,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import and_, case, func, or_, select, union, update
+from sqlalchemy import and_, case, exists, func, or_, select, union, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
@@ -132,7 +136,9 @@ def _chain(run_id: int):
 
 
 def _is_owner():
-    return tables.run_events.c.kind == "user_message"
+    """An event that is a message of the owner's in the chat: a ``user_message`` that answers no decision."""
+    e = tables.run_events
+    return and_(e.c.kind == "user_message", ~e.c.body.has_key("decision_id"))
 
 
 def _is_agent():
@@ -190,16 +196,22 @@ async def post_chat(request: Request, run_id: RunId, body: ChatPost, user: Curre
     """Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat."""
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
-        if row.kind != "author":
+        if row.kind == "chat":  # its reply in the thread of its group chat
+            from evo_agents.hub.server.chat_runs import agent_reply  # it reads runs through this module's package
+
+            seq = await agent_reply(conn, run_id, body.text)
+        elif row.kind != "author":
             raise HTTPException(404, f"run {run_id} is not an author run: only an author run has a chat")
-        seq = await write_event(conn, run_id, {"text": body.text, "chat": author.CHAT_AGENT})
+        else:
+            seq = await write_event(conn, run_id, {"text": body.text, "chat": author.CHAT_AGENT})
     log.info("chat message of the agent", extra={"run_id": run_id, "seq": seq})
     return ChatPosted(run_id=run_id, seq=seq)
 
 
-async def notify_waiting(conn: AsyncConnection, run_id: int) -> int:
+async def notify_waiting(conn: AsyncConnection, run_id: int) -> int | None:
     """Send the owner of author run ``run_id``, which has just moved to waiting, the notice author_waiting with the
-    agent's last message of the chat, and read the run's earlier ones the owner has not read; its id."""
+    agent's last message of the chat, and read the run's earlier ones the owner has not read; its id. None, and no
+    notice, while a decision of the run is open: the owner has its notification already."""
     from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
 
     r, p, e, n = tables.runs, tables.projects, tables.run_events, tables.notifications
@@ -221,6 +233,9 @@ async def notify_waiting(conn: AsyncConnection, run_id: int) -> int:
             n.c.read_at.is_(None),
         )
     )
+    d = tables.decisions
+    if (await conn.execute(select(exists().where(d.c.run_id == run_id, d.c.state == "open")))).scalar_one():
+        return None
     details = {"plan_id": found.plan_id, "plan_revision": found.plan_revision} if found.plan_id else None
     return await notifications.notify(
         conn,

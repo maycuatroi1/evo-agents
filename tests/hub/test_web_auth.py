@@ -164,7 +164,8 @@ def test_a_web_sign_in_sets_a_secure_session_cookie_that_works(client, github, h
     assert me.status_code == 200, me.text
     assert me.json()["login"] == "octo" and me.json()["token"]["kind"] == "web"
     audit = tables.audit
-    assert sql(hub_db, select(audit.c.action, audit.c.target, audit.c.token_id)) == [("auth.login", "web", row[0])]
+    logins = select(audit.c.action, audit.c.target, audit.c.token_id).where(live.not_by_the_image())
+    assert sql(hub_db, logins) == [("auth.login", "web", row[0])]
 
     # The callback cannot be replayed: the code is spent at GitHub and the login cookie in the browser.
     replay = client.get(CALLBACK, params=back, follow_redirects=False)

@@ -22,6 +22,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 from evo_agents.worker import gitops
 from tests.worker.test_plan_runs import (
     PLAN,
+    ask,
     git,
     machine,  # noqa: F401 (a fixture)
     wait_for,
@@ -408,6 +409,32 @@ def test_watchdog_stops_a_run_of_the_curator_past_its_time_cap(machine):  # noqa
 
     with_daemon(machine, body)
     assert "more than its time cap" in found["hub"].runs[found["run"]]["error"]
+
+
+def test_watchdog_does_not_count_the_time_a_builder_waits_for_its_owners_answer(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [{"write": {"alpha/tests/test_wait.py": TEST_FILE}}, ask()],
+            f"plan:{PLAN}/2": [
+                {"cli": ["step", "1", "done", "--verify", "test -f tests/test_wait.py"]},
+                {"result": {"summary": "Wrote the test."}},
+            ],
+        }
+    )
+    found = {}
+    budget = {"max_usd": 5.0, "max_turns": 40, "max_seconds": 4, "spent_usd": 0.0, "spent_seconds": 0}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, [{"repo": "alpha", "branch": BRANCH}], budget=budget, **builder_spec())
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=60) == "waiting", hub.texts(run_id)
+        await asyncio.sleep(5.0)  # longer than the time cap, heartbeat after heartbeat: the wait is not agent time
+        assert hub.runs[run_id]["state"] == "waiting", hub.texts(run_id)
+        hub.answer(1, "yes")
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body, plan=curator_plan())
+    assert found["hub"].moves(found["run"]) == ["leased", "running", "waiting", "running", "verifying", "done"]
 
 
 def test_watchdog_leaves_a_members_plan_run_alone(machine):  # noqa: F811

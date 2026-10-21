@@ -4,7 +4,7 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
 
     log/<run_id>.jsonl.gz   every message of one connector run, item text replaced by blob refs
     blobs/sha256/ab/cd...   item bodies and fragments
-    corpus.sqlite           the merged state sigma_p, rebuildable from the log
+    corpus.sqlite           the merged state sigma_p, rebuildable from the log; with the runs a hub holds (hub_runs)
     locks/<source>.lock     one sync per source at a time
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
@@ -80,6 +80,11 @@ CREATE TABLE IF NOT EXISTS lineages (
     lineage TEXT NOT NULL,
     epoch TEXT NOT NULL,
     run_id TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS hub_runs (
+    run_id TEXT PRIMARY KEY,
+    hub TEXT NOT NULL,
+    at TEXT NOT NULL
 ) STRICT;
 """
 ITEM_COLUMNS = "item_id, source, deleted, k_epoch, k_time, k_rev, k_run, k_tie, record"
@@ -281,6 +286,12 @@ class Corpus:
             query += " WHERE " + " AND ".join(clauses)
         return [self._row(r) for r in self.db.execute(query + " ORDER BY item_id", params)]
 
+    def sources(self) -> list[str]:
+        """The sources that hold at least one live item, by id."""
+        return [
+            row[0] for row in self.db.execute("SELECT DISTINCT source FROM items WHERE deleted = 0 ORDER BY source")
+        ]
+
     def alive_in_scope(self, scope: str) -> list[ItemRecord]:
         source = source_of(scope)
         return [r for r in self.items(source) if r.item_id.startswith(scope)]
@@ -290,6 +301,14 @@ class Corpus:
         db = db or self.db
         rows = db.execute("SELECT item_id, deleted, record FROM items ORDER BY item_id").fetchall()
         return sha256(canonical_json([[r[0], r[1], json.loads(r[2])] for r in rows]))
+
+    def alive_digest(self, source: str) -> str:
+        """Hash of what one source holds alive: each live item ID of ``source`` with its winning record. Two corpora
+        whose merges left the same items alive with the same records give the same hash, whichever runs got there."""
+        rows = self.db.execute(
+            "SELECT item_id, record FROM items WHERE source = ? AND deleted = 0 ORDER BY item_id", (source,)
+        ).fetchall()
+        return sha256(canonical_json([[r[0], json.loads(r[1])] for r in rows]))
 
     def rebuild_state(self, files: list[Path] | None = None) -> sqlite3.Connection:
         """Recompute sigma_p from the log alone, into an in-memory database."""
@@ -326,11 +345,44 @@ class Corpus:
         """Remember what run ``run_id`` of ``source`` read from, in the caller's transaction."""
         self.db.execute("INSERT OR REPLACE INTO lineages VALUES (?, ?, ?, ?)", (source, lineage, epoch, run_id))
 
+    def adopt_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
+        """Take what run ``run_id`` of ``source``, a run another machine wrote and this corpus merged, read from and its
+        epoch, when that epoch, then that run id, is above the recorded one's; in the caller's transaction. The next run
+        here that reads from the same place then takes that epoch, so its records compete with the other machine's
+        within one epoch instead of losing to them, and one that reads from elsewhere starts a newer epoch."""
+        self.db.execute(
+            "INSERT INTO lineages VALUES (?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET lineage = excluded.lineage,"
+            " epoch = excluded.epoch, run_id = excluded.run_id"
+            " WHERE (excluded.epoch, excluded.run_id) > (lineages.epoch, lineages.run_id)",
+            (source, lineage, epoch, run_id),
+        )
+
+    def lineage_of(self, source: str) -> str | None:
+        """The lineage the corpus records for ``source``, None when it records none."""
+        recorded = self._lineage(source)
+        return recorded[0] if recorded else None
+
     # -- cursors, runs, held removals ----------------------------------------------------------
 
     def cursor(self, source: str):
         row = self.db.execute("SELECT cursor FROM cursors WHERE source = ?", (source,)).fetchone()
         return json.loads(row[0]) if row and row[0] is not None else None
+
+    def record_cursor(self, source: str, cursor, run_id: str) -> None:
+        """Keep the cursor run ``run_id`` of ``source`` ended with, unless the source has one of a later run: runs
+        merged in any order leave the newest one's. In the caller's transaction."""
+        self.db.execute(
+            "INSERT INTO cursors VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor,"
+            " run_id = excluded.run_id WHERE excluded.run_id > cursors.run_id",
+            (source, json.dumps(cursor, ensure_ascii=False), run_id),
+        )
+
+    def set_cursor(self, source: str, cursor, run_id: str) -> None:
+        """Make ``cursor`` the cursor of ``source``, whatever run kept the one before: for a source read in the
+        builder's own process (``evo_agents.kg.replace.keep_cursor``). In the caller's transaction."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)", (source, json.dumps(cursor, ensure_ascii=False), run_id)
+        )
 
     def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
@@ -386,6 +438,17 @@ class Corpus:
                 json.dumps(detail or {}, ensure_ascii=False),
             ),
         )
+
+    def record_on_hub(self, run_ids: Iterable[str], hub: str) -> None:
+        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): retention may
+        delete their logs (``evo_agents.kg.retention``). Commits."""
+        now = utc_now()
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO hub_runs VALUES (?, ?, ?)", [(r, hub, now) for r in run_ids])
+
+    def runs_on_hub(self) -> set[str]:
+        """The runs ``record_on_hub`` recorded."""
+        return {row[0] for row in self.db.execute("SELECT run_id FROM hub_runs")}
 
     def held(self, source: str | None = None) -> list[dict]:
         query = "SELECT run_id, source, scope, reason, ids FROM held"

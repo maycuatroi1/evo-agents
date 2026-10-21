@@ -372,9 +372,9 @@ def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_bac
     run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
     spec_of = run_claims._run_spec
 
-    async def slow_spec(conn, leased_id):
+    async def slow_spec(conn, leased_id, features=()):
         await asyncio.sleep(1.5)  # the run is leased in the claim's transaction; the worker hangs up meanwhile
-        return await spec_of(conn, leased_id)
+        return await spec_of(conn, leased_id, features)
 
     monkeypatch.setattr(run_claims, "_run_spec", slow_spec)
     hang_up_claim(hub, worker, wait=0, after=0.5)
@@ -514,7 +514,7 @@ def test_the_run_list_filters_searches_pages_and_counts_by_state(hub):
     assert [run["id"] for run in every["runs"]] == [five, four, two]  # newest first
     assert (every["total"], every["limit"], every["offset"]) == (3, 50, 0)
     assert {state: n for state, n in every["counts"].items() if n} == {"queued": 1, "cancelled": 1, "failed": 1}
-    assert set(every["counts"]) == set(runs.RUN_STATES)
+    assert set(every["counts"]) == set(runs.SHOWN_STATES)
     # the counts follow the other filters but not the state one, so the facets show what each state would leave
     queued = listed(state="queued")
     assert ([run["id"] for run in queued["runs"]], queued["total"]) == ([four], 1)

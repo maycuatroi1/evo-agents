@@ -10,6 +10,9 @@ shape version::
            connector, connector_version, items, tombstones, removals, rejected, errors, issues, held, redactions
     build  v, event="build", build_id, project, status, started_at, finished_at, trigger, evo_agents,
            content_hash, items, units, nodes, edges, errors, issues, verified, rebuilt_from, exception
+    prune  v, event="prune", project, started_at, finished_at, trigger, evo_agents, periods, logs, log_bytes,
+           rewritten, dropped, blobs, blob_bytes, runs, history, builds, memo, size_before, size_after
+           (evo_agents.kg.retention: what a pass deleted, by count and bytes)
 
 ``status`` is ok or failed. ``trigger`` is schedule when EVO_KG_TRIGGER=schedule, which the LaunchAgent sets,
 and manual otherwise. ``errors`` and ``issues`` are counts; ``held`` counts the removals a guard held back.

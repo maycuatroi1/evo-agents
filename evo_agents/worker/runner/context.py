@@ -1,11 +1,11 @@
 """A run on this worker: what every kind of run shares (``Run``), and what a kind brings to it (``RunKind``).
 
-The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author)
-is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the parts
-the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
+The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author,
+chat, task, replay, history) is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the
+parts the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
 (``sender``), its leases (``credentials``), its agent (``agent``), the owner's messages (``inbox``), its reports
-(``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions
-of the modules ``origin``, ``access``, ``verify`` and ``push``, which take the Run.
+(``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions of
+the modules ``origin``, ``access``, ``verify`` and ``push``, which take the Run.
 
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the backoff
 until the hub answers, or says the run is no longer this worker's. A cancel, the run's timeout (counted from the
@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from evo_agents.hub import curator
+from evo_agents.hub import curator, releases
 from evo_agents.worker import credentials
 from evo_agents.worker.adapter import Outcome
 from evo_agents.worker.credentials import RunCredentials
@@ -85,19 +85,25 @@ class Run:
         self.loop = asyncio.get_running_loop()
         self.deadline = self.loop.time() + self.timeout_s  # from the claim until the agent starts, then from there
         self.agent_started = False  # the agent (headless or in a terminal) has started once: the timeout counts
+        self.waiting_since: float | None = None  # the run waits for its owner's answer: its agent time stands still
         self.park_asked = asyncio.Event()  # the hub parked a run of a kind that parks, or a new run resumes it
         self.parked = False
         self.inbox_arrived = asyncio.Event()  # the heartbeat counted messages of the owner in the inbox
         self.finish_asked = asyncio.Event()  # the owner ended the chat of an author run: end it done after the turn
         self.open_decisions = 0  # the run's decisions still open, as the last heartbeat counted them
         self.worktree: Path | None = None  # the agent's directory
+        self.venvs: dict[str, Path] = {}  # repo -> its worktree, whose .venv the worker made (runner.venv)
         self.verify: list[dict] = []
         self.summary: str | None = None
         self.outcome: Outcome | None = None
         found = spec.get("curator")
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
-        # A judge run's own key: in this object alone, out of the spec its adapter and records see.
+        # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
+        # and records see.
         self.judge_key: str | None = self.curator.pop("judge_key", None) if self.curator is not None else None
+        self.replay_key: str | None = self.curator.pop("replay_key", None) if self.curator is not None else None
+        self.history_key: str | None = self.curator.pop("history_key", None) if self.curator is not None else None
+        self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()
         home = daemon.home
@@ -107,7 +113,15 @@ class Run:
         self.spool = Spool(home.spool_dir, self.id, daemon.budget)
         self.sender = Sender(daemon, self.spool)
         self.watchdog = Watchdog(self, curator.budget_of(spec) or {})
-        self.credentials = RunCredentials(self.id, home, daemon.env, self.note, guarded=self.curator is not None)
+        # A run of the Curator, and a release run, whose agent never holds a push credential: only the daemon's own git
+        # gets the run's leases (credentials.RunCredentials.guarded).
+        self.credentials = RunCredentials(
+            self.id,
+            home,
+            daemon.env,
+            self.note,
+            guarded=self.curator is not None or spec.get("kind") == releases.RELEASE_KIND,
+        )
         self.agent = Agent(self)
         self.inbox = Inbox(self)
         self.reports = Reports(self)
@@ -121,6 +135,8 @@ class Run:
         """Spool an event of the run and write it to its log, every lease value masked."""
         at = at or now()
         self.watchdog.saw(kind, body)  # the session's running cost, for the watchdog of a run of the Curator
+        for listen in self.listeners:
+            listen(kind, body)
         body = credentials.scrub(body)
         seq = self.spool.append(kind, body, at)
         if seq is not None:
@@ -151,11 +167,12 @@ class Run:
             self.stop_reason = "timeout"
             raise Stopped("timeout")
 
-    def spawn(self, coro) -> None:
-        """Run ``coro`` next to the run, cancelled once the run is over here."""
+    def spawn(self, coro) -> asyncio.Task:
+        """Run ``coro`` next to the run, cancelled once the run is over here; its task."""
         task = asyncio.create_task(coro)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+        return task
 
     def unsupported(self, what: str, why: str) -> None:
         """The owner asked for something this worker cannot do: say so once in the run's log."""
@@ -225,10 +242,12 @@ class Run:
             self.deadline = self.loop.time() + self.timeout_s
 
     def agent_seconds(self) -> float:
-        """The agent time the run has used, as its timeout counts it: none before its agent first started."""
+        """The agent time the run has used, as its timeout counts it: none before its agent first started, and none
+        while it waits for its owner's answer, whose time moves the deadline back once the wait is over."""
         if not self.agent_started:
             return 0.0
-        return max(self.timeout_s - max(self.deadline - self.loop.time(), 0.0), 0.0)
+        clock = self.waiting_since if self.waiting_since is not None else self.loop.time()
+        return max(self.timeout_s - max(self.deadline - clock, 0.0), 0.0)
 
     # The run
 

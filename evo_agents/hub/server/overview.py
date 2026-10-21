@@ -4,7 +4,9 @@ One answer says what waits for the caller, what runs and what ended lately, over
 grant on; a hub admin's projects without one are left out. Each project goes through the check of GET
 /v1/projects/{p}/runs and GET /v1/projects/{p}/decisions, the same functions (``projects.project_access`` and
 ``runs.visible_plans``, through the project's hub sink), so a run or decision of a plan whose label the caller's grant
-does not reach is neither listed nor counted. The queries then take the visible (project, plan) pairs at once, and
+does not reach is neither listed nor counted. A decision is read as its run is (``views.readable_run``): through the
+run's plan, and for an author run that has put no plan yet, through the project's default label
+(``views.sees_unplanned``). The queries then take the visible (project, plan) pairs at once, and
 use the indexes the runs, decisions and plans already have.
 
 - counts: waiting_on_you, the open decisions of runs the caller dispatched; running, the runs in RUNNING_STATES;
@@ -13,11 +15,15 @@ use the indexes the runs, decisions and plans already have.
 - active_runs: at most MAX_ACTIVE runs in IN_FLIGHT, those whose agent works first, then waiting, parked, queued,
   the newest first within each;
 - recent_runs: the MAX_RECENT runs that ended last, in any end state;
-- open_decisions: at most MAX_DECISIONS open decisions, the caller's own first, the oldest first, each with when its
-  run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
+- a local run (``local_runs``) shows in active_runs (also while it is idle), in recent_runs when it ended, in counts
+  and in open_decisions, for its member alone, whatever its plan and with none: no other member sees it;
+- open_decisions: at most MAX_DECISIONS open decisions, of plan runs and author runs, the caller's own first, the oldest
+  first, each with when its run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
+  plan_id is null for the decision of an author run that has put no plan yet;
 - author_waiting: at most MAX_AUTHOR_WAITING of the caller's own author runs (``evo_agents.hub.author``) that wait for
   their reply in the chat, waiting or parked, the latest first, each with the agent's last message: those of a new
-  plan, which no plan's label covers, and those of a plan the caller sees;
+  plan, which no plan's label covers, and those of a plan the caller sees. A run with a decision still open is left
+  out: open_decisions lists it through its decision;
 - projects: each with the caller's role and max level, its repos, its active plans the caller sees, the open
   decisions of those plans, and where its Curator stands when it has a charter (``curator.curator_overview``).
 """
@@ -54,8 +60,7 @@ from evo_agents.hub.server.curator import CuratorOverview, curator_overview
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs.models import REQUESTED_RUNTIMES
-from evo_agents.hub.server.runs.service.views import visible_plans
+from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -67,7 +72,8 @@ MAX_DECISIONS = 20
 MAX_AUTHOR_WAITING = 20
 AUTHOR_WAITING_STATES = ("waiting", "parked")  # an author run's chat waits for its owner's reply (author.chat_status)
 RUNNING_STATES = runs.CLOCK_STATES  # an agent at work, headless or driven by a person, or its verify commands
-IN_FLIGHT = (*RUNNING_STATES, "waiting", "parked", "queued")  # in the order active_runs shows them
+IN_FLIGHT = (*RUNNING_STATES, "waiting", "parked", "queued", "idle")  # in the order active_runs shows them
+RECENT_STATES = (*runs.TERMINAL_STATES, "ended")  # ended is a local run's end
 ENDED_COUNTED = ("done", "failed", "lost")  # the end states counts has a number for; a cancel is the owner's own
 
 router = APIRouter(prefix="/v1/me", tags=["overview"], responses={401: {"model": ErrorBody}})
@@ -92,17 +98,17 @@ class DayCount(BaseModel):
 
 class OverviewRun(BaseModel):
     id: int
-    kind: Literal[runs.RUN_KINDS]
+    kind: Literal[runs.SHOWN_KINDS]
     project: str
     plan_id: str
     plan_title: str | None = Field(description="the plan's title as the hub holds it now")
     step_key: str | None = Field(description="null for a plan run")
     title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
-    state: Literal[runs.RUN_STATES]
+    state: Literal[runs.SHOWN_STATES]
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     worker_id: int | None = Field(description="the worker that claimed it; null while it is queued")
     worker: str | None = Field(description="that worker's name")
-    runtime: Literal[REQUESTED_RUNTIMES] = Field(description="any until a worker claims the run")
+    runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None
     steps_total: int | None = Field(description="the steps of a plan run's plan; null for a run of one step")
     steps_done: int | None = Field(description="a plan run's steps the plan holds done now; null for a run of one step")
@@ -111,17 +117,25 @@ class OverviewRun(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None = Field(description="why the run failed, was lost or ended")
+    machine: str | None = Field(None, description="the machine of a local run's session; null for any other run")
+    cwd: str | None = Field(None, description="the session's working directory; null for any other run")
+    claude_email: str | None = Field(None, description="the Claude account of a local run; null for any other run")
+    claude_profile: str | None = Field(None, description="the claude-profiles profile of a local run, when known")
+    last_activity_at: datetime | None = Field(None, description="the last sign of life of a local run's session")
 
 
 class OverviewDecision(BaseModel):
     id: int
     project: str
-    run_id: int = Field(description="the plan run the decision belongs to")
-    run_state: Literal[runs.RUN_STATES]
-    plan_id: str
+    run_id: int = Field(description="the plan run or author run the decision belongs to")
+    run_state: Literal[runs.SHOWN_STATES]
+    plan_id: str | None = Field(
+        description="the run's plan when its agent asked; null for an author run that had put no plan yet, and a "
+        "local run on none"
+    )
     plan_title: str | None
     step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.DECISION_CATEGORIES]
+    category: Literal[runs.SHOWN_DECISION_CATEGORIES]
     question: str
     owner: str = Field(description="the login of the run's owner, the one member who may answer")
     yours: bool = Field(description="whether you are that owner")
@@ -206,6 +220,32 @@ def _of_visible(visible, table):
     return and_(visible.c.project_id == table.c.project_id, visible.c.plan_id == table.c.plan_id)
 
 
+def _shown_run(visible, user_id: ColumnElement):
+    """Whether the caller sees a run, of a query that outer joins ``visible`` to it: its plan is a visible one, or it
+    is a local run of ``user_id``'s in a project the caller holds a grant on (:granted): a local run is its member's
+    alone, whatever its plan."""
+    runs_ = tables.runs
+    mine = and_(runs_.c.kind == "local", runs_.c.dispatched_by == user_id, one_of(runs_.c.project_id, name="granted"))
+    return or_(and_(runs_.c.kind != "local", visible.c.plan_id.is_not(None)), mine)
+
+
+def _decision_visible(visible, unplanned: ColumnElement[bool], user_id: ColumnElement):
+    """Whether the caller reads a decision, of a query that joins its run, as it reads the run: the run's plan is a
+    visible one, or it has none and ``unplanned`` selects its project (the caller reads its runs on no plan); a local
+    run's decisions are its member's alone (``user_id``) in a project the caller holds a grant on (:granted)."""
+    decisions, runs_ = tables.decisions, tables.runs
+    plan = func.coalesce(decisions.c.plan_id, runs_.c.plan_id)
+    seen = (
+        select(visible.c.plan_id)
+        .where(visible.c.project_id == decisions.c.project_id, visible.c.plan_id == plan)
+        .exists()
+    )
+    mine = and_(runs_.c.dispatched_by == user_id, one_of(decisions.c.project_id, name="granted"))
+    return or_(
+        and_(runs_.c.kind != "local", or_(seen, and_(plan.is_(None), unplanned))), and_(runs_.c.kind == "local", mine)
+    )
+
+
 def _granted(user_id: int):
     """The names of the projects member ``user_id`` holds a grant on, by name."""
     grants, projects = tables.grants, tables.projects
@@ -223,12 +263,13 @@ def _run_counts(visible, since: datetime):
     day = _utc_day(runs_.c.finished_at)
     return (
         select(runs_.c.state, day.label("day"), func.count().label("count"))
-        .join_from(runs_, visible, _of_visible(visible, runs_))
+        .join_from(runs_, visible, _of_visible(visible, runs_), isouter=True)
         .where(
+            _shown_run(visible, bindparam("user_id")),
             or_(
                 one_of(runs_.c.state, IN_FLIGHT),
                 and_(one_of(runs_.c.state, ENDED_COUNTED), runs_.c.finished_at >= since),
-            )
+            ),
         )
         .group_by(runs_.c.state, day)
     )
@@ -255,8 +296,8 @@ def _run_rows(visible, states: tuple[str, ...], order: tuple, limit: int):
     runs_, projects, users, workers, plans = tables.runs, tables.projects, tables.users, tables.workers, tables.plans
     picked = (
         select(runs_.c.id)
-        .join_from(runs_, visible, _of_visible(visible, runs_))
-        .where(one_of(runs_.c.state, states))
+        .join_from(runs_, visible, _of_visible(visible, runs_), isouter=True)
+        .where(_shown_run(visible, bindparam("user_id")), one_of(runs_.c.state, states))
         .order_by(*order)
         .limit(limit)
         .cte("picked")
@@ -284,6 +325,11 @@ def _run_rows(visible, states: tuple[str, ...], order: tuple, limit: int):
             runs_.c.started_at,
             runs_.c.finished_at,
             runs_.c.error,
+            runs_.c.machine,
+            runs_.c.cwd,
+            runs_.c.claude_email,
+            runs_.c.claude_profile,
+            runs_.c.last_activity_at,
         )
         .select_from(
             picked.join(runs_, runs_.c.id == picked.c.id)
@@ -296,9 +342,9 @@ def _run_rows(visible, states: tuple[str, ...], order: tuple, limit: int):
     )
 
 
-def _open_decisions(visible, user_id: int):
-    """The first MAX_DECISIONS open decisions of the visible plans, ``user_id``'s own first, then the oldest first,
-    with OverviewDecision's columns and what its parks_at is made of."""
+def _open_decisions(visible, user_id: int, unplanned: ColumnElement[bool]):
+    """The first MAX_DECISIONS open decisions the caller reads (``_decision_visible``), ``user_id``'s own first, then
+    the oldest first, with OverviewDecision's columns and what its parks_at is made of."""
     decisions, runs_, projects, users, plans = (
         tables.decisions,
         tables.runs,
@@ -313,6 +359,7 @@ def _open_decisions(visible, user_id: int):
             projects.c.name.label("project"),
             decisions.c.run_id,
             runs_.c.state.label("run_state"),
+            runs_.c.kind.label("run_kind"),
             decisions.c.plan_id,
             plans.c.body["title"].astext.label("plan_title"),
             decisions.c.step_key,
@@ -325,15 +372,14 @@ def _open_decisions(visible, user_id: int):
             runs_.c.parked_at,
         )
         .select_from(
-            decisions.join(visible, _of_visible(visible, decisions))
-            .join(runs_, runs_.c.id == decisions.c.run_id)
+            decisions.join(runs_, runs_.c.id == decisions.c.run_id)
             .join(projects, projects.c.id == decisions.c.project_id)
             .join(users, users.c.id == runs_.c.dispatched_by)
             .outerjoin(
                 plans, and_(plans.c.project_id == decisions.c.project_id, plans.c.plan_id == decisions.c.plan_id)
             )
         )
-        .where(decisions.c.state == "open")
+        .where(decisions.c.state == "open", _decision_visible(visible, unplanned, user_id))
         .order_by(yours.desc(), decisions.c.asked_at, decisions.c.id)
         .limit(MAX_DECISIONS)
     )
@@ -362,6 +408,8 @@ def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
         .scalar_subquery()
     )
     seen = select(visible.c.plan_id).where(_of_visible(visible, runs_)).exists()
+    decisions = tables.decisions
+    asks = select(decisions.c.id).where(decisions.c.run_id == runs_.c.id, decisions.c.state == "open").exists()
     return (
         select(
             runs_.c.id,
@@ -386,14 +434,16 @@ def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
             one_of(runs_.c.state, AUTHOR_WAITING_STATES),
             granted,
             or_(runs_.c.plan_id.is_(None), seen),
+            ~asks,  # open_decisions lists it through its decision
         )
         .order_by(runs_.c.id.desc())
         .limit(MAX_AUTHOR_WAITING)
     )
 
 
-def _decision_counts(visible, user_id: int):
-    """For each project, its open decisions of the visible plans, and how many of those are ``user_id``'s."""
+def _decision_counts(visible, user_id: int, unplanned: ColumnElement[bool]):
+    """For each project, its open decisions the caller reads (``_decision_visible``), and how many of those are
+    ``user_id``'s."""
     decisions, runs_ = tables.decisions, tables.runs
     return (
         select(
@@ -401,10 +451,8 @@ def _decision_counts(visible, user_id: int):
             func.count().label("total"),
             func.count().filter(runs_.c.dispatched_by == user_id).label("yours"),
         )
-        .select_from(
-            decisions.join(visible, _of_visible(visible, decisions)).join(runs_, runs_.c.id == decisions.c.run_id)
-        )
-        .where(decisions.c.state == "open")
+        .select_from(decisions.join(runs_, runs_.c.id == decisions.c.run_id))
+        .where(decisions.c.state == "open", _decision_visible(visible, unplanned, user_id))
         .group_by(decisions.c.project_id)
     )
 
@@ -429,20 +477,25 @@ _TODAY = select(_utc_day(func.now()))
 _GRANTED = _granted(bindparam("user_id"))
 _RUN_COUNTS = _run_counts(_VISIBLE, bindparam("since"))
 _ACTIVE_RUNS = _run_rows(_VISIBLE, IN_FLIGHT, _active_order(), MAX_ACTIVE)
-_RECENT_RUNS = _run_rows(_VISIBLE, runs.TERMINAL_STATES, _recent_order(), MAX_RECENT)
-_OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"))
-_DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"))
+_RECENT_RUNS = _run_rows(_VISIBLE, RECENT_STATES, _recent_order(), MAX_RECENT)
+_UNPLANNED = one_of(tables.decisions.c.project_id, name="unplanned")
+_OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"), _UNPLANNED)
+_DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"), _UNPLANNED)
 _PROJECT_COUNTS = _project_counts(_VISIBLE, one_of(tables.projects.c.id, name="granted"))
 _AUTHOR_WAITING = _author_waiting(_VISIBLE, bindparam("user_id"), one_of(tables.runs.c.project_id, name="granted"))
 
 
-def _bound(user_id: int, pairs: list[tuple[int, str]], granted: list[int], since: datetime) -> dict:
+def _bound(
+    user_id: int, pairs: list[tuple[int, str]], granted: list[int], unplanned: list[int], since: datetime
+) -> dict:
     """The parameters of the statements above: the visible (project_id, plan_id) ``pairs``, the projects
-    ``granted``, the caller and the start of the counted days."""
+    ``granted``, those of them whose runs on no plan the caller sees (``unplanned``), the caller and the start of the
+    counted days."""
     return {
         "visible_projects": [project_id for project_id, _ in pairs],
         "visible_plans": [plan_id for _, plan_id in pairs],
         "granted": granted,
+        "unplanned": unplanned,
         "user_id": user_id,
         "since": since,
     }
@@ -465,6 +518,7 @@ def _run(row) -> OverviewRun:
     fields = dict(row._mapping)
     if fields["kind"] != "plan":
         fields["steps_done"] = fields["steps_total"] = None
+    fields["plan_id"] = fields["plan_id"] or ""  # a local run on no plan, as Run shows one
     return OverviewRun(**fields)
 
 
@@ -477,6 +531,11 @@ def _parks_at(state: str, waiting_since: datetime | None, parked_at: datetime | 
 def _decision(row, wait: timedelta) -> OverviewDecision:
     fields = dict(row._mapping)
     waiting_since, parked_at = fields.pop("waiting_since"), fields.pop("parked_at")
+    kind = fields.pop("run_kind")
+    if kind == "local":  # no worker holds it and nothing parks it: it waits as long as it takes
+        return OverviewDecision(**fields, parks_at=None)
+    if kind == "chat":  # the hub parks a chat run sooner, so a worker's slot is not held for long
+        wait = min(wait, timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS))
     return OverviewDecision(**fields, parks_at=_parks_at(fields["run_state"], waiting_since, parked_at, wait))
 
 
@@ -491,7 +550,9 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         for access in accesses:
             pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
         since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=UTC)
-        bound = _bound(user.user_id, pairs, [access.project_id for access in accesses], since)
+        granted = [access.project_id for access in accesses]
+        unplanned = [access.project_id for access in accesses if sees_unplanned(access, None)]
+        bound = _bound(user.user_id, pairs, granted, unplanned, since)
         counted = (await conn.execute(_RUN_COUNTS, bound)).all()
         active = (await conn.execute(_ACTIVE_RUNS, bound)).all()
         recent = (await conn.execute(_RECENT_RUNS, bound)).all()

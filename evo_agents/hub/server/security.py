@@ -8,12 +8,24 @@ without use: using it pushes the expiry TOKEN_TTL past now, but the row is writt
 busy token does not write on every request. Revoked, expired and unknown credentials all get the same 401, which names
 ``evo-agents hub login`` (``evo-agents worker join`` on the worker's routes).
 
-``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and fails closed: a route added later needs a
-credential unless it is listed there. A machine token arrives as ``Authorization: Bearer`` and a web session as
+``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
+closed: a route added later needs a credential unless it is listed there. Each public prefix checks a credential of
+its own. One serves the files of plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in
+the path is their credential (``evo_agents.hub.server.plugin_pages``). Another is the API of the hub for plugins,
+whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). The
+third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/<its id>/``
+(``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
+the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. A
+machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
 Every comparison of a secret value is constant-time.
+
+An ingest key of a project's signals, ``evi_...`` (``evo_agents.hub.signals``), arrives as ``Authorization: Bearer``
+and passes only to the one route it writes through, ``POST /v1/signals/{project}`` (INGEST_ROUTE), which checks the key
+itself; anywhere else it gets 403 before the database is asked, the routes that read signals included. That route also
+takes a member's machine token or web session, checked here as anywhere.
 
 A worker token arrives as ``Authorization: Bearer`` too, and works only under WORKER_PREFIX, the routes of the
 worker daemon, where machine tokens and web sessions get 403: neither side can stand in for the other, and the
@@ -80,15 +92,26 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
         "/v1/worker/join",  # a pairing code is the credential
-        "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (evo_agents.hub.server.telegram)
+        # the secret token Telegram sends is the credential: the named exception of the core plugin telegram, whose
+        # webhook kept its path when the other core plugins' went under HOOKS_PREFIX
+        "/v1/telegram/webhook",
+        "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
+        "/v1/branding/logo",
+        "/v1/branding/favicon",
     }
 )
+HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)
+# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), a
+# plugin token (evo_agents.hub.server.task_dispatch), or a core plugin's own secret (HOOKS_PREFIX).
+PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX)
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF
     re.compile(r"/v1/worker/runs/[^/]+/terminal"),  # the worker's end: its evw_ token and the protocol header
 )
 WEBSOCKET_REFUSED = 4403  # the close code of a websocket under /v1 that no route checks a credential of
+INGEST_PREFIX = "evi_"  # an ingest key of a project's signals (evo_agents.hub.signals)
+INGEST_ROUTE = re.compile(r"/v1/signals/[^/]+")  # where an ingest key writes, with POST, and nowhere else
 LOGIN_HINT = "run `evo-agents hub login`"
 JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
@@ -145,7 +168,7 @@ class RunScope:
     project: str
     role: str  # the owner's role on the project when the request came, at most writer
     max_level: str  # the owner's grant's, when the request came
-    kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp.JUDGE_TOOLS``)
+    kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp_tools.JUDGE_TOOLS``)
 
 
 @dataclass(frozen=True)
@@ -295,6 +318,11 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
     return Principal(user_id, login, admin, token_id, kind, digest)
 
 
+def is_public(path: str) -> bool:
+    """Whether a request to ``path`` needs no credential of the hub: PUBLIC_PATHS, and PUBLIC_PREFIXES."""
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
+
+
 def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) -> Response:
     response = error_response(request, 401, message, headers=WWW_AUTHENTICATE)
     if clear_cookie:  # the browser should stop sending a session that will never work again
@@ -303,7 +331,7 @@ def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) 
 
 
 class Authenticate:
-    """Pure ASGI middleware: every request under /v1 outside PUBLIC_PATHS needs a live credential of a kind the path
+    """Pure ASGI middleware: every request under /v1 that is not public needs a live credential of a kind the path
     takes, a write made with the session cookie needs its CSRF header, and a request under WORKER_PREFIX needs the
     worker protocol header. The principal goes to ``request.state.principal``. A websocket under /v1 passes only to
     the routes of SELF_CHECKED_WEBSOCKETS, which check their own credential."""
@@ -321,16 +349,12 @@ class Authenticate:
                 await WebSocketClose(code=WEBSOCKET_REFUSED, reason=reason)(scope, receive, send)
             return
         worker_route = path.startswith(WORKER_PREFIX)
-        if (
-            scope["type"] != "http"
-            or not path.startswith(PROTECTED_PREFIX)
-            or (path in PUBLIC_PATHS and not worker_route)
-        ):
+        if scope["type"] != "http" or not path.startswith(PROTECTED_PREFIX) or (is_public(path) and not worker_route):
             await self.app(scope, receive, send)
             return
         request = Request(scope)
         refusal = self._protocol_refusal(request) if worker_route else None
-        if refusal is None and path not in PUBLIC_PATHS:
+        if refusal is None and not is_public(path):
             refusal = await self._check(request, worker_route)
         if refusal is not None:
             await refusal(scope, receive, send)
@@ -346,6 +370,8 @@ class Authenticate:
             if scheme.lower() != "bearer" or not token.strip():
                 return unauthorized(request, f"the Authorization header must be `Bearer <token>`: {hint}")
             token = token.strip()
+            if token.startswith(INGEST_PREFIX):
+                return self._ingest_refusal(request, token, worker_route)
             kind = WORKER if token.startswith(PREFIXES[WORKER]) else MACHINE
         else:
             token = request.cookies.get(SESSION_COOKIE)
@@ -374,6 +400,17 @@ class Authenticate:
             what = {MACHINE: "token", WEB: "web session", WORKER: "worker token"}[kind]
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
+        return None
+
+    @staticmethod
+    def _ingest_refusal(request: Request, token: str, worker_route: bool) -> Response | None:
+        # An ingest key writes signals and does nothing else: decided by the path and the method alone, before the
+        # database. The route it may reach checks the key, its project and its rate (evo_agents.hub.signals).
+        if worker_route or request.method != "POST" or not INGEST_ROUTE.fullmatch(request.url.path):
+            return error_response(
+                request, 403, "an ingest key (evi_...) only writes signals, with POST /v1/signals/{project}"
+            )
+        request.state.ingest_token = token
         return None
 
     @staticmethod

@@ -15,6 +15,16 @@ describe("fromResponse", () => {
     expect(error.kind).toBe("forbidden");
   });
 
+  it("keeps what the hub said beside its message, and leaves it out when it said nothing more", () => {
+    const conflict = { item: "k1", code: "UC ORD-1", base: "old", latest: "theirs" };
+    const response = new Response(null, { status: 409 });
+    const error = fromResponse(response, { error: "conflict", message: "items changed", request_id: "rid-3", detail: [conflict] });
+    expect(error.info.detail).toEqual([conflict]);
+    expect(toInfo(error).detail).toEqual([conflict]);
+    expect("detail" in fromResponse(response, { error: "conflict", message: "x", detail: [] }).info).toBe(false);
+    expect("detail" in fromResponse(response, { error: "conflict", message: "x", detail: "text" }).info).toBe(false);
+  });
+
   it("falls back to the status and the X-Request-ID header without a body", () => {
     const response = new Response(null, { status: 502, statusText: "Bad Gateway", headers: { "x-request-id": "rid-2" } });
     expect(fromResponse(response, undefined).info).toEqual({

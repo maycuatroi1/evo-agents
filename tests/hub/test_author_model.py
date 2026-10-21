@@ -65,6 +65,37 @@ def test_the_author_prompt_names_the_skill_mode_and_forbids_hub_plan_and_questio
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
 
 
+def test_the_author_prompt_of_a_worker_with_author_decisions_asks_options_as_decisions_and_the_rest_in_the_chat():
+    prompt = author.build_author_prompt("p", "m", "Plan a wait helper.", [{"repo": "h"}], 1, decisions=True)
+    assert "`evo-agents worker ask --category scope` or `--category architecture`" in prompt
+    assert "scope for the scope, outcome, compatibility and rollout of the plan; architecture for a choice" in prompt
+    assert "`--recommended KEY`" in prompt and f"`--context-file` under {runs.RESULT_DIR}/" in prompt
+    assert "An open question, without options, goes in that message." in prompt
+    assert "the last message of each of your turns goes to the chat as yours" in prompt
+    assert "Do not use an interactive question tool (AskUserQuestion, or any tool like it)" in prompt
+    assert "ask it in that last message and end your turn" not in prompt
+    assert set(author.ASK_CATEGORIES) <= set(runs.DECISION_CATEGORIES)
+    assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
+
+
+def test_the_author_prompt_of_a_worker_without_the_feature_asks_in_the_chat_alone():
+    prompt = author.build_author_prompt("p", "m", "Plan a wait helper.", [{"repo": "h"}], 1)
+    assert author.ASK_COMMAND not in prompt and "--category" not in prompt
+    assert "ask it in that last message and end your turn" in prompt
+    assert "Do not use an interactive question tool (AskUserQuestion, or any tool like it)" in prompt
+    assert author.QUESTION_TOOLS == ("AskUserQuestion",)
+
+
+def test_the_author_reply_prompt_names_answers_and_replies():
+    answer = {"id": 3, "text": "Answer to decision #1", "decision_id": 1}
+    reply = {"id": 4, "text": "Only alpha.", "decision_id": None}
+    assert author.reply_prompt([reply]) == author.REPLY_PROMPT
+    assert author.reply_prompt([answer, {**answer, "id": 5, "decision_id": 2}]) == author.ANSWERS_PROMPT
+    assert author.reply_prompt([answer, reply]) == author.REPLY_PROMPT + author.ANSWERS_TOO
+    assert "the option the member chose and the member's own words" in author.ANSWERS_PROMPT
+    assert "answers to the decisions you asked" in author.RESUME_PROMPT
+
+
 def test_the_author_prompt_keeps_a_request_of_16_kib_whole():
     request = "line of the request\n" * (author.MAX_REQUEST_BYTES // 20)
     prompt = author.build_author_prompt("p", "m", request, [{"repo": "h"}], 1)

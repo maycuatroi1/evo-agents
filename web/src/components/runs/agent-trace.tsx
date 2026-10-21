@@ -4,7 +4,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowDown,
   Bot,
-  Braces,
   Brain,
   ChevronRight,
   Circle,
@@ -13,46 +12,50 @@ import {
   CircleX,
   Info,
   ListChecks,
-  LoaderCircle,
-  type LucideIcon,
   MessageSquare,
   User,
 } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { memo, type ReactNode, type RefObject, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { useNow } from "@/components/kg/use-now";
 import { SafeMarkdown } from "@/components/memories/markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { splitLinks } from "./forge";
+import type { RepoWeb } from "./forge";
 import { LinkedText } from "./links";
 import type { DescribeMove } from "./log-model";
 import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
+import { TraceTyping } from "./chat-parts";
+import { holdsStepReport } from "./step-report-start";
 import {
   buildTrace,
-  cutOutput,
   openByDefault,
-  type ToolCall,
-  toolLabel,
   TRACE_VIRTUAL_THRESHOLD,
   type TraceItem,
 } from "./trace-model";
-import { KIND_ICON, useTraceDuration } from "./trace-look";
+import { useTraceDuration } from "./trace-look";
+import { StepReportMessage } from "./trace-report-lazy";
+import { Row, Who } from "./trace-row";
+import { TermBlock } from "./trace-term";
+import { callRunning, groupByIntent, type NormalItem } from "./trace-groups";
+import { GroupRow } from "./trace-tools";
 import type { LogStatus } from "./use-run-log";
 
 /**
  * The kit's AgentTrace, the default tab of a run's page: what the agent did, step by step (trace-model.ts reads the
  * events): its messages, its thinking folded under "Thought for 9s", each tool call as one row (folded, opened when it
  * failed; the output on `term-bg`, cut at 20 lines with "Show the full output"), the plan as a checklist, the owner's
- * messages, "Asked you" for a decision with a link to its card, and the moves between states in `caption`. A running
- * run ends with the typing dots. It reads the same events as the Raw log (SSE, then polling), in a `role="log"` region
+ * messages, "Asked you" for a decision with a link to its card, and the moves between states in `caption`. A step's
+ * report, the message a step's agent ends with, is a card (trace-report.tsx). A running run ends with the typing dots. It reads the same events as the Raw log (SSE, then polling), in a `role="log"` region
  * (polite) that follows the newest item unless the person scrolled up; past 500 items only the ones in view render.
  * Tool rows are `details`, so they open and close without script. Every http and https address in what the trace shows
  * is a link to a new tab (links.tsx); the one in a tool row's folded line is text there, since a link inside its
- * `summary` would also open and close the row, and the row's Input shows it as a link once opened.
+ * `summary` would also open and close the row, and the row's Input shows it as a link once opened. A shell call's
+ * folded line is what the command does once its setup is done (`commandGist`), the whole command in its Input. Under
+ * 768 px tool calls in a row are one block (trace-tools.tsx), a folded line takes two lines, times drop their seconds,
+ * and the runtime events the trace does not read are left to the Raw log, with one line saying how many.
  */
 
 /** How close to the end (px) still counts as at the end. */
@@ -69,199 +72,21 @@ export type TraceContext = {
   describe: DescribeMove;
   /** Decisions open now whose card is on this page, which "Asked you" links to; the others link to the Inbox. */
   openDecisions: ReadonlySet<number>;
+  /** An author run's: opens a decision's card in the Chat tab, where every decision of the run is. */
+  showDecision?: (id: number) => void;
   /** The agent is at work: the trace ends with the typing dots. */
   working: boolean;
   /** The run may still write events. */
   active: boolean;
+  /** The web page of the run's repo on a branch, which a step report's branch and commits link to. */
+  webOfBranch?: (branch: string | null) => RepoWeb | null;
 };
 
-function useTimes() {
-  const format = useFormatter();
-  return (at: string) => {
-    const date = new Date(at);
-    return { short: format.dateTime(date, { timeStyle: "medium" }), full: format.dateTime(date, { dateStyle: "full", timeStyle: "long" }) };
-  };
-}
 
-function Time({ at }: { at: string }) {
-  const times = useTimes();
-  const { short, full } = times(at);
-  return (
-    <time dateTime={at} title={full} className="self-center font-mono text-xs leading-4 whitespace-nowrap text-fg-subtle tabular-nums">
-      {short}
-    </time>
-  );
-}
+const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
+const message = (text: string) => <SafeMarkdown className="leading-[21px]" testId="trace-message">{text}</SafeMarkdown>;
 
-type Look = "agent" | "user" | "tool" | "error" | "ask" | "live" | "system";
-
-const ICON_LOOK: Record<Look, string> = {
-  agent: "text-brand",
-  user: "bg-muted text-foreground",
-  tool: "text-muted-foreground",
-  error: "text-danger",
-  ask: "border-attention-solid bg-attention-soft text-attention",
-  live: "border-running text-running",
-  system: "h-[22px] border-0 bg-transparent text-fg-subtle",
-};
-
-/** One event of the kit's trace: an icon on the rail, a head, the time, and a body under the head. */
-function Row({ icon: Icon, look, head, at, children, system = false }: { icon: LucideIcon; look: Look; head: ReactNode; at: string | null; children?: ReactNode; system?: boolean }) {
-  return (
-    <div className={cn("grid grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 gap-y-2", system ? "pb-2" : "pt-2 pb-3")}>
-      <span className={cn("relative z-[1] grid size-7 place-items-center rounded-sm border bg-card", ICON_LOOK[look])} aria-hidden="true">
-        <Icon className={system ? "size-3.5" : "size-4"} />
-      </span>
-      <div className={cn("flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5", system ? "min-h-[22px] text-xs text-fg-subtle" : "min-h-7 text-[13px] text-muted-foreground")}>
-        {head}
-      </div>
-      {at ? <Time at={at} /> : <span />}
-      {children ? <div className="col-span-2 col-start-2 min-w-0">{children}</div> : null}
-    </div>
-  );
-}
-
-function Who({ children }: { children: ReactNode }) {
-  return <span className="font-semibold text-foreground">{children}</span>;
-}
-
-/** Text on the terminal surface, cut at 20 lines unless the person asks for all of it. */
-function TermBlock({ text, diff = false, label, testId }: { text: string; diff?: boolean; label?: string; testId: string }) {
-  const t = useTranslations("runs.detail.trace");
-  const [whole, setWhole] = useState(false);
-  const { shown, total, cut } = cutOutput(text);
-  const body = whole ? text.replace(/\n$/, "") : shown;
-  return (
-    <div className="min-w-0 border-t border-term-border first:border-t-0" data-testid={testId}>
-      {label ? <p className="bg-term-bg px-3 pt-2 font-mono text-[11px] leading-4 text-term-muted">{label}</p> : null}
-      <pre
-        className="m-0 max-h-[32rem] overflow-auto bg-term-bg px-3 py-2.5 font-mono text-xs leading-[18px] whitespace-pre text-term-fg [font-variant-ligatures:none]"
-        tabIndex={0}
-      >
-        {diff
-          ? body.split("\n").map((line, index) => (
-              <span key={index} className={cn("block", line.startsWith("+") ? "text-term-ok" : line.startsWith("-") ? "text-term-error" : "")}>
-                {line ? <LinkedText text={line} tone="term" /> : " "}
-              </span>
-            ))
-          : <LinkedText text={body} tone="term" />}
-      </pre>
-      {cut ? (
-        <button
-          type="button"
-          className="block w-full border-t border-term-border bg-term-bg px-3 py-1.5 text-left font-mono text-xs text-term-muted hover:bg-term-row hover:text-term-fg max-md:min-h-11"
-          aria-expanded={whole}
-          onClick={() => setWhole((value) => !value)}
-          data-testid="trace-output-more"
-        >
-          {whole ? t("showLess", { count: 20 }) : t("showFull", { count: total })}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolMeta({ tool, active, now }: { tool: ToolCall; active: boolean; now: number | null }) {
-  const t = useTranslations("runs.detail.trace");
-  const short = useTraceDuration();
-  const running = tool.status === "pending" || tool.status === "in_progress";
-  return (
-    <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-xs leading-4 whitespace-nowrap text-fg-subtle tabular-nums">
-      {tool.diff ? (
-        <span data-testid="trace-diffstat">
-          <span className="text-success">+{tool.diff.added}</span> <span className="text-danger">−{tool.diff.removed}</span>
-          <span className="sr-only">{t("diff", { added: tool.diff.added, removed: tool.diff.removed })}</span>
-        </span>
-      ) : null}
-      {tool.exitCode !== null ? (
-        <span className={tool.exitCode === 0 ? "text-success" : "text-danger"} data-testid="trace-exit">
-          {t("exit", { code: tool.exitCode })}
-        </span>
-      ) : tool.status === "failed" ? (
-        <span className="text-danger">{t("status.failed")}</span>
-      ) : null}
-      {running ? (
-        active ? (
-          <span className="inline-flex items-center gap-1 text-running" data-testid="trace-tool-running">
-            <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            {now !== null ? short(Math.max(0, now - Date.parse(tool.startedAt))) : t("status.in_progress")}
-          </span>
-        ) : (
-          <span>{t("noResult")}</span>
-        )
-      ) : tool.ms !== null ? (
-        <span data-testid="trace-duration">{short(tool.ms)}</span>
-      ) : null}
-    </span>
-  );
-}
-
-function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: string; open: boolean; onToggle: (open: boolean) => void; active: boolean }) {
-  const t = useTranslations("runs.detail.trace");
-  const running = tool.status === "pending" || tool.status === "in_progress";
-  const now = useNow(running && active);
-  const failed = tool.status === "failed" || (tool.exitCode !== null && tool.exitCode !== 0);
-  const { name: named, arg } = toolLabel(tool);
-  const name = named ?? t(`kind.${tool.kind}`);
-  // The folded line shows the argument as text; an address in it is a link in the Input once the row is open.
-  const input = tool.input ?? (arg && splitLinks(arg).some((piece) => piece.href) ? arg : null);
-  const nothing = !tool.output && !tool.change && !input;
-  return (
-    <Row
-      icon={KIND_ICON[tool.kind]}
-      look={failed ? "error" : running && active ? "live" : "tool"}
-      at={at}
-      head={
-        <>
-          <Who>{name}</Who>
-          {tool.description ? (
-            <span className="min-w-0 truncate">
-              <LinkedText text={tool.description} />
-            </span>
-          ) : null}
-        </>
-      }
-    >
-      <details
-        open={open}
-        onToggle={(event) => {
-          const now = event.currentTarget.open;
-          if (now !== open) onToggle(now);
-        }}
-        className="group/tool min-w-0 overflow-hidden rounded-sm border bg-card"
-        data-testid="trace-tool"
-        data-status={tool.status}
-        data-kind={tool.kind}
-        data-failed={failed || undefined}
-      >
-        <summary className="flex h-9 cursor-pointer list-none items-center gap-2 px-3 text-[13px] select-none group-open/tool:border-b hover:bg-accent max-md:h-11 [&::-webkit-details-marker]:hidden">
-          <ChevronRight
-            className="size-3.5 shrink-0 text-fg-subtle transition-transform duration-[var(--transition-duration-base)] group-open/tool:rotate-90"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs leading-4 text-muted-foreground" title={arg ?? undefined} data-testid="trace-tool-arg">
-            {arg ?? (tool.id ? <span className="text-fg-subtle">{tool.id}</span> : null)}
-          </span>
-          <span className="sr-only">, {t(`status.${tool.status}`)}</span>
-          <ToolMeta tool={tool} active={active} now={now} />
-        </summary>
-        {open ? (
-          nothing ? (
-            <p className="px-3 py-2 text-xs text-fg-subtle">{running && active ? t("noOutputYet") : t("noOutput")}</p>
-          ) : (
-            <div className="min-w-0">
-              {tool.change ? <TermBlock text={tool.change} diff testId="trace-tool-change" /> : null}
-              {tool.output ? <TermBlock text={tool.output} diff={tool.kind === "edit"} testId="trace-tool-output" /> : null}
-              {input ? <TermBlock text={input} label={t("input")} testId="trace-tool-input" /> : null}
-            </div>
-          )
-        ) : null}
-      </details>
-    </Row>
-  );
-}
-
-function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
+function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" }>; context: TraceContext }) {
   const t = useTranslations("runs.detail.trace");
   const short = useTraceDuration();
   const thought = item.thought;
@@ -280,7 +105,12 @@ function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
             </div>
           </details>
         ) : null}
-        {item.text ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{item.text}</SafeMarkdown> : null}
+        {/* A step's report, which Markdown would fold into one paragraph, shows as a card between the words around it. */}
+        {holdsStepReport(item.text) ? (
+          <StepReportMessage text={item.text} message={message} prose={reportProse} webOf={(branch) => context.webOfBranch?.(branch) ?? null} />
+        ) : item.text ? (
+          message(item.text)
+        ) : null}
       </div>
     </Row>
   );
@@ -341,9 +171,18 @@ function AskRow({ item, context }: { item: Extract<TraceItem, { type: "ask" }>; 
           <span className="min-w-0 text-foreground [overflow-wrap:anywhere]" data-testid="trace-ask-question">
             <LinkedText text={item.question} />
           </span>
-          {onPage ? (
-            <a href={`#${decisionAnchor(item.decisionId)}`} className={link} data-testid="trace-ask-link">
-              {mine ? t("answer") : t("viewDecision")}
+          {onPage || context.showDecision ? (
+            <a
+              href={`#${decisionAnchor(item.decisionId)}`}
+              className={link}
+              onClick={(event) => {
+                if (!context.showDecision) return;
+                event.preventDefault();
+                context.showDecision(item.decisionId);
+              }}
+              data-testid="trace-ask-link"
+            >
+              {mine && onPage ? t("answer") : t("viewDecision")}
             </a>
           ) : (
             <Link href={decisionHref(item.decisionId)} className={link} data-testid="trace-ask-link">
@@ -428,38 +267,25 @@ function MoveRow({ item, context }: { item: Extract<TraceItem, { type: "move" }>
   );
 }
 
-function RawRow({ item }: { item: Extract<TraceItem, { type: "raw" }> }) {
-  const t = useTranslations("runs.detail.trace");
-  const labels = [...new Set(item.events.map((event) => event.label))].join(", ");
-  const text = item.events.map((event) => `#${event.seq} ${event.label}\n${event.json}`).join("\n\n");
-  // One caption line, like a move: what the runtime sent that the trace does not read, folded with its raw JSON.
-  return (
-    <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3 pb-2">
-      <span className="relative z-[1] grid h-[22px] w-7 place-items-center text-fg-subtle" aria-hidden="true">
-        <Braces className="size-3.5" />
-      </span>
-      <details className="group/raw min-w-0" data-testid="trace-raw">
-        <summary className="flex min-h-[22px] cursor-pointer list-none items-center gap-2 text-xs text-fg-subtle select-none hover:text-foreground max-md:min-h-11 [&::-webkit-details-marker]:hidden">
-          <span className="shrink-0">{t("raw", { count: item.events.length })}</span>
-          <ChevronRight className="size-3.5 shrink-0 transition-transform duration-[var(--transition-duration-base)] group-open/raw:rotate-90" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate font-mono">{labels}</span>
-          <Time at={item.at} />
-        </summary>
-        <div className="mt-2 overflow-hidden rounded-sm border border-term-border">
-          <TermBlock text={text} testId="trace-raw-json" />
-        </div>
-      </details>
-    </div>
-  );
-}
-
 const Item = memo(
-  function Item({ item, context, open, onToggle }: { item: TraceItem; context: TraceContext; open: boolean; onToggle: (key: string, open: boolean) => void; signature: string }) {
+  function Item({
+    item,
+    context,
+    open,
+    onToggle,
+  }: {
+    item: NormalItem;
+    context: TraceContext;
+    /** A group of tool calls': "1:a,b", whether it is open and the keys of its open calls. */
+    open: string;
+    onToggle: (key: string, open: boolean) => void;
+    signature: string;
+  }) {
     switch (item.type) {
+      case "group":
+        return <GroupRow group={item} open={open} onToggle={onToggle} active={context.active} />;
       case "agent":
-        return <AgentRow item={item} />;
-      case "tool":
-        return <ToolRow tool={item.tool} at={item.at} open={open} onToggle={(value) => onToggle(item.key, value)} active={context.active} />;
+        return <AgentRow item={item} context={context} />;
       case "plan":
         return <PlanRow item={item} />;
       case "ask":
@@ -470,8 +296,6 @@ const Item = memo(
         return <MoveRow item={item} context={context} />;
       case "system":
         return <SystemRow item={item} />;
-      case "raw":
-        return <RawRow item={item} />;
     }
   },
   (before, after) =>
@@ -479,36 +303,17 @@ const Item = memo(
 );
 
 /** What makes an item look different: the memo of a row re-renders only when it changes. */
-function signature(item: TraceItem): string {
+function signature(item: NormalItem): string {
   switch (item.type) {
     case "agent":
       return `${item.key}:${item.text.length}:${item.thought?.text.length ?? -1}:${item.thought?.ms ?? -1}`;
-    case "tool": {
-      const tool = item.tool;
-      return `${item.key}:${tool.status}:${tool.title}:${tool.arg}:${tool.ms}:${tool.exitCode}:${tool.output?.length ?? -1}:${tool.diff?.added}:${tool.diff?.removed}`;
-    }
-    case "raw":
-      return `${item.key}:${item.events.length}`;
+    case "group":
+      return item.calls
+        .map(({ key, tool }) => `${key}:${tool.status}:${tool.title}:${tool.arg}:${tool.ms}:${tool.exitCode}:${tool.output?.length ?? -1}:${tool.diff?.added}:${tool.diff?.removed}`)
+        .join("|");
     default:
       return item.key;
   }
-}
-
-function Typing() {
-  const t = useTranslations("runs.detail.trace");
-  return (
-    <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3 pt-2 pb-1" data-testid="trace-typing">
-      <span className="grid size-7 place-items-center rounded-sm border border-running bg-card text-running" aria-hidden="true">
-        <Bot className="size-4" />
-      </span>
-      <span className="flex items-center gap-[3px]">
-        <span className="sr-only">{t("working")}</span>
-        {[0, 1, 2].map((dot) => (
-          <i key={dot} aria-hidden="true" className="size-[5px] animate-typing rounded-full bg-running" style={{ animationDelay: `${dot * 0.2}s` }} />
-        ))}
-      </span>
-    </div>
-  );
 }
 
 type Virtual = ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLLIElement>>;
@@ -518,11 +323,10 @@ type Virtual = ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLLIElement>>;
  * flow and `relative` in the plain list, `absolute` in the virtual one; a `relative` here would win over that
  * `absolute` in `cn` and put every virtual row back in flow, below the ones rendered before it.
  */
-const LINE = "before:absolute before:top-[38px] before:-bottom-0.5 before:left-[13.5px] before:w-px before:bg-border last:before:hidden";
-const SYSTEM_LINE = "before:top-[24px]";
+const LINE = "";
 
-function lineClass(item: TraceItem) {
-  return cn(LINE, (item.type === "move" || item.type === "system" || item.type === "raw") && SYSTEM_LINE);
+function lineClass(item: NormalItem) {
+  return cn(LINE, item.type === "group" ? "py-0" : null);
 }
 
 function VirtualItems({
@@ -531,8 +335,8 @@ function VirtualItems({
   scrollRef,
   virtualRef,
 }: {
-  items: readonly TraceItem[];
-  render: (item: TraceItem) => ReactNode;
+  items: readonly NormalItem[];
+  render: (item: NormalItem) => ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
   virtualRef: RefObject<Virtual | null>;
 }) {
@@ -589,19 +393,25 @@ export function AgentTrace({
    * From the xl breakpoint, take the height the parent gives (the run page's session card, as tall as the window
    * allows) instead of growing with the items up to 70 % of the window.
    */
-  fill?: boolean;
+  fill?: boolean | "always";
 }) {
   const t = useTranslations("runs.detail.trace");
   const tLog = useTranslations("runs.detail.log");
   const deferred = useDeferredValue(events);
-  const items = useMemo(() => buildTrace(deferred), [deferred]);
+  const built = useMemo(() => buildTrace(deferred), [deferred]);
+  // Calls that did the same kind of work are one row; the runtime's bookkeeping events are left to the Raw log.
+  const items = useMemo(() => groupByIntent(built), [built]);
+  const rawLeft = useMemo(() => built.reduce((sum, item) => sum + (item.type === "raw" ? item.events.length : 0), 0), [built]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [follow, setFollow] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualRef = useRef<Virtual | null>(null);
   const lastTop = useRef(0);
   const virtual = items.length > TRACE_VIRTUAL_THRESHOLD;
-  const typing = context.working && status !== "failed";
+  // A group whose last call runs is the trace's live element (its clock): no typing dots after it.
+  const lastItem = items[items.length - 1];
+  const liveGroup = lastItem?.type === "group" && callRunning(lastItem.calls[lastItem.calls.length - 1].tool);
+  const typing = context.working && status !== "failed" && !liveGroup;
 
   const onToggle = useMemo(
     () => (key: string, open: boolean) =>
@@ -612,8 +422,14 @@ export function AgentTrace({
       }),
     [],
   );
-  const isOpen = (item: TraceItem) => (item.type === "tool" ? (toggled.get(item.key) ?? openByDefault(item.tool)) : false);
-  const render = (item: TraceItem) => <Item item={item} context={context} open={isOpen(item)} onToggle={onToggle} signature={signature(item)} />;
+  const isOpen = (item: NormalItem): string =>
+    item.type === "group"
+      ? `${toggled.get(item.key) ? 1 : 0}:${item.calls
+          .filter((entry) => toggled.get(entry.key) ?? openByDefault(entry.tool))
+          .map((entry) => entry.key)
+          .join(",")}`
+      : "";
+  const render = (item: NormalItem) => <Item item={item} context={context} open={isOpen(item)} onToggle={onToggle} signature={signature(item)} />;
 
   const toEnd = () => {
     const element = scrollRef.current;
@@ -644,7 +460,7 @@ export function AgentTrace({
   const empty = items.length === 0;
 
   return (
-    <div className={cn("relative min-w-0", fill && "xl:flex xl:min-h-0 xl:flex-1 xl:flex-col")}>
+    <div className={cn("relative min-w-0", fill === "always" ? "flex min-h-0 flex-1 flex-col" : fill && "xl:flex xl:min-h-0 xl:flex-1 xl:flex-col")}>
       <div
         ref={scrollRef}
         role="log"
@@ -657,13 +473,20 @@ export function AgentTrace({
         className={cn(
           // Relative, so the typing dots' words for screen readers are clipped with the items rather than reaching
           // past the trace and lengthening the page.
-          "relative max-h-[min(70vh,44rem)] min-h-48 overflow-y-auto overscroll-contain px-4 pt-2 pb-3 focus-visible:outline-offset-[-2px]",
-          fill && "xl:max-h-none xl:min-h-0 xl:flex-1",
+          // Under 768 px the page goes on below the trace: at the trace's end, a swipe moves the page on.
+          // 8 px of padding taken back by the margin: the rows' hover reaches past their text without being clipped.
+          "relative -mx-2 max-h-[min(70vh,44rem)] min-h-48 overflow-y-auto overscroll-contain px-2 pt-2 pb-3 focus-visible:outline-offset-[-2px] max-md:max-h-[min(65dvh,44rem)] max-md:overscroll-auto",
+          fill === "always" ? "max-h-none min-h-0 flex-1 max-md:max-h-none max-md:overscroll-contain" : fill && "xl:max-h-none xl:min-h-0 xl:flex-1",
         )}
         data-testid="trace"
         data-virtual={virtual || undefined}
         data-follow={follow}
       >
+        {rawLeft > 0 ? (
+          <p className="pb-1 text-xs text-fg-subtle" data-testid="trace-raw-left">
+            {t("rawLeft", { count: rawLeft })}
+          </p>
+        ) : null}
         {empty ? (
           <p className="py-2 text-sm text-muted-foreground" data-testid="trace-empty">
             {events.length > 0 ? t("nothing") : context.active || status === "connecting" ? tLog("waiting") : tLog("none")}
@@ -679,7 +502,7 @@ export function AgentTrace({
             ))}
           </ol>
         )}
-        {typing && !empty ? <Typing /> : null}
+        {typing && !empty ? <TraceTyping /> : null}
       </div>
       {!follow && !empty ? (
         <Button

@@ -45,6 +45,8 @@ import { cn } from "@/lib/utils";
  * its words (`status.<kind>.<state>` in messages/en.json and vi.json). A fully round shape always means a state; names
  * are `Identifier` chips with square corners (web/DESIGN.md). The run, worker, plan, step and decision states come from
  * the API's own types, so a state the API adds fails typecheck until it has a look here and words in both languages.
+ * Nearly every page loads this file, so a kind that one page alone shows keeps its map and icons beside it instead:
+ * a change of the Curator (`change-badge.tsx`), held by web/bundle-budget.json.
  */
 
 type Schemas = components["schemas"];
@@ -102,6 +104,10 @@ const RUN = {
   failed: { tone: "danger", icon: CircleX },
   lost: { tone: "neutral", icon: Unplug },
   cancelled: { tone: "outline", icon: Ban },
+  // A local run's alone (a Claude Code session on a member's machine): the turn ended and the person has the word, or
+  // the session is over.
+  idle: { tone: "neutral", icon: CirclePause },
+  ended: { tone: "outline", icon: CircleOff },
 } as const satisfies Record<RunStatus, StatusLook>;
 
 const WORKER = {
@@ -239,12 +245,16 @@ function Mark({ look }: { look: StatusLook }) {
   return <look.icon className="size-3.5 shrink-0" aria-hidden="true" data-slot="status-mark" />;
 }
 
-type PillProps = Omit<ComponentProps<"span">, "children"> & {
+export type StatusPillProps = Omit<ComponentProps<"span">, "children"> & {
   /** `lg` beside a page's h1; the default in tables, lists and cards. */
   size?: "default" | "lg";
 };
 
-function Pill({ look, label, size = "default", className, ...props }: PillProps & { look: StatusLook; label: ReactNode }) {
+/**
+ * A look and its words as a pill, for a kind whose looks live beside the one page that shows it rather than in
+ * `STATUS_LOOKS` (`change-badge.tsx`); every other pill is a `StatusBadge` or an `OtherStatusBadge`.
+ */
+export function StatusPill({ look, label, size = "default", className, ...props }: StatusPillProps & { look: StatusLook; label: ReactNode }) {
   return (
     <span
       data-slot="status-badge"
@@ -264,7 +274,7 @@ function Pill({ look, label, size = "default", className, ...props }: PillProps 
 }
 
 type StatusBadgeProps = { [K in StatusKind]: { kind: K; status: StatusOf<K> } }[StatusKind] &
-  PillProps & {
+  StatusPillProps & {
     /** Other words for the same state, such as a plan run's "Waiting for your decision" in its banner. */
     label?: ReactNode;
   };
@@ -277,7 +287,7 @@ export function StatusBadge({ kind, status, label, ...props }: StatusBadgeProps)
   const text = useStatusText(kind);
   const look = STATUS_LOOKS[kind][status as never] as StatusLook;
   return (
-    <Pill
+    <StatusPill
       look={look}
       label={label ?? text(status as never)}
       data-kind={kind}
@@ -289,9 +299,9 @@ export function StatusBadge({ kind, status, label, ...props }: StatusBadgeProps)
 }
 
 /** A status the hub does not know, as written in the plan: "Other status: skipped". */
-export function OtherStatusBadge({ raw, ...props }: PillProps & { raw: string | null }) {
+export function OtherStatusBadge({ raw, ...props }: StatusPillProps & { raw: string | null }) {
   const t = useTranslations("status");
-  return <Pill look={OTHER_LOOK} label={t("other", { status: raw ?? "?" })} data-status="other" {...props} />;
+  return <StatusPill look={OTHER_LOOK} label={t("other", { status: raw ?? "?" })} data-status="other" {...props} />;
 }
 
 /** A look's icon alone, in its tone, with `label` for screen readers and as a tooltip. */

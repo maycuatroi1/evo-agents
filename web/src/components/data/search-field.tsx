@@ -30,8 +30,13 @@ type SearchFieldProps = {
  * The kit's search input, for a list's toolbar: a magnifier, the field and, while it is empty, the `/` key that
  * focuses it from anywhere on the page; once it holds text, a button that clears it. 32 px tall, 44 px with 16 px
  * text under 768 px so phones do not zoom. The label is for assistive technology; the query is committed after a
- * pause in typing or on Enter, Escape or the clear button empty it. Debouncing keeps one request per pause, not one
- * per keystroke.
+ * pause in typing, when the field loses focus, or on Enter, Escape or the clear button empty it. Debouncing keeps one
+ * request per pause, not one per keystroke.
+ *
+ * A query is committed only on the page it was typed on, and never after a click elsewhere: the press that starts the
+ * click takes focus from the field, which commits the query then. A commit writes the list's filters into the address
+ * (`history.replaceState`), and Next.js takes that write for a move of its own, which drops a navigation still on its
+ * way: a pause that ended after the click on a link, while the next page loaded, kept the person on the page they left.
  */
 export function SearchField({
   value,
@@ -50,7 +55,8 @@ export function SearchField({
   const input = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value);
   const [committed, setCommitted] = useState(value);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The query typed and not committed yet: the timer of its pause, and the page (its path) it was typed on.
+  const pending = useRef<{ timer: ReturnType<typeof setTimeout>; page: string } | null>(null);
   // The key is shown and announced only while it works: once the field has hydrated and registered for it, and while
   // single-key shortcuts are on (the shortcuts dialog turns them off).
   const slash = useSearchShortcut(input, shortcut);
@@ -62,21 +68,35 @@ export function SearchField({
   }
 
   useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
+    if (pending.current) clearTimeout(pending.current.timer);
   }, []);
 
   const commit = (next: string) => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = null;
     const trimmed = next.trim();
     setCommitted(trimmed);
     if (trimmed !== value) onCommit(trimmed);
   };
 
+  // The query typed, at the end of its pause or once the field lost focus: committed while the address is still the
+  // page it was typed on, dropped once the person has gone to another.
+  const settle = (next: string) => {
+    const typed = pending.current;
+    if (!typed) return;
+    if (typed.page === window.location.pathname) {
+      commit(next);
+    } else {
+      clearTimeout(typed.timer);
+      pending.current = null;
+    }
+  };
+
   const change = (next: string) => {
     setDraft(next);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => commit(next), debounce);
+    if (pending.current) clearTimeout(pending.current.timer);
+    const page = window.location.pathname;
+    pending.current = { page, timer: setTimeout(() => settle(next), debounce) };
   };
 
   return (
@@ -109,6 +129,7 @@ export function SearchField({
         aria-controls={controls}
         className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none md:text-[13px] [&::-webkit-search-cancel-button]:hidden"
         onChange={(event) => change(event.target.value)}
+        onBlur={() => settle(draft)}
         onKeyDown={(event) => {
           if (event.key === "Escape" && draft) {
             event.preventDefault();
@@ -123,6 +144,8 @@ export function SearchField({
           type="button"
           aria-label={clearLabel}
           title={clearLabel}
+          // The field keeps focus, so the query being typed is not committed on the way to clearing it.
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             setDraft("");
             commit("");

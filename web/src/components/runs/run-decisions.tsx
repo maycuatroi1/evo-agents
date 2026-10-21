@@ -1,17 +1,27 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Inbox } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { useId, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 
 import { DecisionCard } from "@/components/inbox/decision-view";
 import { type Decision, decisionQuery } from "@/components/inbox/queries";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
-import { decisionAnchor, decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
+import {
+  CHAT_REFRESH_MS,
+  decisionAnchor,
+  decisionHref,
+  isActiveState,
+  LIVE_REFRESH_MS,
+  openDecisionsQuery,
+  type Run,
+  type RunChat,
+} from "./queries";
+import { runDecisionsQuery } from "./decision-queries";
 
 /**
  * A plan run's open decisions on its page, at the top of the side column (above the log below the xl breakpoint): the
@@ -34,7 +44,8 @@ export function RunDecisions({
   const t = useTranslations("runs.detail.decision");
   const format = useFormatter();
   const ids = useId();
-  const active = run.kind === "plan" && isActiveState(run.state);
+  // A local session asks through the same decisions; it takes the answer at its next turn, so idle still has them open.
+  const active = (run.kind === "plan" && isActiveState(run.state)) || (run.kind === "local" && run.state !== "ended");
   const decisions = useQuery({
     ...openDecisionsQuery(browserApi, run.project, run.id),
     enabled: active,
@@ -53,7 +64,11 @@ export function RunDecisions({
   const since = run.state === "waiting" ? run.waiting_since : run.state === "parked" ? run.parked_at : null;
   const when = since ? format.dateTime(new Date(since), { dateStyle: "medium", timeStyle: "short" }) : "none";
   const why =
-    run.state === "parked" ? (owner ? "parkedYou" : "parked") : run.state === "waiting" ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
+    run.kind === "local"
+      ? owner
+        ? "localYou"
+        : "local"
+      : run.state === "parked" ? (owner ? "parkedYou" : "parked") : run.state === "waiting" ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
   const title =
     open.length === 0 && settledHere.length > 0 ? t("titleAnswered") : owner ? t("titleYou") : t("titleOther", { login: run.dispatched_by });
   const first = open[0] ?? null;
@@ -135,5 +150,55 @@ function LiveDecision({
       onConflict={onSettled}
       onTakeOver={onTakeOver}
     />
+  );
+}
+
+export type ChatDecisions = {
+  /** The decisions of the chat's runs, in the order asked. */
+  list: Decision[];
+  /** How many of them wait for an answer. */
+  open: number;
+  /** A decision as an answer here (or a 409) left it, until the list says it is no longer open. */
+  keep: (decision: Decision) => void;
+};
+
+/**
+ * The decisions of an author run's chat (docs/workers.md, The chat of an author run): those of the run and of each run
+ * the chat goes over (a parked run and the run that resumes it), read as often as the chat while it has not ended. The
+ * answers are the decisions' own: the chat leaves them out of its messages.
+ */
+export function useChatDecisions(run: Pick<Run, "id" | "project">, chat: RunChat | undefined): ChatDecisions {
+  const ids = useMemo(() => [...new Set([run.id, ...(chat ? [chat.run_id, ...chat.messages.map((message) => message.run_id)] : [])])].sort((a, b) => a - b), [run.id, chat]);
+  const live = chat !== undefined && chat.status !== "ended";
+  const lists = useQueries({
+    queries: ids.map((id) => ({ ...runDecisionsQuery(browserApi, run.project, id), enabled: chat !== undefined, refetchInterval: live ? CHAT_REFRESH_MS : false })),
+  });
+  const [kept, setKept] = useState<ReadonlyMap<number, Decision>>(new Map());
+  const keep = useCallback((decision: Decision) => setKept((map) => new Map(map).set(decision.id, decision)), []);
+  const list = lists
+    .flatMap((query) => query.data?.decisions ?? [])
+    .map((decision) => (decision.state === "open" ? (kept.get(decision.id) ?? decision) : decision))
+    .sort((a, b) => a.id - b.id);
+  return { list, open: list.filter((decision) => decision.state === "open").length, keep };
+}
+
+/**
+ * One decision in an author run's chat, under the agent's message that ended the turn which asked it: the kit's
+ * DecisionCard as a plan run's side column shows it, the answer form for the run's owner (the agent's pick chosen) and
+ * the question, context and options for anyone else; once answered, the compact block with the answer. Its anchor is
+ * what the trace's "Asked you" opens.
+ */
+export function ChatDecision({ decision, onSettled }: { decision: Decision; onSettled: (decision: Decision) => void }) {
+  return (
+    <div
+      id={decisionAnchor(decision.id)}
+      tabIndex={-1}
+      className="min-w-0 scroll-mt-4 rounded-md sm:ml-10 sm:max-w-[46rem]"
+      data-testid="run-chat-decision"
+      data-decision-id={decision.id}
+      data-state={decision.state}
+    >
+      <DecisionCard decision={decision} where="run" onAnswered={onSettled} onConflict={onSettled} />
+    </div>
   );
 }

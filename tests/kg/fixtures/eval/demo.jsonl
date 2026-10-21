@@ -1,0 +1,7 @@
+{"id": "rank", "question": "rank_results", "type": "identifier", "files": ["app:app/search.py"], "nodes": ["symbol:app:app/search.py::rank_results"]}
+{"id": "handle", "question": "Server.handle", "type": "identifier", "nodes": ["symbol:app:app/server.py::Server.handle"]}
+{"id": "code", "question": "KB-01", "type": "identifier", "nodes": ["usecase:KB-01"]}
+{"id": "ranking-step", "question": "Implement rank_results in app/search.py", "type": "plan-step", "repo": "app", "files": ["app:app/search.py"]}
+{"id": "server-step", "question": "Wire the server to search", "type": "plan-step", "repo": "app", "files": ["app:app/server.py"]}
+{"id": "guide", "question": "where is the setup of the server described", "type": "words", "files": ["app:docs/guide.md"]}
+{"id": "nothing", "question": "quantum teleportation", "type": "words", "files": ["app:app/nothing.py"]}

@@ -1,0 +1,164 @@
+name: deploy
+
+# Deploys main to the hub on Dokploy on every push to main; no ci runs first (ci.yml runs on a v* tag). Dokploy clones
+# main and runs deploy/hub/docker-compose.yml with `up -d --build`, so the panel builds api, worker and web from the
+# source and no image goes through GHCR. Api and worker migrate when they start: when this commit carries a migration
+# the running hub has not applied, the job runs the Postgres backup on Dokploy first and deploys only once it succeeds.
+# Then it waits for the deployment and for /v1/health to report status ok and this commit's schema.
+#
+# Dokploy deploys whatever main is when it clones, so a run whose commit is no longer the tip of main stops before
+# anything: the run of the newer push deploys it. workflow_dispatch from main deploys main by hand.
+#
+# A deployment that ends with /v1/health at status ok and this commit's schema moves the tag nightly to this commit
+# (the job nightly calls nightly.yml); the hub reads the tag every minute and idle workers update to it. A run that stopped at "Still the tip of main", or failed, leaves nightly
+# where it is. The job deploy holds the Dokploy secret and only reads the repository; the job nightly writes the tag,
+# is not in the environment production and gets no secret.
+#
+# The environment production, open to main only, holds the secret DOKPLOY_API_KEY and the variables DOKPLOY_URL,
+# DOKPLOY_COMPOSE_ID, DOKPLOY_BACKUP_ID (the daily backup of the hub's Postgres) and EVO_HUB_URL.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancelled half way.
+concurrency:
+  group: deploy-hub
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      # The commit Dokploy deployed and /v1/health confirmed; empty when the run stopped before deploying.
+      deployed: ${{ steps.health.outputs.deployed }}
+    defaults:
+      run:
+        shell: bash  # with pipefail, so a failed curl fails the pipe into jq
+    environment:
+      name: production
+      url: ${{ vars.EVO_HUB_URL }}
+    env:
+      DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+      DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+      COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+      BACKUP_ID: ${{ vars.DOKPLOY_BACKUP_ID }}
+      HUB_URL: ${{ vars.EVO_HUB_URL }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Settings of the environment
+        run: |
+          for name in DOKPLOY_URL DOKPLOY_API_KEY COMPOSE_ID BACKUP_ID HUB_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; set it on the environment production of this repository"
+              exit 1
+            fi
+          done
+
+      - name: Still the tip of main
+        id: tip
+        run: |
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$tip" = "$SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main moved from ${SHA::7} to ${tip::7}; the run of ${tip::7} deploys it"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Schema of the hub and of this commit
+        id: schema
+        if: steps.tip.outputs.deploy == 'true'
+        run: |
+          versions=evo_agents/hub/migrations/versions
+          head=$(find "$versions" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]_*.py' -printf '%f\n' | cut -c1-4 | sort | tail -1)
+          # /v1/health answers 503 with the same body when R2 or Postgres fails; no schema then means unknown.
+          running=$(curl -sS --max-time 20 "$HUB_URL/v1/health" | jq -r '.schema // empty' 2>/dev/null || true)
+          echo "this commit migrates to $head; the hub runs schema ${running:-unknown}"
+          if [ -n "$running" ] && ! compgen -G "$versions/${running}_*.py" >/dev/null; then
+            echo "::error::the hub runs schema $running, which this commit does not know; api and worker would refuse it"
+            exit 1
+          fi
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "running=$running" >> "$GITHUB_OUTPUT"
+
+      - name: Back up Postgres
+        if: steps.tip.outputs.deploy == 'true' && steps.schema.outputs.running != steps.schema.outputs.head
+        env:
+          RUNNING: ${{ steps.schema.outputs.running }}
+          HEAD: ${{ steps.schema.outputs.head }}
+        run: |
+          echo "schema ${RUNNING:-unknown} -> $HEAD: Postgres backup first"
+          # Dokploy answers once the dump is on the backup's destination (R2).
+          body=$(jq -nc --arg id "$BACKUP_ID" '{json: {backupId: $id}}')
+          curl -fsS --max-time 1800 -X POST "$DOKPLOY_URL/api/trpc/backup.manualBackupPostgres" \
+            -H "x-api-key: $DOKPLOY_API_KEY" -H 'Content-Type: application/json' -d "$body" \
+            | jq -e '.result.data.json == true' >/dev/null
+          echo "backup done"
+
+      - name: Deploy on Dokploy
+        if: steps.tip.outputs.deploy == 'true'
+        run: |
+          deployments() {
+            curl -fsS -G --max-time 30 "$DOKPLOY_URL/api/trpc/deployment.allByCompose" -H "x-api-key: $DOKPLOY_API_KEY" \
+              --data-urlencode "input=$(jq -nc --arg id "$COMPOSE_ID" '{json: {composeId: $id}}')"
+          }
+          before=$(deployments | jq -c '[.result.data.json[].deploymentId]')
+          # Dokploy titles a deployment of a git source with the commit it cloned ("Commit: <sha>" as description).
+          body=$(jq -nc --arg id "$COMPOSE_ID" '{json: {composeId: $id}}')
+          curl -fsS --max-time 60 -X POST "$DOKPLOY_URL/api/trpc/compose.deploy" \
+            -H "x-api-key: $DOKPLOY_API_KEY" -H 'Content-Type: application/json' -d "$body" >/dev/null
+          # The deployment Dokploy queued is the newest one missing from the list before.
+          status=queued
+          for _ in $(seq 1 180); do
+            sleep 10
+            status=$(deployments | jq -r --argjson before "$before" \
+              '[.result.data.json[] | select(.deploymentId as $id | $before | index($id) | not)]
+               | sort_by(.createdAt) | last | .status // "queued"') || continue
+            case "$status" in
+              "") ;;
+              queued | running) ;;
+              done) echo "Dokploy finished the deployment"; exit 0 ;;
+              *) echo "::error::the deployment ended $status; its log is on Dokploy"; exit 1 ;;
+            esac
+          done
+          echo "::error::the deployment was still $status after 30 minutes"
+          exit 1
+
+      - name: Health
+        id: health
+        if: steps.tip.outputs.deploy == 'true'
+        env:
+          HEAD: ${{ steps.schema.outputs.head }}
+        run: |
+          for _ in $(seq 1 60); do
+            health=$(curl -sS --max-time 20 "$HUB_URL/v1/health" || true)
+            if [ "$(jq -r '.status // empty' <<<"$health" 2>/dev/null)" = ok ] &&
+              [ "$(jq -r '.schema // empty' <<<"$health" 2>/dev/null)" = "$HEAD" ]; then
+              jq -c . <<<"$health"
+              echo "deployed=$SHA" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::/v1/health did not report status ok and schema $HEAD within 10 minutes: $health"
+          exit 1
+
+  nightly:
+    # Only after a deployment /v1/health confirmed: needs fails or skips this job when deploy failed, and the output
+    # is empty when the run stopped at "Still the tip of main".
+    needs: deploy
+    if: needs.deploy.outputs.deployed != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      sha: ${{ needs.deploy.outputs.deployed }}

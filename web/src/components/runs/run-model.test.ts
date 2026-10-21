@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RunMove } from "./log-model";
 import type { Run } from "./queries";
 import {
+  chatDecisionSlots,
   leaseSecondsLeft,
   leaseState,
   leaseTargets,
@@ -153,6 +154,13 @@ describe("runControls", () => {
     expect(runControls(run(), null).owner).toBe(false);
   });
 
+  it("gives a local session's owner the answer form and no worker control: the hub only watches it", () => {
+    const local = run({ kind: "local", state: "running", worker_id: null });
+    expect(runControls(local, owner)).toEqual({ owner: true, cancel: "none", takeover: "none", handback: "none", approve: false, rerun: false, message: false });
+    expect(runControls({ ...local, state: "idle" }, owner).cancel).toBe("none");
+    expect(runControls(local, other).owner).toBe(false);
+  });
+
   it("offers a running run's owner cancel, takeover and messages", () => {
     expect(runControls(run(), owner)).toEqual({
       owner: true,
@@ -223,5 +231,35 @@ describe("a run's leases", () => {
       "https://github.com/acme/api",
       "https://github.com/acme/web",
     ]);
+  });
+});
+
+describe("chatDecisionSlots", () => {
+  const messages = [
+    { author: "agent", at: "2026-10-13T03:05:00Z" },
+    { author: "owner", at: "2026-10-13T03:06:00Z" },
+    { author: "agent", at: "2026-10-13T03:20:00Z" },
+  ];
+  const decision = (id: number, asked_at: string) => ({ id, asked_at });
+
+  it("puts each decision after the agent's message that ended the turn which asked it, in the order asked", () => {
+    const slots = chatDecisionSlots(messages, [
+      decision(9, "2026-10-13T03:12:00Z"),
+      decision(7, "2026-10-13T03:04:00Z"),
+      decision(8, "2026-10-13T03:12:00Z"),
+      decision(6, "2026-10-13T03:05:00Z"),
+    ]);
+    expect([...slots.after.entries()].map(([index, list]) => [index, list.map((item) => item.id)])).toEqual([
+      [0, [7, 6]],
+      [2, [8, 9]],
+    ]);
+    expect(slots.last).toEqual([]);
+  });
+
+  it("keeps a decision of the turn the agent still works on after every message", () => {
+    const slots = chatDecisionSlots(messages, [decision(10, "2026-10-13T03:25:00Z")]);
+    expect(slots.after.size).toBe(0);
+    expect(slots.last.map((item) => item.id)).toEqual([10]);
+    expect(chatDecisionSlots([], [decision(11, "2026-10-13T03:00:00Z")]).last.map((item) => item.id)).toEqual([11]);
   });
 });

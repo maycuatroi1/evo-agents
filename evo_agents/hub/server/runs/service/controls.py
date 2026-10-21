@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
-from evo_agents.hub.server.runs.models import Run
+from evo_agents.hub.server.runs.models import Rerun, Run
+from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
     check_dispatcher,
@@ -24,10 +26,14 @@ from evo_agents.hub.server.runs.service.dispatch import (
     queue_run,
     refuse_curator_plan,
 )
+from evo_agents.hub.server.runs.service.profiles import Asked, rerun_choice
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, run_view
+from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
+# How a run of each kind that is never rerun runs again.
+AGAIN = {"chat": "mention its agent in the chat again", "task": "its plugin hands the task to its agent type again"}
 
 
 async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
@@ -62,20 +68,23 @@ async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     if row[0] != user.user_id:
         raise HTTPException(403, f"only {row[1]}, who dispatched run {run_id}, may {action} it")
+    if row.kind == "local":
+        raise HTTPException(409, f"run {run_id} is a local session the hub only watches: it cannot {action} it")
     return access, row
 
 
 def _web_only_worker(run_id: int):
     """The worker set to take runs dispatched from the web only that run ``run_id`` is on, or may go to, with how:
     the one holding it (or that parked it), the one it is pinned to, or, for a run queued without a pin and
-    dispatched from the web, one of its owner's workers set so, which may claim it; in that order, then by name."""
+    dispatched from the web, one of its owner's workers set so, or one another member shares in its project
+    (``shared_in``), which may claim it; in that order, then by name."""
     r, w = tables.runs, tables.workers
     held, pinned = w.c.id == r.c.worker_id, w.c.id == r.c.pinned_worker_id
     claimable = and_(
         r.c.state == "queued",
         r.c.pinned_worker_id.is_(None),
         r.c.dispatched_via == "web",
-        w.c.owner_id == r.c.dispatched_by,
+        or_(w.c.owner_id == r.c.dispatched_by, shared_in(r.c.project_id)),
     )
     relation = case(
         (and_(held, r.c.state == "parked"), "was parked on"),
@@ -188,50 +197,79 @@ async def approve_run(engine, user: Principal, project: str, run_id: int) -> Run
     return view
 
 
-async def rerun_run(engine, user: Principal, project: str, run_id: int) -> Run:
+async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Rerun | None = None) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-    the plan's current revision."""
+    the plan's current revision, and the account picked by hand for it unless ``body`` picks another one or none,
+    under the agent profile of the run at the profile's version now, checked again (``profiles.rerun_choice``), with
+    the run's own layer of plugin config."""
     async with engine.begin() as conn:
-        access, row = await owned_run(conn, user, project, run_id, "rerun")
-        check_dispatcher(access)
-        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind, model = row
-        if kind == "plan":
-            raise HTTPException(
-                409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
-            )
-        if kind in runs.CURATOR_KINDS:
-            raise HTTPException(
-                409, f"run {run_id} is a {kind} run, which only the night shift of the project's charter queues"
-            )
-        if kind == "author":
-            raise HTTPException(
-                409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
-            )
-        if state not in runs.TERMINAL_STATES:
-            raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
-        held = await plan_routes._visible(conn, access, plan_id, None)
-        await refuse_curator_plan(conn, access, plan_id)
-        worker = None if pinned is None else await pinnable(conn, user, access, pinned)
-        await lock_plan(conn, access.project_id, plan_id)
-        activity = await plan_activity(conn, access.project_id, plan_id)
-        no_plan_run(activity, plan_id)
-        new_id = await queue_run(
-            conn,
-            access,
-            user,
-            held,
-            key,
-            activity.steps,
-            runtime=runtime,
-            model=model,
-            mode=mode,
-            approval=approval,
-            timeout_s=timeout_s,
-            pinned=worker,
-            parent=run_id,
-        )
-        target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}"
-        await audit_run(conn, user, access, audit.RUN_RERUN, target)
-        view = await run_view(conn, new_id)
-    log.info("run rerun", extra={"run_id": new_id, "rerun_of": run_id, "login": user.login})
+        view = await rerun_in(conn, user, project, run_id, body)
+    log.info("run rerun", extra={"run_id": view.id, "rerun_of": run_id, "login": user.login})
     return view
+
+
+async def rerun_in(
+    conn: AsyncConnection,
+    user: Principal,
+    project: str,
+    run_id: int,
+    body: Rerun | None = None,
+    *,
+    worker_id: int | None = None,
+    runtime: str | None = None,
+) -> Run:
+    """``rerun_run`` in the caller's transaction. ``worker_id`` pins the rerun to that worker of ``user`` instead of
+    the run's own pin, and ``runtime`` asks for that runtime instead of the run's, with the profile's model then (the
+    triage of a failed run, ``evo_agents.hub.server.triage_actions``, is the one that changes either)."""
+    access, row = await owned_run(conn, user, project, run_id, "rerun")
+    check_dispatcher(access)
+    _, _, state, plan_id, key, _, asked_runtime, mode, approval, timeout_s, pinned, kind, model = row
+    if kind == "plan":
+        raise HTTPException(
+            409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
+        )
+    if kind in runs.CURATOR_KINDS:
+        raise HTTPException(
+            409, f"run {run_id} is a {kind} run, which only the night shift of the project's charter queues"
+        )
+    if kind == "author":
+        raise HTTPException(
+            409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
+        )
+    if kind in AGAIN:
+        raise HTTPException(409, f"run {run_id} is a {kind} run: {AGAIN[kind]}")
+    if state not in runs.TERMINAL_STATES:
+        raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
+    runtime_now = runtime or asked_runtime
+    model = None if runtime else model
+    held = await plan_routes._visible(conn, access, plan_id, None)
+    await refuse_curator_plan(conn, access, plan_id)
+    pin_to = pinned if worker_id is None else worker_id
+    worker = None if pin_to is None else await pinnable(conn, user, access, pin_to)
+    picked = await rerun_picks(conn, user, access, run_id, body, worker)
+    chosen = await rerun_choice(conn, user, access, run_id, Asked(kind, runtime_now, model, worker, tuple(picked)))
+    await lock_plan(conn, access.project_id, plan_id)
+    activity = await plan_activity(conn, access.project_id, plan_id)
+    no_plan_run(activity, plan_id)
+    new_id = await queue_run(
+        conn,
+        access,
+        user,
+        held,
+        key,
+        activity.steps,
+        runtime=runtime_now,
+        model=chosen.model,
+        mode=mode,
+        approval=approval,
+        timeout_s=timeout_s,
+        pinned=worker,
+        parent=run_id,
+        picked=tuple(picked),
+        chosen=chosen,
+        plugin_config=await run_layer_of(conn, run_id),
+    )
+    accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
+    target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
+    await audit_run(conn, user, access, audit.RUN_RERUN, target)
+    return await run_view(conn, new_id)

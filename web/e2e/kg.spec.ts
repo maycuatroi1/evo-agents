@@ -4,6 +4,8 @@ import { newAccount } from "./support/hub";
 import {
   changeKg,
   CONTRACT,
+  DEALS_SHA,
+  DOCS_SHA,
   graphReady,
   grantOn,
   HUB_NODE,
@@ -55,6 +57,54 @@ test.describe("knowledge graph", () => {
     // The sidebar links here.
     const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
     await expect(nav.getByRole("link", { name: "Đồ thị tri thức" })).toHaveAttribute("aria-current", "page");
+  });
+
+  test("the commits read name the commit of the source an internal reader sees, and how far behind it is", async ({
+    page,
+    signInAs,
+  }) => {
+    const kg = await sharedKg();
+    const reader = newAccount("kg-reader");
+    await grantOn(kg.project, reader.login, "reader", "internal");
+    await signInAs(reader);
+    await open(page, kgPath(kg.project));
+
+    const card = page.getByTestId("kg-commits");
+    await expect(card.getByRole("heading", { level: 2, name: "Commit đã đọc" })).toBeVisible();
+    // deals is customer: its source and the commit it read stay hidden.
+    const rows = card.getByTestId("source-commit");
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toHaveAttribute("data-source", "docs");
+    await expect(rows.getByTestId("source-commit-sha")).toHaveText(DOCS_SHA.slice(0, 7));
+    const link = rows.getByRole("link", { name: `Mở commit ${DOCS_SHA.slice(0, 7)} (mở trong tab mới)` });
+    await expect(link).toHaveAttribute("href", `https://github.com/acme/kgweb-docs/commit/${DOCS_SHA}`);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(rows).toContainText("của origin/main");
+    await expect(rows.getByTestId("source-behind")).toHaveAttribute("data-behind", "2");
+    await expect(rows.getByTestId("source-behind")).toHaveText("chậm origin/main 2 commit");
+    await expect(page.getByText(DEALS_SHA.slice(0, 7))).toHaveCount(0);
+  });
+
+  test("a member whose grant reaches customer sees the commit deals read, with nothing to compare it with", async ({
+    page,
+    signInAs,
+  }) => {
+    const kg = await sharedKg();
+    const member = newAccount("kg-member");
+    await grantOn(kg.project, member.login, "writer", "customer");
+    await signInAs(member);
+    await open(page, kgPath(kg.project));
+
+    const rows = page.getByTestId("kg-commits").getByTestId("source-commit");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toHaveAttribute("data-source", "deals");
+    await expect(rows.nth(1)).toHaveAttribute("data-source", "docs");
+    const deals = rows.nth(0);
+    await expect(deals.getByTestId("source-commit-sha")).toHaveText(DEALS_SHA.slice(0, 7));
+    await expect(deals.getByRole("link")).toHaveCount(0); // its run named no link
+    await expect(deals).toContainText("của HEAD");
+    await expect(deals).toContainText("không có nhánh remote để so");
+    await expect(deals.getByTestId("source-behind")).toHaveCount(0);
   });
 
   test("search finds the fixture node and opens it", async ({ page, signInAs }) => {

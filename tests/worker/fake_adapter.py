@@ -16,9 +16,15 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"wait_for": "/abs/path"}``: wait until that file exists (an interrupt ends the wait).
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
-- ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it.
+- ``{"rate_limit": {...}}``: send a ``rate_limit_event`` with that ``rate_limit_info``, as Claude Code's adapter passes
+  it on raw (``"status": "rejected"`` when the account hit its usage limit).
+- ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it;
+  with ``"limit": {...}``, as the account's usage limit ended it (``Outcome.limit``); with ``"auth": "..."``, as the
+  account failing to authenticate ended it (``Outcome.auth``).
 - ``{"say": "text"}``: the agent's last message is ``text`` (``Outcome.summary``), as a message chunk too: a Judge's
   verdict ends it.
+- ``{"no_input": true}``: the agent takes no more input in this turn: ``send`` raises AgentFinished, so a message of
+  the inbox waits for the turn after.
 - ``{"usage": {...}}``: the usage the turn ends with, such as Claude Code's ``total_cost_usd``.
 - ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
 - ``{"sh": "command"}``: run a shell command there.
@@ -26,8 +32,10 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
   of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
   that dies first leaves it running.
 
-A plan run (no step key) follows ``"plan:<plan id>"``, a review run ``"review"``, a judge run ``"judge"`` and an
-author run ``"author"``. The
+A plan run (no step key) follows ``"plan:<plan id>"``, a review run ``"review"``, a judge run ``"judge"``, an
+author run ``"author"``, a chat run ``"chat"``, a task run ``"task"``, a release run ``"release"``, a replay run
+``"replay"`` (its second arm
+``"replay/2"``) and a history run ``"history"`` (its second session ``"history/2"``). The
 n-th start of the same run in this process follows ``"<key>/<n>"`` when the scenarios have it (a plan run's turn after
 its owner answered);
 otherwise a run that goes on with a session (after a handback, or a plan run resumed after it was parked) follows
@@ -61,7 +69,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome
+from evo_agents.worker.adapter import Adapter, AgentEvent, AgentFinished, Detection, Outcome
 from evo_agents.worker.interactive import Tui
 
 FAKE_TUI = Path(__file__).with_name("fake_tui.py")
@@ -278,10 +286,11 @@ class FakeAdapter(Adapter):
         self._task: asyncio.Task | None = None
         self._outcome = Outcome(False, "the fake agent did not run")
         self._group: subprocess.Popen | None = None  # what a spawn action started
+        self._no_input = False  # a no_input action: send refuses, as after the agent's last input
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        if run.get("kind") in ("review", "judge", "author"):
+        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history", "release"):
             key = run["kind"]
         else:
             key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"
@@ -320,6 +329,8 @@ class FakeAdapter(Adapter):
         self._task = asyncio.create_task(self._work())
 
     async def send(self, text: str) -> None:
+        if self._no_input:
+            raise AgentFinished("the fake agent takes no more input in this turn")
         if self.messages_path:
             with open(self.messages_path, "a", encoding="utf-8") as handle:
                 handle.write(text.replace("\n", " ") + "\n")
@@ -396,7 +407,9 @@ class FakeAdapter(Adapter):
                 if self._interrupted.is_set():
                     self._outcome = Outcome(False, "interrupted")
                     return
-                if action.get("samples"):
+                if action.get("no_input"):
+                    self._no_input = True
+                elif action.get("samples"):
                     for raw in SAMPLES:
                         for event in translate(raw):
                             await self._queue.put(event)
@@ -436,8 +449,12 @@ class FakeAdapter(Adapter):
                     path = worktree / ".evo-run" / "result.json"
                     path.parent.mkdir(exist_ok=True)
                     path.write_text(json.dumps(action["result"]), encoding="utf-8")
+                elif "rate_limit" in action:
+                    event = {"type": "rate_limit_event", "rate_limit_info": action["rate_limit"]}
+                    await self._queue.put(AgentEvent("output", {"raw": event}))
                 elif "fail" in action:
-                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"))
+                    limit, auth = action.get("limit"), action.get("auth")
+                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"), limit=limit, auth=auth)
                     return
                 elif "usage" in action:
                     usage = action["usage"]

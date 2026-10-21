@@ -8,6 +8,9 @@ One harness with two sources of the fake connector (``tests.kg.fakes``):
 - ``deals``, labelled customer: one contract that mentions KB-01. A member whose grant stops at internal must never
   receive anything of it.
 
+Each run ends with a cursor shaped like the git connector's (``DOCS_READ``, ``DEALS_READ``), so the build says which
+commit each source read: docs read origin/main two commits behind it, deals read HEAD with no remote branch to compare.
+
 The project is registered with a hub sink that clears customer, so both sources may be pushed, an agent sink that
 clears customer (``AGENT``) and one that clears internal only (``NARROW``). The text is Vietnamese, as the team's
 documents are. Nothing here touches ~/.evo/kg: the harness and its kg home live under the directory given.
@@ -28,6 +31,16 @@ RUNBOOK = "docs:doc:runbook"
 RUNBOOK_SECTION = "docs:doc:runbook#sổ-tay-vận-hành"  # mentions KB-01
 CONTRACT = "deals:doc:acme-contract"
 CONTRACT_SECTION = "deals:doc:acme-contract#hợp-đồng-acme"
+DOCS_SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345"
+DEALS_SHA = "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9"
+DOCS_READ = {
+    "commit": DOCS_SHA,
+    "ref": "origin/main",
+    "base": "origin/main",
+    "behind": 2,
+    "url": f"https://github.com/acme/kgweb-docs/commit/{DOCS_SHA}",
+}
+DEALS_READ = {"commit": DEALS_SHA, "ref": "HEAD"}
 
 KNOWLEDGE = """\
 version: 1
@@ -131,8 +144,8 @@ class Harness:
 
         note = {"key": extra, "rev": "1", "text": f"# {extra}\n\nThêm một ghi chú, KB-01.\n"}
         docs = DOCS + ([note] if extra else [])
-        self.files["docs"].write_text(json.dumps({"items": docs}), encoding="utf-8")
-        self.files["deals"].write_text(json.dumps({"items": DEALS}), encoding="utf-8")
+        self.files["docs"].write_text(json.dumps({"items": docs, "cursor": DOCS_READ}), encoding="utf-8")
+        self.files["deals"].write_text(json.dumps({"items": DEALS, "cursor": DEALS_READ}), encoding="utf-8")
         results = sync_project(self.project(), ["docs", "deals"])
         problems = [r.issues for r in results if not r.ok]
         if problems:

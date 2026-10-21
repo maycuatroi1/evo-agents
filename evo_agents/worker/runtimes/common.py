@@ -20,7 +20,10 @@
 - The bodies of the events, in the shapes of the Agent Client Protocol's ``session/update`` (``docs/workers.md``).
 - The peak context of a run (``with_peak``): its usage holds PEAK_CONTEXT, the largest context one request of the
   model read in the run's main thread, as each runtime reports a request's tokens; null, never 0, when the runtime
-  reported none.
+  reported none. It holds FIRST_REQUEST too: the tokens the first request of the model in the main thread read from
+  the cache (FIRST_CACHE_READ) and wrote to it (FIRST_CACHE_CREATION), each null when the runtime did not report it.
+  An agent that goes on in a session another agent of the run started reports its own first request;
+  ``with_first_request`` puts the session's back.
 
 Standard library only.
 """
@@ -77,6 +80,10 @@ CLOSE_TIMEOUT = 30.0  # seconds for an SDK client to close
 MAX_ERROR_CHARS = 1000
 KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 PEAK_CONTEXT = "peak_context_tokens"  # the key of a run's usage that holds its peak context
+# The keys of a run's usage that hold what the first request of its model read from the cache and wrote to it
+FIRST_CACHE_READ = "first_request_cache_read_input_tokens"
+FIRST_CACHE_CREATION = "first_request_cache_creation_input_tokens"
+FIRST_REQUEST = (FIRST_CACHE_READ, FIRST_CACHE_CREATION)
 SETTING_PREFIXES = {
     "claude-code": "EVO_WORKER_CLAUDE_CODE_",
     "opencode": "EVO_WORKER_OPENCODE_",
@@ -187,12 +194,13 @@ def new_session_argv(pid_file: Path, program: str, *args: str) -> list[str]:
     return [sys.executable or "python3", "-I", "-c", _NEW_SESSION, str(pid_file), program, *args]
 
 
-def write_launcher(directory: Path, program: str, *, unset: Iterable[str] = ()) -> Path:
-    """An executable ``directory/launch`` that runs ``program`` with its own arguments as ``new_session_argv`` does,
-    the pid going to ``directory/pid``: for an SDK that takes the path of one executable. The variables in ``unset``
-    are removed first, from whatever environment the SDK gives it (its own process's, as a rule)."""
+def write_launcher(directory: Path, program: str, *args: str, unset: Iterable[str] = ()) -> Path:
+    """An executable ``directory/launch`` that runs ``program args`` with its own arguments after them as
+    ``new_session_argv`` does, the pid going to ``directory/pid``: for an SDK that takes the path of one executable.
+    The variables in ``unset`` are removed first, from whatever environment the SDK gives it (its own process's, as a
+    rule)."""
     path = directory / "launch"
-    command = " ".join(shlex.quote(part) for part in new_session_argv(directory / "pid", program))
+    command = " ".join(shlex.quote(part) for part in new_session_argv(directory / "pid", program, *args))
     removed = "".join(f"unset {name}\n" for name in unset if _VARIABLE.match(name))
     path.write_text(f'#!/bin/sh\n{removed}exec {command} "$@"\n', encoding="utf-8")
     path.chmod(0o700)
@@ -344,12 +352,41 @@ def larger(peak: int | None, found: int | None) -> int | None:
     return found if peak is None or found > peak else peak
 
 
-def with_peak(usage: dict | None, peak: int | None, **extra) -> dict | None:
+def first_request(cache_read=None, cache_creation=None) -> dict:
+    """The FIRST_REQUEST keys of a run's usage, from the tokens the first request of its model read from the cache and
+    wrote to it: null for a count the runtime did not report (anything but an int of 0 or more)."""
+    return {FIRST_CACHE_READ: token_sum(cache_read), FIRST_CACHE_CREATION: token_sum(cache_creation)}
+
+
+def reports_first_request(usage) -> bool:
+    """Whether ``usage`` holds a number for one of the FIRST_REQUEST keys."""
+    return isinstance(usage, Mapping) and any(token_sum(usage.get(key)) is not None for key in FIRST_REQUEST)
+
+
+def with_first_request(usage: dict | None, usages: Iterable, unseen: bool = False) -> dict | None:
+    """``usage`` with the FIRST_REQUEST keys of the earliest of ``usages`` that reports them: ``usages`` are those of the
+    agents that went one after the other in one session, so the keys say the session's first request rather than the
+    last agent's. ``unseen``: that request came where no usage is reported (a terminal UI), so the keys are null.
+    ``usage`` as it is when it is None or, but for ``unseen``, none of them reports the keys."""
+    if not isinstance(usage, dict):
+        return usage
+    if unseen:
+        return {**usage, **first_request()}
+    for earlier in usages:
+        if reports_first_request(earlier):
+            return {**usage, **{key: earlier.get(key) for key in FIRST_REQUEST}}
+    return usage
+
+
+def with_peak(usage: dict | None, peak: int | None, first: Mapping | None = None, **extra) -> dict | None:
     """A run's ``usage`` with PEAK_CONTEXT, the largest context one request of its model read: null when the runtime
-    did not report it, never 0. The ``extra`` keys go with it when known. None when the runtime reported neither."""
+    did not report it, never 0; and with the FIRST_REQUEST keys of ``first`` (``first_request``), null when it is None.
+    The ``extra`` keys go with it when known. None when the runtime reported neither usage nor peak."""
     if not usage and peak is None:
         return None
-    return {**(usage or {}), PEAK_CONTEXT: peak, **{key: value for key, value in extra.items() if value is not None}}
+    firsts = {key: (first or {}).get(key) for key in FIRST_REQUEST}
+    known = {key: value for key, value in extra.items() if value is not None}
+    return {**(usage or {}), PEAK_CONTEXT: peak, **firsts, **known}
 
 
 def cut(text: str, limit: int = MAX_ERROR_CHARS) -> str:
@@ -405,6 +442,14 @@ class QueueAdapter(Adapter):
     def _cleanup(self) -> None:
         """Remove what is left on disk, once the process group is gone."""
 
+    async def _release(self) -> None:
+        """Remove what is left of the containers of the run's environment, once the agent's process group is gone;
+        nothing on the host."""
+        environment = getattr(self.context, "environment", None)
+        if environment is not None and environment.container:
+            with contextlib.suppress(Exception):  # the engine's trouble never hides how the agent ended
+                await asyncio.to_thread(environment.release)
+
     def emit(self, events: Iterable[AgentEvent]) -> None:
         for event in events:
             self._queue.put_nowait(event)
@@ -423,6 +468,7 @@ class QueueAdapter(Adapter):
                 await asyncio.wait_for(self._close(), CLOSE_TIMEOUT)
             kill_group(pid)
             self._cleanup()
+            await self._release()
             raise
         self._task = asyncio.create_task(self._main())
         left = None if self.budget is None else curator.seconds_left(self.budget, self.context.spent_seconds)
@@ -466,6 +512,7 @@ class QueueAdapter(Adapter):
                 kill_group(pid)
                 kill_tree(tools)
                 self._cleanup()
+                await self._release()
                 if self._watchdog is not None:
                     self._watchdog.cancel()
                 if self._time_cap is not None:

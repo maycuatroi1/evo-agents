@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import metadata
@@ -20,6 +21,7 @@ import yaml
 from evo_agents.kg.policy import Policy
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds, validate_ontology
+from evo_agents.plugins.core import python_contributions
 from evo_agents.schema import Issue, errors, validate
 
 MANIFEST = "harness.yaml"
@@ -171,7 +173,10 @@ def registered_harnesses() -> list[dict]:
 
 
 def available_connectors() -> set[str]:
+    """The builtin connectors, those core plugins contribute (``evo_agents.plugins.core``) and the entry points of
+    group evo_agents.kg.connectors."""
     names = set(BUILTIN_CONNECTORS)
+    names.update(python_contributions("kg_connectors"))
     try:
         names.update(ep.name for ep in metadata.entry_points(group=CONNECTOR_GROUP))
     except Exception:  # pragma: no cover - broken environments still validate builtins
@@ -202,7 +207,9 @@ class FileReport:
         }
 
 
-def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> FileReport:
+def _validate_file(
+    path: Path, kind: str, harness: Harness | None = None, plan_checks: Callable[[dict], list[Issue]] | None = None
+) -> FileReport:
     try:
         data = load_yaml(path)
     except yaml.YAMLError as exc:
@@ -215,6 +222,8 @@ def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> Fil
     if kind == "plan" and isinstance(data, dict):
         issues += plan_semantics(data, path, harness)
         issues += mirror_issues(data, path, harness)
+        if plan_checks is not None:
+            issues += plan_checks(data)
     if kind == "contracts" and isinstance(data, dict):
         issues += contracts_semantics(data, harness)
     return FileReport(path, kind, issues)
@@ -262,6 +271,25 @@ def contracts_semantics(data: dict, harness: Harness | None = None) -> list[Issu
     return issues
 
 
+NO_REF = (
+    "no ref: the source reads HEAD of its checkout, whatever branch that has, and machines that push to one hub may "
+    "read different branches; name the deployed branch, e.g. ref: origin/main with fetch: true"
+)
+
+
+def _git_source_issues(src: dict, where: str, repo_names: set | None) -> list[Issue]:
+    """A git source reads a repo harness.yaml declares or a path, at a ref it names. ``repo_names`` is None when
+    there is no harness.yaml to check the repo against."""
+    issues: list[Issue] = []
+    if not (src.get("repo") or src.get("path")):
+        issues.append(Issue(where, "a git source needs repo or path"))
+    if src.get("repo") and repo_names is not None and src["repo"] not in repo_names:
+        issues.append(Issue(f"{where}.repo", f"repo {src['repo']!r} is not declared in harness.yaml"))
+    if not src.get("ref"):
+        issues.append(Issue(f"{where}.ref", NO_REF, "warning"))
+    return issues
+
+
 def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | None = None) -> list[Issue]:
     """Checks a schema cannot express: references between sources, labels and the policy, and, given
     the path of knowledge.yaml, the ontology it points at."""
@@ -286,10 +314,8 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(Issue(f"{where}.connector", f"unknown connector {connector!r}"))
         if connector == "exec" and not src.get("command"):
             issues.append(Issue(f"{where}.command", "an exec connector needs a command"))
-        if connector == "git" and not (src.get("repo") or src.get("path")):
-            issues.append(Issue(where, "a git source needs repo or path"))
-        if connector == "git" and src.get("repo") and manifest is not None and src["repo"] not in repo_names:
-            issues.append(Issue(f"{where}.repo", f"repo {src['repo']!r} is not declared in harness.yaml"))
+        if connector == "git":
+            issues += _git_source_issues(src, where, repo_names if manifest is not None else None)
         label = src.get("label")
         if not label:
             issues.append(Issue(f"{where}.label", "no label: treated as the highest level with integrity U", "warning"))
@@ -491,8 +517,9 @@ def mirror_issues(data: dict, path: Path, harness: Harness | None = None) -> lis
     return []
 
 
-def validate_harness(root: Path | str) -> list[FileReport]:
-    """Validate every file a harness owns: manifest, contracts, knowledge, plans."""
+def validate_harness(root: Path | str, plan_checks: Callable[[dict], list[Issue]] | None = None) -> list[FileReport]:
+    """Validate every file a harness owns: manifest, contracts, knowledge, plans. ``plan_checks`` adds the issues of
+    a package above this one to each plan's (``evo-agents harness validate`` warns of a verify that cannot be shell)."""
     root = Path(root).expanduser().resolve()
     if not (root / MANIFEST).is_file():
         found = find_manifest(root)
@@ -510,5 +537,5 @@ def validate_harness(root: Path | str) -> list[FileReport]:
         else:
             reports.append(FileReport(kpath, "knowledge", [Issue("", "knowledge_file points at a missing file")]))
     for plan in sorted((root / "plans").glob("*/*.yaml")):
-        reports.append(_validate_file(plan, "plan", harness))
+        reports.append(_validate_file(plan, "plan", harness, plan_checks))
     return reports

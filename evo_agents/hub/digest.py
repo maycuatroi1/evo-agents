@@ -36,10 +36,17 @@ sessions have a digest. The digest keeps that skill's fields and adds the figure
   ``trigger`` ``manual`` for /compact; read from real transcripts of Claude Code 2.1.246 to 2.1.293), each uuid
   once, since a resumed session may copy a line;
 - ``tool_result_chars``: per tool, the characters of the text of its results the model read, each result once, the
-  most first.
+  most first;
+- ``spool_results``: how many results the PostToolUse hook of the plugin cut and wrote whole to a spool file
+  (``evo_agents.hub.spool``), each result once, read from the note the hook put in the result's place
+  (``spooled_chars``); ``spool_original_chars``: the characters those results had before the cut, as their notes say;
+  ``spool_reads``: the calls whose input names the spool directory (``names_spool``), the agent reading a spool file
+  again. Only counts leave the machine, never a spool file or its text.
 
-The last three leave out the lines of a subagent (``isSidechain``), whose context is its own, and the peak leaves out
-the messages no model sent (``<synthetic>``).
+The last six leave out the lines of a subagent (``isSidechain``), whose context is its own, and the peak leaves out
+the messages no model sent (``<synthetic>``). A Codex session has no spool (the hook leaves a Codex result as it is):
+its ``spool_results`` and ``spool_original_chars`` are 0, and ``spool_reads`` counts the shell runs that name the spool
+directory.
 
 The digest goes to the hub only through ``evo_agents.hub.redact`` (the hook does that), and the hub's PUT checks it
 against the same limits. ``DigestState`` (~/.evo/hub/digest-state.json) remembers per hub and per session what was
@@ -91,6 +98,14 @@ EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 SHELL_TOOLS = frozenset({"Bash"})
 SKILL_TOOL = "Skill"  # Claude Code's tool that loads a skill, named by its input's ``skill``
 SYNTHETIC_MODEL = "<synthetic>"  # what Claude Code writes for a message no model sent
+# The spool of the PostToolUse hook (``evo_agents.hub.spool``): its directory under the home, as a call that reads a
+# spool file names it, and the note it puts in the place of a result it cut, which names the result's size and the
+# file under that directory (``spool.note``: a long output, or a Read with its lines).
+SPOOL_DIRECTORY = ".evo/tool-output"
+SPOOL_NOTE = re.compile(
+    r"\[evo-hub: (?:this output has (?P<output>[\d,]+) characters|the read returned [\d,]+ lines \((?P<read>[\d,]+) "
+    r"characters\))[^\n]*?\.evo[/\\]+tool-output[/\\]"
+)
 STATE_FILE = "digest-state.json"
 STATE_VERSION = 1
 KEEP_SECONDS = 90 * 86400  # a session the state remembers, after its last push
@@ -152,6 +167,25 @@ def _result_chars(item: dict) -> int:
     if isinstance(content, list):
         return sum(len(str(part.get("text") or "")) for part in content if isinstance(part, dict))
     return len(content) if isinstance(content, str) else 0
+
+
+def spooled_chars(text: str) -> int | None:
+    """The characters a result had before the spool hook cut it, as the hook's note in ``text`` says them; None for a
+    result the hook left as it was."""
+    found = SPOOL_NOTE.search(text)
+    if found is None:
+        return None
+    return min(int((found.group("output") or found.group("read")).replace(",", "")), MAX_COUNT)
+
+
+def names_spool(given) -> bool:
+    """Whether a call's input names the spool directory, as when the agent reads a spool file again (the same test as
+    ``spool.mentions_spool``)."""
+    try:
+        text = json.dumps(given, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return False
+    return SPOOL_DIRECTORY in text.replace("\\\\", "/")
 
 
 def _count(value) -> int | None:
@@ -221,6 +255,8 @@ class _Tally:
         self.contexts: dict[str, int] = {}  # message id: the tokens of its context, the main thread's
         self.compactions: set[str] = set()  # the uuids of the compact boundaries
         self.result_chars: dict[str, tuple[str, int]] = {}  # tool_use id: (tool, characters of its result)
+        self.spooled: dict[str, int] = {}  # tool_use id: the characters of its result before the spool hook cut it
+        self.spool_reads: set[str] = set()  # the tool_use ids of the calls that name the spool directory
 
     def add(self, line) -> None:
         if isinstance(line, dict) and line.get("type") == "system" and line.get("subtype") == COMPACT_BOUNDARY:
@@ -253,7 +289,7 @@ class _Tally:
         call = str(item.get("tool_use_id"))
         tool, command = self.tool_uses.get(call, ("unknown", None))
         if main:
-            self.result_chars[call] = (tool, _result_chars(item))
+            self._main_result(call, tool, item)
         if not item.get("is_error"):
             return
         self.failed[tool] += 1
@@ -263,6 +299,14 @@ class _Tally:
         if tool == SKILL_TOOL:
             self.skills.load_failed(call)
         self.errors[(tool, _cut(text, ERROR_CHARS))] += 1
+
+    def _main_result(self, call: str, tool: str, item: dict) -> None:
+        """A result of the main thread: the characters the model read, and the size before the cut of one the spool
+        hook cut."""
+        self.result_chars[call] = (tool, _result_chars(item))
+        before = spooled_chars(_result_text(item)) if not item.get("is_error") else None
+        if before is not None:
+            self.spooled[call] = before
 
     def _assistant(self, line: dict, items: list[dict]) -> None:
         message = line.get("message") if isinstance(line.get("message"), dict) else {}
@@ -277,12 +321,14 @@ class _Tally:
             self.contexts[key] = context
         for item in items:
             if item.get("type") in ("tool_use", "server_tool_use"):
-                self._tool_use(item)
+                self._tool_use(item, main=not line.get("isSidechain"))
 
-    def _tool_use(self, item: dict) -> None:
+    def _tool_use(self, item: dict, main: bool = True) -> None:
         tool = _cut(item.get("name") or "unknown", MAX_NAME)
         given = item.get("input") if isinstance(item.get("input"), dict) else {}
         self.calls[tool] += 1
+        if main and names_spool(given):
+            self.spool_reads.add(str(item.get("id")))
         command = None
         if tool in SHELL_TOOLS:
             command = str(given.get("command") or "") or None
@@ -337,6 +383,9 @@ class _Tally:
             "compactions": min(len(self.compactions), MAX_COUNT),
             "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(chars)[:MAX_TOOLS]],
             **friction.digest_fields(self.bash, self.skills),
+            "spool_results": min(len(self.spooled), MAX_COUNT),
+            "spool_original_chars": min(sum(self.spooled.values()), MAX_COUNT),
+            "spool_reads": min(len(self.spool_reads), MAX_COUNT),
         }
 
 
@@ -404,6 +453,7 @@ class _CodexTally:
         self.peak: int | None = None
         self.compactions: set[str] = set()
         self.chars: Counter = Counter()  # per tool, the characters of its results the model read
+        self.spool_reads = 0  # the shell runs that name the spool directory
 
     def add(self, line) -> None:
         if not isinstance(line, dict):
@@ -473,6 +523,8 @@ class _CodexTally:
         self.calls[CODEX_SHELL_TOOL] += 1
         failed = _codex_failed(item)
         command = codex_command(item).strip()
+        if names_spool(command):
+            self.spool_reads += 1
         output = str(item.get("aggregated_output") or "")
         if command:
             self.commands[_cut(command, COMMAND_CHARS)] += 1
@@ -537,6 +589,9 @@ class _CodexTally:
             "compactions": min(len(self.compactions), MAX_COUNT),
             "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(self.chars)[:MAX_TOOLS]],
             **friction.digest_fields(self.bash, self.skills),
+            "spool_results": 0,  # the spool hook leaves a Codex result as it is
+            "spool_original_chars": 0,
+            "spool_reads": min(self.spool_reads, MAX_COUNT),
         }
 
 

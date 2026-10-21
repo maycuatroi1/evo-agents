@@ -5,8 +5,9 @@ a member whose grant stops at internal never receives a customer node or edge, b
 that does not exist), in a neighbourhood or in the counts by kind; the web reads with the grant alone while the kg_*
 tools read with the grant met with the sink, and the two agree whenever the sink clears the grant; the neighbours the
 graph view shows one step out are those kg_context returns on the same store; the neighbourhood stops at 2 steps and
-150 nodes and says how many it left out; the build list the status page reads carries content hash, counts, times,
-errors and the jobs still queued; 401, 403, 404 and a project without a build.
+150 nodes and says how many it left out; the graph summary and kg_status name the commit each source read, the
+summary only for the sources the member can see; the build list the status page reads carries content hash, counts,
+times, errors and the jobs still queued; 401, 403, 404 and a project without a build.
 
 One hub serves every test of the module (they only read): the fixture of ``tests.hub.kg_fixture`` pushed by a writer
 through ``evo_agents.hub.kg_push`` and built by the worker's job in this process, the blob store being moto's server
@@ -24,6 +25,9 @@ from tests.hub.kg_fixture import (
     AGENT,
     CONTRACT,
     CONTRACT_SECTION,
+    DEALS_SHA,
+    DOCS_READ,
+    DOCS_SHA,
     HUB_NODE,
     NARROW,
     NOTES,
@@ -132,6 +136,24 @@ def test_the_graph_summary_names_the_build_and_counts_visible_nodes_by_kind(hub)
     assert internal["Document"] == 2 + NOTES  # the contract is customer
     assert sum(internal.values()) < sum(kinds.values())
     assert ok(hub, "pat", f"/v1/kg/{PROJECT}/graph")["kinds"] == []  # everything is internal or above
+
+
+def test_the_graph_summary_names_the_commit_each_source_the_member_can_see_read(hub):
+    docs = {"source": "docs", **DOCS_READ}
+    deals = {"source": "deals", "commit": DEALS_SHA, "ref": "HEAD", "base": None, "behind": None, "url": None}
+    assert ok(hub, "wendy", f"/v1/kg/{PROJECT}/graph")["sources"] == [deals, docs]
+    assert ok(hub, "ivan", f"/v1/kg/{PROJECT}/graph")["sources"] == [docs]  # deals is customer
+    assert ok(hub, "pat", f"/v1/kg/{PROJECT}/graph")["sources"] == []
+
+    response = hub.client.post(
+        f"/v1/kg/{PROJECT}/tools/kg_status", json={"arguments": {}, "sink": AGENT}, headers=hub.wendy
+    )
+    assert response.status_code == 200, response.text
+    status = response.json()
+    text = status["content"][0]["text"]
+    assert f"read {DOCS_SHA[:7]} of origin/main, 2 behind origin/main" in text
+    assert f"read {DEALS_SHA[:7]} of HEAD" in text
+    assert status["structuredContent"]["reads"] == [deals, docs]
 
 
 def test_search_finds_the_fixture_node_as_kg_search_does(hub):
@@ -297,7 +319,7 @@ def test_refusals(hub):
 
 
 def test_a_project_without_a_build(hub):
-    assert ok(hub, "wendy", f"/v1/kg/{EMPTY}/graph") == {"graph": None, "kinds": []}
+    assert ok(hub, "wendy", f"/v1/kg/{EMPTY}/graph") == {"graph": None, "kinds": [], "sources": []}
     found = ok(hub, "wendy", f"/v1/kg/{EMPTY}/nodes", q="runbook")
     assert found["graph"] is None and found["results"] == []
     for path in ("node", "neighbourhood"):

@@ -10,6 +10,7 @@ import {
   initialOption,
   inboxSearch,
   isFiltered,
+  mergeAsk,
   noticeFacts,
   NO_FILTERS,
   notificationOfDecision,
@@ -134,6 +135,9 @@ describe("answers", () => {
     expect(answerAccess(open, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "parked" }, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "queued" }, "octo")).toBe("answer");
+    // A local session whose turn ended takes the answer at its next turn; one that ended takes none.
+    expect(answerAccess({ ...open, run_state: "idle" }, "octo")).toBe("answer");
+    expect(answerAccess({ ...open, run_state: "ended" }, "octo")).toBe("runGone");
     expect(answerAccess(open, "mona")).toBe("notOwner");
     expect(answerAccess(open, null)).toBe("notOwner");
     expect(answerAccess({ ...open, run_state: "review" }, "octo")).toBe("runGone");
@@ -174,5 +178,15 @@ describe("the decision card", () => {
     expect(parkTiming({ state: "open", run_state: "running" }, null, now)).toBeNull();
     expect(parkTiming(waiting, null, now)).toBeNull();
     expect(parkTiming({ state: "answered", run_state: "waiting" }, "2026-10-05T09:30:00Z", now)).toBeNull();
+  });
+
+  it("tells what a notice of the merge queue asks of an admin", () => {
+    const notice = { notice_kind: "merge_default_branch" as const, project: "northwind" };
+    expect(mergeAsk({ ...notice, details: { ask: "sample", sample_id: 4 } })).toBe("sample");
+    expect(mergeAsk({ ...notice, details: { ask: "release" } })).toBe("release");
+    expect(mergeAsk({ ...notice, details: { repo: "shop", branch: "main", commits: [] } })).toBeNull();
+    expect(mergeAsk({ ...notice, project: null, details: { ask: "revert" } })).toBeNull();
+    expect(mergeAsk({ notice_kind: "merge_paused", project: "northwind", details: { repo: "billing" } })).toBe("resume");
+    expect(mergeAsk({ notice_kind: "push_default_branch", project: "northwind", details: { ask: "sample" } })).toBeNull();
   });
 });

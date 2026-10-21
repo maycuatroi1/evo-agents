@@ -8,13 +8,14 @@ import { RunRef } from "@/components/data/identifier";
 import type { OverviewRun } from "@/components/home/model";
 import { CountPill } from "@/components/home/parts";
 import { PlanRunKindBadge } from "@/components/runs/badges";
+import { LocalRunKindBadge } from "@/components/local-run";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { useMediaQuery, XL_QUERY } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
-import { hasTile, MAX_TILES, type TileRef } from "./model";
-import { RunTime, StepsDone, WorkerName } from "./parts";
+import { hasTile, isMonitorFiltered, localAccounts, MAX_TILES, type MonitorFilters, NO_MONITOR_FILTERS, type TileRef } from "./model";
+import { LocalName, LocalTime, RunTime, StepsDone, WorkerName } from "./parts";
 
 /**
  * The Monitor's list: every run in flight of every project of the visitor's grants (the overview's active runs:
@@ -26,6 +27,7 @@ import { RunTime, StepsDone, WorkerName } from "./parts";
 
 /** The plan's title for a plan run, the step's for a run of one step; a review run of the Curator may have neither. */
 function runTitle(run: OverviewRun): string {
+  if (run.kind === "local") return run.title ?? run.machine ?? run.plan_id;
   const plan = run.kind === "plan" || run.step_key === null;
   return plan ? (run.plan_title ?? run.title ?? run.plan_id) : (run.title ?? run.step_key ?? run.plan_id);
 }
@@ -66,11 +68,11 @@ function FlightRow({ run, watched, locked, onToggle }: { run: OverviewRun; watch
             <span className="truncate" title={title}>
               {title}
             </span>
-            {run.kind === "plan" ? <PlanRunKindBadge /> : null}
+            {run.kind === "local" ? <LocalRunKindBadge /> : run.kind === "plan" ? <PlanRunKindBadge /> : null}
           </span>
           <span id={`${ids}-facts`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-subtle">
-            <WorkerName worker={run.worker} />
-            <RunTime run={run} />
+            {run.kind === "local" ? <LocalName run={run} /> : <WorkerName worker={run.worker} />}
+            {run.kind === "local" ? <LocalTime run={run} /> : <RunTime run={run} />}
             {run.kind === "plan" && run.steps_total !== null && run.steps_done !== null ? (
               <StepsDone done={run.steps_done} total={run.steps_total} testId="flight-steps" />
             ) : null}
@@ -81,12 +83,66 @@ function FlightRow({ run, watched, locked, onToggle }: { run: OverviewRun; watch
   );
 }
 
+/** Narrows the list (and the grid) to local sessions, and to one Claude account of them. */
+function FlightFilters({ runs, filters, onChange }: { runs: readonly OverviewRun[]; filters: MonitorFilters; onChange: (next: MonitorFilters) => void }) {
+  const t = useTranslations("monitor.list.filters");
+  const ids = useId();
+  const accounts = localAccounts(runs);
+  // A chosen account stays in the choices when its runs left the list, so the filter can be seen and cleared.
+  const choices = filters.account && !accounts.some((a) => a.toLowerCase() === filters.account.toLowerCase()) ? [...accounts, filters.account] : accounts;
+  if (accounts.length === 0 && !isMonitorFiltered(filters)) return null;
+  return (
+    <div role="group" aria-label={t("filterLabel")} className="flex flex-wrap items-center gap-2 border-b px-4 py-2" data-testid="flight-filters">
+      <Button
+        type="button"
+        variant={filters.local ? "secondary" : "ghost"}
+        size="sm"
+        aria-pressed={filters.local}
+        onClick={() => onChange({ ...filters, local: !filters.local })}
+        data-testid="flight-filter-local"
+      >
+        {t("localOnly")}
+      </Button>
+      <label htmlFor={`${ids}-account`} className="sr-only">
+        {t("account")}
+      </label>
+      <select
+        id={`${ids}-account`}
+        value={filters.account}
+        onChange={(event) => onChange({ ...filters, account: event.target.value })}
+        className="h-7 min-w-0 max-w-full rounded-md border bg-card px-2 text-xs"
+        data-testid="flight-filter-account"
+      >
+        <option value="">{t("allAccounts")}</option>
+        {choices.map((account) => (
+          <option key={account} value={account}>
+            {account}
+          </option>
+        ))}
+      </select>
+      {isMonitorFiltered(filters) ? (
+        <Button type="button" variant="ghost" size="sm" onClick={() => onChange(NO_MONITOR_FILTERS)} data-testid="flight-filter-clear">
+          {t("clear")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function FlightList({
   runs,
+  all = runs,
+  filters = NO_MONITOR_FILTERS,
+  onFilters,
   tiles,
   onToggle,
 }: {
+  /** The runs the list shows: those in flight that pass the filters. */
   runs: readonly OverviewRun[];
+  /** Every run in flight, the filters' choices. */
+  all?: readonly OverviewRun[];
+  filters?: MonitorFilters;
+  onFilters?: (next: MonitorFilters) => void;
   /** What the grid holds now. */
   tiles: readonly TileRef[];
   onToggle: (tile: TileRef) => void;
@@ -136,9 +192,10 @@ export function FlightList({
             {t("full", { max: MAX_TILES })}
           </p>
         ) : null}
+        {onFilters ? <FlightFilters runs={all} filters={filters} onChange={onFilters} /> : null}
         {runs.length === 0 ? (
           <p className="px-4 py-6 text-[13px] text-muted-foreground" data-testid="flight-empty">
-            {t("empty")}
+            {isMonitorFiltered(filters) ? t("filters.noMatch") : t("empty")}
           </p>
         ) : (
           <ul

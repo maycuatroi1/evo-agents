@@ -120,6 +120,15 @@ def _table(header: tuple[str, ...], rows: list[tuple]) -> None:
         print("  ".join(str(cell).ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip())
 
 
+# Public names of the helpers above for the client modules written since private names may no longer cross modules
+# (docs/structure.md, section Private names); the older modules keep importing the underscored names.
+client_command = _client_command
+signed_in = _signed_in
+print_json = _print_json
+when = _when
+table = _table
+
+
 @_client_command
 def cmd_login(args) -> int:
     url = args.url

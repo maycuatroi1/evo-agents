@@ -15,7 +15,7 @@ Inbox come in the same release.
 
 | Term | What it is | Table |
 | --- | --- | --- |
-| decision | a question the agent of a plan run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
+| decision | a question the agent of a plan run, an author run or a chat run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
 | notice | something the owner should know and need not answer, such as a push to a default branch | none of its own: it is a notification of kind `notice` |
 | notification | one decision or notice for one member, read or not | `notifications` |
 | channel | a place where a member gets notifications: the web, later Telegram | `notification_channels` |
@@ -24,10 +24,11 @@ Inbox come in the same release.
 
 ## Decisions
 
-The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`).
-The prompt of a plan run lists them, the route that takes a decision refuses any other, and the agent decides
-everything else itself and writes each such choice, with why, into the evidence of its step on a line that starts
-with `Decision:`.
+The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`). The
+prompt of a plan run lists all of them but `deploy` (`PROMPTED_DECISION_CATEGORIES`): merging, deploying and releasing
+are the agent's to do, and the route still takes a `deploy` decision from a worker of an older prompt. The route that
+takes a decision refuses any other, and the agent decides everything else itself and writes each such choice, with why,
+into the evidence of its step on a line that starts with `Decision:`.
 
 | Category | What it covers |
 | --- | --- |
@@ -59,11 +60,80 @@ recommends; at most one is. The owner answers with an option, with text of their
 Waiting and parked do not count toward the run's timeout: the timeout of a plan run, 2, 4, 8 or 24 hours, counts the
 time the agent runs (`run_seconds` in `runs.py`).
 
+### A decision of an author run
+
+The agent of an author run (`docs/workers.md`, "The chat of an author run") asks decisions too, on a worker whose
+daemon lists `author_decisions` in its heartbeat's `features`: its prompt names `scope` for the scope, outcome,
+compatibility and rollout of the plan and `architecture` for a choice of design, and the route takes any category of
+the table above with the bounds of a plan run's. The decision keeps the plan the run has when its agent asks; one the
+agent asks before its run put a plan has none (`plan_id` null), and its readers are the readers of the run. Its
+notification, kind `decision`, goes to the run's owner with a button per option on the web and on Telegram like a
+plan run's, and when it has no plan the message names `Author run #N` and the run's title in place of the plan.
+`evo-agents hub decision list` and `decision show`, and the MCP tool `decision_list`, show such a decision as `author
+run #N`, never `None` or `null`.
+
+The life differs from a plan run's in when the agent wakes. A turn that ends with decisions it asked still open waits
+(`waiting`) until every one of them has an answer, the owner replies in the run's chat, or the owner ends the chat; a
+single answer while another is open does not wake the agent, and the next turn takes every answer there is. A parked
+author run resumes only once none of its decisions is open, or on a reply in its chat, and the answers written while
+it was parked reach the agent in the first turn of the run that resumes it. When the run ends (End chat, cancel,
+fail), its decisions still open are `cancelled`. The answer goes to the run's inbox but is no message of its chat: on
+the web the decision's card in the run's Chat tab shows it.
+
+### A decision of a chat run
+
+The agent of a chat run asks its owner decisions of the one category `triage`, with the bounds of a plan run's
+(2 to 6 options), on a worker whose daemon lists `chat_decisions` in its heartbeat's `features`; every other category
+is 422 for a chat run, and `triage` is 422 for any other run. A turn that ends with a decision it asked still open
+leaves the run `waiting`, which keeps its slot and its lease; a chat run with no decision ends after its turn as
+before. The answer goes to the run's inbox and starts the next turn in the same session, once none of the run's
+decisions is open or the owner writes in the thread. The reaper parks a waiting chat run after 10 minutes
+(`CHAT_DECISION_WAIT_SECONDS`, not the 24 hours of a plan run, so a slot is not held for a day); an answer or a reply
+in the thread then queues a chat run pinned to the same worker that goes on in the same session, worktrees and branch
+(`resume_of_run_id` names the parked run, which is `done`), with the decisions still open and the unread inbox moved to
+it. When the run ends otherwise, its open decisions are `cancelled`. The Inbox, the web and Telegram answer such a
+decision through the same route as any other (migration 0045 allows the category).
+When the failure is one of the frame's (`docs/workers.md`, "Failure triage"), the agent acts by itself, each act with a
+`Decision:` line in the thread; the decision is for what is outside it.
+
 Only the run's owner answers, through the web or with a machine token of their own: another member gets 403,
 someone without a grant on the project 404, and the worker's own token 403, so the agent cannot answer itself. A
 decision that is no longer open gets 409. The answer goes into the run's inbox as a message that names the decision
 id, and the heartbeat hands it to the agent like any message of the owner's (`docs/workers.md`, The inbox). The audit
 row `decision.answer` names the decision and the option, never the text.
+
+### A decision of a local run
+
+A local run (`docs/workers.md`, Local runs) asks decisions of category `question`, with options and no plan needed. Only
+the member who owns the session sees, is notified of and answers it (404 for anyone else). It has no deadline to park
+at (`parks_at` is empty); it is `expired` when the session ends silent and `cancelled` when the session ends. The first
+answer wins, from the web, Telegram, `hub decision answer` or the machine's report; a later one gets 409.
+
+The agent of a local session asks in two ways, and both end in the same decision:
+
+- The `ask_member` tool of the hub's MCP (`question`, 2 to 6 `options` with a `key` (default 1, 2, ..), `label` and
+  `description`, `recommended` as a key or a label, `context`, `step`): the run turns `waiting`, the member is told on
+  the web, Telegram and the Inbox, and the call holds up to 20 s (`ASK_WAIT_SECONDS`, inside the proxy's 120 s) for the
+  first answer, which comes back with the words the member wrote. With none it says so and the agent calls it again
+  with `decision_id` to wait longer, or goes on. A session that is not a hub project's, or has `EVO_HUB_LOCAL_SYNC=0`,
+  gets a refusal and uses AskUserQuestion as before.
+- AskUserQuestion: the `local-ask` PreToolUse hook puts each question of the dialog (4 at most, options 2 to 6, keyed
+  1, 2, ..) to the hub and returns at once, so the dialog opens without delay. An answer given in the dialog is reported
+  by PostToolUse (`.../decisions/{id}/answered`) and closes the decision everywhere; a hub answer that came first
+  closes the dialog's report with a 409, which the machine leaves alone. This route cannot fill a dialog already open
+  (a non-goal: a Desktop dialog is not woken), so the hub's answer reaches the session as below.
+
+An answer that comes after the session stopped waiting stays in the run's inbox; the UserPromptSubmit hook gives it to
+the agent as `additionalContext` of the person's next message and acknowledges it with the next one.
+
+### A decision of a release cycle
+
+The hub itself asks decisions of category `release`, never an agent: when a cycle of a project's daily release stops
+(`docs/releases.md`, "When a cycle stops"), the owner of the release schedule gets one on the cycle's last run, with
+the three options `continue` (one more cap of the schedule), `close` and `pause` (the schedule). Only an admin of the
+project answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422,
+and one for a cycle no longer stopped 409. The hub does the option and says so in the cycle's thread of the triage
+chat. No run waits on the answer.
 
 ## Notices
 
@@ -72,17 +142,30 @@ A notice needs no answer (`NOTICE_KINDS`):
 | Kind | Sent when | Holds |
 | --- | --- | --- |
 | `push_default_branch` | a plan run pushed to a repo's default branch, which the plan names for that repo | the repo, the branch, the commits |
-| `merge_default_branch` | a plan run merged into such a branch | the repo, the branch, the commits |
+| `merge_default_branch` | a plan run merged into such a branch; or the hub's merge queue on GitLab asks each admin of the project after a merge: an audit sample, the approval of a manual PROD release, or which suspect to revert (`details.ask` `sample`, `release` or `revert`; `docs/merge-queue.md`) | the repo, the branch, the commits; for the queue, what it asks and a link to the project's merge queue |
 | `plan_finished` | a plan run ended with every step of its plan done | the plan, the steps the run did |
-| `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause) |
-| `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, open decisions and proposals, the worker on duty's last heartbeat |
+| `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause); the triage thread of the run when it opened one (a failed step, plan or author run opens a thread in the project's chat "Triage: PROJECT", or "Triage: PLAN" for a plan whose label is not at or below the project's default label, for the project's default agent to read; `projects.triage_enabled` false opens none) |
+| `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
-| `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"); the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
+| `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
+| `merge_paused` | the breaker of a repo of the hub's merge queue on GitLab tripped, to each admin of the project: the queue of that repo waits until an admin resets it (`docs/merge-queue.md`, The breaker) | the repo, its target branch, the cause and its reason, the merge requests it paused, how to reset it, and a link to the project's merge queue |
+| `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
+| `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
+| `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused` and `author_waiting`. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
+`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention` and `chat_added`, and the
+`merge_default_branch` of its merge queue. A release run that fails sends no
+`run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
+kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
+it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
 worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
+
+The hub sends no `author_waiting` when an author run moves to `waiting` with a decision of its own still open: the
+decision's notification told the owner already, and Home lists the run in Needs you through its decision, not again
+among the author runs waiting for a reply. An author run that waits with no decision open sends `author_waiting` as
+before.
 
 ## Notifications, channels and deliveries
 
@@ -141,12 +224,12 @@ text.
 
 `evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them.
 
-For the worker holding a plan run, with its `evw_` token and the protocol header (`docs/workers.md`); any other run,
-a run of one step included, gets 404:
+For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header
+(`docs/workers.md`); any other run, a run of one step, a review run and a judge run included, gets 404:
 
 | Route | Body | Answer |
 | --- | --- | --- |
-| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above or a step the plan does not have; 409 when the run has 20 decisions open |
+| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above (a chat run's is `triage` alone), a step the plan does not have, or a step of an author run that has put no plan; 409 when the run has 20 decisions open |
 | `POST /v1/worker/runs/{id}/notices` | `kind` (of `NOTICE_KINDS`), `title` (one line, at most 200 characters), `body` (at most 16 KiB), `repo` (one of the run's repos), `branch`, `commits` (at most 100) | 201, the notification |
 
 A decision leaves a `system` event in the run's log, and so does a notice. The hub sends `plan_finished` itself when a
@@ -157,38 +240,52 @@ For members, with a web session or a machine token:
 
 | Route | Who | What it does |
 | --- | --- | --- |
-| `GET /v1/projects/{p}/decisions` | readers of the run's plan | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
-| `GET /v1/projects/{p}/decisions/{id}` | readers of the run's plan | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
+| `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
+| `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
 
-The answer takes the plan's dispatch lock and the run's row, then: the decision is `answered`, its notification read,
+The answer takes the plan's dispatch lock (for a decision with a plan) and the run's row, then: the decision is `answered`, its notification read,
 and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
 included) gets it in its own inbox. A parked run is resumed: the hub queues a new plan run pinned to the parked run's
 worker, at the plan's current revision, with its session, repos, model, timeout and the agent time used so far, and
 `resume_of_run_id` naming it; the parked run is `done` with the reason `resumed as #N`, its other open decisions move
-to the new run, and the answer goes to the new run's inbox. The inbox message reads `Answer to decision #N (category):
+to the new run, and the answer goes to the new run's inbox. A parked author run is resumed so only once the answer
+leaves none of its decisions open; until then the answer waits in the parked run's inbox, and the run that resumes it
+takes every message there. The inbox message reads `Answer to decision #N (category):
 question`, then `Chosen option: KEY, LABEL.` and the owner's text.
 
 A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a proposal to
 `/inbox?proposal=ID`, a notice of a run to the run's page (`/p/{p}/runs/{id}`; `author_waiting` to its chat,
-`/p/{p}/runs/{id}?tab=chat`), and `curator_brief` and
-`curator_paused` to the project's Curator page (`/p/{p}/curator`). A member sees only the notifications of projects
+`/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
+`curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
+(`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
+(`/p/{p}/merge-queue`), and a chat's notice to the chat (`/chats/{id}`,
+with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 
 ## Telegram
 
-`evo_agents/hub/telegram.py` holds the model (link codes, button data, what may reach a chat, the messages) and
-`evo_agents/hub/server/telegram.py` the Bot API client, the channel's class, the webhook and the routes. The hub calls
-the Bot API with httpx; no bot library.
+Telegram is a core plugin, `telegram`, of the distribution `evo-agents-core-plugins` (repository
+[maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins)), which
+`deploy/hub/core-plugins.txt` pins into every image of the hub (`docs/plugins.md`, section Core plugins): the hub finds
+it in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the
+hub through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1). Its
+`evo_core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
+`evo_core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at the paths
+they had before Telegram was a plugin; its tests are in that repository. The hub keeps in `evo_agents/hub/telegram.py`
+what it says itself: the link codes, what may reach a chat (which the group chats share) and the words of a minimal
+message, and in evo-agents the Inbox's Telegram dialog, `hub admin telegram`, the variables below and the end-to-end
+test `web/e2e/telegram.spec.ts`. The plugin calls the Bot API with httpx; no bot library.
 
 ### One bot of the hub
 
 The hub admin creates the bot with BotFather and sets `EVO_HUB_TELEGRAM_BOT_TOKEN` and
-`EVO_HUB_TELEGRAM_WEBHOOK_SECRET` (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`). Without either the channel is
-off: linking answers 503, the webhook 404, a delivery to a Telegram channel fails at once, and the hub runs on. Members
+`EVO_HUB_TELEGRAM_WEBHOOK_SECRET` (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`). The hub checks their shape
+as it starts and the plugin reads them from the process's environment, checking it again. Without either the channel
+is off: linking answers 503, the webhook 404, a delivery to a Telegram channel fails at once, and the hub runs on. Members
 only link their chat. The webhook is a path of the hub's own domain, `/v1/telegram/webhook`, which the reverse proxy
 already sends to the api; `evo-agents hub admin telegram --set-webhook` (a hub admin) points the bot there with
 `setWebhook`, the secret as `secret_token`, and the updates `message` and `callback_query`, and `evo-agents hub admin
@@ -199,8 +296,8 @@ telegram` shows where it points, with Telegram's last error.
 1. On the web, the member opens the Inbox and its Telegram dialog and asks for a link (`POST /v1/me/telegram/link`).
    Only a web session may: a machine token gets 403, so a token that leaked cannot link a chat of its own. The hub
    makes a one-time code of 32 characters of `A-Z`, `a-z`, `0-9`, `_` and `-`, keeps its SHA-256, the member and the
-   session (`telegram_links`, schemas 0015 and 0016), lets it live 10 minutes, drops the member's codes not used yet,
-   and answers the link `https://t.me/<bot>?start=<code>`.
+   session (`channel_link_codes` of kind `telegram`, schemas 0015, 0016 and 0063), lets it live 10 minutes, drops the
+   member's codes not used yet, and answers the link `https://t.me/<bot>?start=<code>`.
 2. The member opens the link, and Telegram sends the bot `/start <code>` from that member's private chat.
 3. The webhook finds the code by its hash. A used, expired or unknown code, a code whose session has ended, or a chat
    that is not private, gets one reply that says only that the link did not work, whichever it was. A right code is
@@ -218,7 +315,8 @@ A chat speaks for its member with no token and never as a hub admin.
 
 ### What a decision looks like there
 
-The message names the run, the project, the category, the plan and the step, asks the question, and lists the options
+The message names the run, the project, the category, the plan and the step (for a decision of an author run without
+a plan, `Author run #N` and the run's title), asks the question, and lists the options
 with their labels, the recommended one marked. Under it, an inline keyboard has one button per option and a button that
 opens the decision on the web. A button's `callback_data` carries the decision's id and the option key, `d:<id>:<key>`,
 never any text. The context is not sent: the web button leads to it. A tier 2 proposal of the Curator goes out with its
@@ -241,11 +339,12 @@ that linked it lives. Before it reads anything of the decision or proposal the b
 holds a grant on its project: one of another project gets the same answer as one that does not exist, naming neither,
 and a project whose messages are restricted (below) takes no answer from Telegram, as its messages have no buttons.
 Button data that is not the hub's (an option key a decision cannot have, say) gets a refusal, never an error. Then it
-answers as that channel's member through the same code as the web (`decisions.answer_decision`,
-`proposals.answer_proposal_as`):
+answers as that channel's member through the same code as the web (the API's `answer_decision` and
+`answer_proposal`, over `decisions.answer_decision` and `proposals.answer_proposal_as`):
 the same checks (only the run's owner answers a decision, an admin of the project a proposal; a run on a worker that
 takes runs from the web only is answered on the web), the inbox message, the audit row, which ends `via=telegram` and
-names no token, and the run going on. It then calls `answerCallbackQuery`, so the button stops spinning and shows the
+names no token, and the run going on. A proposal takes no answer while a hub admin has turned the feature `curator`
+off, as on the web. It then calls `answerCallbackQuery`, so the button stops spinning and shows the
 outcome or the refusal, and edits the message to show the answer, or that it was answered first, keeping only the web
 button. A reply to the decision's message is its answer in text: the hub finds the decision by the chat and the message
 id it kept (`external_id`, `<chat>:<message>`), since Telegram numbers messages per chat, with the same checks as a

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { InfoTip } from "@/components/feedback/info-tip";
 import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import type { StepGroup } from "@/lib/plans";
-import { cn } from "@/lib/utils";
 
 import type { PlanRunScope } from "./model";
 import { type Run, runHref, type StepReadiness } from "./queries";
@@ -78,7 +78,10 @@ export function Blockers({ project, blockers }: { project: string; blockers: Blo
   );
 }
 
-/** The steps the run does, its repos and their branches, its checkpoints, and where the agent may push and merge. */
+/**
+ * The steps the run does, its repos and their branches, and its checkpoints; how the agent takes them and where it
+ * pushes show from the info icons, and a warning only when the plan names a default branch, where the agent merges.
+ */
 export function ScopeSummary({ scope, statusText }: { scope: PlanRunScope; statusText: (group: StepGroup) => string }) {
   const t = useTranslations("runs.planRun.summary");
   const format = useFormatter();
@@ -99,7 +102,7 @@ export function ScopeSummary({ scope, statusText }: { scope: PlanRunScope; statu
         {t("title")}
       </h3>
       <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
-        <dt className="text-muted-foreground">{t("steps")}</dt>
+        <Term label={t("steps")} info={t("order")} testId="plan-run-steps-info" />
         <dd className="flex min-w-0 flex-col gap-1.5" data-testid="plan-run-steps" data-count={scope.steps.length}>
           <span className="font-medium">{t("stepsCount", { count: scope.steps.length })}</span>
           {counts.length > 0 ? (
@@ -116,10 +119,9 @@ export function ScopeSummary({ scope, statusText }: { scope: PlanRunScope; statu
               ))}
             </span>
           ) : null}
-          <span className="text-xs text-pretty text-muted-foreground">{t("order")}</span>
         </dd>
 
-        <dt className="text-muted-foreground">{t("repos")}</dt>
+        <Term label={t("repos")} info={`${t("push")} ${defaults.length ? "" : t("pushNoDefault")}`.trim()} testId="plan-run-repos-info" />
         <dd className="min-w-0">
           <ul className="flex flex-col gap-1.5" data-testid="plan-run-repos">
             {scope.repos.map((repo) => (
@@ -145,7 +147,7 @@ export function ScopeSummary({ scope, statusText }: { scope: PlanRunScope; statu
           </ul>
         </dd>
 
-        <dt className="text-muted-foreground">{t("checkpoints")}</dt>
+        <Term label={t("checkpoints")} info={scope.checkpoints.length ? t("checkpointsHint") : undefined} testId="plan-run-checkpoints-info" />
         <dd className="min-w-0" data-testid="plan-run-checkpoints" data-count={scope.checkpoints.length}>
           {scope.checkpoints.length === 0 ? (
             <span className="text-muted-foreground">{t("noCheckpoints")}</span>
@@ -162,33 +164,42 @@ export function ScopeSummary({ scope, statusText }: { scope: PlanRunScope; statu
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-xs text-pretty text-muted-foreground">{t("checkpointsHint")}</p>
             </>
           )}
         </dd>
       </dl>
-      <p
-        className={cn(
-          "flex items-start gap-2 rounded-sm border px-3 py-2 text-xs text-pretty",
-          defaults.length ? "border-attention/30 bg-attention-soft text-attention" : "bg-card text-muted-foreground",
-        )}
-        data-testid="plan-run-push"
-        data-default={defaults.length > 0}
-      >
-        {defaults.length ? <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" /> : <GitBranch className="mt-px size-3.5 shrink-0" aria-hidden="true" />}
-        <span>
-          {t("push")}{" "}
-          {defaults.length
-            ? t("pushDefault", {
-                repos: format.list(
-                  defaults.map((repo) => t("repoBranch", { repo: repo.repo, branch: repo.branch ?? "" })),
-                  { type: "conjunction" },
-                ),
-                count: defaults.length,
-              })
-            : t("pushNoDefault")}
-        </span>
-      </p>
+      {defaults.length ? (
+        <p
+          className="flex items-start gap-2 rounded-sm border border-attention/30 bg-attention-soft px-3 py-2 text-xs text-pretty text-attention"
+          data-testid="plan-run-push"
+          data-default="true"
+        >
+          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            {t("pushDefault", {
+              repos: format.list(
+                defaults.map((repo) => t("repoBranch", { repo: repo.repo, branch: repo.branch ?? "" })),
+                { type: "conjunction" },
+              ),
+              count: defaults.length,
+            })}
+          </span>
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+/** A term of the summary, with an info icon beside it for what it means. */
+function Term({ label, info, testId }: { label: string; info?: string; testId: string }) {
+  return (
+    <dt className="flex items-center gap-1.5 self-start text-muted-foreground">
+      {label}
+      {info ? (
+        <InfoTip label={label} testId={testId}>
+          {info}
+        </InfoTip>
+      ) : null}
+    </dt>
   );
 }

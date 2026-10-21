@@ -26,6 +26,11 @@ BlobStoreUnavailable, which the routes answer with 503. The health check has a c
 and gives up after HEALTH_TIMEOUT. A presigned URL is a bearer credential until it expires: it goes to the caller
 and never into a log line, and the log filter masks SigV4 signatures and key ids anyway.
 
+The store can have two addresses: ``endpoint``, where clients reach it and which every presigned URL names (SigV4
+signs its host), and ``internal_endpoint``, where the hub's own calls go when it is set (EVO_HUB_S3_INTERNAL_ENDPOINT).
+A hub whose public store address sits behind a proxy that caps a request's body, as Cloudflare does at 100 MB, then
+writes a large built graph to the store directly.
+
 Every call blocks; the server runs them with ``asyncio.to_thread``.
 """
 
@@ -50,6 +55,8 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
 from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
+from evo_agents.plugins.bundle import KIND as PLUGIN_KIND
+from evo_agents.plugins.bundle import MAX_BUNDLE as MAX_PLUGIN_BUNDLE
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +76,8 @@ KIND_LIMITS = {
     "kg-blob": 64 * MiB,  # a source file a run log refers to
     "run-log": 64 * MiB,  # the whole log of one run of a plan step, which its worker uploads when the run ends
     "run-diff": 8 * MiB,  # the diff of that run's commits
+    "transcript": 48 * MiB,  # a part of a session's transcript, gzip of its redacted lines (evo_agents.hub.transcripts)
+    PLUGIN_KIND: MAX_PLUGIN_BUNDLE,  # a plugin's tar.gz, which the hub holds itself (evo_agents.plugins.bundle)
 }
 SHA256 = re.compile(r"[0-9a-f]{64}")
 CHUNK = 1 * MiB
@@ -155,10 +164,12 @@ class BlobStore:
         connect_timeout: float = CONNECT_TIMEOUT,
         read_timeout: float = READ_TIMEOUT,
         concurrency: int = DEFAULT_CONCURRENCY,
+        internal_endpoint: str | None = None,
     ):
         if not 1 <= concurrency <= MAX_CONCURRENCY:
             raise ValueError(f"the blob store's concurrency is between 1 and {MAX_CONCURRENCY}, not {concurrency}")
-        self.endpoint = endpoint
+        self.endpoint = endpoint  # what presigned URLs name
+        self.internal_endpoint = internal_endpoint or endpoint  # where the hub's own calls go
         self.bucket = bucket
         self.concurrency = concurrency
         self._slots = threading.BoundedSemaphore(concurrency)  # shared by every commit of this process
@@ -171,10 +182,10 @@ class BlobStore:
             "response_checksum_validation": "when_required",
         }
 
-        def client(**config):
+        def client(url: str, **config):
             return session.client(
                 "s3",
-                endpoint_url=endpoint,
+                endpoint_url=url,
                 region_name=REGION,
                 aws_access_key_id=access_key_id,
                 aws_secret_access_key=secret_access_key,
@@ -182,6 +193,7 @@ class BlobStore:
             )
 
         self._s3 = client(
+            self.internal_endpoint,
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
             retries={"mode": "standard", "total_max_attempts": attempts},
@@ -189,10 +201,13 @@ class BlobStore:
             max_pool_connections=concurrency + PARALLEL,
         )
         self._probe = client(
+            self.internal_endpoint,
             connect_timeout=HEALTH_TIMEOUT,
             read_timeout=HEALTH_TIMEOUT,
             retries={"mode": "standard", "total_max_attempts": 1},
         )
+        # Signs the presigned URLs, locally, for the address clients reach; it never calls the store.
+        self._signer = self._s3 if self.internal_endpoint == endpoint else client(endpoint)
 
     def __repr__(self) -> str:  # the key pair stays out of tracebacks and debug output
         return f"BlobStore(endpoint={self.endpoint!r}, bucket={self.bucket!r})"
@@ -201,6 +216,8 @@ class BlobStore:
         """Close the clients' connection pools."""
         self._s3.close()
         self._probe.close()
+        if self._signer is not self._s3:
+            self._signer.close()
 
     @classmethod
     def from_config(cls, config: HubConfig) -> BlobStore | None:
@@ -213,6 +230,7 @@ class BlobStore:
             config.s3_access_key_id,
             config.s3_secret_access_key,
             concurrency=config.blob_concurrency,
+            internal_endpoint=config.s3_internal_endpoint,
         )
 
     def _call(self, operation: str, method: str, **params):
@@ -250,7 +268,9 @@ class BlobStore:
     def presign_put(self, upload_id: str, size: int) -> str:
         """A PUT of exactly ``size`` bytes to the upload's key, working for UPLOAD_TTL."""
         params = {"Bucket": self.bucket, "Key": upload_key(upload_id), "ContentLength": size}
-        return self._s3.generate_presigned_url("put_object", Params=params, ExpiresIn=int(UPLOAD_TTL.total_seconds()))
+        return self._signer.generate_presigned_url(
+            "put_object", Params=params, ExpiresIn=int(UPLOAD_TTL.total_seconds())
+        )
 
     def presign_get(self, sha256: str, expires: timedelta = GET_TTL, *, filename: str | None = None) -> str:
         """A GET of blob ``sha256``, working for ``expires`` (at most MAX_GET_TTL). The caller must have checked that
@@ -263,7 +283,7 @@ class BlobStore:
             if not ATTACHMENT_NAME.fullmatch(filename):
                 raise ValueError(f"an attachment name is 1 to 200 of [A-Za-z0-9._-], not {filename!r}")
             params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
-        return self._s3.generate_presigned_url("get_object", Params=params, ExpiresIn=int(expires.total_seconds()))
+        return self._signer.generate_presigned_url("get_object", Params=params, ExpiresIn=int(expires.total_seconds()))
 
     # Objects
 

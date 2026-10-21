@@ -9,8 +9,9 @@ from evo_agents.cli import main
 from evo_agents.kg import build
 from evo_agents.kg.ids import uuid7
 from evo_agents.kg.project import ProjectError, load_project_at, read_index, remember
-from evo_agents.kg.sync import due_sources, parse_refresh, sync_all_due, sync_due
+from evo_agents.kg.sync import due_sources, parse_refresh, sync_all_due, sync_due, sync_project
 from tests.kg.conftest import FakeSource, doc
+from tests.kg.projects import commit, make_project, write
 
 NOW = dt.datetime(2026, 10, 3, 12, 0, tzinfo=dt.UTC)
 
@@ -208,3 +209,63 @@ def test_sync_due_flag_combinations_are_rejected(tmp_path, kg_env, capsys):
     assert main(["kg", "sync", "--due", "--all", "--project", "x"]) == 2
     assert main(["kg", "sync", "--due", "--all", "--accept-removals"]) == 2
     assert main(["kg", "sync", "--due", "--source", "docs"]) == 2
+
+
+def with_refresh(project):
+    """The demo project with its git source due every hour."""
+    text = project.knowledge_path.read_text()
+    project.knowledge_path.write_text(text.replace("    connector: git\n", "    connector: git\n    refresh: 1h\n"))
+    return load_project_at(project.harness.root, project.home)
+
+
+def test_a_git_source_still_at_the_commit_it_read_writes_no_log_and_builds_nothing(tmp_path, kg_env):
+    project = with_refresh(make_project(tmp_path, kg_env))
+    app, now = tmp_path / "demo-app", dt.datetime.now(dt.UTC)
+    first = sync_due(project, build=True)
+    (read,) = first.runs
+    assert first.ok and read.source == "app" and not read.unchanged and read.items > 0 and first.build.ok
+    corpus = project.corpus()
+    logs, cursor = sorted(corpus.log_dir.iterdir()), corpus.cursor("app")
+
+    again = sync_due(project, build=True, now=now + dt.timedelta(hours=2))
+    (same,) = again.runs
+    assert again.ok and same.ok and same.unchanged and same.items == 0 and same.log is None
+    assert again.build is None  # nothing was read, so nothing is built
+    assert sorted(corpus.log_dir.iterdir()) == logs and corpus.cursor("app") == cursor
+    assert corpus.runs("app", limit=1)[0]["detail"]["unchanged"] is True  # on record: the clock of refresh restarts
+    assert due_sources(project, corpus, now + dt.timedelta(minutes=30)) == []
+
+    write(app / "app/search.py", "def search(query):\n    return [query]\n")
+    commit(app, "simpler search")
+    later = sync_due(project, build=True, now=now + dt.timedelta(hours=4))
+    (changed,) = later.runs
+    assert not changed.unchanged and changed.items > 0 and changed.log is not None
+    assert later.build.ok and not later.build.skipped and later.build.build_id == first.build.build_id + 1
+
+
+def test_a_git_source_is_read_again_when_its_config_changed_or_its_last_run_failed(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    assert all(r.ok for r in sync_project(project))
+    harness = project.harness.root
+    write(harness / "CLUSTER.md", "# Demo\n\nA note not committed anywhere.\n")
+    by_source = {r.source: r for r in sync_project(project)}
+    assert by_source["app"].unchanged and not by_source["harness"].unchanged
+    corpus = project.corpus()
+    (cluster,) = [r for r in corpus.items("harness") if r.record["props"].get("path") == "CLUSTER.md"]
+    assert "not committed anywhere" in corpus.body_text(cluster.record)  # the harness is read from its files
+
+    add_run(corpus, "app", "failed", dt.timedelta(0))
+    (failed_before,) = sync_project(project, ["app"])
+    assert failed_before.ok and not failed_before.unchanged and failed_before.items > 0
+
+    excluding = load_project_at(harness, kg_env)
+    text = excluding.knowledge_path.read_text()
+    excluding.knowledge_path.write_text(text.replace("    repo: app\n", "    repo: app\n    exclude: [docs/old.md]\n"))
+    (narrower,) = sync_project(load_project_at(harness, kg_env), ["app"])
+    assert not narrower.unchanged and narrower.removals == 1  # docs/old.md is no longer selected
+
+    refresh_only = load_project_at(harness, kg_env)
+    text = refresh_only.knowledge_path.read_text()
+    refresh_only.knowledge_path.write_text(text.replace("    repo: app\n", "    repo: app\n    refresh: 6h\n"))
+    (same,) = sync_project(load_project_at(harness, kg_env), ["app"])
+    assert same.unchanged  # when a source runs is not what it reads

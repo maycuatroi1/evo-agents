@@ -328,6 +328,21 @@ describe("DecisionCard", () => {
     expect(screen.queryByTestId("decision-plan-link")).toBeNull();
     expect(screen.getByTestId("decision-step-link")).toHaveTextContent("bước 3");
   });
+
+  it("names an author run's decision, which has no plan, by its run and the run's title, and links to no plan", async () => {
+    api.answer = (request) =>
+      new URL(request.url).pathname === "/v1/projects/demo/runs/12"
+        ? Response.json({ id: 12, project: "demo", kind: "author", title: "Plans from the web", state: "waiting" })
+        : Response.json({ error: "not_found", message: "no" }, { status: 404 });
+    setup({ ...DECISION, plan_id: null, step_key: null, category: "scope" });
+    const head = screen.getByTestId("decision-head");
+    expect(within(head).getByTestId("decision-run-link")).toHaveTextContent("Author run #12");
+    expect(within(head).getByTestId("decision-run-link")).toHaveAttribute("href", "/p/demo/runs/12");
+    await waitFor(() => expect(within(head).getByTestId("decision-where")).toHaveTextContent("demo / Plans from the web"));
+    expect(within(head).queryByTestId("decision-plan-link")).toBeNull();
+    expect(within(head).queryByTestId("decision-step-link")).toBeNull();
+    expect(screen.getByTestId("decision").querySelector('a[href*="/plans/"]')).toBeNull();
+  });
 });
 
 describe("InboxBell", () => {

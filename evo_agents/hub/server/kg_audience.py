@@ -1,0 +1,54 @@
+"""The audience a reader of a project's knowledge graph holds on the hub (``evo_agents.kg.policy``), computed from the
+database at every read, so a change of members or grants counts at the next read, with no build.
+
+A person holds:
+
+- ``chat:<id>`` for each chat they are a member of, not removed, whose label as it is now they clear: the chats
+  ``chat_access`` lets them read (``chat_access.cleared_chats``);
+- ``grant:<project>:<level>`` for each project they hold a grant on and each level of that project's ladder up to the
+  grant's max level: what ``LabelReader.why_not`` asks of a label naming that project at that level. A max level the
+  ladder lacks gives none.
+
+The agent of a run (a principal with a ``RunScope``, on /mcp) holds the audience of the run's owner, the person the
+principal is. The agent of a chat run holds what both people its prompt is cleared for hold
+(``chat_runs.run_clearers``): the person who started it and the member whose worker runs it, when another.
+
+Every graph read of the hub asks this module: the kg_* tools of REST and /mcp (``kg.tool_result``), kg_more on /mcp,
+and the web's graph pages (``kg_web``). The review of a proposal reads with no audience instead: what it keeps is
+shown to every member of the project (``proposals.graph_view``).
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import tables
+from evo_agents.hub.server.chat_access import cleared_chats
+from evo_agents.hub.server.chat_runs import run_clearers
+from evo_agents.hub.server.security import Principal
+
+CHAT_RUN = "chat"  # the kind of a chat run (``runs.kind``)
+
+
+async def person_audience(conn: AsyncConnection, user_id: int) -> frozenset[str]:
+    """The audience person ``user_id`` holds now (see the module)."""
+    g, p = tables.grants, tables.projects
+    query = select(p.c.name, p.c.levels, g.c.max_level).join_from(g, p, p.c.id == g.c.project_id)
+    found = set()
+    for name, levels, max_level in await conn.execute(query.where(g.c.user_id == user_id)):
+        levels = list(levels)
+        if max_level in levels:
+            found.update(f"grant:{name}:{level}" for level in levels[: levels.index(max_level) + 1])
+    found.update(f"chat:{chat_id}" for chat_id in await cleared_chats(conn, user_id))
+    return frozenset(found)
+
+
+async def reader_audience(conn: AsyncConnection, user: Principal) -> frozenset[str]:
+    """The audience ``user`` reads a knowledge graph with now: its person's, or for the agent of a chat run, what both
+    people the run is cleared for hold."""
+    people = [user.user_id]
+    if user.scope is not None and user.scope.kind == CHAT_RUN:
+        people = await run_clearers(conn, user.scope.run_id) or people
+    audiences = [await person_audience(conn, person) for person in people]
+    return frozenset.intersection(*audiences)

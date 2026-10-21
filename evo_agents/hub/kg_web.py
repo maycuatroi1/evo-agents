@@ -1,5 +1,6 @@
 """What the hub's web pages read of a project's knowledge graph: node search, one node with its neighbours, the
-neighbourhood the graph view draws, and how many visible nodes of each kind the graph holds.
+neighbourhood the graph view draws, how many visible nodes of each kind the graph holds, and the commit each source
+the member can see read.
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
 verified artifact cache, the fallback to a cached build when the blob store does not answer) and answers with the
@@ -7,7 +8,9 @@ code of those tools: ``tool_kg_search`` and ``tool_kg_node`` of ``evo_agents.kg.
 neighbourhood that walks like ``tool_kg_context``. Every node and edge goes through ``Session.visible``, the one
 filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
 clearance, the web with the grant alone (``ProjectRules.grant_label`` of ``evo_agents.hub.access``, the label
-``visible_by_grant`` holds a memory's label below).
+``visible_by_grant`` holds a memory's label below); both hold the member's audience. When that audience does not hold
+every audience of the build, the build's nodes and edges are those it holds, and the sources with items that have an
+audience name no commit (``HubSession.within``).
 
 The neighbourhood is bounded: at most MAX_HOPS steps from the node shown and at most MAX_NODES nodes, the node
 itself included. Like kg_context it reads visible edges strongest status first, keeps ``in_source`` and ``part_of``
@@ -26,7 +29,8 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from evo_agents.hub.blobs import BlobStore
-from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession
+from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
+from evo_agents.kg import freshness
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HUB_DEGREE, SEED_EDGES, STATUS_RANK, ToolError
 from evo_agents.kg.store import Store
@@ -92,6 +96,27 @@ class WebSession(HubSession):
                 counts[kind] = counts.get(kind, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"kind": kind, "count": count} for kind, count in ordered]
+
+    def sources(self) -> list[dict]:
+        """The commit each git source of the build read (``evo_agents.kg.freshness.reads``), for the sources whose
+        node the member can see."""
+        if self.error:
+            return []
+        store, b = self._visible_store()
+        coverage = store.build_row(b)["coverage"]
+        if not self.whole(b):
+            hidden = store.seen(b)["audience"]
+            coverage = {"sources": [s for s in coverage.get("sources", []) if s["id"] not in hidden]}
+        found = []
+        for read in freshness.reads(coverage):
+            node = store.node(f"source:{read['source']}", b)
+            if node is not None and self.visible(node["label"]):
+                found.append(read)
+        return found
+
+    def summary(self) -> dict:
+        """What GET /v1/kg/{project}/graph shows: visible nodes by kind, and the commits sources read."""
+        return {"kinds": self.kinds(), "sources": self.sources()}
 
     def neighbourhood(self, node_id: str, hops: int = MAX_HOPS, limit: int = MAX_NODES) -> dict:
         """The visible nodes and edges within ``hops`` steps of the node, at most ``limit`` nodes. Raises
@@ -178,13 +203,15 @@ def read(
     graphs: list[BuiltGraph],
     reader: Callable[[WebSession], T],
 ) -> tuple[T, BuiltGraph]:
-    """``reader`` over the newest graph of ``project`` that can be read, and that graph. Raises
-    GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
+    """``reader`` over the newest graph of ``project`` that can be read, and that graph, counting the nodes and edges
+    the ceiling's audience holds. Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible,
+    GraphProblem."""
     path, graph = cache.acquire(store, project, graphs)
     try:
-        opened = Store.open_file(path, immutable=True)
+        opened = open_graph(path, project, graph)
         try:
-            return reader(WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])), graph
+            session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
+            return reader(session), session.counted(graph)
         finally:
             opened.close()
     finally:

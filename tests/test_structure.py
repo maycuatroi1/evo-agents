@@ -3,6 +3,9 @@
 tests/structure.py measures and checks; docs/structure.md says how to split a module or a function along a seam. The
 import boundaries themselves are import-linter's (`lint-imports`, contracts in pyproject.toml): this file only keeps
 their ignore_imports from growing against main.
+
+The checks of the code itself are marked ``structure`` and run only when asked (``python -m pytest -m structure
+tests/test_structure.py``); the tests of the checks run with the suite.
 """
 
 from __future__ import annotations
@@ -61,21 +64,25 @@ def on_main(path: str) -> str:
 # The code against the baseline
 
 
+@pytest.mark.structure
 def test_modules_keep_within_the_line_budget(measures, baseline):
     problems = structure.check_modules(measures.modules, baseline["modules"])
     assert not problems, structure.problems_text("Modules over their line budget", problems)
 
 
+@pytest.mark.structure
 def test_functions_keep_within_the_statement_and_complexity_budgets(measures, baseline):
     problems = structure.check_functions(measures.functions, baseline["functions"])
     assert not problems, structure.problems_text("Functions over their budget", problems)
 
 
+@pytest.mark.structure
 def test_private_names_are_not_imported_across_modules_beyond_the_baseline(measures, baseline):
     problems = structure.check_private_imports(measures.private_imports, baseline["private_imports"])
     assert not problems, structure.problems_text("Private names imported across modules", problems)
 
 
+@pytest.mark.structure
 def test_the_baseline_file_is_written_as_tighten_writes_it(baseline):
     assert (ROOT / BASELINE).read_text(encoding="utf-8") == structure.dump_baseline(baseline), (
         f"{BASELINE} is not in the layout `{TIGHTEN}` writes (one entry a line, sorted); run it to rewrite the file"
@@ -85,12 +92,14 @@ def test_the_baseline_file_is_written_as_tighten_writes_it(baseline):
 # The baselines against main
 
 
+@pytest.mark.structure
 def test_the_baseline_adds_or_raises_nothing_against_main(baseline):
     main = structure.load_baseline(on_main(BASELINE))
     problems = structure.compare_baselines(baseline, main)
     assert not problems, structure.problems_text(f"{BASELINE} against main", problems)
 
 
+@pytest.mark.structure
 def test_the_import_exceptions_add_nothing_against_main():
     main = structure.contract_exceptions(on_main(PYPROJECT))
     if main is None:
@@ -100,6 +109,7 @@ def test_the_import_exceptions_add_nothing_against_main():
     assert not problems, structure.problems_text(f"{PYPROJECT} against main", problems)
 
 
+@pytest.mark.structure
 def test_the_package_boundaries_are_declared():
     declared = structure.contract_exceptions((ROOT / PYPROJECT).read_text(encoding="utf-8")) or {}
     missing = sorted(CONTRACTS - set(declared))

@@ -48,6 +48,9 @@ JOIN_HINT = "join this machine first: `evo-agents worker join --url URL --code C
 # exits apart only as 0 or not (launchd).
 EXIT_REVOKED = 3
 REVOKED_EXIT_VARIABLE = "EVO_WORKER_REVOKED_EXIT"
+# A daemon that updated its install to the tag nightly, or found it updated by another daemon of the same install, exits
+# with this status (EX_TEMPFAIL of sysexits.h): neither 0 nor EXIT_REVOKED, so launchd and systemd start the new one.
+EXIT_UPDATED = 75
 
 
 class WorkerStateError(Exception):
@@ -66,7 +69,11 @@ class WorkerConfig:
     projects: list[str]
     slots: int = 1
     labels: list[str] = field(default_factory=list)
+    plugins: list[str] = field(default_factory=list)  # whose runtimes it takes, as its owner set them on the hub
     allow_web_terminal: bool = False
+    # its owner's lock on the version, as the hub last sent it (0048); None until a hub sent one. A daemon the hub stops
+    # with 426 updates itself only when this says False (``selfupdate``)
+    version_locked: bool | None = None
     owner: str | None = None
     token_id: int | None = None
     joined_at: str | None = None
@@ -275,6 +282,21 @@ class WorkerHome:
 
     def remove_agent(self, run_id: int) -> None:
         self.agent_path(run_id).unlink(missing_ok=True)
+
+    # The graphs it keeps fresh
+
+    def kg_sync(self) -> list[dict]:
+        """What the daemon's last look at each project whose graph it keeps fresh found (``evo_agents.worker.kg_sync``),
+        as its heartbeat reports it, by project."""
+        from evo_agents.worker.kg_sync import shown_state
+
+        return shown_state(self.root)
+
+    def kg_sync_lines(self) -> list[str]:
+        """The same, as ``evo-agents worker status`` prints it."""
+        from evo_agents.worker.kg_sync import status_lines
+
+        return status_lines(self.kg_sync())
 
     # The daemon's pid
 

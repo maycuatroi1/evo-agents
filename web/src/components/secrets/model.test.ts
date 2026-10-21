@@ -94,6 +94,23 @@ describe("secret form", () => {
     expect(secretBody({ ...git, username: "deploy" })).toMatchObject({ username: "deploy" });
   });
 
+  it("sends a forge secret's prefix alone, with an end and no worker, and refuses github.com", () => {
+    const forge = form({ kind: "forge", urlPrefix: "https://gitlab.example.org/northwind", username: "left-over", workers: ["mac-mini"], expires: "2027-01-31" });
+    expect(secretProblems(forge, { adding: true, taken: [], now: NOW })).toEqual({});
+    expect(secretBody(forge)).toEqual({
+      kind: "forge",
+      url_prefix: "https://gitlab.example.org/northwind",
+      projects: ["demo"],
+      workers: [],
+      expires_at: "2027-01-31T00:00:00.000Z",
+      value: "v",
+    });
+    expect(secretProblems({ ...forge, expires: "" }, { adding: true, taken: [], now: NOW }).expires).toBe("expiresRequired");
+    expect(secretProblems({ ...forge, urlPrefix: "https://github.com/northwind" }, { adding: true, taken: [], now: NOW }).urlPrefix).toBe("urlPrefixGithub");
+    expect(secretProblems({ ...forge, value: "one\ntwo" }, { adding: true, taken: [], now: NOW }).value).toBe("valueLines");
+    expect(secretProblems({ ...forge, username: "bad\tuser" }, { adding: true, taken: [], now: NOW }).username).toBeUndefined();
+  });
+
   it("needs a project, and a value the hub takes", () => {
     expect(checks({ projects: [] }).projects).toBe("projectsRequired");
     expect(checks({ value: "" }).value).toBe("valueRequired");

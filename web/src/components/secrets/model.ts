@@ -46,9 +46,11 @@ export type SecretProblem =
   | "urlPrefixRequired"
   | "urlPrefixInvalid"
   | "urlPrefixCredentials"
+  | "urlPrefixGithub"
   | "usernameInvalid"
   | "projectsRequired"
   | "expiresInvalid"
+  | "expiresRequired"
   | "expiresPast"
   | "valueRequired"
   | "valueTooLong"
@@ -148,31 +150,43 @@ export function secretProblems(
   } else {
     const problem = urlPrefixProblem(form.urlPrefix);
     if (problem) found.urlPrefix = problem;
+    else if (form.kind === "forge" && new URL(form.urlPrefix.trim()).hostname === "github.com") found.urlPrefix = "urlPrefixGithub";
     const username = form.username.trim();
-    if (username && (username.length > MAX_USERNAME_CHARS || CONTROL.test(username))) found.username = "usernameInvalid";
+    if (form.kind === "git" && username && (username.length > MAX_USERNAME_CHARS || CONTROL.test(username))) found.username = "usernameInvalid";
   }
   if (form.projects.length === 0) found.projects = "projectsRequired";
   const end = expiresAt(form.expires, original);
   if (end === undefined) found.expires = "expiresInvalid";
+  else if (end === null && form.kind === "forge") found.expires = "expiresRequired";
   else if (end !== null && Date.parse(end) <= now) found.expires = "expiresPast";
   if (!form.value) found.value = "valueRequired";
   else if (utf8Bytes(form.value) > MAX_SECRET_BYTES) found.value = "valueTooLong";
   else if (form.value.includes("\u0000")) found.value = "valueNul";
-  else if (form.kind === "git" && /[\r\n]/.test(form.value)) found.value = "valueLines";
+  else if (oneLine(form.kind) && /[\r\n]/.test(form.value)) found.value = "valueLines";
   return found;
 }
 
-/** The PUT body of a form the checks passed: only the fields of its kind, and the value. */
+/** A git value is one line, as git's credential protocol takes it; a forge value too, as an HTTP header holds it. */
+export function oneLine(kind: SecretKind): boolean {
+  return kind === "git" || kind === "forge";
+}
+
+/**
+ * The PUT body of a form the checks passed: only the fields of its kind, and the value. A forge secret names no
+ * username and no worker: GitLab reads its token from a header, and only the hub ever uses it.
+ */
 export function secretBody(form: SecretForm, original?: Secret | null): SecretWrite {
   const target =
     form.kind === "env"
       ? { env_var: form.envVar.trim() }
-      : { url_prefix: form.urlPrefix.trim(), ...(form.username.trim() ? { username: form.username.trim() } : {}) };
+      : form.kind === "forge"
+        ? { url_prefix: form.urlPrefix.trim() }
+        : { url_prefix: form.urlPrefix.trim(), ...(form.username.trim() ? { username: form.username.trim() } : {}) };
   return {
     kind: form.kind,
     ...target,
     projects: [...form.projects],
-    workers: [...form.workers],
+    workers: form.kind === "forge" ? [] : [...form.workers],
     expires_at: expiresAt(form.expires, original) ?? null,
     value: form.value,
   };

@@ -1,13 +1,33 @@
 """``evo-agents hub hook post-tool-use``: the PostToolUse hook of the evo-hub plugin, which keeps a long tool result
 out of the model's context.
 
-A successful result of Bash, Read, Grep or an MCP tool longer than the threshold (THRESHOLD characters, or
+A successful result of Bash, Grep, WebFetch or an MCP tool longer than the threshold (THRESHOLD characters, or
 EVO_SPOOL_THRESHOLD; 0 or ``off`` turns the hook off) is written whole to ``~/.evo/tool-output/<session>/<call>.txt``,
 the directories mode 0700 and the file 0600. In its place the model gets, through ``updatedToolOutput``, the first
-HEAD and the last TAIL characters around one line that names the size and the file. The threshold sits near the 95th
-percentile of the tool results measured on one laptop (Claude Code transcripts of 30 days, 2026-10-11: 104,186
-results, median 830 characters, 95th percentile 11,080): about 6% of the results go to a file, and they hold about
-41% of the characters.
+HEAD and the last TAIL characters around one line that names the size and the file. A Read without an offset or a
+limit has a threshold of its own (READ_THRESHOLD, or EVO_SPOOL_READ_THRESHOLD; 0 or ``off`` leaves every Read whole)
+and keeps its first READ_HEAD characters of whole lines. The tools of evo-hub and evo-kg (SELF_LIMITED) pass whole:
+they cut their own text at 25,000 characters and give the rest through kg_more, and Claude Code itself saves an MCP
+text over 50,000 characters to a file. So does a Bash call that prints a plan's handoff (HANDOFF_COMMAND), which has
+a budget of its own and is never to be cut.
+
+The numbers come from the Claude Code transcripts of one laptop from 2026-10-13 07:41 to 2026-10-18 (669 transcripts,
+353 of them subagents, 50,255 tool calls; the scripts of the harness's ``research_notes/Rà soát quản lý context/``):
+
+- Bash: 38,087 results, 95th percentile 10,729 characters. Spooled at 10,000, they saved 67% of their characters after
+  the agent's reads of the spool file or reruns within 10 calls are taken off; even the results of 10,000 to 15,000
+  saved 38%. The threshold, HEAD and TAIL stay.
+- Read without offset or limit: 914 reads, median 4,528 characters, 90th percentile 24,307, 95th 32,311. Of the 287
+  cut at 10,000 with a head of 1,500, 260 (91%) were read again, 95% of those from the offset the note named and 59%
+  to the file's end, whatever the file's size: the cut saved 8% of their characters and cost 338 extra model calls.
+  No head under a file's size changes that much, since most reads go on to the end; what saves calls is to leave
+  more reads whole. At 40,000 only 36 of the 914 reads are cut (they hold 21% of the characters of all reads), each
+  keeping its first 20,000 characters, so a cut always takes off at least as much as it keeps. Replayed on the same
+  calls, that makes 74 extra model calls instead of 338.
+- WebFetch: 861 results, median 1,382, 95th percentile 23,858; the 58 over 10,000 hold 59% of WebFetch's characters,
+  and none was spooled before, since WebFetch was not in the matcher.
+- evo-hub and evo-kg: 440 results, 95th percentile 23,514; cutting them at 10,000 hid what kg_more and plan_handoff
+  are there to give whole.
 
 What Claude Code 2.1.294 hands the hook, and what it takes back (tried on 2026-10-12 with a hook that logged its input
 and one that replaced the output; ``updatedToolOutput`` must keep the tool's shape, else Claude Code ignores it):
@@ -23,14 +43,17 @@ and one that replaced the output; ``updatedToolOutput`` must keep the tool's sha
   passes unchanged.
 - Grep: ``{mode, numFiles, filenames, content, numLines, ...}``. Claude Code leaves Grep out of the default tool set on
   macOS and Linux, where searches run as Bash's grep, which the Bash case covers.
+- WebFetch: ``{bytes, code, codeText, result, durationMs, url}`` (Claude Code 2.1.286 to 2.1.299 transcripts); the
+  model reads ``result``, which becomes the head and tail, the other keys staying.
 - An MCP tool: the list of the result's content blocks, given without a check of its shape; the text blocks become one,
   the others stay.
 
 Anything else passes unchanged: another shape, an image, a call that names the spool directory (the agent reading a
-spool file), and a failed call, which comes as PostToolUseFailure and keeps Claude Code's own excerpt of up to about
-10,000 characters of its head and tail, so the agent sees why it failed. So does a payload from Codex (it has a
-``turn_id``): Codex 0.153 ignores ``updatedToolOutput``, ``decision: "block"`` turns a successful command into "Script
-failed", and its hook gets the output already cut to Codex's own limit, about 10,000 tokens.
+spool file), a tool of evo-hub or evo-kg, a Bash call that prints a plan's handoff, and a failed call, which comes as
+PostToolUseFailure and keeps Claude Code's own excerpt of up to about 10,000 characters of its head and tail, so the
+agent sees why it failed. So does a payload from Codex (it has a ``turn_id``): Codex 0.153 ignores
+``updatedToolOutput``, ``decision: "block"`` turns a successful command into "Script failed", and its hook gets the
+output already cut to Codex's own limit, about 10,000 tokens.
 
 Like the other hooks of the plugin this one never fails the session: exit status 0, at most BUDGET seconds (hooks.json
 gives Claude Code's limit), and it prints the replacement or nothing. A failure is one line on stderr naming the type
@@ -54,6 +77,9 @@ from evo_agents.hub.hooks import OutOfTime, budget, read_payload
 
 THRESHOLD = 10_000  # characters of a result kept in context; a longer one goes to a file
 THRESHOLD_VARIABLE = "EVO_SPOOL_THRESHOLD"
+READ_THRESHOLD = 40_000  # characters of a Read without offset or limit kept whole
+READ_THRESHOLD_VARIABLE = "EVO_SPOOL_READ_THRESHOLD"
+READ_HEAD = 20_000  # characters of whole first lines a longer Read keeps, at most half its threshold
 DAYS = 7.0  # days a spool file is kept
 DAYS_VARIABLE = "EVO_SPOOL_DAYS"
 HEAD = 1_500  # characters of a spooled result's start the model still gets
@@ -69,6 +95,10 @@ FILE_MODE = 0o600
 STAMP = ".pruned"  # its mtime says when the last clean-up ran
 NAME = re.compile(r"[A-Za-z0-9_-]{1,128}")  # a session id or tool_use_id that may name a file
 SAVED_KEYS = ("persistedOutputPath", "persistedOutputSize")  # Claude Code's own saved copy of a long Bash output
+# The tools of evo-hub and evo-kg, as a plugin (plugin_<plugin>_<server>) or a server of their own name: they cut their
+# own text at CAP_CHARS of ``evo_agents.kg.serve`` and give the rest through kg_more.
+SELF_LIMITED = ("mcp__plugin_evo-hub_evo-hub__", "mcp__plugin_evo-kg_evo-kg__", "mcp__evo-hub__", "mcp__evo-kg__")
+HANDOFF_COMMAND = re.compile(r"\bhub\s+plan\s+handoff\b")  # `evo-agents hub plan handoff`: a budget of its own
 STDERR_NOTE = "[evo-hub: stderr cut here; all of it follows the stdout in the file the stdout names]"
 
 
@@ -76,13 +106,19 @@ def spool_root() -> Path:
     return Path.home() / ".evo" / DIRECTORY
 
 
-def threshold(env: Mapping[str, str]) -> int | None:
-    """The threshold in characters, or None when EVO_SPOOL_THRESHOLD turns the hook off; a value that is not a
-    whole number counts as unset."""
-    value = env.get(THRESHOLD_VARIABLE, "").strip().lower()
+def threshold(env: Mapping[str, str], variable: str = THRESHOLD_VARIABLE, default: int = THRESHOLD) -> int | None:
+    """The threshold in characters, or None when ``variable`` (EVO_SPOOL_THRESHOLD) turns the hook off; a value that
+    is not a whole number counts as unset."""
+    value = env.get(variable, "").strip().lower()
     if value in ("0", "off"):
         return None
-    return int(value) if value.isdigit() else THRESHOLD
+    return int(value) if value.isdigit() else default
+
+
+def read_threshold(env: Mapping[str, str]) -> int | None:
+    """The threshold of a Read without offset or limit, or None when EVO_SPOOL_READ_THRESHOLD leaves every Read
+    whole."""
+    return threshold(env, READ_THRESHOLD_VARIABLE, READ_THRESHOLD)
 
 
 def keep_days(env: Mapping[str, str]) -> float:
@@ -203,6 +239,13 @@ def grep(response, tool_input) -> Long | None:
     return None
 
 
+def web_fetch(response, tool_input) -> Long | None:
+    if not isinstance(response, dict) or not isinstance(response.get("result"), str):
+        return None
+    text = response["result"]
+    return Long(text, len(text), lambda note, h, t: {**response, "result": excerpt(text, note, h, t)})
+
+
 def mcp(response, tool_input) -> Long | None:
     if isinstance(response, str):
         return Long(response, len(response), lambda note, h, t: excerpt(response, note, h, t))
@@ -220,11 +263,12 @@ def mcp(response, tool_input) -> Long | None:
     return Long(text, len(text), render)
 
 
-HANDLERS: dict[str, Callable[..., Long | None]] = {"Bash": bash, "Read": read, "Grep": grep}
+HANDLERS: dict[str, Callable[..., Long | None]] = {"Bash": bash, "Read": read, "Grep": grep, "WebFetch": web_fetch}
 
 
 def handler(tool_name) -> Callable[..., Long | None] | None:
-    if not isinstance(tool_name, str):
+    """How to read a tool's output; None for a tool the hook leaves alone, those of evo-hub and evo-kg among them."""
+    if not isinstance(tool_name, str) or tool_name.startswith(SELF_LIMITED):
         return None
     return mcp if tool_name.startswith("mcp__") else HANDLERS.get(tool_name)
 
@@ -299,10 +343,17 @@ def note(long: Long, path: Path, head: int, days: float) -> str:
     cut = len(shown[-1]) < len(lines[len(shown) - 1])  # a line longer than the head
     return (
         f"[evo-hub: the read returned {long.lines:,} lines ({long.size:,} characters) and only lines "
-        f"{long.first_line:,} to {last:,} are shown here{', the last of them cut' if cut else ''}: Read the file with "
-        f"offset {last if cut else last + 1} and a limit for the rest (a Read with an offset or a limit is never "
-        f"cut), or see the whole read in {path} ({kept}).]"
+        f"{long.first_line:,} to {last:,} are shown here{', the last of them cut' if cut else ''}. If you need the "
+        f"rest, Read the file with offset {last if cut else last + 1} and a limit (a Read with an offset or a limit "
+        f"is never cut), or see the whole read in {path} ({kept}).]"
     )
+
+
+def prints_handoff(tool_name, tool_input) -> bool:
+    """Whether the call is a Bash command that prints a plan's handoff, which the hub sized to a budget and which a
+    step's agent must read whole."""
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    return tool_name == "Bash" and isinstance(command, str) and HANDOFF_COMMAND.search(command) is not None
 
 
 def mentions_spool(tool_input) -> bool:
@@ -318,13 +369,20 @@ def post_tool_use(payload: dict, env: Mapping[str, str], now: float) -> dict | N
     """The hook's answer to one PostToolUse payload, after writing its spool file; None leaves the result as it is."""
     if payload.get("hook_event_name") != "PostToolUse" or "turn_id" in payload:  # Codex sends a turn_id
         return None
-    limit, take = threshold(env), handler(payload.get("tool_name"))
-    if limit is None or take is None or mentions_spool(payload.get("tool_input")):
+    name, given = payload.get("tool_name"), payload.get("tool_input")
+    limit, take = threshold(env), handler(name)
+    if limit is None or take is None or mentions_spool(given) or prints_handoff(name, given):
         return None
-    long = take(payload.get("tool_response"), payload.get("tool_input"))
+    if take is read:
+        limit = read_threshold(env)
+        if limit is None:
+            return None
+        head = tail = min(READ_HEAD, limit // 2)
+    else:
+        head, tail = min(HEAD, limit // 3), min(TAIL, limit // 3)
+    long = take(payload.get("tool_response"), given)
     if long is None or long.size <= limit:
         return None
-    head, tail = min(HEAD, limit // 3), min(TAIL, limit // 3)
     session = _name(payload.get("session_id"), "session")
     path = write_spool(spool_root(), session, _name(payload.get("tool_use_id"), str(time.time_ns())), long.text)
     output = long.render(note(long, path, head, keep_days(env)), head, tail)

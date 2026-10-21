@@ -10,15 +10,19 @@ the hub numbers in the run's log, and then records in the plan what the move mea
 - a run that ends ``failed`` or ``cancelled`` sets the step back to ``pending`` with a note saying why. A ``lost``
   run is not the end of its dispatch: the next attempt is queued at once, and the step is left as it is.
 
-A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes
-it through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key.
-A review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has
-room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A judge run writes no step either:
-its end moves its change of the Curator on, and a failure sends the notice ``run_failed`` (``changes.judge_ended``);
-and a plan run of a plan the Curator made moves its change on as it ends (``changes.builder_ended``).
-Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets back to ``pending``, with
-the same notes, the steps that it, or an earlier attempt or run it went on from, reported and that are still
-``in_progress``. A plan run that ends ``done`` writes nothing.
+A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes it
+through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key. A
+review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has room
+for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A chat run has none either: its moves
+put its agent's reaction on the message that started it (``chat_runs.chat_run_moved``). A judge run writes no step
+either: its end moves its change of the Curator on, and a failure sends the notice ``run_failed``
+(``changes.judge_ended``); a replay run writes none either: its end moves its replay on, and a failure sends the notice
+``run_failed`` (``replays.replay_ended``), as does a history run's (``history.history_ended``); a release run writes
+none either: one that fails stops its release cycle, and one done with its branch waits for the hub to land it
+(``release_claims.release_run_moved``); and a plan run of a plan the Curator made moves its change on as it ends
+(``changes.builder_ended``). Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets
+back to ``pending``, with the same notes, the steps that it, or an earlier attempt or run it went on from, reported and
+that are still ``in_progress``. A plan run that ends ``done`` writes nothing.
 
 The plan is written as the member who dispatched the run, through PATCH's own write (``plans.apply_patch``: the
 item update of ``evo harness step``, with ``if_revision``), and retried up to PLAN_TRIES times when another write
@@ -38,7 +42,7 @@ parked run hands them to the run that resumes it. A plan run that ends ``failed`
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
 (``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
 author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
-lists no origin for, a credential or a program missing: ``notify_preflight_failure``), and the move keeps the cause
+lists no origin for, a credential or a program missing: ``run_notices.notify_preflight_failure``), and the move keeps the cause
 the worker reported as the run's failure_cause.
 
 ``release_runs`` is what happens to the runs of a revoked worker, and ``recover_runs`` (the job hub.recover_runs,
@@ -56,6 +60,10 @@ queued, since no other worker may claim them, and cancels the runs parked on it,
 expired lease does not, since the worker may come back. ``prune_run_events`` (hub.prune_run_events, daily)
 deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
 A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go.
+
+A ``local`` run (``local_runs``) is none of this: no worker holds it, so it has no lease, timeout, slot or attempts,
+and none of the passes above takes it (each leaves ``kind = 'local'`` out); the reaper's one pass over it ends the ones
+that sent nothing for ``runs.LOCAL_SILENT_SECONDS`` (``local_runs.end_silent``).
 
 A run that leaves the held states (it ends, waits in review, or is parked) gives back its credentials: ``move_run``
 marks its leases revoked in the same transaction (``credentials.end_leases``), and the GitHub tokens among them are
@@ -76,7 +84,7 @@ from sqlalchemy import Integer, case, cast, delete, exists, extract, func, inser
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -97,21 +105,14 @@ MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
+CHAT_DECISION_WAIT = timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS)  # the same for a chat run: its slot is short
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
+# The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
+CAUSED_KINDS = ("step", "plan", "author", "chat")
+CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
-MOVE_COLUMNS = frozenset(
-    {
-        "worker_id",
-        "runtime",
-        "session_id",
-        "commit_sha",
-        "diffstat",
-        "verify",
-        "evidence",
-        "usage",
-        "failure_cause",
-    }
-)
+MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
@@ -187,7 +188,10 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
     if new not in runs.HANDBACK_STATES:
         values["handback_requested_at"] = None
     values |= {name: _column_value(value) for name, value in columns.items()}
-    return update(r).values(**values).where(r.c.id == run_id, r.c.state == old).returning(r.c.event_seq)
+    moved = update(r).values(**values).where(r.c.id == run_id, r.c.state == old)
+    return moved.returning(
+        r.c.event_seq.label("seq"), r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key, r.c.error, r.c.failure_cause
+    )
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
@@ -219,21 +223,22 @@ async def move_run(
     lease: timedelta = LEASE,
     decisions: str | None = "cancelled",
 ) -> int | None:
-    """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting
-    ``columns`` (of MOVE_COLUMNS) too; write the ``state`` event, then record the move in the plan (see the module's
-    docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held without a lease
-    (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state ``decisions``, or
-    leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
+    """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting ``columns``
+    (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
+    plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held
+    without a lease (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state
+    ``decisions``, or leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
     ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
     if unknown:
         raise ValueError(f"a move cannot set {', '.join(sorted(unknown))}")
-    seq = (await conn.execute(_move(run_id, old, new, error, columns, lease))).scalar_one_or_none()
-    if seq is None:
+    row = (await conn.execute(_move(run_id, old, new, error, columns, lease))).one_or_none()
+    if row is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
-    await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    await _insert_event(conn, run_id, row.seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    await plugin_events.emit_run_state(conn, run_id, row, old, new, actor)
     if new in runs.TERMINAL_STATES:
         from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
 
@@ -245,8 +250,29 @@ async def move_run(
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
+    if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
+        await infer_failure_cause(conn, run_id, row.error)
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
+
+
+async def infer_failure_cause(conn: AsyncConnection, run_id: int, error: str | None) -> str:
+    """Give failed run ``run_id``, whose row the caller holds locked and which carries no failure_cause (its worker
+    sent none, or the hub ended it), the one ``review.run_cause`` reads in its ``error`` (the way the Curator's figures
+    count it), and write a ``system`` event saying the cause is a guess, so triage knows how far to trust it."""
+    cause = review.run_cause(None, error, "failed")
+    r = tables.runs
+    await conn.execute(update(r).values(failure_cause=cause).where(r.c.id == run_id))
+    await write_event(
+        conn,
+        run_id,
+        {
+            "message": f"The worker named no cause for this failure; the hub guessed {cause} from the error.",
+            "failure_cause": cause,
+            "failure_cause_inferred": True,
+        },
+    )
+    return cause
 
 
 # The plan
@@ -331,6 +357,15 @@ async def write_event(conn: AsyncConnection, run_id: int, body: dict) -> int:
     and wake its streams; its seq. Like the ``state`` events, it is written past the run's limit of events."""
     seq = await next_seq(conn, run_id)
     await _insert_event(conn, run_id, seq, "system", body)
+    await notify_events(conn, run_id)
+    return seq
+
+
+async def write_state(conn: AsyncConnection, run_id: int, old: str, new: str, actor: str, reason: str) -> int:
+    """Write the ``state`` event of a move that ``move_run`` does not make (a local run's, which no table of moves
+    governs) into the log of run ``run_id``, whose row the caller holds locked, and wake its streams; its seq."""
+    seq = await next_seq(conn, run_id)
+    await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
     await notify_events(conn, run_id)
     return seq
 
@@ -488,6 +523,13 @@ async def write_step(
     return None
 
 
+async def run_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
+    """Open the triage thread of a failed run and send the owner the notice its end calls for (``run_notices``)."""
+    from evo_agents.hub.server import run_notices  # it reads runs through the routes that import this module
+
+    await run_notices.run_ended(conn, found, old, new, reason=reason)
+
+
 async def record_move(
     conn: AsyncConnection, run_id: int, old: str, new: str, *, reason: str, token_id: int | None = None
 ) -> int | None:
@@ -504,53 +546,46 @@ async def record_move(
 
         await changes.judge_ended(conn, found, old, new, reason=reason)
         return None
+    if found.kind == "replay":
+        from evo_agents.hub.server import replays  # it reads runs through the routes that import this module
+
+        await replays.replay_ended(conn, found, old, new, reason=reason)
+        return None
+    if found.kind == "history":  # it writes no step: its facets reach the hub through its own routes
+        from evo_agents.hub.server import history  # it reads runs through the routes that import this module
+
+        await history.history_ended(conn, found, new, reason=reason)
+        return None
     if found.kind == "author":  # it writes no step: the plan it authors reaches the hub through the run's own command
-        await notify_preflight_failure(conn, found, new)
+        await run_ended(conn, found, old, new, reason=reason)
+        return None
+    if found.kind == "chat":  # it writes no step: its agent's reactions and replies are in its chat
+        from evo_agents.hub.server.chat_runs import chat_run_moved  # it queues runs through the routes that import this
+
+        await chat_run_moved(conn, run_id, new, old)
+        return None
+    if found.kind == "task":  # it writes no step: its plugin gets the event task.result when it ends
+        from evo_agents.hub.server.task_dispatch import task_run_ended  # it queues runs through the routes too
+
+        await task_run_ended(conn, run_id, new)
+        return None
+    if found.kind == "release":  # it writes no step: its end moves its release cycle on
+        from evo_agents.hub.server.release_claims import release_run_moved  # it reads runs through the routes too
+
+        await release_run_moved(conn, run_id, new, reason=reason)
         return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
-        await notify_plan_run_end(conn, found, old, new, reason=reason)
+        await run_ended(conn, found, old, new, reason=reason)
         from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
 
         await changes.builder_ended(conn, found, old, new, reason=reason)
         return revision
-    await notify_preflight_failure(conn, found, new)
+    await run_ended(conn, found, old, new, reason=reason)
     updates_for = step_updates(found, old, new, reason)
     if updates_for is None:
         return None
     return await write_step(conn, found, updates_for, token_id=token_id)
-
-
-async def notify_preflight_failure(conn: AsyncConnection, found: RunStep, new: str) -> int | None:
-    """Send the owner of run ``found``, a run of one step or an author run, the notice ``run_failed`` when it failed
-    with a cause of runs.PREFLIGHT_CAUSES (a repo without origin, a credential or a program missing), which only the
-    owner can mend; a plan, review or judge run sends it for every failure elsewhere. The notification's id, or None."""
-    if new != "failed" or found.failure_cause not in runs.PREFLIGHT_CAUSES:
-        return None
-    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
-
-    error = found.error or found.failure_cause
-    what = f"Run #{found.run_id} of step {found.step_key} of {found.plan_id}"
-    if found.kind == "author":
-        what = f"Author run #{found.run_id}"
-    return await notifications.notify(
-        conn,
-        user_id=found.dispatcher_id,
-        kind="notice",
-        notice_kind="run_failed",
-        project_id=found.project_id,
-        run_id=found.run_id,
-        title=f"{what} failed ({found.failure_cause})",
-        body=error,
-        details={
-            "run_kind": found.kind,
-            "plan_id": found.plan_id,
-            "step_key": found.step_key,
-            "failure_cause": found.failure_cause,
-            "error": error,
-        },
-        link=notifications.run_link(found.project, found.run_id),
-    )
 
 
 async def release_plan_steps(
@@ -616,66 +651,15 @@ async def reported_steps(conn: AsyncConnection, run_id: int) -> list[str]:
     return sorted(keys, key=_natural)
 
 
-def _every_step_done(body) -> bool:
-    steps = body.get("steps") if isinstance(body, dict) else None
-    if not isinstance(steps, list) or not steps:
-        return False
-    return all(isinstance(step, dict) and step.get("status") == "done" for step in steps)
-
-
-async def notify_plan_run_end(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> int | None:
-    """Send the owner of plan run ``found`` the notice its end calls for: ``run_failed`` when it failed (its last
-    attempt lost included, which fails), ``plan_finished`` when it ended done with every step of its plan done. A run
-    done because a new run resumes it, and any other move, send nothing. The notification's id, or None."""
-    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
-
-    link = notifications.run_link(found.project, found.run_id)
-    if new == "failed":
-        error = found.error or reason
-        return await notifications.notify(
-            conn,
-            user_id=found.dispatcher_id,
-            kind="notice",
-            notice_kind="run_failed",
-            project_id=found.project_id,
-            run_id=found.run_id,
-            title=f"Plan run #{found.run_id} of {found.plan_id} failed",
-            body=error,
-            details={"plan_id": found.plan_id, "error": error},
-            link=link,
-        )
-    if new != "done" or old == "parked":
-        return None
-    pl = tables.plans
-    body = (
-        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
-    ).scalar_one_or_none()
-    if body is None or not _every_step_done(body):
-        return None
-    steps = await reported_steps(conn, found.run_id)
-    done = f"steps {', '.join(steps)}" if steps else "no step of its own"
-    return await notifications.notify(
-        conn,
-        user_id=found.dispatcher_id,
-        kind="notice",
-        notice_kind="plan_finished",
-        project_id=found.project_id,
-        run_id=found.run_id,
-        title=f"Plan {found.plan_id} finished",
-        body=f"Plan run #{found.run_id} ended with every step of the plan done; it did {done}.",
-        details={"plan_id": found.plan_id, "steps": steps},
-        link=link,
-    )
-
-
 # Runs that lose their worker
 
 
 def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
-    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; and the
-    schedule, night and caps of a run the night shift queued."""
+    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
+    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
+    task run's agent type and pull requests."""
     r = tables.runs
     copied = (
         "kind",
@@ -700,6 +684,12 @@ def _next_attempt(run_id: int):
         "schedule_night",
         "budget",
         "request",
+        "profile_id",
+        "profile_version",
+        "plugin_config",
+        "agent_type_id",
+        "pulls",
+        *CHAT_COLUMNS,
     )
     source = select(
         *(r.c[name] for name in copied),
@@ -795,7 +785,7 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
     """Fail every held run whose agent time is past its timeout, or cancel it when its cancel was asked for, each in a
     transaction of its own; count them in ``ended``."""
     r = tables.runs
-    late_held = (r.c.state.in_(runs.HELD_STATES), _past_timeout())
+    late_held = (r.c.state.in_(runs.HELD_STATES), r.c.kind != "local", _past_timeout())
     async with engine.begin() as conn:
         late = (await conn.execute(select(r.c.id).where(*late_held).order_by(r.c.id).limit(batch))).scalars().all()
     for run_id in late:
@@ -815,15 +805,22 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
             ended[new] += 1
 
 
-async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter) -> None:
-    """Park every run that has waited ``wait`` for its owner's answer, or cancel it when its cancel was asked for,
-    each in a transaction of its own; count them in ``ended``."""
+async def park_waiting(
+    engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter, chat_wait: timedelta | None = None
+) -> None:
+    """Park every run that has waited ``wait`` for its owner's answer (a chat run ``chat_wait``, which is ``wait``
+    when none is given), or cancel it when its cancel was asked for, each in a transaction of its own; count them in
+    ``ended``."""
     r = tables.runs
-    waited_long = (r.c.state == "waiting", r.c.waiting_since < func.now() - wait)
+    chat_wait = wait if chat_wait is None else chat_wait
+    waited_long = (
+        r.c.state == "waiting",
+        r.c.kind != "local",
+        r.c.waiting_since < func.now() - case((r.c.kind == "chat", chat_wait), else_=wait),
+    )
     async with engine.begin() as conn:
         query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
         waited = (await conn.execute(query)).scalars().all()
-    hours = _hours(wait)
     for run_id in waited:
         async with engine.begin() as conn:
             lock = (
@@ -835,9 +832,9 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
             if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
-                reason = f"nobody replied in its chat within {hours}"
+                reason = f"nobody replied in its chat within {_hours(wait)}"
             else:
-                reason = f"nobody answered its decision within {hours}"
+                reason = f"nobody answered its decision within {_hours(chat_wait if row.kind == 'chat' else wait)}"
             new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1
@@ -864,6 +861,8 @@ async def expire_parked(engine: AsyncEngine, batch: int, parked_for: timedelta, 
 def _hours(span: timedelta) -> str:
     """``span`` in words: whole hours up to two days, then whole days, else seconds."""
     seconds = int(span.total_seconds())
+    if seconds % 60 == 0 and seconds < 3600:
+        return f"{seconds // 60} minute{'s' if seconds != 60 else ''}"
     if seconds % 3600 == 0 and seconds <= 2 * 86400:
         return f"{seconds // 3600} hour{'s' if seconds != 3600 else ''}"
     if seconds % 86400 == 0:
@@ -889,7 +888,7 @@ async def recover_runs(
     r, w = tables.runs, tables.workers
     ended: Counter[str] = Counter()
     await end_timed_out(engine, batch, ended)
-    lapsed = (r.c.state.in_(runs.HELD_STATES), r.c.lease_expires_at < func.now())
+    lapsed = (r.c.state.in_(runs.HELD_STATES), r.c.kind != "local", r.c.lease_expires_at < func.now())
     async with engine.begin() as conn:
         query = select(r.c.id).where(*lapsed).order_by(r.c.lease_expires_at).limit(batch)
         expired = (await conn.execute(query)).scalars().all()
@@ -923,8 +922,11 @@ async def recover_runs(
                     reason=reason,
                 )
             ] += 1
-    await park_waiting(engine, batch, decision_wait, ended)
+    await park_waiting(engine, batch, decision_wait, ended, min(decision_wait, CHAT_DECISION_WAIT))
     await expire_parked(engine, batch, parked_for, ended)
+    from evo_agents.hub.server import local_runs  # it moves runs through this module
+
+    await local_runs.end_silent(engine, batch)  # a local run no worker holds: it is neither lost nor parked
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)

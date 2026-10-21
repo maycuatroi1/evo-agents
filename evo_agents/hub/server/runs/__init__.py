@@ -15,7 +15,9 @@ GET /v1/projects/{p}/plans/{plan}/ready-steps (reader) lists every step of the p
 named: every step must be ready and without an active run (409 otherwise, and nothing is queued), its repo one the
 project lists an origin for (409 naming it: no credential is leased for a repo without one, and the worker's preflight
 would fail the run; a rerun and a plan run are refused the same way), and a worker named must be one of the caller's
-own (403 for any other id, a hub admin's included), live and serving the project (409).
+own or one another member shares in the project while holding writer there (``worker_fit.shared_in``; 403 for any
+other id, a hub admin's included), live and serving the project (409). A shared worker claims the runs of its owner and
+of every member who holds writer on the run's project, one member's runs at a time (``claims``).
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a
@@ -31,30 +33,30 @@ shift queues. A judge run is claimed only by a worker whose daemon says it runs 
 and comes with ``judge.build_judge_prompt``; the claim of any run of the Curator says so (``curator``: its role, the
 charter's protected paths, and the change).
 
-POST /v1/projects/{p}/plan-runs (writer) queues a plan run (``runs.RUN_KINDS``): one run, on one worker of the
-caller's, that does every step of the plan not done yet. It is refused with 409 when the plan has no pending step,
-when the plan has an active run of any kind, or when a step not done names no repo and the plan does not list exactly
-one; the run's repos are those of the steps not done, each with the branch the plan's repos name. A dispatch of steps
-and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan (``plan_lock_key``) before
+POST /v1/projects/{p}/plan-runs (writer) queues a plan run (``runs.RUN_KINDS``): one run, on one worker of the caller's
+or shared with them, that does every step of the plan not done yet. It is refused with 409 when the plan has no pending
+step, when the plan has an active run of any kind, or when a step not done names no repo and the plan does not list
+exactly one; the run's repos are those of the steps not done, each with the branch the plan's repos name. A dispatch of
+steps and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan (``plan_lock_key``) before
 they look at its active runs, so the two exclude each other: a step of a plan with an active plan run gets 409 ("plan X
 has plan run #N"), and a plan run waits until no run of the plan's steps is active. Each plan run is audited
 (run.dispatch_plan). ready-steps names the plan's active plan run (``plan_run``), and no step is ready while it is.
 
 POST /v1/projects/{p}/author-runs (writer) queues an author run (``evo_agents.hub.author``): a plan written from the
 caller's request (at most ``author.MAX_REQUEST_BYTES`` of UTF-8, 422 otherwise) with create-exec-plan, on the worker of
-the caller's it names (403 for any other id), on claude-code alone (422 for another runtime, saying why). Its repos are
-the project's harness (409 for a project registered without one), then each repo of the project that worker has a
-checkout of. A dispatch to a worker whose last heartbeat says no checkout of the harness, or a daemon that does not
-run author runs, gets 409. It is audited (run.dispatch_author) without its request. A claim takes an author run only
-with a checkout of the harness and a daemon that says it runs author runs, and hands it a presigned GET of the latest
-version of the global skill create-exec-plan (``RunSpec.skills``); without that skill, or a blob store, the run fails
-at the claim, saying so. The author runs of a new plan are listed and read as a review run is, through the project's
-default label; one is never rerun (409). With ``plan_id`` it revises that plan, one the caller can read (404
-otherwise), recorded with its revision. Its agent puts the plan with PUT /v1/worker/runs/{id}/plan
-(``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote. Its
-chat, waiting, parking and end are ``author_chat``'s: it reports ``waiting`` after each turn of its agent without a
-decision of its own (409 once its owner ended the chat), which sends its owner the notice ``author_waiting``, and the
-heartbeat says ``finish`` once the owner ended the chat.
+the caller's, or shared with them, it names (403 for any other id), on claude-code alone (422 for another runtime,
+saying why). Its repos are the project's harness (409 for a project registered without one), then each repo of the
+project that worker has a checkout of. A dispatch to a worker whose last heartbeat says no checkout of the harness, or a
+daemon that does not run author runs, gets 409. It is audited (run.dispatch_author) without its request. A claim takes
+an author run only with a checkout of the harness and a daemon that says it runs author runs, and hands it a presigned
+GET of the latest version of the global skill create-exec-plan (``RunSpec.skills``); without that skill, or a blob
+store, the run fails at the claim, saying so. The author runs of a new plan are listed and read as a review run is,
+through the project's default label; one is never rerun (409). With ``plan_id`` it revises that plan, one the caller can
+read (404 otherwise), recorded with its revision. Its agent puts the plan with PUT /v1/worker/runs/{id}/plan
+(``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote. Its chat,
+waiting, parking and end are ``author_chat``'s: it reports ``waiting`` after each turn of its agent without a decision
+of its own (409 once its owner ended the chat), which sends its owner the notice ``author_waiting``, and the heartbeat
+says ``finish`` once the owner ended the chat.
 
 GET /v1/projects/{p}/runs (reader) lists the project's runs newest first, filtered by state, plan, step, worker,
 dispatcher and text, a page at a time, with how many runs each state has under the other filters; GET .../runs/{id}

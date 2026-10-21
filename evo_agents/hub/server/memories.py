@@ -14,12 +14,16 @@ since a pull writes files that sessions read, and a web session through none: th
 so the label must pass ``ProjectRules.visible_by_grant`` (the grant's max level alone). The agent of a run, on the
 hub's /mcp with its worker's token (``Principal.scope``), reads and writes the memories of the run's project alone,
 under its owner's grant as the scope caps it (``projects.project_access``): never a personal memory of its owner,
-nor one of another project.
+nor one of another project. Every read rule above holds the audience too (``memory_audience``): a memory whose label
+names one goes only to a reader whose audience, computed at that read, holds it.
 
 PUT /v1/memories writes a memory by its key: scope, project, location and name, plus the owner for the types only the
 owner sees. ``if_revision`` is the revision the writer last saw: none to create (a tombstone counts as nothing), the
 current one to change it; anything else is a 409 that carries the current version when the caller may see it. The
-same content again changes nothing and writes no audit row, whatever ``if_revision`` says. DELETE /v1/memories/{id}
+same content again changes nothing and writes no audit row, whatever ``if_revision`` says. A write keeps or raises
+the memory's audience, never lowers it: ``audience`` is what the writer read, and the hub adds what it showed the agent
+of a run (``memory_audience.raised``). PUT /v1/memories/{id}/audience lowers it, for an admin of the memory's project
+who reads it, with the audit row ``memory.audience``. DELETE /v1/memories/{id}
 leaves a tombstone: deleted, no body, the next revision. Writes into a project follow the write rule (the writer role,
 and a label the project's hub sink clears; the current label, else the project's default, when the request names
 none); personal memories need a signed-in caller. Every change appends one row to memory_revisions and one audit row
@@ -80,6 +84,7 @@ from evo_agents.hub.db import one_of
 from evo_agents.hub.memory import (
     AGENT_SINK,
     HARNESS,
+    MAX_AUDIENCE,
     MAX_BODY,
     PERSONAL_LOCATION,
     SHARED_TYPES,
@@ -90,13 +95,17 @@ from evo_agents.hub.memory import (
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.memory_audience import Reader, label_audience, raised, with_audience
 from evo_agents.hub.server.projects import PRINTABLE, LabelIn, ProjectAccess, project_access
 from evo_agents.hub.server.security import WEB, CurrentUser, Principal
+from evo_agents.kg.policy import audience_below
+from evo_agents.kg.protocol import PRINCIPAL
 
 log = logging.getLogger(__name__)
 
 PUT = "memory.put"  # audit actions; the target is memory:<id>
 DELETE = "memory.delete"
+AUDIENCE = "memory.audience"  # an admin lowered the audience
 MAX_REQUEST = 6 * MAX_BODY + 64 * 1024  # a body escaped as JSON at worst (\u0001 for every byte), and the rest
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
@@ -165,6 +174,9 @@ def _printable(location: str) -> bool:
     return all(ch.isprintable() for ch in location) and "/" not in location and "\\" not in location
 
 
+PrincipalName = Annotated[str, Field(max_length=200, pattern=PRINCIPAL)]
+
+
 class MemoryIn(BaseModel):
     scope: Literal["project", "personal"]
     project: str | None = Field(None, pattern=PROJECT_NAME, description="the hub project; scope project only")
@@ -181,6 +193,11 @@ class MemoryIn(BaseModel):
     )
     if_revision: int | None = Field(
         None, ge=1, le=MAX_REVISION, description="the revision last seen; left out to create the memory"
+    )
+    audience: list[PrincipalName] | None = Field(
+        None,
+        max_length=MAX_AUDIENCE,
+        description="what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience",
     )
 
     @model_validator(mode="after")
@@ -387,11 +404,16 @@ def _through(user: Principal, sink: str | None) -> str | None:
     return None if user.kind == WEB else AGENT_SINK
 
 
-def _visible(row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str | None) -> bool:
-    """The read rule of memories: personal ones and user and feedback ones are their owner's, and a personal one is
-    never the agent of a run's; in a project the label must pass the rule of ``evo_agents.hub.access`` for the
-    caller's grant and ``sink``, or for the grant alone when ``sink`` is None."""
+def _visible(
+    row: Row, user: Principal, accesses: dict[str, ProjectAccess], sink: str | None, audience: frozenset[str]
+) -> bool:
+    """The read rule of memories: the audience the label names, if any, is within ``audience``, the caller's
+    (``Reader``); personal ones and user and feedback ones are their owner's, and a personal one is never the agent of
+    a run's; in a project the label must pass the rule of ``evo_agents.hub.access`` for the caller's grant and
+    ``sink``, or for the grant alone when ``sink`` is None."""
     memory = row.memory
+    if not audience_below(label_audience(memory.label), audience):
+        return False
     if memory.scope == "personal":
         return row.owner_id == user.user_id and user.scope is None
     if memory.type not in SHARED_TYPES and row.owner_id != user.user_id:
@@ -525,14 +547,14 @@ async def list_memories(
         shape, bound = _reached(user, accesses, scope, project, location)
         listed = _listed(deleted, **shape)
         items: list[Memory] = []
-        budget, scanned, following = PAGE_BYTES, 0, None
+        budget, scanned, following, reader = PAGE_BYTES, 0, None, Reader(conn, user)
         while True:
             rows = (await conn.execute(listed, {**bound, "after_at": after_at, "after_id": after_id})).all()
             for values in rows:
                 row = _row(values)
                 scanned += 1
                 after_at, after_id = row.memory.updated_at, row.memory.id
-                if _visible(row, user, accesses, sink):
+                if _visible(row, user, accesses, sink, await reader.audience(row.memory.label)):
                     items.append(row.memory)
                     budget -= _size(row.memory)
                 if len(items) >= limit or budget <= 0 or scanned >= SCAN_ROWS:
@@ -540,6 +562,7 @@ async def list_memories(
                     break
             if following or len(rows) < BATCH:
                 break
+        await reader.gave(memory.label for memory in items)
     return Page(items=items, next_cursor=following)
 
 
@@ -566,18 +589,19 @@ async def search_memories(
         shape, bound = _reached(user, accesses, scope, project, location)
         searched = _searched(**shape)
         found: list[Found] = []
-        budget = PAGE_BYTES
+        budget, reader = PAGE_BYTES, Reader(conn, user)
         for offset in range(0, SCAN_ROWS, BATCH):
             rows = (await conn.execute(searched, {**bound, "q": q, "offset": offset})).all()
             for values in rows:
                 row = _row(values)
-                if _visible(row, user, accesses, sink):
+                if _visible(row, user, accesses, sink, await reader.audience(row.memory.label)):
                     found.append(Found(**row.memory.model_dump(), rank=values.rank))
                     budget -= _size(row.memory)
                 if len(found) >= limit or budget <= 0:
-                    return Results(items=found)
-            if len(rows) < BATCH:
+                    break
+            if len(found) >= limit or budget <= 0 or len(rows) < BATCH:
                 break
+        await reader.gave(memory.label for memory in found)
     return Results(items=found)
 
 
@@ -594,14 +618,15 @@ async def _load(conn: AsyncConnection, memory_id: int, *, lock: bool = False) ->
     return _row(found) if found else None
 
 
-async def _readable(conn, user: Principal, memory_id: int, sink: str | None, *, lock: bool = False):
+async def _readable(conn, user: Principal, memory_id: int, sink: str | None, *, lock: bool = False, reader=None):
     """The memory and the caller's access to its project; 404 when it does not exist or the caller cannot see it."""
     row = await _load(conn, memory_id, lock=lock)
     access = None
     if row is not None and row.memory.project is not None:
         access = await _access(conn, user, row.memory.project)
     accesses = {row.memory.project: access} if row is not None and access is not None else {}
-    if row is None or not _visible(row, user, accesses, sink):
+    audience = await (reader or Reader(conn, user)).audience(row.memory.label) if row is not None else frozenset()
+    if row is None or not _visible(row, user, accesses, sink, audience):
         raise HTTPException(404, _not_found(memory_id))
     return row, access
 
@@ -612,7 +637,9 @@ MemoryId = Annotated[int, Path(ge=1, le=MAX_ID)]
 @router.get("/{memory_id}", response_model=Memory, responses={404: {"model": ErrorBody}})
 async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: ReadSink = None) -> Memory:
     async with request.app.state.engine.begin() as conn:
-        row, _ = await _readable(conn, user, memory_id, _through(user, sink))
+        reader = Reader(conn, user)
+        row, _ = await _readable(conn, user, memory_id, _through(user, sink), reader=reader)
+        await reader.gave([row.memory.label])
     return row.memory
 
 
@@ -692,7 +719,8 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
         found = (await conn.execute(at_key, _key(body, user, project_id))).one_or_none()
         current = _row(found) if found else None
         accesses = {body.project: access} if access else {}
-        if current is not None and not _visible(current, user, accesses, sink):
+        audience = await Reader(conn, user).audience(current.memory.label) if current else frozenset()
+        if current is not None and not _visible(current, user, accesses, sink, audience):
             return _conflict(
                 request,
                 f"project {body.project} holds a memory {body.name} at {body.location} that you cannot read; "
@@ -706,6 +734,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
         else:
             label = access.push_label(current.memory.label if current else None)
         held = current.memory if current else None
+        label = with_audience(label, await raised(conn, user, held.label if held else None, body.audience))
         if held and not held.deleted and (held.body, held.type, held.label) == (body.body, body.type, label):
             return Written(**held.model_dump(), created=False, changed=False)
         if body.if_revision is None and held and not held.deleted:
@@ -781,6 +810,41 @@ async def delete(
     return Written(**memory.model_dump(), created=False, changed=True)
 
 
+class AudienceIn(BaseModel):
+    audience: list[PrincipalName] = Field(
+        max_length=MAX_AUDIENCE, description="what the memory's audience becomes: a part of it, [] for none"
+    )
+    if_revision: int = Field(ge=1, le=MAX_REVISION, description="the revision last seen")
+
+
+@router.put("/{memory_id}/audience", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
+async def lower_audience(
+    request: Request, memory_id: MemoryId, body: AudienceIn, user: CurrentUser, sink: Sink = AGENT_SINK
+) -> Written | JSONResponse:
+    """Lower the audience of memory ``memory_id`` by hand, to a part of it: an admin of its project who reads it
+    alone, with the audit row ``memory.audience``. Any other write keeps or raises it (``put``)."""
+    async with request.app.state.engine.begin() as conn:
+        row, access = await _readable(conn, user, memory_id, sink, lock=True)
+        held = row.memory
+        if access is None or not has_role(access.role, "admin"):
+            where = f"project {held.project}" if access else "a project, and a personal memory is in none"
+            raise HTTPException(403, f"lowering the audience of a memory needs the admin role on {where}")
+        access.push_label(held.label)  # the write rule
+        current, wanted = label_audience(held.label), frozenset(body.audience)
+        if not wanted <= current:
+            raise HTTPException(422, "the audience may only lose principals here: a write of the memory adds them")
+        if body.if_revision != held.revision:
+            message = f"{held.name} changed on the hub: it is at revision {held.revision}, not {body.if_revision}"
+            return _conflict(request, message, held)
+        if wanted == current:
+            return Written(**held.model_dump(), created=False, changed=False)
+        label = with_audience(held.label, wanted)
+        await conn.execute(_CHANGED, _changed(memory_id, held.type, label, held.body, held.deleted, user.user_id))
+        memory = await _written(conn, user, memory_id, AUDIENCE)
+    _logged(memory, user, "audience lowered")
+    return Written(**memory.model_dump(), created=False, changed=True)
+
+
 # History: the revisions of one memory, each shown only when the caller could read the memory as it was then.
 
 DEFAULT_REVISIONS = 50
@@ -837,12 +901,15 @@ def _as_of(row: Row, kind: str, label: dict) -> Row:
     return Row(row.memory.model_copy(update={"type": kind, "label": label}), row.owner_id, row.project_id)
 
 
-def _revision_visible(
-    row: Row, values, user: Principal, access: ProjectAccess | None, sink: str | None
+async def _revision_visible(
+    row: Row, values, reader: Reader, access: ProjectAccess | None, sink: str | None
 ) -> RevisionSummary | None:
     summary = RevisionSummary(**values._mapping)
     accesses = {row.memory.project: access} if access is not None else {}
-    return summary if _visible(_as_of(row, summary.type, summary.label), user, accesses, sink) else None
+    audience = await reader.audience(summary.label)
+    return (
+        summary if _visible(_as_of(row, summary.type, summary.label), reader.user, accesses, sink, audience) else None
+    )
 
 
 RevisionNumber = Annotated[int, Path(ge=1, le=MAX_REVISION)]
@@ -863,13 +930,14 @@ async def revisions(
     items: list[RevisionSummary] = []
     following = None
     async with request.app.state.engine.begin() as conn:
-        row, access = await _readable(conn, user, memory_id, sink)
+        reader = Reader(conn, user)
+        row, access = await _readable(conn, user, memory_id, sink, reader=reader)
         oldest_seen = False
         for _ in range(0, SCAN_ROWS, BATCH):
             found = (await conn.execute(_history(memory_id, before))).all()
             for values in found:
                 before = values.revision
-                summary = _revision_visible(row, values, user, access, sink)
+                summary = await _revision_visible(row, values, reader, access, sink)
                 if summary is not None:
                     items.append(summary)
                 if len(items) >= limit:
@@ -895,11 +963,12 @@ async def show_revision(
     """One revision of a memory with its body; 404 when it does not exist or the caller could not read it."""
     sink = _through(user, sink)
     async with request.app.state.engine.begin() as conn:
-        row, access = await _readable(conn, user, memory_id, sink)
+        reader = Reader(conn, user)
+        row, access = await _readable(conn, user, memory_id, sink, reader=reader)
         r = tables.memory_revisions
         one = _revisions(r.c.body).where(r.c.memory_id == memory_id, r.c.revision == revision)
         values = (await conn.execute(one)).one_or_none()
-    summary = None if values is None else _revision_visible(row, values, user, access, sink)
+        summary = None if values is None else await _revision_visible(row, values, reader, access, sink)
     if summary is None:
         raise HTTPException(404, f"no revision {revision} of memory {memory_id} that you can see on this hub")
     return MemoryRevision(**summary.model_dump(), memory_id=memory_id, body=values.body)

@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
@@ -27,6 +28,10 @@ import type { KgBuilds } from "@/lib/kg/types";
 import { BuildHistory, BuildQueue, LatestBuild, NoBuilds, StatusTiles } from "./build-status";
 import { KindSummary, NoGraph, SearchForm, SearchResults } from "./node-search";
 import { useNow } from "./use-now";
+
+// The Commits read card loads on demand (next/dynamic): imported statically, its code sat in a chunk that both pages
+// of the graph, this one and the node page, load first, and put each over its budget in bundle-budget.json.
+const SourceCommits = dynamic(() => import("./source-commits").then((module) => module.SourceCommits));
 
 export type KgOverviewErrors = {
   builds: ApiErrorInfo | null;
@@ -82,6 +87,16 @@ function SearchSection({
     </Card>
     </section>
   );
+}
+
+/**
+ * The commit each git source of the graph read; the graph query is the one the search section reads. A graph whose
+ * sources read no commit never fetches the card's chunk.
+ */
+function Commits({ project, error }: { project: string; error: ApiErrorInfo | null }) {
+  const graph = useHubQuery(kgGraphQuery(browserApi, project), error);
+  const sources = graph.status === "success" ? (graph.data.sources ?? []) : [];
+  return sources.length > 0 ? <SourceCommits sources={sources} /> : null;
 }
 
 /** The history's filter in the URL (`?builds=failed`), changed through the History API like the lists' filters. */
@@ -177,7 +192,7 @@ function Status({ data }: { data: KgBuilds }) {
   return <StatusTiles data={data} now={now} />;
 }
 
-/** /p/{project}/kg: the graph's status and builds, and node search. Read-only. */
+/** /p/{project}/kg: the graph's status, the commits its sources read, node search and the builds. Read-only. */
 export function KgOverview({
   project,
   query,
@@ -227,6 +242,7 @@ export function KgOverview({
       <QueryView state={builds} loading={<TilesSkeleton />}>
         {(data) => <Status data={data} />}
       </QueryView>
+      <Commits project={project} error={errors.graph} />
       <SearchSection project={project} query={query} kind={kind} errors={errors} />
       <QueryView state={builds} loading={<TableSkeleton rows={4} />}>
         {(data) => <Builds project={project} data={data} failedError={errors.failed ?? null} />}

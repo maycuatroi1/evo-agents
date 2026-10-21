@@ -13,11 +13,13 @@ the source of truth inside the repo; the kit is the design reference behind it. 
 
 ## Style
 
-Calm graphite surfaces, one cobalt for live agent work, amber only when a person is needed, and IBM Plex for an
-engineered voice that reads the same in English and Vietnamese.
+Paper and ink, as [omelet.tech](https://omelet.tech): white paper for every page, zinc greys with no blue in them,
+rules of `#e4e4e7`, one cobalt for live agent work, amber only when a person is needed, and IBM Plex for an engineered
+voice that reads the same in English and Vietnamese.
 
-1. **Live state first.** A page that shows work in progress says whether it is current, and running work carries a
-   pulsing dot.
+1. **Say the unusual, not the usual.** Running work carries a pulsing dot in its pill, but a page does not say that it
+   is current or that a run goes as it should: the live indicator shows only when updates stopped (reconnecting,
+   offline, paused), and a run's status line only when its state needs a word (waiting, failed, lost, cancelled).
 2. **Colour is spent on state.** The primary button is ink (`action`, the `primary` of shadcn), never a colour.
    Cobalt (`brand`) means an agent is working right now; it also marks links, the focus ring, the selected tab and
    the selected nav icon. Amber (`attention`) means a person is needed. Green, red and violet mean done, failed and
@@ -31,6 +33,13 @@ engineered voice that reads the same in English and Vietnamese.
 No gradients, no glass, no coloured left borders on cards, no emoji: state lives in the pill and the dot. Icons are
 Lucide only; the GitHub mark is the Simple Icons path.
 
+One exception: the reactions of a group chat are emoji, since a person picks them and the hub only stores and counts
+them (`evo_agents/hub/chats.py`). An emoji appears only inside a reaction chip under a chat message, as the chip's
+content with its count, and in the picker that adds one; the status reactions an agent's run puts by rule (eyes when
+a worker claims it, a check mark when it is done, a cross when it failed or was cancelled) are reactions like any
+other. A reaction chip's accessible name says the emoji's name, the count and who put it, never the emoji alone. No
+other part of the hub, a chat's own chrome included, shows emoji: a run's state there is still the pill and the dot.
+
 ## Colour
 
 Light and dark are both first-class; the hub follows the system until a person picks one in the user menu
@@ -40,37 +49,47 @@ Light and dark are both first-class; the hub follows the system until a person p
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `canvas` | `background` | `#f5f6f8` | `#0a0c10` | the page behind the content |
-| `surface` | `card`, `sidebar` | `#ffffff` | `#111419` | cards, tables, the sidebar, the top bar, inputs |
-| `surface-sunken` | `muted`, `surface-sunken` | `#eef0f3` | `#0c0e12` | wells: table header, identifier chips, skeletons, disabled fields |
-| `surface-raised` | `popover`, `surface-raised` | `#ffffff` | `#181b22` | menus, dialogs, sheets, toasts; lighter than `surface` in dark |
-| `surface-hover` | `accent` | `#f0f2f5` | `#1a1e26` | hover of rows, nav items, ghost and outline buttons |
-| `surface-selected` | `sidebar-accent`, `surface-selected` | `#e9edfd` | `#1a2246` | the selected nav item, row, pressed chip, checked card |
-| `border` | `border`, `chart-grid` | `#e2e5ea` | `#22262f` | hairlines; never the only cue that something is a control |
-| `border-strong` | `border-strong` | `#d3d7de` | `#2e333d` | outline (secondary) buttons, segmented controls |
-| `border-control` | `input` | `#858c99` (3.4:1 on surface, 3.1:1 on canvas) | `#626a7a` (3.4:1, 3.2:1 on surface-raised) | edges of inputs, selects, radios and checkboxes; under 3:1 on surface-sunken, so an enabled control never sits in a well |
+| `canvas` | `background` | `#ffffff` | `#09090b` | the page: paper, the same as `surface`, so content needs no card to stand out |
+| `surface` | `card`, `sidebar` | `#ffffff` | `#09090b` | cards, tables, the sidebar, the top bar, inputs |
+| `surface-sunken` | `muted`, `surface-sunken` | `#f4f4f5` | `#18181b` | wells: table header, identifier chips, skeletons, disabled fields |
+| `surface-raised` | `popover`, `surface-raised` | `#ffffff` | `#18181b` | menus, dialogs, sheets, toasts; lighter than `surface` in dark |
+| `surface-hover` | `accent` | `#f4f4f5` | `#18181b` | hover of rows, nav items, ghost and outline buttons |
+| `surface-selected` | `sidebar-accent`, `surface-selected` | `#eef0fd` | `#1c2147` | the selected nav item, row, pressed chip, checked card |
+| `border` | `border`, `chart-grid` | `#e4e4e7` | `#27272a` | hairlines; never the only cue that something is a control |
+| `border-strong` | `border-strong` | `#d4d4d8` | `#3f3f46` | outline (secondary) buttons, segmented controls |
+| `border-control` | `input` | `#8b8b94` (3.4:1 on surface and canvas, 3.1:1 on surface-sunken) | `#71717a` (4.1:1, 3.7:1 on surface-raised) | edges of inputs, selects, radios and checkboxes |
+
+Paper lies flat: `elevation-raised` is none, so a card is its 1 px rule; menus, dialogs and toasts keep their shadows
+(`elevation-popover`, `elevation-dialog`, tinted with ink `#09090b`).
 
 **Text**
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `fg` | `foreground` | `#0e1116` (18.9:1 on surface, 16.2:1 at the least, on surface-selected) | `#e9ecf1` (15.6:1, 13.0:1 at the least) | primary text and icons |
-| `fg-muted` | `muted-foreground` | `#4b5362` (7.7:1, 6.6:1 at the least) | `#a4acba` (8.1:1, 6.8:1 at the least) | secondary text, labels, inactive nav |
-| `fg-subtle` | `fg-subtle` | `#646c7b` (5.3:1, 4.5:1 at the least) | `#868f9e` (5.7:1, 4.7:1 at the least) | timestamps, placeholders, helper text; nothing lighter is text |
+| `fg` | `foreground` | `#09090b` (19.9:1 on surface, 17.5:1 at the least, on surface-selected) | `#fafafa` (19.1:1, 14.8:1 at the least) | primary text and icons |
+| `fg-muted` | `muted-foreground` | `#52525b` (7.7:1, 6.8:1 at the least) | `#a1a1aa` (7.8:1, 6.0:1 at the least) | secondary text, labels, inactive nav |
+| `fg-subtle` | `fg-subtle` | `#6b6b73` (5.3:1, 4.7:1 at the least) | `#8b8b94` (5.9:1, 4.6:1 at the least) | timestamps, placeholders, helper text; nothing lighter is text |
 
 **Action and brand**
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `action` / `on-action` | `primary` / `primary-foreground` | `#0e1116` / `#ffffff` (18.9:1) | `#e9ecf1` / `#0a0c10` (16.5:1) | the primary button, one per view |
-| `action-hover` | `action-hover` | `#2a303a` (13.3:1 with on-action) | `#c9cfd9` (12.5:1) | primary button hover |
-| `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.4:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
-| `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.0:1) | link hover |
+| `action` / `on-action` | `primary` / `primary-foreground` | `#09090b` / `#ffffff` (19.9:1) | `#fafafa` / `#09090b` (19.1:1) | the primary button, one per view |
+| `action-hover` | `action-hover` | `#27272a` (14.9:1 with on-action) | `#d4d4d8` (13.5:1) | primary button hover |
+| `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.9:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
+| `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.7:1) | link hover |
 | `brand-soft` | `brand-soft` | `#ebeefd` | `#19204a` | ground of the running pill and brand tags |
-| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#0a0c10` (7.8:1) | glyphs on a brand fill: the logo tile |
-| `focus-ring` | `ring` | = `brand` (6.2:1 on canvas) | = `brand` (7.8:1) | the 2 px keyboard focus outline |
+| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#09090b` (7.9:1) | glyphs on a brand fill |
+| `focus-ring` | `ring` | = `brand` (6.7:1 on canvas) | = `brand` (7.9:1) | the 2 px keyboard focus outline |
 
-Cobalt is never a large fill; the logo tile is the one exception.
+Cobalt is never a large fill.
+
+**Branding.** A hub admin may set `brand`, `brand-hover`, `brand-soft` and `on-brand` for each theme
+(Administration, Branding; `evo_agents.hub.branding`), and no other token. The hub refuses a colour that leaves a pair
+under its ratio, with the tokens left unset at the values above: `brand` 4.5:1 on `surface`, `canvas` and
+`brand-soft` and 3:1 on `surface-selected`, `brand-hover` 4.5:1 on `surface`, `on-brand` 4.5:1 on `brand`. The root
+layout writes the colours over the tokens (`brandingCss` in `lib/hub-settings.ts`), and the aliases of `brand`
+(`running`, `focus-ring`, `chart-1`) follow it. The Branding page checks the same pairs as the colours are typed.
 
 **States.** Each tone has a text token, a soft ground and a solid mark. Text and icons on the soft ground use the text
 token; dots, bars and progress segments use the solid one. Ratios are text on the soft ground; marks are at least
@@ -83,12 +102,12 @@ token; dots, bars and progress segments use the solid one. Ratios are text on th
 | Review | `review` / `review-soft` / `review-solid` | `#6136c2` / `#f1ecfd` (6.5:1) / `#7c4de8` | `#b9a0ff` / `#241b3e` (7.3:1) / `#9d7df6` | done, waiting to be checked: verifying, review |
 | Success | `success` / `success-soft` / `success-solid` | `#11713d` / `#e4f4ea` (5.3:1) / `#1e9e58` | `#5fd394` / `#0f2a1c` (8.2:1) / `#34b86e` | finished well, healthy: done, idle, received heartbeat |
 | Danger | `danger` / `danger-soft` / `danger-solid` (`destructive`) | `#b3261e` / `#fcebea` (5.7:1) / `#d93a2f` | `#ff8178` / `#33161a` (6.8:1) / `#ef5a4e` | failed or unreachable: failed, offline, errors, destructive buttons |
-| Neutral | `muted-foreground` / `muted` / `neutral-solid` | `#4b5362` / `#eef0f3` (6.8:1) / `#858c99` | `#a4acba` / `#0c0e12` (8.5:1) / `#6b7383` | no tone: queued, lost, cancelled, pending |
+| Neutral | `muted-foreground` / `muted` / `neutral-solid` | `#52525b` / `#f4f4f5` (7.0:1) / `#85858d` | `#a1a1aa` / `#18181b` (6.9:1) / `#71717a` | no tone: queued, lost, cancelled, pending |
 
-`on-danger` (`#ffffff` light, 4.6:1; `#0a0c10` dark, 5.8:1) is the label on a `danger-solid` fill, which darkens on
+`on-danger` (`#ffffff` light, 4.6:1; `#09090b` dark, 5.9:1) is the label on a `danger-solid` fill, which darkens on
 hover (`hover:brightness-94`) and never lightens, so the label keeps its ratio. `danger-solid` is
-a mark and a fill, not text: it falls to 4.2:1 on canvas, so error text is `text-danger`. Amber is the same idea as
-the mark's third node, the person in the loop; it is not a warning colour for anything else.
+a mark and a fill, not text: error text is `text-danger`. Amber means a person is
+needed; it is not a warning colour for anything else.
 
 **Terminal.** The log, tool output and the web terminal sit on `term-bg` in both themes. Every colour below is
 measured on `term-bg` and holds at least 5.9:1 on the hovered row (`term-row`, `#141820`).
@@ -211,27 +230,65 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Decision, waiting for you | `MessageSquare` |
 | Runs | `Activity` |
 | A worker's heartbeats: a next attempt waiting for its worker to be steady | `HeartPulse` |
+| A worker's update that failed; a daemon that cannot update itself; a long wait to update | `CircleX`; `RefreshCwOff`; `ClockAlert` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
+| Releases, a project's daily release; a decision of a stopped cycle, a notice of the release | `Tags` |
+| A release cycle: published, closed, stopped; a check that found nothing, waits for a cycle, the owner without the admin role | `PackageCheck`, `CircleMinus`, `OctagonPause`; `CircleMinus`, `Hourglass`, `UserX` |
+| The Curator's History, its search; Graph health; Runtime and harness | `TextSearch`; `Network`; `Layers` |
+| A change's replays; replays that won | `FlaskConical`; `Trophy` |
+| A skill release: published, published again, nothing published | `PackageCheck`, `Undo2`, `PackageX` |
+| Waiting for a backfill | `HardDriveUpload` |
 | Proposal of the Curator | `Lightbulb` |
 | Morning brief of the Curator | `Sunrise` |
 | Telegram, the member's chat | `Smartphone` |
 | Plans | `ListChecks` |
+| A plan's steps as Board, List, Graph | `Columns3`, `LayoutList`, `Waypoints` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
+| Accounts, the agent's accounts and their rotation | `UserRoundCog` |
+| Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
+| The usage limits of an account | `Gauge` |
 | Knowledge graph | `Network` |
+| Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
+| Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
+| A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
+| Reply in a direct chat, the composer's Replying to; what an answer answers (its quote) | `Reply`; `CornerDownRight` |
+| A group chat's image: change it (on its face), upload, remove; a direct chat's Details; its note that it keeps its two members | `Camera`; `ImageUp`, `Trash2`; `Info`; `Lock` |
+| A chat run's run; the draft pull request an agent's message links; leave a chat | `Activity`; `GitPullRequestDraft`; `LogOut` |
+| An agent's axes: credentials, tools, skills, workers, projects, models, runtimes, environments | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal`, `Container` |
+| An agent pack of a plugin, which an agent attaches | `Package` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
 | Monitor, the runs watched live | `MonitorPlay` |
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
+| The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
+| Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
+| A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
+| SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight` |
+| An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
+| An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
+| A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
+| Merge queue, a merge request merging or merged; its Policy; its Figures | `GitMerge`; `SlidersHorizontal`; `ChartNoAxesColumn` |
+| A repo's breaker armed, tripped, Reset; an audit sample, Faulty; approve a PROD release; revert a merge; rolling back | `Power`, `PowerOff`, `Power`; `SearchCheck`, `Bug`; `Rocket`; `Undo2`; `Rewind` |
+| Lean Canvas, a project's canvases (its menu item); a claim's status: assumption, testing, validated, invalidated, retired | `Table`; `CircleDashed`, `FlaskConical`, `CircleCheck`, `CircleX`, `Archive` |
+| A baseline: waiting for review (and Ask for review now), approved, expired; its frozen snapshot; a proposal waiting | `ClipboardCheck`, `CircleCheck`, `TimerOff`; `Lock`; `Lightbulb` |
+| Evidence: signal, feedback, interview, experiment, market, document, simulation; real; synthetic; supports, contradicts, neutral | `RadioTower`, `MessageSquareQuote`, `Mic`, `FlaskConical`, `Store`, `FileText`, `Bot`; `ShieldCheck`; `Sparkles`; `ThumbsUp`, `ThumbsDown`, `Minus` |
+| A claim's edit, undo of a rev, compared revs, a conflict at an old rev; @strategist's judgings | `PencilLine`, `Undo2`, `GitCompareArrows`, `GitMerge`; `Scale` |
+| Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
-The mark (`components/brand.tsx`, `src/app/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
-(`#2f4bd8` in the favicon), two nodes and the edges in `on-brand`, the third node amber `#fbbf24` in both themes. It
-shows at 20 px or larger beside the name in Plex Sans 600, and is never recoloured.
+The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
+tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
+light, white in dark; branding colours never change it. The favicon (`public/icon.svg`) puts it on a rounded tile
+that follows the system theme, an ink tile with a white e in light and the reverse in dark; the home screen icon
+(`public/apple-icon.png`, 180 px) is the ink tile, square, for the phone to round. The mark shows at 16 px or larger
+beside the name in Plex Sans 600, and is never recoloured. A hub's branding (Administration,
+Branding) may put its own logo in the mark's place (`HubMark`), its own favicon in the browser's tab and its own
+product name beside them; without one the shell shows the mark, the favicon and "Evo Agent Hub".
 
 ## Spacing and layout
 
@@ -344,7 +401,13 @@ Shared pieces built on them:
   a chevron, and the up-down chevron only under the pointer or focus (a 44 px target under 768 px). Columns listed in
   `columnClassNames` hide on narrow screens. The admin lists paged by the API keep their filters as a form
   (`FilterBar`, submitted with Filter so a screen reader moving through a select does not reload the list), drawn as
-  the toolbar: labels in `caption` over 32 px fields.
+  the toolbar: labels in `caption` over 32 px fields. A table given `detail` (what a row shows under its cells, such
+  as an account's usage limits) renders each row as a group of its own, a `tbody` (`data-row-group`) holding the row
+  and, when `detail` gives something for it, a second row (`data-row-detail`) whose one cell spans every column: the
+  two hover together (`accent`), the row's actions show while either is hovered, and a hairline parts the group from
+  the next. The table's scroll region is then a size container (`globals.css`), so the detail's content is as wide
+  as the region (`100cqw`) and sticks to its left edge: a table wider than a phone scrolls sideways under it and the
+  detail stays in view.
 - `components/data/data-list.tsx`, the kit's DataTable under 768 px: a table given `mobile` (a row as a phone lists
   it, `DataListRow`) renders, below 768 px, a named list of its rows in the table's order instead, under the same test
   id with `data-layout="list"` (`"table"` otherwise). A row is at least 60 px (52 px `compact`): the title in
@@ -375,8 +438,11 @@ Shared pieces built on them:
   plan, step, repo, decision, proposal (open in `attention`, deferred, accepted, rejected, dropped) and curator (the
   night shift: running, on duty, idle, paused in `attention`, off without a charter; no pulsing dot, which the run
   itself carries); each state has a tone, a Lucide icon and its words under `status.<kind>` in
-  `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
-  `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
+  `messages/en.json` and `vi.json`. Nearly every page loads that file, so a kind only one page shows keeps its map
+  beside it and draws the same `StatusPill`: `change-badge.tsx`, the `ChangeBadge` of what an accepted proposal
+  became (planned, opening pull request, waiting for the Judge, judging, judged, merged, left open in `attention`,
+  closed), loaded with a proposal only, its words under `status.change`. The maps are `satisfies Record<...>` on the
+  API's own types in `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
   `PlanSummary["area"]` with pending and blocked; `StepReport["status"]` with blocked; `Decision["state"]`), and
   `useStatusText` reads the words through typed keys, so a state the API adds fails typecheck until it has a look
   and words. The pill is 22 px (26 px with `size="lg"`, beside an h1), the icon 14 px and `aria-hidden`; leased
@@ -394,8 +460,9 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Insights, Curator, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
+  (Overview, Plans, Runs, Merge queue, Insights, Signals, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
+  and Plugins; section Plugins below), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
   of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
@@ -415,7 +482,10 @@ Shared pieces built on them:
   admin): the tile, the name, then the role, "Visibility: Internal", the repos and the active plans in `caption`
   `fg-subtle`, and the open decisions as an `attention` count said in words. The counts come from
   `GET /v1/me/overview`, read when the switcher opens; a hub admin's project without a grant shows "No role" and its
-  repos. The current project is `surface-selected` and `aria-current`. Down from the field enters the list, the arrows,
+  repos. The current project is `surface-selected` and `aria-current`. Outside `/p/<project>` the trigger and the
+  sidebar's project group never sit empty while the visitor can open a project: `useSelectedProject` stands in with
+  the project last opened in this browser (localStorage `hub.shell.project`) while it is still listed, else the first
+  with a grant, else the first listed. Down from the field enters the list, the arrows,
   Home and End move in it, up from the first goes back to the field; the first Escape empties the field, the next
   closes. Home sits at its foot.
 - `components/palette`, the kit's CommandPalette. The top bar's field (`palette-trigger.tsx`) reads "Search or jump
@@ -450,8 +520,8 @@ Shared pieces built on them:
   shows that key after its meta (G I on Inbox, G P and G R on the page's project's Plans and Runs, D on Dispatch a
   step there), and once something typed names it, a Help group offers Keyboard shortcuts.
 - `components/shell/shortcuts.tsx`: the registry of every key the web answers to (`SHORTCUTS`) and the shell's own
-  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the page's project (or of
-  the visitor's only project; with several and none shown, a note says to open one), and Workers; after 400 ms
+  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the project the sidebar
+  shows (`useSelectedProject`; with none to open, a note says so), and Workers; after 400 ms
   without a second key a hint at the foot of the screen names them (for the eye, `aria-hidden`; under 768 px none).
   D opens Dispatch on a project's pages for a writer: the page's own where it registers one (`useDispatchShortcut`:
   the runs page's button, a ready step's Run this step), else the shell's, fetched at the first D. `?` opens the
@@ -472,12 +542,14 @@ Shared pieces built on them:
   There is no eyebrow, no description paragraph and no rule under the head; what a page is for is said once, in its
   `EmptyState`, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
   not fit beside the title move to their own line, still on the right, so a run's five controls never push the page
-  sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`).
+  sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`). `leading` stands before the h1 and
+  outside it, so the heading's text stays the name: an agent's avatar.
 - `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
   its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
   `useLiveSignal` (the run page's event stream, with the log's Pause; the Monitor's worst tile); a page that registered nothing shows none, and a
-  query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive (a
-  `success-solid` dot that pulses, "updated 3s ago"); Reconnecting from the first failed read (TanStack's
+  query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive, which
+  is how a page should be, so the indicator is then for screen readers only (`sr-only`, its status region still says
+  each change); Reconnecting from the first failed read (TanStack's
   `fetchFailureCount`, or an error newer than the data) or while the log reads events instead of its stream (an
   `attention-solid` dot, "retry in 4s, polling every 5s"; "stream retry in 25s, polling every 1.5s meanwhile");
   Offline after 15 seconds of failures, or at once when the browser has no network (`danger-solid`, "last update
@@ -555,7 +627,10 @@ Shared pieces built on them:
   rerun, cancel, take over, hand back, approve, drain, resume and revoke a worker, register a worker, grant and revoke
   a grant, revoke a token, answer a decision, mark as read, and copy. A failure inside a dialog that stays open is said
   in the dialog instead (`InlineError`), next to the button that failed; no page keeps an inline notice that only says
-  something worked.
+  something worked. `InlineError` and `useWriteFailure` live in `components/feedback/notice.tsx`, the confirmation of
+  a destructive action (`ConfirmAction`) in `components/feedback/confirm-action.tsx` and a time in a table cell (`When`)
+  in `components/data/when.tsx`, where every feature may import them; their old paths under `components/admin` re-export
+  them until the files that import them from there are next changed.
 - `components/data/visibility.tsx`: Visibility is the web's word for a label level, the reach of a grant (`max_level`)
   or of a memory's label. `VisibilityLevel` shows the default ladder's levels as Public, Internal, Customer and Secret
   (the same words in both languages, as the CLI's terms are English) with the code in the tooltip and in `data-level`;
@@ -565,6 +640,66 @@ Shared pieces built on them:
   the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
   ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
   clipboard is refused, and says which in a toast). It is a `note` named "Read-only".
+- `plans/step-board.tsx`, a plan's Steps: Board (by status, the default), List (in plan order) and Graph (the
+  dependencies) in the kit's segmented control (`Columns3`, `LayoutList`, `Waypoints`), with the search and the Repo
+  filter before it. The view is the URL's `view` (`view=graph`), written with `history.replaceState`, so Back leaves
+  the page rather than undoing a view, and kept in localStorage (`hub.plans.stepView`) for the next plan opened
+  without one; a `view` the page does not know, or storage that holds junk or refuses to be read, is Board without an
+  error (`step-view.ts`). A filter's count of matching steps is said in a polite `aria-live` region in every view.
+- A plan's Graph (`plans/step-graph*.tsx`, `step-inspector.tsx`, the pure model in `lib/plan-graph`), read only:
+  - Loading. React Flow (`@xyflow/react`) and dagre (`@dagrejs/dagre`), pinned to exact versions, load with
+    `next/dynamic` on the client only when Graph is chosen, so Board, List and the page's first load never fetch
+    them (`step-graph-lazy.tsx`). The frame is 512 px high, 640 px from 768 px (`GRAPH_FRAME`); a `Skeleton` of the
+    same height holds it while the chunk loads, and a chunk that fails shows a `danger` `StatePanel`, "The graph did
+    not load", with Use Board.
+  - Layout (`lib/plan-graph/layout.ts`, no React, no DOM, tested in vitest). Top to bottom: every step with no
+    dependency it can draw sits in the first row, and a step sits below every step it depends on. Within a row the
+    steps go in plan order from left to right where that adds no crossing (dagre orders them; a drawing whose rows
+    mostly stand against the plan is mirrored). A dependency already implied through another one (1 to 6 when 6 also
+    waits for 5, which waits for 1), one naming a key the plan lacks and one closing a cycle in a hand-written plan
+    are not drawn but are still returned and listed in the inspector; a cycle never hangs or throws. Lines are
+    routed by the layout, not by React Flow: square, running down through a row only in the lane dagre kept free,
+    turning only at the middle of the gap between two rows, so no line crosses another step's box. Boxes are 264 by
+    52 px, 30 px between rows and 24 px between columns. The same model gives each step Ready (pending, every
+    dependency of the plan done), the dependencies not done, its ancestors and its descendants.
+  - A step's box (`StepNode`): `card` with a `border-strong` edge and 6 px corners; the status icon in the tone Board
+    gives it, the key in mono `fg-muted` with tabular figures, the title in 12 px over at most two lines (the full
+    title in the tooltip and in the box's accessible name with its status), and a `success` Ready tag once it is
+    Ready. A pending step still waiting has a dashed `neutral-solid` border; the selected one a `brand` border and
+    ring on `surface-selected`. No coloured left edge, no gradient, no emoji.
+  - Lines (`StepEdge`): 1.5 px `neutral-solid` with an arrowhead into the step that waits; solid when the step waited
+    for is done, dashed (5 4) when it is not; 2 px `brand` when it joins the selected step.
+  - The legend above the canvas (`Legend`): the count of steps in each of the four statuses with their icons, the
+    Ready count, a solid sample "Dependency done", a dashed one "Not done yet", and "N dependencies not drawn" with
+    why in its tooltip; at its end, zoom in, zoom out and fit as ghost icon buttons (44 px under 768 px), in the bar
+    rather than over the canvas, so no step ever sits under them.
+  - The canvas: `canvas` behind a dot grid in `border-strong` (16 px); a drag pans, the wheel scrolls the page and
+    never zooms. It opens on the whole plan, centred and never past zoom 1, while that reads at zoom 0.6 or more;
+    a larger plan (agent-hub's 29 steps) opens at 0.6 with its first row at the top and its first step in view,
+    and the rest is a pan, a zoom out or Fit away; Fit always shows the whole plan (`lib/plan-graph/viewport.ts`).
+    A link with `step=` then pans to that step. React Flow's attribution stays in its bottom right corner, 10 px
+    `fg-muted` on `card` at 80 % (`.plan-graph` in `globals.css`: Tailwind's arbitrary variants read the
+    underscores of React Flow's class names as spaces, so its classes are styled in plain CSS).
+  - Selecting. A click, Enter or Space on a step selects it: the steps outside its ancestors and descendants dim to
+    40 % (their lines to 35 %), and the search and Repo filter dim the steps they do not keep rather than hide them.
+    The selected step is the URL's `step` (its key, `step=11`), replaced as `view` is; a link with `step=` and no
+    `view` opens Graph with that step selected and brought into view. Leaving Graph drops `step`. A click on the
+    empty canvas clears the selection.
+  - The inspector (`step-inspector.tsx`): the key, the status pill, previous and next step in plan order, close; a
+    `success` callout "Ready: every step it depends on is done." or Waits on the steps not done; Repo, Done at,
+    Blocks progress; Depends on, every dependency the step declares, drawn or not (an implied or cyclic one says so),
+    each a button that selects that step and pans it into view; Waiting for this; What to do, Verify, Evidence (its
+    first three lines, then Show all), Note; the plan's acceptance criteria the step names, each quoted; and Open
+    step page, a `brand` link to the step's page. It has no Run this step and changes nothing. From 1024 px it is a
+    320 px column (384 px from 1280 px) on the right of the canvas in the same card, with an empty state
+    (`MousePointerClick`, "No step selected") until a step is selected. Below 1024 px it is a bottom sheet (at most
+    85 % of the screen high, its own scroll) that opens with the selection, puts the focus on the step's title, and
+    gives the focus back to the step when it closes by its close button, Esc or a tap outside.
+  - Keys. Tab reaches the steps (a 2 px `ring` outline); Up and Down go to the step of the row above or below whose
+    centre is nearest, Left and Right along the row (`lib/plan-graph/navigate.ts`); Enter or Space selects; Esc
+    closes the inspector and leaves the focus on the step. A step the focus reaches is panned into view.
+  - Motion. Zoom and fit take `duration-base`, a pan to a step `duration-slow`; under `prefers-reduced-motion` both
+    are instant, as the boxes' 120 ms fade is.
 - `components/data/search-field.tsx` and `facet-group.tsx`: the kit's search input, a magnifier, the field and the
   `/` key while it is empty, a clear button once it holds text, committed after a pause or on Enter; and a facet as
   the kit's filter chips, a labelled group of `aria-pressed` toggles, 28 px with 6 px corners, the count after the
@@ -574,6 +709,21 @@ Shared pieces built on them:
   registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
   text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
   Next.js syncs with `useSearchParams` without rendering the page on the server again.
+- `components/data/meter.tsx`, the kit's Meter: how much of a whole is used, 0 to 100, as a `rounded-full` bar 8 px
+  high, a `border-control` edge on `surface-sunken` (the edge marks the whole in both themes), filled in `chart-1`,
+  `attention-solid` (`warning`) or `danger-solid` (`danger`); each fill keeps 3:1 on its ground in light and dark.
+  It is a `progressbar` (`aria-valuenow`, 0 to 100), named by `label` or by the element `labelledBy` names, with an
+  optional `aria-valuetext`. The caller writes the figure beside it, in `METER_TEXT[tone]` (`foreground`,
+  `attention`, `danger`), so the tone is never the only cue. It draws a measure, not a state: no pulse, no
+  transition. The Accounts page (`components/accounts/usage-limits.tsx`) uses it for each usage limit of an account,
+  in its row's detail: a line with `Gauge` and "Usage limits, reported 5 minutes ago" (with "Near its limit" or
+  "Limit reached" as a badge when no bar says so), then one window per limit the hub kept, side by side as wide as
+  the region allows (columns of at least 224 px) and stacked on a phone: the name ("Session (5 hours)", "Weekly, all
+  models", "Weekly, Opus") and the share used on one line, the meter, and when it resets in `caption` `fg-subtle`
+  ("Resets in 2 hr 51 min" within a day, "Resets Tue 7:00 AM" within a week, the date past that, "Reset ..." once
+  passed, when it reads 0%). From 80% the meter is `warning`, at 100% or at the limit the CLI rejected `danger`, and
+  that window's figure reads "Limit reached". A Claude account nothing reported for yet says "No usage reported yet"
+  in one quiet line instead of empty bars.
 - `components/data/segmented.tsx`: the kit's segmented control, for two or three ways to show the same thing (a
   plan's board or list, a diff unified or split, a memory rendered or raw). A labelled group of `aria-pressed`
   buttons on `surface-sunken` with 6 px corners, 24 px with 12 px text (44 px under 768 px); the pressed one sits on
@@ -587,7 +737,18 @@ Shared pieces built on them:
   3 px `neutral-solid` stub), one image named with the counts. On a worker's page its owner flips "Only runs
   dispatched from the web" (`dispatch_from`) with a switch in the Scope card; the switch moves once the hub answered
   and the worker was read again, the result is a toast, and nobody else sees the switch, only the value in "Who
-  dispatches".
+  dispatches". The Version card (`version-card.tsx`, the fourth card: two columns from `lg`, four from `2xl`) gives
+  the release, the commit its daemon's install was built from as an `Identifier` chip linking to the commit on GitHub
+  with a copy button, and one line on its updates: locked, or what the daemon last said of the tag nightly (the commit
+  it waits to install, since when). Its owner locks the version with "Lock version", a switch at the foot of the
+  Settings card that saves as soon as it is flipped (`version-lock.tsx`): it moves once the hub answered, a success is
+  a toast, and what the hub refuses stays under the switch as an alert until the next flip (a 404 or 409 is a toast,
+  since the page reloads to the worker as the hub holds it). A hub admin who is not the owner sees the card without the
+  switch. Updates say only what went wrong (`self-update.ts`): an update that failed (`danger`, `CircleX`, with the
+  daemon's error as it sent it), a daemon that cannot update itself (`attention`, `RefreshCwOff`, with its reason),
+  and a wait of 12 hours or more for an idle moment (`attention`, `ClockAlert`). Each is a note above the cards and a
+  pill beside the status in the list (`update-badge.tsx`; on a phone the icon alone after the name); a worker whose
+  updates go as they should, an older daemon that says nothing of them, and a locked worker show neither.
 - `components/secrets`, the Secrets page (`/secrets`, in the sidebar's hub section after Workers): the head is the
   title, the count as a tag and Add secret; its sub line says the secrets are the visitor's alone and no value comes
   back. The visitor's own secrets sit in a `DataCard` table sorted by name: the name in mono with the variable it sets
@@ -604,7 +765,220 @@ Shared pieces built on them:
   goes out while a field is wrong, and adding a name the visitor uses already is refused rather than replacing it; a
   refusal of the hub stays in the dialog, the saved secret is a toast. Delete asks first (`ConfirmAction`) and says
   that the leases still out are revoked and that the token should be revoked where it was made too; the result is a
-  toast.
+  toast. A third kind, GitLab token for the hub (`forge`, `GitMerge`), is the token the merge queue drives merge
+  requests with: its form asks for the URL prefix alone (never github.com), lists only the projects the visitor
+  administers, names no worker (the row says "The hub alone"), needs an end day and takes one line.
+- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, in the sidebar's project
+  group after Runs, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
+  Policy, the Queue tab counting what waits for an admin. Its queries live in `lib/merge-queue.ts` and its writes in
+  `lib/use-merge-actions.ts`, since the Inbox answers the queue's notices too. The Queue (read every 15 seconds, the
+  page's LiveIndicator query) puts an `attention` banner first for each repo whose breaker tripped (what tripped it,
+  why, when, and Reset for an admin behind a `ConfirmAction`), then a reader's note, the MetricStrip (In queue, Merging
+  now in `running`, Blocked in `attention`, After merge), then two columns from xl: the merge requests in a `DataCard`
+  (filter chips by where they stand: waiting, merging, blocked, after merge, finished, and a repo select; the title
+  with its `!iid` over why it waits, in `danger` when it is blocked or undone; the repo and target branch; where it
+  comes from as a tag with the agent profile; its state as a pill; when it moved) and a 22 rem column with the breaker
+  of each repo and the audit samples, those waiting first (OK at once, Faulty through a dialog with a note). A title
+  opens the merge request over the list in a sheet (`?mr=ID`): its state, source and `!iid`, its GitLab link, an
+  admin's Approve release (only while it waits in releasing with its UAT passed and the policy releases its repo by
+  hand) and Revert (only after its merge, never a revert's, behind a `ConfirmAction`), why it stands where it does,
+  its facts (branches, run, plan and steps, agent and model, head, the commit it was rebased onto and its rebases in
+  a row, the commit it merged as, its UAT and PROD checks), the Judges' verdicts dimension by dimension with the
+  risk, and its ledger newest first. The merge states are a map of their own (`badges.tsx`, `StatusPill`): running
+  while the hub or a Judge works on it, `review` once merged and followed to its checks, `success` done, `danger`
+  rolling back or reverting, `attention` blocked or paused, neutral waiting, outline reverted or closed. Figures (`?days=`
+  7, 30 or 90 by a `Segmented`) sums the merges, reverts, rollbacks and Judge misses in a strip over a table by repo,
+  agent and model with the wait in the queue and the time to UAT and to PROD. Policy shows the policy at its newest
+  revision or `?revision=N` (each repo in auto or off with its target branch, PROD release and jobs, then the merge,
+  Judge, breaker and audit keys, a key at its default tagged so), who wrote the revision and why in the head's sub
+  line, the revisions with the keys each changed, and a comparison of two (`?from=N&to=M`, revision 0 being no
+  policy). An admin writes the next revision through the form (`?edit=1`, `policy-form.tsx`): a field per key with
+  its hint and default, the hub's checks repeated (`policy-model.ts`), auto not offered for a repo on github.com, a
+  note, and `if_revision` so a revision saved meanwhile is never overwritten; the body keeps what the policy set and
+  the admin left, and what differs from its default. A reader reads every page and gets no control that writes. In
+  the Inbox, a notice of the queue (`merge_default_branch` with `details.ask` sample, release or revert, and
+  `merge_paused`, `PowerOff`) carries its answer (`inbox/merge-notice.tsx`): OK or Faulty with a note, Approve release,
+  Revert one of the suspects, Reset breaker, and the queue's link; once the queue says the question is answered, the
+  notice says so instead.
+- `components/agents`, a project's Agents (`/p/{project}/agents`, in the sidebar's project group after Curator;
+  docs/hub.md, Agent profiles). An agent is drawn by `components/data/agent-avatar.tsx` (`AgentAvatar`): its uploaded
+  image, or until there is one (and while it loads) the first letter of its name on its colour, in white or ink,
+  whichever has the higher contrast on that colour (`inkOn` in `lib/agent-rules.ts`); round, as avatars are, and
+  decorative beside the name. The list is one `DataCard` table: the avatar, the name with Default (a `Star` tag) for the
+  project's own `@<project>`, and `@handle, description` under it; Limits, the axes it narrows as tags with each axis's
+  icon (three, then `+N` whose tooltip names the rest; "Every permission" when none); the version; when it last
+  changed. Deleted agents are one facet away (`?show=deleted`), since runs keep the agent they went under. An admin of
+  the project gets New agent in the head; everyone else a note that only an admin changes agents. A member who writes
+  to the project gets Chat (`chat-button.tsx`, `outline`, `MessagesSquare`) in each active agent's row actions, an icon
+  button named "Chat with <name>" (at the row's end on phones), and in an agent's head beside Edit: it opens their
+  direct chat with the agent as the Chats list's row of agents does (`hooks/use-direct-chat.ts`, which both share),
+  with the composer focused; a reader of the project, and a deleted agent, get none. An agent's page puts
+  the avatar before the h1 and `@handle` (copyable), Default, Deleted and `vN` beside it; About (the description and
+  the instructions in mono on `surface-sunken`) and Permissions (each axis with its icon, what it governs, then "Every
+  ..." or the allowlist as chips; an empty allowlist says Nothing allowed in `attention`) and Agent packs (each pack
+  the agent attaches as `<plugin>/<pack>` in mono with its pinned version as a tag, or None; not on the default) on
+  the left; the Avatar
+  card (Upload image or Change image and Remove for an admin, each a new version, a toast), Details and Versions (who,
+  when, and what each version changed against the one before) in a 22 rem column from `xl`; then Recent runs, the
+  project's latest 200 runs kept to the agent's, which the route composes from `components/runs/agent-runs.tsx`. Edit
+  (`outline`) and Delete (`quiet-danger`, never on the default) are an admin's; Delete asks first (`ConfirmAction`)
+  and says the handle stays taken. New agent and Edit are one dialog (`agent-dialog.tsx`): the handle (creating only,
+  after an `@`), the name, the description, the colour as round swatches of the hub's palette with a check on the one
+  chosen, Auto (the hub picks by the handle; creating only) and a custom colour, the avatar (creating only; uploaded
+  right after the agent is created), the instructions, the eight axes (`axis-field.tsx`) and Agent packs
+  (`packs-field.tsx`). Each axis is All or Only
+  these (`Segmented`); Only these lists what the hub has for it, read when the form opens (`options.ts`: the admin's
+  secrets and `github-app`, the global and project skills, the workers they see and those workers' labels as
+  `label:<label>`, the models the workers list, the other projects of their grants, the API's tool words and
+  runtimes), with a filter past eight, and takes a name typed by hand for what the admin cannot see, refused where it
+  is typed when its shape is wrong. Agent packs lists the packs of the plugins the project enabled (`agent-packs`),
+  each a checkbox with `<plugin>/<pack>` in mono and its title; a pack checked is pinned at the version installed,
+  and a small select beside it pins another version the hub holds. A pack the agent attaches that the project no
+  longer offers stays listed with No longer offered in `attention`, so the admin can remove it; at most 16, counted
+  under the list. The form repeats the hub's checks and shows them once Save was tried; an edit sends
+  only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
+  its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
+- `components/chats`, group chats (`/chats` and `/chats/{id}`, first in the sidebar's hub group; docs/hub.md, Group
+  chats): people and the agents of projects in one conversation. One frame for the list and a chat
+  (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
+  window tall, the list in a column of 19 rem (21 from 2xl) and the chat beside it, each scrolling on its own; below,
+  the list is the page at `/chats` and a chat the page at `/chats/{id}`, as tall as the window, with a back link before
+  its face, on the row of the face and the title however the head wraps. The list (`chat-list.tsx`) is a card:
+  Chats (the h1 while no chat is open, an h2 beside one) with the
+  unread total as an `attention` badge and New chat (primary while no chat is open, `outline` beside one). Under it the
+  row of agents (`agent-strip.tsx`): the agents the visitor may chat with one to one (not deleted, of the projects they
+  write to, the project the shell shows first, each project's default agent first), each a 72 px button with its 40 px
+  avatar and its name under it (two lines at most), and a tooltip with its name, `@handle` and project. Pressing one,
+  or Enter on it, opens the visitor's direct chat with that agent (the one there is, or one the hub makes:
+  `PUT /v1/chats/direct/{handle}`) at `/chats/{id}?compose=1`, which focuses the composer and drops the parameter; the
+  agent of the direct chat shown has a `brand` ring and `aria-current`, the one opening a spinner over its face. The
+  row is a `toolbar` and one Tab stop (the arrows, Home and End move along it) that scrolls sideways on its own, so the
+  page never does at 375 px; while the agents load it shows five rounds, with none it says where they come from, and a
+  project whose agents could not be read is named in `danger` with Try again. There is no online status on it (status
+  shows only when something is wrong). A filter past six chats; then a row per chat (`chat-row.tsx`), the latest
+  active first: its face (`chat-avatar.tsx`, 40 px: a direct chat's agent; a group's uploaded image, its members drawn
+  while it loads and when it fails; else two of its other members as Messenger draws a group, one up on the right and
+  one down on the left cut out by the card's colour; else the one other member; else the people icon on a neutral
+  round), its name (a direct chat's agent's name as it reads now, a group's title), when its last message came (the
+  time today, the weekday within the week, the date this year, else with the year, by the days of the page's time zone;
+  the date until the page hydrates, the full time as its tooltip), and that message as "Author: text" (You for the
+  visitor, one line without markdown; in italics "a message your grants don't clear", or No messages yet). Unread, the
+  name and the line are semibold and the messages of others not read yet an `attention` count. The link's name is the
+  chat's name with that count in words, its description the last message; the chat shown is `surface-selected` with
+  `aria-current="page"`. The list is read every 10 seconds while shown; the sidebar's Chats item counts the same unread
+  total, every 30. No chat is the EmptyState with New chat; from 1024 px the pane beside the list says to open one.
+  A person's face anywhere in Chats (`PersonAvatar` in `author.tsx`) is their GitHub avatar from
+  `https://avatars.githubusercontent.com` (the one image origin the CSP allows besides the web's own; the hub names it
+  by GitHub id and proxies nothing), or while it loads, and when there is none or it fails, their initials on a
+  neutral round. New chat (`new-chat-dialog.tsx`, loaded when first pressed) takes a title (one line, 120 characters),
+  the agents of the projects the visitor writes to as checkboxes by project with each one's face (at most 10, a filter
+  past eight) and people, searched and picked (`people-picker.tsx`): a search field over the people the visitor shares
+  a project or a chat with (`GET /v1/chats/people`), each a checkbox with their face and login, at most 100 drawn (a
+  search narrows the rest); one who could not be in a chat with the agents picked says why in the hub's words and is
+  not picked (one picked already says it in `danger`), and a login typed that matches nobody listed is offered as it
+  is. Enter in the field takes the login typed when listed, else the one row left, else the login typed. The people
+  picked show under it as chips with their faces; the hub's refusal stays in the dialog with its words, and the chat
+  opens once made. Members adds a person with the same picker, each row a button that adds them at once, who is in
+  the chat left out. A chat (`chat-view.tsx`)
+  is a card: its head, its messages, and the composer. A group chat's head (`chat-header.tsx`) puts its face first, 40
+  px, as a button with a `Camera` badge (`chat-image-control.tsx`) whose menu says what an image takes (PNG, JPEG or
+  WebP, at most 512 KiB) and offers Upload image, or Change image and Remove image once there is one; Remove asks
+  first (`ConfirmAction`, loaded when first chosen). A file of another type or over the size is refused before it is
+  sent, and that, or the hub's refusal, shows under the head as an inline error until the next try; a change is a
+  toast, and the chat's image_changed event shows it to the other members at once. Then the title as the h1, the
+  visibility its agents' projects give it, its agents' faces, who else is in it (Only you so far, alone), and Members.
+  A direct chat's head is its agent's, laid out as a messenger's: its avatar, its name as the h1 on one line (cut with
+  an ellipsis, the whole name in its tooltip) with a Direct tag (`Bot`) and Deleted when it is, under the name its
+  `@handle` linking to the agent's page, its project and the visibility, and Details at the end of the name's row,
+  which opens the members sheet as its Details: its agent and its person with nobody to add, take out or leave (a
+  `Lock` note says to start a group chat for that), and the budget. Below 768 px Details is its `Info` icon (a 44 px
+  target, its word kept as its name) and Direct its `Bot`, so the way back, the face, the name and Details share one
+  row on a phone. Its composer says that every message goes to the agent, no @ needed. Messages
+  (`message-list.tsx`, the line worked out by `line-model.ts`) sit in a `role="log"` region (polite) that scrolls on
+  its own and Tab reaches, under a line for each day; it opens at the newest message, follows new ones while the
+  visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier messages reads the page
+  before. They read as a chat app's (`message-item.tsx`): the visitor's own on the right in a `brand-soft` bubble (the
+  ground of their pressed reaction too) with no face and no name, the time above; anyone else's on the left in a
+  `muted` bubble after their face (an agent's avatar or initial on its colour, a person's GitHub avatar or initials,
+  the hub's mark) under their name (an agent's with `@handle`, the hub's with an Automatic tag for what it says by
+  rule) and the time. On those grounds `fg` reads at 17.2:1 and 18.1:1 in light, 14.9:1 and 17.0:1 in dark, a link
+  (`brand`) at 5.8:1 and 6.1:1, 6.2:1 and 7.1:1, and `fg-muted` (list marks, quotes) at 6.1:1 at the least. Messages
+  of one author on the same day within five minutes run on: the face, the name and the time show once, over the first,
+  whose bubble turns a small corner toward them; each other one keeps a head for a screen reader alone (the message's
+  name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide
+  and on phones the line less the face (the visitor's 85 %), its text through SafeMarkdown
+  (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
+  table scrolling inside it. Under the bubble, on its side: square chips for where it leads (`message-links.tsx`: an
+  agent's message's run, each mention's run as `@handle: run #N`, a mention the hub refused in `attention` with the
+  hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
+  that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
+  status line per run, "@handle got it, waiting for worker X" or "in the inbox of the running turn" with a still
+  neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone
+  once the agent answers or the run ends, so a message nobody works on shows nothing), what the page puts under it (a
+  decision), its reactions, and in a group chat, for a message that starts a thread, the faces of who replied, "3
+  replies" in `brand` and when the last came, which opens the thread. React and Reply sit beside the bubble at its
+  top, on the side away from the face, from 768 px (a `popover` box shown while the pointer is
+  over the message, a key is in it or its picker is open; the line leaves it room), and in a row of their own under it
+  on phones, 44 px each. A group chat's line holds the messages that are no reply: Reply in thread
+  (`MessageSquareReply`) opens the thread, where the replies live. A direct chat's line holds every message: the agent's
+  answers, which the hub posts in the thread of the message they answer, sit right under it, and no thread needs
+  opening; when another message came between (two tasks at once, an answer after the next question), the answer quotes
+  what it answers above its bubble (`message-parts.tsx`: `CornerDownRight`, You or the author, one line of the words,
+  the latest message of its thread before it by someone else), and the quote shows that message marked, or opens its
+  thread when the page has not read it. Reply (`Reply`) on a direct chat's message answers it from the chat's own
+  composer: a bar over the text says "Replying to <name>" with one line of it and Cancel the reply (Escape too), the
+  hint under the box says the reply goes on in the same session, and the message goes in that message's thread, so the
+  agent's session goes on; a message sent without Reply is a new task. Reactions (`reactions.tsx`) are the chat's one
+  place for emoji (Style): a round chip per emoji with its count, the visitor's own pressed (`brand-soft`,
+  `aria-pressed`), named by the emoji's name, the count and who put it ("Eyes: 1, by @reviewer"); pressing one puts the
+  visitor's or takes it off, and Add a reaction opens a grid of 16 named emoji, the three an agent's run puts by rule
+  first. A thread (`thread-panel.tsx`) is the message that starts it, a line with the count, its replies as bubbles that
+  run on as in the chat, and a composer that answers in it; a column of 26 rem beside the chat from 2xl (where the
+  sidebar and the list leave it room), a sheet from the right below; it reads the whole thread once opened. `?thread=ID`
+  opens one, and `?message=ID`, where a notice links, shows that message marked (a `brand` ring on its bubble) and
+  focused: in its thread when it is a reply of a group chat or older than the page read, otherwise where it sits in the
+  line. A chat run (the triage agent of a failed run) that asks ends its turn with a decision open: the kit's
+  DecisionCard (`where="run"`) shows right under the agent's last message of that run, in the chat or in its thread, so
+  one click answers it. The page composes it (`app/(app)/chats/[id]/chat-with-decisions.tsx`; the chats folder does not
+  import the inbox): the decisions of the latest 12 agent runs are read, the newest 3 every 3 seconds while the chat has
+  not ended. In the Inbox and on Home a
+  decision of category `triage` reads "Triage run #N" and "project, triage of a failed run" where an author run's reads
+  "Author run #N", and a `run_failed` notice that links to the thread opens it (Open triage thread). The composer
+  (`composer.tsx`) is the kit's Composer with Send and its `kbd` (↵). In every chat and thread Enter sends and Shift
+  with Enter adds a line, as in messenger apps; Cmd or Ctrl with Enter sends too, and the Enter that ends an input
+  method's word (Telex, `isComposing` or Safari's key code 229) sends nothing (`isChatSend` in `lib/keyboard.ts`). On
+  a touch screen (`TOUCH_QUERY`: no hover, a coarse pointer) Enter adds a line and Send sends, the `kbd` hidden; with a
+  keyboard the text area names Enter in `aria-keyshortcuts` and its description says it. Typing `@` opens the
+  suggestions above the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`,
+  grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
+  Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
+  @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
+  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Members
+  (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
+  project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
+  takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
+  creator changes it; anyone else reads it), and for a chat with a restricted project, that its notices name it and
+  link only; a refusal shows at the top of the sheet, a change made is a toast. Live (`use-chat-feed.ts`, `feed-model.ts`): the page follows the chat's
+  stream with an EventSource from the chat's last event when the page was read (Last-Event-ID on reconnect, an event
+  seen twice applied once), reads `events?after=` every 2 seconds while the stream fails and tries it again every 30,
+  and feeds the top bar's LiveIndicator; a message and a reaction arrive in place, a member change reads the chat
+  again, and the stream's `end` replaces the composer with why the visitor can no longer read it. While the page is in
+  view, what it shows is read (POST .../read), so its unread count and the sidebar's drop. A chat run's page carries
+  the Chat run tag (`MessagesSquare`) and links back to the message it answers; the runs list shows it with that tag
+  and "A turn of @handle in a group chat". A task run (one turn of a plugin's agent type on a task the plugin handed
+  it; docs/plugins.md, Agent types) carries the Task run tag (`Puzzle`), says under its title that it works on the
+  branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
+  as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
+  task/N", linked to the run's page.
+- The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
+  the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
+  picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are
+  those the agent allows (and, for an agent that limits tools, skills or models or has instructions, only those whose
+  daemon says it applies agent profiles, as the hub's claim does), the model suggestions its models when it limits them,
+  and what it refuses (a runtime or model it leaves out, none of the visitor's workers left, for an author run the skill
+  create-exec-plan, a deleted agent) is said under the field in `danger` while the footer says the agent refuses the
+  dispatch and the submit button stays off. A body names `profile` only for an agent other than the default, so a
+  dispatch that picks none reads as before.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's timeline, under their own
   name, on an `attention` node. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
@@ -632,8 +1006,10 @@ Shared pieces built on them:
   total with a bar, the steps in progress, and links to the run and to the open decision (`/inbox?decision=ID`). The
   plan's active runs are read as the runs pages read theirs (every 5 seconds while one is active), and the plan itself
   as often while its plan run is. The plans list badges a plan whose plan run is active, linked to the run. While a
-  plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page is titled Plan run,
-  carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
+  plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page names the plan and its step in
+  progress in its head and, behind Details, lists the plan's steps grouped by status as Buildkite groups its jobs (the steps in
+  progress or blocked first, one row each with a 16 px status icon, the one in progress `aria-current="step"`, then "6
+  done" and "14 to do" as rows that open on their steps), its
   repos and branches, its model and the agent time used, and the open decisions it waits on (below); it offers no Rerun.
 - `components/runs`, author runs (`author-run.tsx`, `author-run-dialog.tsx`, `run-chat.tsx`; docs/workers.md, Author
   runs): New plan sits in the head of a project's Plans page (the primary button there, and in the empty state, where
@@ -653,6 +1029,12 @@ Shared pieces built on them:
   resumed; then a `role="log"` region (polite) with the request, the agent's messages (a 28 px round `running` mark,
   SafeMarkdown on `card`) and the owner's (a neutral mark, plain text on `surface-selected` inside a `brand/20` edge,
   aligned to the end), each with its author and time, the agent's last one tagged Waiting for a reply while it waits;
+  each decision the agent asked (an author run asks them before it has a plan, or after), as the kit's DecisionCard
+  (`where="run"`) right after the agent's message that ended the turn which asked it, in the order asked, indented to
+  the messages' text from `sm` and as wide as a message (46 rem at most): the answer form for the owner with the
+  agent's pick checked, read-only for anyone else, and once answered the compact block with the answer; an answer is
+  never a message of the chat as well. The pill then counts what waits ("2 decisions wait for you"), the reply box and
+  End chat stay, and "Asked you" in the run's Trace shows the Chat with the card in view and focused;
   the typing dots while the agent works; then the owner's reply, the kit's Composer, which posts to the run that takes
   the chat's next message. From xl the Chat fills the session card as its peers do (`fill` on `RunChatPanel`): the
   messages take what the head and the reply box leave and scroll on their own, beside the side column; below xl they
@@ -707,10 +1089,12 @@ Shared pieces built on them:
   safe area (`env(safe-area-inset-bottom)`), holds Take over (when offered) and Send answer side by side, 44 px and
   15 px, with no `kbd`; the button submits the form above it (`form=`). Once answered the bar goes and focus comes back
   to the question. The card's `kbd` hides under 768 px everywhere else too (the run's page, Home's sheet).
-- `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet and in the side column of a plan
-  run's page. The head on `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the
-  run's owner; "Waiting for octo" for anyone else), the category as a tag, the run, project, plan and step as links
-  with a quiet underline (on the run's own page only the step), then "asked 6 minutes ago, parks in 23 h 59 min", or
+- `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet, in the side column of a plan
+  run's page and in an author run's Chat (after the agent's message that ended the turn which asked it). The head on
+  `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the run's owner; "Waiting for
+  octo" for anyone else), the category as a tag, the run, project, plan and step as links with a quiet underline (on
+  the run's own page only the step; an author run's decision without a plan says "Author run #N" and the run's title
+  in place of the plan, and links to no plan, in the Inbox, Home's sheet and the phone's screen alike), then "asked 6 minutes ago, parks in 23 h 59 min", or
   "parked 3 hours ago" once the run has parked. When a run parks is the hub's to say (its decision wait is a setting),
   so the card reads it from `GET /v1/me/overview` while the run waits, or takes it from Home. The question in 15/22 px
   500; the agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), clamped
@@ -732,45 +1116,62 @@ Shared pieces built on them:
   the owner's words, whether the worker has handed it to the agent yet (read every 10 seconds until it has) and the
   run that resumed a parked one; an expired or cancelled one says what happened. Anyone but the owner reads the
   context, the options (the agent's pick tagged) and why they cannot answer. A plan run's page shows its open decisions
-  at the top of the side column from the xl breakpoint, above the log below it (`runs/run-decisions.tsx`, "Waiting for
+  above the session, or at the top of the side column once Details is open (`runs/run-decisions.tsx`, "Waiting for
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
-- `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
-  then the session card (an author run's Chat, Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. From xl
-  (1280 px) the page is one window tall and the two are regions that scroll on their own, side by side below the
-  timeline (`run-split`): the session card fills the window down to its bottom gutter, the open tab's log, trace or
-  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace`, `RunChatPanel` and
-  `RunTerminalPanel`), and the side column (`run-aside`) is exactly as tall, scrolling inside itself when its cards
-  are longer. It is a region named "About run #12" that Tab reaches from xl (`useMediaQuery`), its 4 px of padding
-  taken back by its margin so the cards' shadows and focus rings stay inside it and its last card ends level with
-  the session card. The split is at least 30 rem tall and its own size is contained, so a short window scrolls the
-  page past the head instead of squeezing the trace. Below xl the side column moves under the timeline, the decision
-  first, then the side cards (two by two from md), then the session card at its own height; the page reads in that
-  order at every width (`run-side`). Take over shows the Terminal tab, focuses its tab and scrolls the session card
-  into view; `?view=` picks the tab at every width. The head
-  is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
-  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. A plan run names its
-  plan once, as the link, and its title after it only when the title differs from the id. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
-  (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
-  Claude Code, the Remote Control session `evo-run-N`), the diff with its `+12 −3` in mono `success` and `danger` once
-  the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
-  under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
-  breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
-  instead of pushing the page sideways. Between the head and the timeline, notes (`RunNotes`) say what the run waits
-  for: the owner's open asks, how to reach a session the owner holds, whose run it is for anyone else, and, for anyone,
-  a queued attempt whose run before it was lost on a worker that is not steady yet (`steady_wait`): which worker, from
-  when it takes the attempt if its heartbeats keep coming, and whether another worker may take it meanwhile. That one
-  is neutral with `HeartPulse`, since the hub waits for a machine, not for a person.
+- `components/runs`, a run's page (`/p/{project}/runs/{id}`): the trace is what the page is for, and everything else
+  waits to be asked for (the design and its sources: the harness report "Thiết kế trang run cao cấp"). The head
+  (`run-header.tsx`) is one line of 13 px over the trace, flat on the paper: the plan and its step in progress as links
+  (`fg-muted` plan, `fg` step, truncated on one line from 768 px, two lines under it), for another kind of run where it
+  comes from (the chat, the Curator, an author run's plan, a step's plan and step), the plan's progress as a 64 px bar
+  of 4 px and "6/21 steps", and the status line only when the state is not the usual one ("Waiting for an answer for
+  6m" in `attention`, "Failed after 1h 12m" in `danger`, "Queued for 2m, waiting for binhna-macbook-m4"; a running or
+  verifying run says it to screen readers only). "Run #12" is the page's `h1` for screen readers; the top bar's
+  breadcrumb shows it. At the line's end: the Details toggle (`PanelRight`, its word from 768 px), then the owner's
+  controls as `RunActions` gives them, at most one solid button (Approve, Hand back) and one outline button (Take
+  over, the diff with its `+12 −3`, Rerun), and a menu behind `Ellipsis` with the rest in the kit's order, Cancel run
+  last in `danger` behind a separator; under 768 px Take over is in the menu, as a phone does not take over a
+  terminal. The phases (`RunTimeline`, bare) show under the head only while the run waits for a worker (queued,
+  leased) or when it ended before running. Then notes (`RunNotes`, `run-notes.tsx`), for a step, plan or author run
+  that failed the triage section (`RunTriage`, `run-triage.tsx`): the failure cause as a mono `Tag` with a line of its
+  own (`runs.detail.triage.cause`), a `Guess` tag in `attention` with a note when `cause_inferred` is true, Open triage
+  thread (outline, to the hub's `/chats/ID?message=ID`) or a line saying no thread was opened, and, for the run's owner
+  only (the hub answers nobody else), the step 3 candidates in a closed `details`: Workers, Agents and Other projects,
+  each row with a `Fit` or `No fit` tag (a word and an icon, never colour alone) and the hub's reasons; the decision a plan run waits on
+  (`RunDecisions`, always shown: it needs the owner), and the session (tabs, trace, composer), flat on the page with
+  no frame: the tab bar's rule is its only line, and only the composer, an input, has an edge. From xl (1280 px) the
+  page is one window tall and the session fills it down to its bottom gutter (`fill` on `RunLogCard`, `AgentTrace`,
+  `RunChatPanel` and `RunTerminalPanel`). Details opens the side column (`run-side.tsx`, `run-aside`), 23 rem beside
+  the session from xl, with the decision at its top, then the plan's steps (`RunPlanSteps`), the essential details
+  (worker, agent and model, repos and branches) with "Show all details" for the rest and, for the owner, Accounts and
+  Credentials, then Usage, a plan run's step sessions and the Result once they have anything; it is a region named
+  "About run #12" that Tab reaches from xl (`useMediaQuery`) and scrolls inside itself. From md to xl it moves under
+  the head, its cards two by two, before the session. Under 768 px (`useIsMobile`, the server's guess first) the page
+  is the head, the decision, the trace's preview (`TracePreview`, `trace-preview.tsx`: "Trace" with the count of tool
+  calls, the latest four rows newest first, a group as what it did with its files or last command and its time, the
+  agent's words two lines at most, and "Open the full trace", "Open the chat" for an author run), then, once Details
+  is on, the side cards as flat sections. The full trace is a screen of its own (`useTraceScreen`,
+  `run-page-state.ts`): a history entry, so Back closes it, with a back button and "Run #12" over the session as tall
+  as the window; the trace is its one scroll region. A tab other than the first (the Raw log, the Terminal) and an
+  address that asks for the session (`?view=`, an author run's `?tab=chat`) open that screen too; leaving it goes back
+  to the first tab. Each part keeps its place in the tree in every mode, so the session, and a connected terminal,
+  stays mounted when the width crosses 768 px. The head's controls wrap under its line when the width leaves them no
+  room, and the menu is not modal (as the user menu), so the page stays in reach of assistive tech while it is open. Take over shows the Terminal tab and focuses it (on a phone, on the trace screen); `?view=` picks the tab at
+  every width. Anyone but the run's owner reads only. A local run (a member's own Claude Code session the hub watches)
+  has no controls, notes or phases: its head says its machine, account, plan and step, and Details holds its own
+  details (`local-run-details.tsx`) instead of a worker run's. Notes say what the run waits for: the owner's open asks, how to
+  reach a session the owner holds, whose run it is for anyone else, and, for anyone, a queued attempt whose run before
+  it was lost on a worker that is not steady yet (`steady_wait`): which worker, from when it takes the attempt if its
+  heartbeats keep coming, and whether another worker may take it meanwhile. That one is neutral with `HeartPulse`,
+  since the hub waits for a machine, not for a person.
 - `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
   `shadow-raised`, a `section-title` head with a link to the Secrets page on its right, 13 px `brand` with a chevron):
   each lease the run got, its name in mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the
   GitHub mark), the variable or the origins it answered for (each a link to the repo's page), when and to which worker
   it was issued, when it ends and when it was revoked, and its state as a pill (Out in `brand`, Expired neutral,
   Revoked outlined with `Ban`); read every 5 seconds while the run is active and again when it moves, and never a
-  value. Nobody else gets the card, as the API answers them 403. The side cards say nothing of when they fill or who
-  sees them: Usage and the Result with nothing to show are their head alone, the title and a `caption` state on the
-  right ("Nothing reported yet", "None yet"; "Nothing reported", "None" once the run ended).
+  value. Nobody else gets the card, as the API answers them 403. A side card with nothing to show is not drawn: Usage
+  before the runtime reports any, the Result before the run has one.
 - `forge.ts` and `links.tsx`, the run page's links out of the hub. A repo leads to its page on its forge, read from the
   origin the project registered (`GET /v1/projects/{project}`): https without the user, `.git` and trailing slash, SSH
   (`git@host:owner/repo.git`, `ssh://git@host[:port]/owner/repo.git`) as https on the same host. On GitHub
@@ -782,9 +1183,11 @@ Shared pieces built on them:
   its text then "(opens in a new tab)" (`aria-label`, so the text in the page stays the text); on cards it is `brand`
   with a quiet underline, on the trace's `term-bg` `term-agent` underlined. A tool row's folded argument stays text, as
   a link in a `summary` would also toggle the row; open, its Input shows the address as a link.
-- `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
-  bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
-  `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
+- `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`), under a run's head while it waits for
+  a worker: the phases left to right at every width (under 768 px the names in 12 px under the nodes, two lines at
+  most, the time each took under its name and no clock times; `bare`, flat on the page), the time from each phase to
+  the next on the line between them,
+  mono 11 px in `fg-muted` on `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
   live ping and a dashed line ahead, its gap counting up with `useNow`; a queued run's node is neutral and a run in
   review is `review-solid`, since neither is agent work. A waiting or parked run shows its state on the running phase
   in `attention`, "since 10:22:41", the gap "waiting 6m". A failed run stops on a `danger-solid` node at the time it
@@ -792,18 +1195,28 @@ Shared pieces built on them:
   run that is done ends on `success-solid`. Times are local in `code-small`; each is focusable and its tooltip says
   the full date and time zone. An ordered list labelled "Phases of run #N", the current phase `aria-current="step"`,
   each phase's status in words for screen readers.
-- The session card (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
+- The session (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
   (`?view=log`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
-  navigate. What the stream is doing sits at the right end of the tab bar as the kit's live state (a dot in its tone,
-  pulsing while live, and the word in `caption` `fg-subtle`); the Raw log's line count sits in its tab and, on that tab,
-  before the stream's state. The composer shows under the Trace and the Raw log, not under the Terminal.
+  navigate. It is flat on the page: the tab bar's rule is its one line, the Raw log a `term-bg` block with 6 px
+  corners. The stream's state (`log-stream-state.tsx`) shows at the right end of the tab bar only when the stream
+  dropped (reconnecting, read by polling, failed: a dot in its tone and the word in `caption` `fg-subtle`); connecting,
+  live and ended are said to screen readers only. The Raw log's line count sits in its tab and, on that tab, at the
+  bar's end. The composer shows under the Trace and the Raw log, not under the Terminal.
 - The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
   the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
-  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; `agent_thought_chunk` events fold into
+  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; a message that holds a step's report (the
+  plan-step contract: `step:` then `result: pass | fail`, read by `step-report.ts`) is a card instead
+  (`trace-report.tsx`): the result as a run pill (Pass `done`, Fail `failed`), "Step 1", the branch and commits as
+  `Identifier` chips linked to the forge, the files outside the step's scope and a stash when there are any, the
+  decisions as a numbered list and the notes, both Markdown, then Files and Verify as folded rows like a tool call's
+  (Verify open when the step failed; the commands one per line at each `&&`, `||` and `;`, wrapped with a hanging
+  indent, the output as it is); words around the report stay Markdown; `agent_thought_chunk` events fold into
   "Thought for 3.2s" (from the event before them) over the words that follow; a `tool_call` and its
   `tool_call_update` events, matched by `toolCallId` in seq order whatever order they arrived in, are one row: the
   tool's name (or its kind's for a title that is a command or a path, as Codex and opencode give), what the agent said
-  it is for, the main argument in mono (a Codex command without its `/bin/zsh -lc` wrapper), an edit's `+3 −1`, the
+  it is for, the main argument in mono (a Codex command without its `/bin/zsh -lc` wrapper, a shell command without
+  the `cd`, `export`, `source` and assignments it starts with, `shell-command.ts`, the whole command in the Input once
+  opened), an edit's `+3 −1`, the
   exit code (Codex `exitCode`, opencode `exit`, Claude Code's "Exit code 1"), the duration from the events' times, and
   a spinner with the time so far while it runs. Rows are `details`, folded, a failed one open; the output (the
   update's `content`, else its `rawOutput`) sits on `term-bg`, cut at 20 lines with "Show the full output (45 lines)",
@@ -814,7 +1227,22 @@ Shared pieces built on them:
   `output` events and kinds the page does not know fold together, one caption line per run of them, with their JSON.
   A running run ends with the typing dots (`animate-typing`, solid under reduced motion). The trace is a `role="log"`
   region (polite) that follows the newest item unless the person scrolled up, when "Jump to the latest" shows; past
-  500 items only the ones in view render (`@tanstack/react-virtual`, measured rows).
+  500 items only the ones in view render (`@tanstack/react-virtual`, measured rows). Tool calls in a row that do the
+  same kind of work are one row (`trace-groups.ts`, `groupByIntent`, as Codex and Claude Code fold theirs), named by
+  what they did rather than by tool: Explored (reads, searches, `cat`, `sed -n`, `grep`, `ls`, `git status` and
+  `diff`; "Explored 7 files" when the calls name their files), Edited ("Edited 2 files" with the lines added and
+  removed), Ran tests (`pytest`, `vitest`, `playwright`, `pnpm test`), Ran checks (`ruff`, `mypy`, `eslint`, `tsc`,
+  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI, other commands, other tools. A row (`GroupRow`,
+  `trace-tools.tsx`) is the work's 16 px Lucide icon, its words in 14 px (15 px under 768 px), how many failed in
+  `danger`, its files, programs or last command in mono 12 px `fg-subtle` under them, and its time from the first
+  call's start to the last call's end on the right (a clock in `running` while its last call runs, the trace's one
+  moving element, so no typing dots follow it); no tool name or clock time on the row. It opens on a hairline list of
+  its calls, each folded to its command or path and opening on its output; a failed call shows under the row, open,
+  either way, and a search that found nothing (exit 1 of `grep` or `rg`) is no failure. The runtime's bookkeeping
+  (`output` events and kinds the page does not read) neither shows nor cuts a group: one caption line says how many
+  are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
+  group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
+  caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
 - `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
   cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
   a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the
@@ -929,7 +1357,9 @@ Shared pieces built on them:
   G then C): one head on its three pages, "Curator" with the night shift's `StatusBadge` (`curator`), Pause (confirmed
   in `ConfirmAction`, since it cancels the runs queued) or Resume (the primary button while paused) for an admin or the
   schedule's owner, and one line naming the worker on duty, the member it runs as and the window, or who paused it;
-  then the area's tabs (Overview, Proposals with the open count in `attention`, Charter), drawn as the admin area's.
+  then the area's tabs (Overview, Proposals with the open count in `attention`, History, Graph health, Runtime,
+  Charter), drawn as the admin area's, Graph health with a `danger` dot while the worker on duty failed to sync the
+  graph (said to screen readers); under 768 px the row scrolls sideways and brings the page shown into view.
   Overview: the MetricStrip of the night now or the last one (its runs against the night's cap, the cost against the
   budget, what waits for an answer, the last review's proposals), the Schedule and Last review run cards of Home's
   shape, and the nights in a DataCard (a night's date over its outcome, a failure in `danger`; runs, cost, the review
@@ -942,17 +1372,275 @@ Shared pieces built on them:
   lens, Accept (primary), Defer and Reject for an admin; the summary as SafeMarkdown, the evidence (a run's event
   opens the run's log, a session's entry unfolds in place from the digest, read when asked, a line of code opens on
   GitHub or GitLab at the commit the review read, in a new tab, said to screen readers), the findings it rests on, the
-  draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer and Why tier N with its
-  reasons and paths. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
+  draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer (what accepting does, by
+  the proposal's tier), the Change card once accepting made one (`change-card.tsx`: its state in the head, the
+  Curator's plan as a link, the repo, the branch as an `Identifier` that copies and opens on GitHub or GitLab, the pull
+  request once open, the tier it merges at, when it last moved, and the hub's reason in a note, `attention` while it is
+  left open), the Replays card under it (`replay-card.tsx`: whether arm B, the change's harness, beat arm A, the default
+  branch's, on the holdout tasks at the head of its pull request, as a `Trophy` tag when they won and a `FlaskConical`
+  one otherwise, the hub's reason, a `success-soft` note when the win lowers the merge to tier 0, the arms' means and sums
+  side by side in a table of their own, each replay with both arms' results as an icon and a word; one line when the
+  change is not of a kind the night replays), and Why tier N with its reasons and paths. The ledger's lines add the
+  replays a merge of the hub rests on or an outcome kept, and a skill release (`PackageCheck` published, `Undo2`
+  published again, `PackageX` nothing, in `success-soft` once something was published), from `ledger-extras.tsx`. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
   an optional one-line note, Cmd or Ctrl with Enter to send, a refusal shown in place. Charter: the charter in cards
-  (goals, window and worker, budget and caps, what it may do, review, roles, the Judge's hidden checks to admins only)
+  (goals, window and worker, budget and caps, what it may do, review, replays and history, roles, the Judge's hidden
+  checks to admins only)
   with its revisions beside it, any revision readable (`?revision=N`); an admin edits it in a form of the same groups
-  (`?edit=1`, `charter-form.tsx`) whose fields repeat the hub's limits (`model.ts`), so the first wrong field takes
-  focus and nothing goes out; a hub's refusal shows above Save. The Inbox lists a tier 2 proposal with the open
+  (`?edit=1`, `charter-form.tsx`, its parts in `charter-fields.tsx`) whose fields repeat the hub's limits (`vocab.ts`,
+  `charter-model.ts`), so the first wrong field takes focus and nothing goes out, and which writes back the replays and
+  the history run it shows; a hub's refusal shows above Save.
+  History (`/p/{project}/curator/history`, `history-page.tsx`): the MetricStrip of how far the hub holds what the
+  machines reported (sessions with a transcript of those with a digest or a transcript, as the night's figures count
+  them), what waits for a backfill in `attention`, the facets counted without a model and those the cheap model read;
+  under it an `attention` banner with the backfill command while a session has a digest alone, and a `danger` one while
+  facets failed their last attempt, neither otherwise; the transcripts by member with the retention and the sizes, the
+  history runs with their cap and model; the search over every transcript, run log and group chat (`history-search.tsx`:
+  the kit's search field and a source facet in the URL, `?q=`, `?source=`, `?hits=`; each hit with its source, who and
+  when, the matched words on `brand-soft`, the evidence as an `Identifier` that copies, and where it leads: the lines of
+  the transcript around it unfolding in place (`transcript-excerpt.tsx`, the line found on `surface-selected`, Earlier
+  lines and Later lines moving the stretch, a failed tool result in `danger`), the run's log, the chat); the clusters
+  (`history-clusters.tsx`: the model's name and description, task and failure mode as tags, the counts, the latest
+  session to read, and Show its sessions as a pressed toggle that filters the list below); and the sessions and runs
+  (`history-sessions.tsx`: kind as a facet, outcome as a select, the cluster as a removable pressed chip, all in the
+  URL, Previous and Next under it; each with what the model wrote, its outcome and failure modes as tags, the facet's
+  numbers, and its transcript or log a click away). Graph health (`/curator/graph`, `graph-health-page.tsx`): a
+  `danger` banner while the worker on duty failed to sync a source or the latest measure failed; the MetricStrip of
+  commits behind, files off, mentions resolved and recall at 5, each with its sparkline over the measures or builds;
+  each git source against its default branch (the commit read and the head as short `Identifier`s, the commits behind
+  and the wait, missing, stale and deleted, then a row of its own with why and a disclosure of some files); three trend
+  cards (behind and files off by measure, resolved, ambiguous and dangling by build, recall at 5 and MRR by measure);
+  what agents got from the graph in their traces, with the worst sessions to read; and the worker's sync. Runtime
+  (`/curator/runtime`, `runtime-page.tsx`): 7, 14 or 30 nights as the kit's segmented control in the URL
+  (`?nights=7`, none for 14), the MetricStrip of the latest night (fixed context a session, the cache's share, cost a
+  session, the slowest hook's p95), five trend cards over the counted nights (context by source per session as
+  stacked columns in `chart-1` to `chart-5`, the cache's share, cost per session, run and merged pull request, the
+  slowest hook's p95 and median, the sessions' largest context), then the latest night in detail
+  (`runtime-tables.tsx`: hooks with their failures in `danger`, the slowest tools, the always-loaded files by repo, the
+  largest tool output, the heaviest sessions with their transcripts, the runs by kind; two to a row from xl). The trend
+  cards are the Insights cards' (`trend-card.tsx`, `trend-charts.tsx`): Chart or Table, a legend for two series or
+  more, the table kept for screen readers, Recharts loaded with `next/dynamic` behind a skeleton of the plot's height,
+  and one line instead of empty axes when no night holds a value. The pages' cards are `panel.tsx` (the kit's card with
+  a head, a small table in its own focusable region). The Inbox lists a tier 2 proposal with the open
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
-- `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
+- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's project group after the
+  Curator; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
+  (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it
+  cancels the release runs still queued and closes a cycle left idle) or Resume (the primary button while paused) for an
+  admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the daily time and zone, the
+  member its runs run as and the next check as a relative time, or who paused it. Under it, only when something is
+  wrong, a `danger` banner (an alert) while the App's installation grants no Actions (`actions_permission`) and an
+  `attention` banner while the cycle is stopped: its cause and reason, that it waits for its owner, and Answer the
+  decision (the Inbox's sheet) and Open the triage thread. The cycle open now is a card (`cycle-card.tsx`): its title
+  with a pill only when stopped, where it started (a cut of the target ref, or the fix of a red tag), the range from the
+  newest tag to the target's commit as `Identifier`s on GitHub, the changed paths as chips, its cost against its cap as
+  the kit's meter (`attention-solid` from 75 %, `danger-solid` from 90 %) with the figure beside it, then the tags it
+  follows (`cycle-tables.tsx`: the tag, its CI as a pill, the workflow run as a link out, who tagged it, when the hub
+  last read it; under the row the failed test ids in `danger` mono, five at most, a fault of the infrastructure and the
+  problem that kept the hub from reading the CI) and its runs (`#N` to the run's page, Cut or Fix of the tag as a
+  `Tag`, the run's pill, how the hub landed it with the pull request, a refusal in `danger`, the cost); without a cycle,
+  one quiet line with the next check. Then the Schedule and Last check cards side by side from lg (`schedule-card.tsx`:
+  the outcome as its icon and words, `attention` for paused or an owner without the admin role, `danger` for an error,
+  with the reason), the recent checks once there are two, and the cycles that ended in a `DataCard` with Newer and
+  Older (`past-cycles.tsx`: `#N` and the day over how it ended, the cycle's pill, its tags each with its CI icon, runs,
+  cost, ended). The CI, cycle and check looks live in `badges.tsx` on the shared `StatusPill`. Under 768 px every table
+  is a list of rows. The page reads the release every 10 seconds while the cycle has a run queued or under way or a tag
+  whose CI the hub still reads, every minute otherwise.
+- `components/plugins`, plugins (docs/plugins.md; docs/hub.md, Plugins). Administration gains a Plugins tab
+  (`/admin/plugins`, hub admins): the store in one `DataCard` table, a plugin's name over its id and description, its
+  publisher in mono (a `ShieldAlert` in `attention` once the operator no longer trusts it; a core plugin of the hub's image
+  is trusted with the image), its tier as a `Tag` (Isolated `Box`, Core `Cpu`, what it means as the tooltip and in words),
+  the version installed in tabular mono with "1.1.0 available" as an `attention` tag (`ArrowUpCircle`), its state as a
+  pill (Available, Installed, Turned off in `danger`; looks in `parts.tsx`, as `change-badge.tsx` keeps its own), Install
+  and Upgrade as the row's actions; beside it from xl a 22 rem card of the trusted publishers, each id with what signs for
+  it (`sigstore:<workflow>`, `ed25519:<key id>`) and Core (`Cpu`) for those who may publish core plugins; the empty state
+  gives the CLI command that publishes one. A plugin's page (`/admin/plugins/{name}`) heads with its title, state, tier
+  and id, Install, Upgrade (a dialog: projects keep what they granted, a permission the new version adds waits for each
+  project's admin) and Remove (`quiet-danger`, confirmed in `ConfirmAction`: projects lose its pages, routes and tools and
+  keep their grants and config); About (its description, what it asks for, what it adds as a tag per extension point:
+  "1 page", "2 routes"), Versions (a `DataTable`: the version, Runs here or Does not run here with the hub's reason in
+  `danger`, Publisher's key or CI workflow (Sigstore) and what signed, who published it and when; Install on a compatible
+  row while none is installed), the form of the hub's layer of its config and its History; Details and, for an isolated
+  plugin, Backend (its state as the plugin host last reported it, restarts, the last failure in `danger`) in the side
+  column. A core plugin of the image offers no Install, Upgrade or Remove: a Comes with the hub tag (`PackageCheck`)
+  stands in their place.
+  - A project's Plugins (`/p/{project}/plugins`, last in the project's group, `Puzzle`): every installed plugin in a
+    `DataCard` table, its pages as `brand` links once it is on, its state (Enabled `Plug` in `success`, Not enabled,
+    Turned off by the hub in `danger`) and "Asks for N more" in `attention` after an upgrade; an admin of the project gets
+    Enable and Review N new permissions on the row, everyone else a note that only an admin changes them. Enable opens
+    the consent (`project-actions.tsx`): a dialog that names the plugin, its version and publisher, lists every permission
+    it asks for in the viewer's language over its code (`KeyRound`; the new ones tagged New), the pages it adds to the menu,
+    and that disabling keeps its config and data; Grant and enable names back exactly that list, as the hub requires. A
+    plugin's page in the project (`/p/{project}/plugins/{name}`) has the same head with Disable (`quiet-danger`,
+    confirmed), About with what was granted and its pages, then, once enabled, Config of the project, What the plugin
+    gets (each field with the layer that set it as a tag: Default, Hub, Project v3, Agent, Run; what does not fit the
+    schema in an `attention` box; the digest) and History.
+  - The config form (`config-form.tsx`, the pure model in `config-model.ts`) is drawn from the plugin's JSON Schema: a
+    field per property, required ones first and secrets last, by title (the hub keeps the manifest as JSONB, which keeps
+    no author's order), its title over its description, Required as a tag, the schema's default as the placeholder
+    ("Default: hello"). By kind: an input (text, a number with `inputMode`), a select with Not set here for an enum and
+    for a boolean (On, Off), a textarea of one value a line for a list of strings, JSON in mono for anything else. Empty
+    means not set in this layer, so the layers below apply. A secret shows only whether the layer sets it (Secret set,
+    `LockKeyhole`), with Replace and Clear; Replace reveals a password field never filled from the hub, sent once and
+    emptied whatever the hub answers. The form repeats the hub's checks of one layer (type, bounds, length, pattern,
+    choices) and takes focus to the first wrong field; Save sends only what changed with `if_version`, a refusal shows
+    above it, the version saved is a toast. Someone who may not write the layer reads what it sets instead.
+  - A plugin's page (`/p/{project}/x/{plugin}/{page}`), each a menu item after the project's own areas with the icon
+    and title its manifest gives (`shell/plugin-nav.tsx`; the icons, a fixed Lucide set, are a chunk of their own loaded
+    only when a plugin adds a page, the puzzle standing in meanwhile). A **core plugin's page is native**: a feature
+    folder of its own under `components/` and a route under `app/(app)/p/[project]/x/<plugin>/` whose layout calls
+    `requirePlugin` (`lib/plugins-server.ts`), so it answers 404 where the project has not enabled the plugin, then the
+    page as any other of this web, with this file's rules. `components/plugin-notes` is the tests' (`page.fixture.tsx`
+    routes, carried only by a build with `EVO_WEB_FIXTURES=1`). An **isolated plugin's page is framed**
+    (`plugin-page-view.tsx`, `plugin-frame.tsx`): the page's title as the h1, the plugin as a tag that opens its settings,
+    Sandboxed (`ShieldCheck`, what it means as the tooltip and in words), a line saying what it may read, then the frame
+    as wide as the content on `card` inside a `border` edge with the container radius, 560 px high until the page asks
+    for its own height (240 to 4000 px). The iframe is `sandbox="allow-scripts allow-forms"`, never `allow-same-origin`,
+    with no referrer and a title that names the page and the plugin; its URL, which the hub signed, is set only once the
+    bridge listens, so the plugin's first requests are never lost to a page still hydrating. The web's own CSP allows
+    `frame-src 'self'` for it; the hub serves the page's files with a CSP of their own whose `sandbox` keeps the origin
+    opaque. The bridge (`bridge.ts`, `bridge-hub.ts`; docs/plugins.md, Pages) answers only messages from that frame's
+    window with an opaque origin, opens the methods of the permissions the project grants now (it reads the plugin
+    again before such a call when its last read is over `GRANT_FRESH_MS`, 5 s, old), calls the hub with the viewer's
+    session and `X-Evo-Plugin: <plugin>`, which the hub checks against the plugin's grant too, and refuses the rest with
+    `not_granted` before the hub is asked; a read that finds the plugin off takes its page away. It posts the viewer's
+    theme, so a page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
+- `components/srs`, the native pages of the core plugin srs (plan srs-tasks-plugins; docs/plugins.md, Core plugins), under
+  `app/(app)/p/[project]/x/srs/` with a layout that calls `requirePlugin("srs", project, "documents")`, so a project
+  that has not enabled it has neither the SRS menu item (its manifest's page `documents`) nor the pages, as the API
+  answers 404. Its words are the `srs` namespace of both message files. The documents (`/documents`) are one `DataCard`
+  table: title over slug, kind, the approved and the latest version as a `v8` chip beside its state, who created it;
+  the tabs Documents and Import (writers) sit under the head, with Settings (the plugin's page in the project) and
+  Import Markdown in the actions. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
+  line with template, visibility and the approved, in-review and latest versions, Compare and Export (a `.md` the
+  browser saves), then the tabs Read, Versions, Review vN and Comments with the open threads counted. Read
+  (`/documents/{slug}?v=&s=&edit=`) shows the approved version unless a version is picked (a menu of links, not a
+  select), its headings as a tree in a 240 px column from lg (a dot in `review-solid` marks what changed since the
+  approved version; a disclosure on narrower screens), the open item in a card drawn by its kind (a use case as facts,
+  its Activity flow as a table whose codes link, its business rules and screens; a table row as its cells), and the
+  version, its checks and the open threads in an 18 rem column from xl. A writer edits an item of the latest version in
+  place, which saves the next version as a draft; a 409 keeps the editor open with the other writer's text above it,
+  to merge by hand and save on the newer version. A draft carries a banner with Submit for review, which says the
+  problems that refuse it. An item's page (`/items/{code}`) heads with the code as a chip before the h1, the kind and
+  the version's state, a `review` banner when a newer version changes it, its threads, and the Traceability card read
+  from the knowledge graph (tasks, plan steps, commits and pull requests, tests; the build it read, or why there is
+  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the Findings
+  card, the reviewer's form (Approve or Request changes, which needs a note) or why the visitor cannot review (a
+  reader, an author of a version since the approved one, admins too), what approving approves, the checks and the
+  review history. The Findings card (`findings-card.tsx`, plan srs-conflicts-and-tasks), which readers see too, lists
+  the conflicts @ba found in the document in three groups under a heading with a round count: to decide (open, level
+  decide; the count in `attention`), other open, settled (the one settled last first). A finding is its level as a tag
+  (decide in `attention`, as a task's urgent priority), its kind as a tag, its state as a pill (open neutral, resolved
+  green, waived an outline), `#id` and the version it was found on, its summary, the item it is about and its sources
+  as chips (a code links to its item's page, in another document when the reader sees it; a graph node to its page);
+  an open one links its settle chat, a settled one says on `surface-sunken` who settled it (a member, the knowledge
+  graph, @ba's waiver), when, how and the message that did. While @ba's review of the round is queued or running a
+  neutral banner names the run (`#id` and its pill) and the page reads the document and the findings every 5 s until
+  it ends; a review that failed, was lost or cancelled gets its own banner, since the list may miss conflicts. The
+  card has a skeleton while it loads, a line when there is none, and an alert with Try again when the read fails.
+  While a finding to decide is open, or the review runs, the form's Approve is disabled with a lock and Request
+  changes is taken; a banner under the choices says why (`attention` with the settle chat for findings, neutral with
+  the run for the review) and the Approve radio names it in `aria-describedby`. A 409 of the hub still shows as the
+  form's refusal and reads the findings again. No control on the web settles or waives a finding. Compare
+  (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
+  diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
+  dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,
+  which a problem in a code refuses. Readers see a note that they only read, and no control that writes.
+  An item's page offers Create task (a writer, while the project shows the plugin tasks), which opens the form of a new
+  task with the item's code as its link, and the Traceability card opens each task's page (the graph's Ticket node
+  while tasks is off). The tabs (`data/tab-nav.tsx`) and the banners (`feedback/banner.tsx`) are shared parts, since
+  the Tasks pages draw the same.
+- `components/tasks`, the native pages of the core plugin tasks (plan srs-tasks-plugins; docs/plugins.md, Core plugins),
+  under `app/(app)/p/[project]/x/tasks/` with a layout that calls `requirePlugin("tasks", project, "board")`: Tasks in
+  the menu (`Kanban`) is the manifest's page `board`; `backlog`, `mine` and `import` have no menu item and are the tabs
+  Board, Backlog, My work and Import (writers) under each head. Its words are the `tasks` namespace of both message
+  files; what the SRS and Tasks pages link across lives in `lib/core-plugin-links.ts`, since neither feature folder
+  imports the other. A status is drawn by its group whatever the project names it (`badges.tsx`): to do neutral
+  (`CircleDashed`), doing cobalt (`CircleDot`, as a plan step at work, without the pulse), in review violet (`Eye`), done
+  green, cancelled outline, a status the config no longer lists a question mark; priority is a tag (urgent in
+  `attention`, the one that asks for a person now; high, medium and low neutral with an arrow); a sprint's state is a
+  pill (active green `Play`, planned neutral, closed outline). The board (`/board`, `?sprint=` or `?backlog=1`; the
+  active sprint, else the next planned one, else the tasks of no sprint) heads with the sprint's name, its state, its
+  days and goal; the Sprint picker (active first, planned by start, closed newest first, No sprint) navigates, and Role,
+  SRS item (the codes the tasks link) and Only mine filter in place (`ToolbarFilters`, the phone's sheet), with the
+  count said in a polite live region. The columns are the config's statuses but the cancelled ones (counted under the
+  board, with a link to the backlog), in a focusable region that scrolls sideways on its own, columns of at least
+  13.5 rem, 85 % wide and snapping on a phone; a column shows 12 cards (6 on a phone) before Show all. A card is the
+  ref in mono, the type's icon, the priority tag and the assignees' initials, its title linking to its page (three lines
+  at most), the codes it implements (three, then `+2`), its plan steps done (`1/2`, green once all are), its BA, QA and
+  Dev and its due date (red with Overdue once passed on an open task); a writer's card has its Status and Assignee
+  menus, which are the way by keyboard and touch, and drags to another column (the column takes `surface-selected` in a
+  `brand` edge while it would take the drop). Either moves the card at once in every list, asks the hub, says what
+  moved in a toast, and puts it back with the hub's reason when refused (`useTaskEdit`). The backlog (`/backlog`) is a
+  section per sprint (active, planned by start), No sprint, then the closed sprints folded in a disclosure, each a
+  `DataTable` (ref and title, status, priority, assignees, links, due, and a writer's Sprint menu; a list of rows under
+  768 px) with its state, days, count and Open its board; New sprint (a dialog: name, goal, days, Start it now while none
+  is active), Start sprint on a planned one while none is active and Close sprint on the active one (a dialog that
+  moves its unfinished tasks to a planned sprint or out of every sprint). My work (`/mine`) is the visitor's tasks,
+  open, then done or cancelled, with a My part column. A task's page (`/board/{ref}`) heads with its ref chip before
+  the h1, its status, type and priority, a line with who made it and when, its sprint and parent as links and the
+  source an import took it from, and a writer's Status menu; then Description (Markdown, edited with the title in
+  place), Links (use cases and requirements opening their SRS page, Retired once dropped; plan steps with their status
+  in the plan and latest runs; runs with their state; pull requests by `owner/repo#88`, opening the forge; a link to
+  what the visitor may not read says only that it is there; a writer removes each and adds several in one line:
+  codes, `plan#step`, `#431`, URLs), Activity (who changed what, the hub for a plan step turning done with its cause)
+  and Comments, and from lg a 20 rem Details card (type, priority, sprint, due date, parent, the assignees and the BA,
+  QA and Dev as chips with remove buttons and an Add someone menu of the project's members, visibility), each saved as
+  it changes. A new task (`/board/new`, `?link=` from an SRS item, `?sprint=` from the board) is one form: title, type,
+  status, priority, sprint, due date, assignee, description and links. Import (`/import`) reads evo-tasks/1 JSON
+  (pasted or from a file), says when it is not JSON, previews the hub's dry run (counts, the tasks imported before and
+  skipped, problems with their task's key) and imports once no error stands, then opens the backlog. Readers see a note
+  that they only read, and no control that writes; a card does not drag for them.
+- `components/canvas`, the native pages of the core plugin canvas (plan living-lean-canvas; docs/canvas-plugin.md), under
+  `app/(app)/p/[project]/x/canvas/` with a layout that calls `requirePlugin("canvas", project, "canvases")`: Lean Canvas
+  in the menu (`Table`) is the manifest's page `canvases`; a canvas, a claim and a baseline are pages below it. Its
+  words are the `canvas` namespace of both message files. A claim's status is a pill drawn here (`badges.tsx`), not in
+  `STATUS_LOOKS`: assumption neutral, testing violet (being checked), validated green, invalidated red, retired outline;
+  amber stays for what needs a person (a baseline waiting for review, a test card past its deadline). The canvases
+  (`/canvases`) are one `DataCard` table: name over slug, claims, their statuses as one bar of segments (an image named
+  by its counts), who made it, when it changed; New canvas (a dialog: product name, a slug made from it, description)
+  is a writer's, Signals and Settings sit beside it. A canvas (`/canvases/{slug}`, `?archived=1` with archived claims)
+  heads with the product's name and slug, Export JSON (`evo-canvas/1`, which the browser saves) and a writer's Add
+  claim; then the banner of a baseline that waits for review, the claims by status in one `MetricStrip`, the proposals
+  that wait (new claims and changes from @strategist, changes of status from the value check, each with its fields
+  before and after, Accept or Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
+  Canvas from xl (ten tracks: Problem, Solution over Key metrics, the value proposition, Unfair advantage over Channels,
+  Customer segments, then Cost structure beside Revenue streams), two columns from md, one on a phone; the cells come in
+  the order Lean Canvas numbers them, which the keyboard and a screen reader follow, and each shows its number. A cell
+  is a well of `surface-sunken` with its name, what goes in it, and a writer's Add (a dialog of the claim's fields); a
+  claim's card is its code, its status, its text linking to its page (four lines at most), its confidence, its real
+  supporting evidence over all its evidence (`1/3`, green once one is real) and its test card's deadline (amber once
+  past without real evidence). A claim (`/claims/CL-3`) heads with its code before the h1, its status, cell and
+  confidence, and a writer's Edit and Ask for review now (a baseline of that claim at once, for another writer); the
+  editor starts from the rev the page read, and a 409 keeps the writer's fields, says who wrote which rev and what they
+  changed, and carries the writer's own changes over to the newest rev or starts again from it. Beside the evidence
+  pane (each piece's kind, direction, synthetic tag, whether it is real and why not, its summary, link and who added it,
+  and for what the hub wrote the check it rests on, value against threshold, met in green and not met in red; a writer
+  adds, confirms what an agent added, and withdraws with why), @strategist's judgings with each verdict and why, and the
+  history (each rev, newest first, with its kind, who wrote it, why and its fields before and after; Compare revs reads
+  the hub's diff of any two; Undo on the current rev), a 22 rem column holds the test card (as Strategyzer's: we believe,
+  we will test, we measure, we are right if) and the links (use cases as chips, signal keys opening their series). A
+  baseline (`/baselines/{n}`, the link of the notice canvas_baseline, which the Inbox shows as Review the baseline) heads
+  with its number, state and week, a banner with what waits and when it was proposed for, in the baseline's own time
+  zone; each item is a card: the claim, what it asks (from one status to another, or the deadline an overdue test card
+  passed), its evidence, who may not decide it, then the decision made or the reviewer's form (a reason, and Accept,
+  Reject or Defer; for an overdue card a new deadline after today with Extend, or Retire); once approved, the snapshot
+  lists each claim at its rev and status in effect with its hash. Readers see a note that they only read, and no
+  control that writes.
+- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, in the sidebar's project group
+  after Insights, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
+  words are the `signals` namespace; the reads both it and the canvas pages make are `lib/signal-queries.ts`. The keys
+  of the registry are one `DataCard` table: the key in mono opening its series, kind, source, what it measures and the
+  latest value with its unit and time (one read of each key, its newest signal). A key's series heads with the key and
+  its kind, a tenant field that applies on Enter (with a button that clears it) and the span (7, 30 or 90 days or a
+  year, a `Segmented`, 90 by default, the value check's window); numbers draw as one 2 px `chart-1` line through a dot
+  at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
+  the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
+  nothing.
+- `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
+  by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
 
@@ -970,7 +1658,7 @@ so the server renders a page the same way for everyone who has not picked a lang
   palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Home, Inbox, Plans, Runs, the Curator or
   Workers, D
   opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
-  Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
+  Enter sends a chat's message and Shift with Enter adds a line to it, Ctrl or Cmd with B folds the sidebar, Esc closes and gives focus back; each is shown in a `kbd` beside what it does
   or in the palette's foot. A single key never takes a key pressed with Cmd, Ctrl or Alt (the browser's and the
   screen reader's own), nor one typed in a text field, the web terminal, a menu, a list or a dialog
   (`characterKeyBlocked` in `lib/keyboard.ts`); a screen reader in browse mode keeps its letters, since the page never
@@ -989,8 +1677,15 @@ so the server renders a page the same way for everyone who has not picked a lang
    send a skeleton; `e2e/server-render.spec.ts` checks Home, Workers and Runs); the client component reads with
    `useHubQuery` and renders through `QueryView`.
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
-   `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step).
-4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
+   `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step). An area a hub
+   admin may turn off (a feature `evo_agents.hub.features` declares, `FEATURE_IDS` in `lib/hub-settings.ts`) names its
+   `feature` on the entry, which hides it from the sidebar and the palette, and its route segment gets a layout that
+   calls `requireFeature`, so its pages answer 404 as its API does.
+4. A core plugin's page (section Plugins, `components/plugins`): its components in a feature folder of their own, its
+   route under `app/(app)/p/[project]/x/<plugin>/` with a layout that calls `requirePlugin(<plugin>, project, <page>)`,
+   no `PROJECT_NAV` entry (the menu lists it from the plugin's manifest once a project enables it), and its words under
+   a namespace of its own in both message files.
+5. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
    fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese
    copy says so with `test.use({ uiLocale: "vi" })`, which sets the locale cookie on its browser context
    (`e2e/locale.spec.ts` checks both).

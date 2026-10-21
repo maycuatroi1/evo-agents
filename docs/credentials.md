@@ -13,8 +13,9 @@ ends; the hub revokes what it can. A machine set up this way keeps only its work
 
 `evo_agents/hub/credentials.py` holds the model both ends share; `evo_agents/hub/server/sealing.py` seals values,
 `evo_agents/hub/server/secrets.py` holds the owner's routes, `evo_agents/hub/server/github_app.py` the GitHub App
-client, `evo_agents/hub/server/credentials.py` the worker's lease route, and `evo_agents/worker/credentials.py` the
-daemon's side.
+client, `evo_agents/hub/server/credentials.py` the worker's lease route, `evo_agents/worker/credentials.py` the
+daemon's side, and `evo_agents/worker/credential_commands.py` the commands a run calls on the daemon's socket (git's
+helper, `evo-agents worker env`).
 
 ## Threat model
 
@@ -94,8 +95,9 @@ The body of a PUT:
 
 - `kind`: `env` with `env_var`, an upper-case variable that is none of `DENIED_ENV` and starts with none of its
   prefixes (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `PYTHON`), or `git` with `url_prefix`, an https URL without a user,
-  password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out). A field
-  of the other kind is refused.
+  password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out), or
+  `forge` with `url_prefix` alone (see [Forge secrets](#forge-secrets-the-hubs-own)). A field of another kind is
+  refused.
 - `projects`: one or more projects the caller holds writer on; a project the caller holds less on is 403, one they
   cannot see 404.
 - `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
@@ -126,13 +128,42 @@ evo-agents hub secret list --json
 evo-agents hub secret delete gitlab-docs
 ```
 
-`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U]) --project P [--project P ...]
-[--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
+`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U] | --kind forge --url-prefix
+URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
 a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
 arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
 one line for kind `git`) without being shown, and no output or error of the command carries it. `--expires` ends the
 secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry date, so the token's own date fits.
+
+## Forge secrets: the hub's own
+
+A secret of kind `forge` is a GitLab project or group access token (scope `api`, role Maintainer) with which the hub
+itself drives the merge requests of a project's repos under its `url_prefix`: it reads a merge request, its diff and
+the pipelines of a commit, rebases it, merges it with the sha it checked, plays a manual job, and opens a revert
+(`evo_agents/hub/server/gitlab.py`). No run ever gets it. `docs/merge-queue.md` says what the hub does with it.
+
+- Writing one needs the admin role on each of its projects, where `env` and `git` need writer. It needs `expires_at`,
+  takes no `username` (GitLab reads the token from the `PRIVATE-TOKEN` header) and no `workers`, holds one line, and
+  its `url_prefix` is not on github.com, where the hub merges by the Curator's tiers. Migration 0080 widens the checks
+  of `secrets` for it; the table has no new column.
+- It is never leased: the lease query reads kinds `env` and `git` alone (`credentials.LEASED_KINDS`). No route of the
+  worker protocol, `/mcp` or the API reads its value; `GET /v1/secrets` shows its owner its name and target, as for
+  every secret, and a run's leases never name it.
+- Only the hub's job worker opens it, right before it calls GitLab (`evo_agents/hub/server/forge.py`,
+  `forge_token`): of the forge secrets bound to the project, not deleted, not past their end, whose owner still holds
+  the admin role on the project, the one whose `url_prefix` covers the repo's origin the longest, then the one written
+  last. The value stays in the memory of those calls and travels in the `PRIVATE-TOKEN` header alone; no log line,
+  error, event or audit row holds it.
+- A project with no forge secret for a repo's origin gets no token: its merge requests on GitLab stay open for a
+  person, as before.
+- The web's Secrets page writes one too: the kind Forge asks for the URL prefix (not on github.com), the projects the
+  visitor administers and an end date, offers no worker, and takes one line.
+
+```sh
+pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https://gitlab.example.org/group \
+  --project demo --expires 2027-09-15
+```
 
 ## Which leases a run gets
 
@@ -141,17 +172,23 @@ protocol header, for a run the worker holds: one of the held states, `waiting` o
 another worker's or one that ended, is 404, as for a state report; a machine token or a web session gets 403, as on
 every worker route. The run's owner, the member who dispatched it, must still hold writer on the run's project: once
 an admin deletes that grant or lowers it to reader, the ask is 403 ("LOGIN, who dispatched run N, no longer holds the
-writer role on project P: the run gets no credentials"), even for a run the worker still holds. The hub takes the run's repos (the run's repo for a step run, the repos of the plan run, those of
-the plan's steps not done when it was dispatched) and their origins from `project_repos`, compared in the form of
+writer role on project P: the run gets no credentials"), even for a run the worker still holds. The hub takes the
+run's repos (the run's repo for a step run, the repos of the plan run, those of the plan's steps not done when it was
+dispatched, the repos a chat run works in) and their origins from `project_repos`, compared in the form of
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
 bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
 
-- each `env` secret, one per variable: a secret bound to this worker wins over one bound to any worker, then the
-  first by name;
+- one `env` secret per variable, the run's account for it (section "Accounts" below): with one secret per variable
+  and no policy, that secret, as in 0.13;
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
 - a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
   on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
-  with the username `x-access-token`.
+  with the username `x-access-token`. Its permissions are `GITHUB_PERMISSIONS`, plus `workflows: write`
+  (`GITHUB_WORKFLOW_PERMISSIONS`) when the installation of the workers' App holds it: GitHub refuses a push that
+  creates or updates a file of `.github/workflows` without it. To let runs push such a change, give the App the
+  Workflows permission (read and write) in its settings and accept it on the installation; a run asks its token at
+  its start, so a run that began before keeps its token without it until that token is renewed. A run of the
+  Curator never gets it.
 
 The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
 `username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
@@ -172,17 +209,346 @@ in a run of the Curator; for other origins (GitLab) it gets only the `git` secre
 owner's, which should hold the Developer role and so cannot push to a protected default branch either), and of the
 `env` secrets only those the charter lists (`env_secrets`). The hub's own calls for the Curator's pull requests (open
 one, read its files and CI, write the Judge's check run, merge) use tokens of the workers' App made for that one call,
-with the permissions it needs (pull requests, checks, commit statuses), and revoked after it: the tokens a worker's run
-gets keep `GITHUB_PERMISSIONS`.
+with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
+it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
+
+A **release run** ([releases.md](releases.md), "The run on the worker") is guarded as a run of the Curator is
+(`RunCredentials.guarded`): its agent gets no credential helper and no lease that pushes, and only the daemon's own git
+uses the token, with a ticket of one command, to push `release/<version>`. Its preflight checks that push against the
+lease alone, never the machine's own credentials, and fails the run when no lease covers it. Of the owner's secrets it
+is leased only the `env` secrets of its runtime's login, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`
+(`RELEASE_ENV_VARS`), and no `git` secret: its repo must be on GitHub, where it gets a token of the workers' App with
+`GITHUB_PERMISSIONS` (contents write, metadata read) and never `workflows: write` (`NO_WORKFLOW_KINDS`), so its push
+cannot change the workflows that test and publish the release. The hub, not the run, merges and tags, with tokens
+of the workers' App made for each use: contents and pull requests write for the landing, actions read to follow the
+tag's CI, actions write to run its failed jobs again. The App needs the Actions permission (read and write) for those
+two, accepted on the installation; until then the hub reports `actions_permission` ([releases.md](releases.md), "The
+GitHub App").
+
+A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
+of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of
+the hub's GitHub App only when it holds `github-app`; a repo on GitHub it would have covered is missing, with the
+profile as the reason. The intersection is taken on every ask, so a secret the owner adds later is not leased to a
+profile that does not name it, and an account picked by hand, or picked by the rules, is one the profile allows. A
+profile with every permission, such as a project's default, changes nothing.
+
+A **chat run** ([hub.md](hub.md), Group chats) is leased as any run: its repos are those of its project that its
+worker has a checkout of, and its GitHub token has `GITHUB_PERMISSIONS`, as a step run's. The worker pushes only the
+branch `chat/<run>`, never a default branch and never forced, and no run merges. Its owner is the person at the
+origin of the chain: the person whose message in the chat mentioned the agent, and, for a run that another agent's
+mention made (`evo-agents worker chat mention`, hop 2 or 3), the owner of the run that asked, carried down the chain.
+So the run is leased that person's secrets, on that person's worker, narrowed by the profile of the agent it runs as;
+never those of another member of the chat, or of whoever added the agent to it. That person must hold writer on the
+profile's project when the hub makes the run and on every ask after, as for any run.
+
+A **task run** ([plugins.md](plugins.md), Agent types) is leased as any run too: its repos are every repo of its
+project when the plugin handed the task, each on the branch `task/<id>` of the run the dispatch made (a lost run's
+next attempt keeps it), and its GitHub token has `GITHUB_PERMISSIONS`, as a step run's. Its owner is the agent type's
+`run_as`, the member the project's admin named when enabling the type, never the plugin: the plugin's token opens the
+plugin API alone and leases nothing. So the run is leased `run_as`'s secrets, on a worker of `run_as`, narrowed by the
+type's profile, and `run_as` must hold writer on the project at the dispatch and on every ask after. The worker
+pushes only the run's branch, never a default branch and never forced, and no run merges; the hub opens the draft
+pull request with the workers' App. The variables an ACP runtime of a plugin names (`secrets`, [plugins.md](plugins.md),
+Runtimes) come from these `env` leases, or the worker's own environment, in a task run as in any other.
 
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
-secrets by id (`secrets=12,15`), the App's accounts and the repos, never a value; `credential.revoke` names the
-secrets by id too. A secret is leased once per run and worker: asked again,
+secrets by id (`secrets=12,15`), the App's accounts, the repos and, unless it is the project's default, the run's
+profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too.
+`credential.revoke` names the secrets by id too. A secret is leased once per run and worker: asked again,
 the same lease comes back with the secret's value as it is now. A GitHub token stays sealed in its lease, bound to the
 lease's id, until it expires, so the hub can revoke it. Asked again, a run gets the same tokens while each has
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
 working until they expire, so a push that took one is not cut off. GitHub is asked between two transactions, never
 while the run's row is locked; when the run ended in between, the tokens just made are revoked and the answer is 404.
+
+## Accounts
+
+A member may keep several `env` secrets for the same variable bound to the same project, such as two subscriptions of
+the agent's runtime (`claude-a`, `claude-b`); each is an **account**, and a run gets one of them per variable
+(`evo_agents/hub/server/account_choice.py`, migration 0027). The hub picks it in the transaction that leases it, with
+the run's row locked and the accounts it weighs locked in the order of their ids, so two runs asking at once cannot
+take the same turn:
+
+1. the account the run took already: a run keeps its account on every ask for its leases and in every step, and a run
+   that resumes another takes the one that run took;
+2. else the accounts bound to this worker (for a run of the Curator: only those its charter lists in `env_secrets`),
+   then the others bound to the project, by the strategy of the owner's policy for the project:
+   - `round-robin` (the default): each run takes the account whose turn it is;
+   - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
+   - `fill-first`: the lowest `priority` (then the name) while it is usable;
+   an account its owner paused, or one cooling down until `cooldown_until`, is skipped;
+3. when every account left cools down, the one whose cooldown ends first, and a `system` event of the run says so;
+   when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
+   name or value.
+
+A member may also pick the account by hand when dispatching: `account` on the body of `POST .../runs`,
+`.../plan-runs` and `.../author-runs` (`--account NAME` on `evo-agents hub run dispatch|plan|author`, and the Account
+select of every dispatch form on the web) names one of their env secrets bound to the project. The hub checks it in the
+transaction that queues the run and records it in `run_accounts` with how `manual`, so step 1 above keeps it on every
+lease; an account picked by hand is never failed over to another one, and its rotation does not move. A name that is
+not an env secret of the dispatcher's is 404; one past its end, paused, not bound to the project, bound only to other
+workers, or bound to some workers while the run is not pinned to one of them, is 422 saying why, and nothing is queued.
+`POST .../runs/{id}/rerun` keeps the account picked by hand for the run it reruns, checked again the same way; its body
+(`--account NAME` or `--account-by-rule` on `hub run rerun`, the Rerun dialog on the web) names another one or asks the
+rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
+`account=secret:<id>`.
+
+When the agent of a headless run (a step run, a plan run or an author run of Claude Code) hits its account's usage
+limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, or a result whose error reads as a
+usage limit. It calls `POST /v1/worker/runs/{id}/rate-limit` with the lease of the account (`lease_id`), the
+`status`, the limit's `rate_limit_type`, the reset time (`resets_at`) when the CLI gave one, and the usage
+(`utilization`, `windows`); an event with status `allowed` or `allowed_warning` is reported the same way and only
+keeps the usage on the account (`accounts.last_usage`). The hub keeps it window by window: the report's `windows`
+replace those of the same name, a window it does not list keeps what an earlier report said of it, and `status`,
+`rate_limit_type`, `resets_at` and `utilization` are the newest report's. `last_usage_at` is the time of the newest
+report, so a window kept from an earlier one may be older than that. A window whose reset has passed stays until a
+report lists it again, and the web reads it as reset, at 0%. A report that is not `rejected` and comes while the
+account cools down from a `rejected` one changes nothing, no window either: it is older than the limit. A share
+(`utilization`) is a fraction of the limit, 0.35 for 35%, as the CLI gives it; the route takes 0 to 100 and keeps the
+value as sent, and the web and `hub account list|show` read a value above 1 as the limit reached (100%), never as a
+percent. On `rejected` the hub cools the account down until the reset,
+else for the policy's `cooldown_seconds`. When the run may fail over (failover on, its account not picked by hand,
+fewer than `max_failovers` moves, another account ready by the rules above), the hub moves its `run_accounts` row to
+the next account, counts one more failover, revokes the old lease and answers `failover`; the worker asks for the
+run's leases again, swaps the value in the agent's environment and in the run's socket, stops the agent and goes on in
+the same session with the new account. Else it answers `stop` with the reason and the earliest time an account is
+ready again, and the worker ends the run `failed` with cause `rate_limit` and that time in its error. A `system`
+event of the run records each switch or stop, and the audit row `account.failover` each switch
+(`... run:<id> env=<variable> from=secret:<id> to=secret:<id>`): both name the accounts by secret id, never by name
+or value. A worker of an older release never calls the route, and its runs fail as before. An interactive pane only
+shows the event: the person at it switches by hand.
+
+An account whose token the API refused (the agent's turn ended with "Failed to authenticate. API Error: 401 OAuth
+access token is invalid." or the like) is reported with status `unauthorized`: the hub keeps no usage, cools the
+account down for the policy's `cooldown_seconds` with the reason "authentication failed, reported by run N: log in again
+with evo-agents hub account login", and moves the run or stops it by the same rules; a run it stops fails with cause
+`account_auth`. For a setup-token account there is no state for a token that needs a new login: the account shows as
+cooling, with that reason, and a token renewed with `evo-agents hub account login` is taken once the cooldown ends.
+An OAuth account whose refresh token the endpoint refuses has the state `needs-relogin` (see "Adding and renewing an
+OAuth account").
+
+`run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
+`cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
+cooldown, rotation and the last usage a run reported (`last_usage`, `last_usage_at`); `account_policies` holds a
+member's policy for a project: `strategy`, `cooldown_seconds` (60 to 604800, default 3600), `failover` (default on) and
+`max_failovers` (0 to 20, default 3).
+
+The routes are the member's own, a hub admin included, and never carry a value:
+
+- `GET /v1/accounts`: the caller's env secrets as accounts, with `name`, `env_var`, `projects`, `workers`, `weight`,
+  `priority`, `paused_at`, `cooldown_until`, `cooldown_reason`, `last_leased_at`, `expires_at` and `state` (`ready`,
+  `cooling`, `paused` or `expired`), and its figures (`evo_agents/hub/server/account_views.py`): the last usage a run's
+  CLI reported (`last_usage`, `last_usage_at`), the runs that took it in the last 24 hours and 7 days (`runs_24h`,
+  `runs_7d`: a run took it at its first lease of it) and their estimated cost in USD from their usage (`cost_24h_usd`,
+  `cost_7d_usd`: a run that failed over counts with each account it took), and the runs a worker holds with it now
+  (`held_by`); `GET /v1/accounts/{name}` gives one of them, 404 for a name that is not the caller's;
+- `PATCH /v1/accounts/{name}` with `weight`, `priority` or `paused`: 404 for a name that is not the caller's; audit
+  `account.set` names the secret by id;
+- `GET /v1/account-policies`, `GET|PUT|DELETE /v1/account-policies/{project}`: the caller's policy for a project they
+  may read (the defaults, `updated_at` null, when they set none); `PUT` needs the writer role; audits
+  `account.policy-put` and `account.policy-delete`;
+- `GET /v1/projects/{project}/runs/{id}/accounts`, for the member who dispatched the run alone (403 for anyone else,
+  as for its credentials): per variable, the account the run has now by name, how it came by it, its failovers, and
+  each usage limit it hit (`events`: `failover` with the account it moved `to`, or `stop`), read from the run's
+  `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
+
+The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
+project's policy; the run page shows the run's accounts and their failovers. Under the row of each Claude account, and
+of any account a run reported usage for, the page draws a bar per window the hub kept, as claude.ai's Usage page does:
+"Session (5 hours)" for `five_hour`, "Weekly, all models" for `seven_day`, "Weekly, Opus" for `seven_day_opus` (any
+other name in words), each with its share used and when it resets ("Resets in 2 hr 51 min" within a day, "Resets Tue
+7:00 AM" past that), and above them how long ago a run reported it: the bars change only when a run uses the account.
+A bar turns amber from 80% and red at 100% or at the limit the CLI rejected. A Claude account no run reported for says
+"No usage reported yet". `evo-agents hub
+account list|show|set|pause|resume|policy` call them:
+
+```sh
+evo-agents hub account list                                   # state, weight, priority, usage, runs, cost, holders
+evo-agents hub account show claude-a                          # one account and its figures, never the value
+evo-agents hub account set claude-b --weight 3 --priority 1
+evo-agents hub account pause claude-a                         # a run that holds it keeps it
+evo-agents hub account resume claude-a
+evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 1800 --no-failover
+evo-agents hub account policy demo --reset                    # the defaults again
+```
+
+### Adding and renewing a Claude account
+
+A Claude account is an `env` secret for `CLAUDE_CODE_OAUTH_TOKEN` whose value is a token of `claude setup-token`.
+Anthropic's [Authentication](https://code.claude.com/docs/en/authentication) page, section "Generate a long-lived
+token", says that command opens the browser sign-in of `/login`, prints a token that lasts a year, uses the Claude
+subscription (Pro, Max, Team or Enterprise) and may only call the model. There are three ways to put one on the hub,
+and each ends in `PUT /v1/secrets/{name}` with kind `env` and that variable:
+
+```sh
+evo-agents hub account login claude-b --project demo                  # runs claude setup-token, saves what it prints
+evo-agents hub account login claude-b --project demo --worker mac-mini --expires 2027-09-15
+evo-agents hub account login claude-b                                 # renew: a new token, same projects and workers
+pbpaste | evo-agents hub account login claude-b --project demo        # a token made elsewhere, read on stdin
+evo-agents hub account login claude-b --paste                         # asks for the token without echo
+```
+
+`account login NAME [--project P ...] [--worker W ...] [--expires YYYY-MM-DD] [--paste] [--json]`
+(`evo_agents/hub/cli_secrets.py`) first does every check that needs no token: the name, the day, that the machine is
+signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each worker is one of the caller's
+(`GET /v1/workers`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
+unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
+approves in the browser it opens, and the command reads the token off the screen, joining it again where the
+terminal's width wrapped it. Claude Code 2.1.296 prints the token from column 1 up to the right margin and goes on at
+column 1 on the next row, so in a terminal narrower than 110 columns the token takes two rows or more. When the
+command cannot tell how the rows join, it asks for the token rather than keep the first row alone, since a token cut
+short fails every run with a 401. The token never reaches the member's screen: from its first bytes on, the relay
+passes on only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5
+seconds later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines
+go to stderr), and with `--json` prints the `Account` schema instead.
+
+When the screen held no token (a sign-in cancelled, a release of Claude Code that prints it another way), the command
+says so and asks for it at a prompt that does not echo, where Enter alone stops. With `--paste`, or when stdin is not a
+terminal, it does not run `claude` and reads the token as `secret set` reads a value: from stdin, one final line break
+dropped, else with `getpass`. On a system without `pty` (Windows), `claude setup-token` uses the terminal itself, so the
+token shows there, and the member pastes it. A machine without `claude` on PATH gets an error that says how to do it by
+hand: install Claude Code, or run `claude setup-token` where it is installed and give the token to `--paste` or on
+stdin. The command refuses an API key of the Anthropic Console (`sk-ant-api...`) and points to `ANTHROPIC_API_KEY` with
+`hub secret set`. It also refuses a token with a space or line break inside, a new account without `--project`, and a
+name that is already a secret of another kind or another variable. No output, log line, argument or error carries the
+token.
+
+The account ends at 00:00 UTC of `--expires`, or by default of today (UTC) plus a year less a day, so the hub takes it
+out of use at least a day before the token itself stops working. A day already past is refused before `claude` runs.
+From `expires_at` on, the account's state is `expired`, and no run takes it.
+
+Renewing is the same command with the name of an account the caller has. The command says first that it replaces that
+account's token. Without flags it sends the account's projects and workers again; `--project` and `--worker` each
+replace only their own binding. The `PUT` keeps the secret's id, so the account's weight, priority, pause, cooldown and
+runs stay, and only the token and `expires_at` change.
+
+`account show` has an `Expires:` line: `never`, the time in UTC, or for an account that ends within
+`RENEW_WITHIN_DAYS` (30) days (`evo_agents/hub/accounts.py`) how many days are left and the command that renews it;
+for one already past, that no run takes it. `account list` adds such a line under its table for each account that
+ends within 30 days or has ended. For a Claude account the line names `evo-agents hub account login NAME`, and for an
+account on another variable `hub secret set`.
+
+On the web, the Accounts page has **Add Claude account** in its header and in its empty state. The dialog asks for the
+name, the projects (at least one, among those the visitor holds writer on), the workers (optional; none means any of
+theirs), the token in a masked field, and the day it ends, a year from today less a day by default. It shows the steps
+of `claude setup-token` and the matching `evo-agents hub account login` command to copy, for a member who would rather
+have the CLI read the token. A name that is a Claude account already shows a note that saving replaces its token, with
+a button to renew it instead; a name that is another kind of secret is refused, since the `PUT` would replace it whole.
+The dialog refuses an API key, as the CLI does, and forgets the token as soon as it is sent. Each row for
+`CLAUDE_CODE_OAUTH_TOKEN` has **Renew token**, which opens the same dialog with the name, projects and workers locked,
+so only the token and the end change; to move an account, replace it on the Secrets page or pass `--project` or
+`--worker` to `account login`. A token that ends within 30 days shows "Renew before" its day in the State cell, and a
+notice above the table lists each one with a Renew token link; an account past its end shows "Ended" and its day.
+
+`hub secret set` still writes an account, with the value on stdin or at a prompt. It sets no `expires_at` unless given
+`--expires`, so give it the day the token ends, or the hub keeps leasing the token after it has stopped working:
+
+```sh
+pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo \
+  --expires 2027-10-13
+```
+
+### Adding and renewing an OAuth account
+
+`evo-agents hub account oauth-login NAME [--project P ...] [--worker W ...] [--no-browser] [--paste] [--json]` signs a
+Claude account in with Claude's own OAuth flow (authorization code with PKCE, `evo_agents/hub/claude_oauth.py`), as
+Claude Code and CLIProxyAPIPlus's `--claude-login` do, on the member's machine. The command prints the address on
+claude.ai and opens it; once the member approves, the browser goes back to `http://localhost:54545/callback`, which the
+command answers. Without a terminal, with `--paste`, or when the port is taken, the member gives the code claude.ai
+shows (a bare code, `code#state`, or the address the browser went to) on stdin or at a prompt without echo. The command
+trades the code at the token endpoint for an access token, a refresh token and the access token's lifetime, in memory
+alone, and writes them with `PUT /v1/secrets/NAME`: the access token as the value, the rest as the field `oauth`
+(`refresh_token`, `access_expires_at`, and the account's and organization's ids and address when the endpoint gave
+them), which only an env secret for `CLAUDE_CODE_OAUTH_TOKEN` may carry. `EVO_CLAUDE_OAUTH_TOKEN_URL` and
+`EVO_CLAUDE_OAUTH_AUTHORIZE_URL` name other endpoints, for a test.
+
+The hub seals the whole set (access token, refresh token, end of the access token, identity) as one JSON object under
+the associated data `account-oauth:{secret id}` and keeps it in the `oauth_sealed`, `oauth_nonce` and `oauth_key_id`
+columns of the account's `accounts` row (schema 0066); no column holds a token in the clear, and no response shows one.
+`expires_at` of the secret is the end of the access token. An account shows `auth: oauth` in `account list|show`
+(`token` for any other); a write of the secret without `oauth`, or its deletion, drops the sealed set. Running the
+command again for an existing NAME replaces the tokens alone, as `account login` does: same secret id, so weight,
+priority, pause, cooldown and runs stay.
+
+#### Refresh at lease time
+
+An access token lives about eight hours. When a run asks for its credentials (`POST /v1/worker/runs/{id}/credentials`),
+the hub first looks at each OAuth account the run may be leased (`evo_agents/hub/server/account_refresh.py`). One whose
+access token ends in under five minutes, or has ended, is traded at the token endpoint for a new one with its refresh
+token. Anthropic rotates the refresh token at every use, so the new access token, the new refresh token and the new end
+are stored together in one transaction: the sealed set and the secret's value (the lease hands out the value as
+`CLAUDE_CODE_OAUTH_TOKEN`, as for any account, and the worker's path is unchanged: an environment variable, no
+credential file, the daemon's `ANTHROPIC_API_KEY` dropped). A token with more than five minutes left is leased as it is,
+with no call out. The secret's row is locked during a refresh, so runs of one account that lease together refresh once:
+the others wait, read the set the first stored and find it good. A refresh that fails (the refresh token revoked, the
+endpoint down) changes nothing and logs the reason without a token; a token that has not ended is still leased, one that
+has ended is not. The endpoint and client id are in `evo_agents/hub/claude_oauth.py` (`EVO_CLAUDE_OAUTH_TOKEN_URL`
+names another endpoint, for a test).
+
+#### needs-relogin
+
+A refresh the endpoint answers by refusing the refresh token (revoked, ended) marks the account `needs-relogin`: a
+cooldown that only a new sign-in ends, with the reason "needs-relogin: the OAuth refresh token was refused; run
+evo-agents hub account oauth-login again". `account list|show` and the Accounts page show the state, the account is
+left out of the choice for dispatch, candidates and triage, and the runs that held it fail over to another account as
+for a spent limit (a run with none left fails with cause `account_auth`). An account whose access token has lapsed but
+whose refresh token is still good is not in this state: it is usable, and the next lease refreshes it. Running
+`oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays. A transient
+failure of the endpoint (down, 5xx) does not mark the account.
+
+### Compared with a proxy
+
+CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
+that the CLI reaches through `ANTHROPIC_BASE_URL`, which logs in to each account with OAuth, keeps its refresh token,
+and picks an account for each request (`routing.strategy` round-robin or fill-first, with weights), retries a request on
+another account when one answers with its quota spent (`request-retry`), cools that account down, keeps a session on
+one account while it can (`session-affinity`), and has a management panel. The hub takes the same rules (round-robin,
+weighted, fill-first, cooldown, failover, a page that shows each account) and applies them per run, not per request:
+
+- a run keeps one account for its whole life, and moves only when that account hits its limit, so the session's prompt
+  cache and the account's usage figures stay with one account, and what a run cost is the cost on the account it ran on;
+- the value stays a lease, as every secret here: the worker holds it in memory for the run that needs it, and the hub
+  revokes it when the run ends or fails over. A proxy would hold every account's token, and its refresh token, for as
+  long as it runs, on a path every request of every agent goes through, and would see each prompt;
+- nothing sits between the CLI and Anthropic: no process to keep up on each worker or on the hub, no request rewritten,
+  no identity changed, and the CLI's own `rate_limit_event` says when an account is spent;
+- an account is either the token `claude setup-token` makes, which the hub leases as it is, or an OAuth account
+  (`account oauth-login`), whose tokens the hub keeps sealed and refreshes when a run asks for its credentials, never
+  per request.
+
+What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
+itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
+Code reports a limit; the usage an account shows is what the CLI said last.
+
+The proxy's `--claude-login` is a PKCE login on claude.ai with Claude Code's client id, whose access and refresh
+tokens the proxy keeps and refreshes. `hub account oauth-login` does the same flow on the member's machine, and the hub
+keeps the sealed tokens and refreshes them at lease time (above); `hub account login`, with the token `claude
+setup-token` prints, is unchanged and needs no refresh token. Anthropic's
+[Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page, section "Authentication and
+credential use" (read 2026-10-14), does not permit third-party developers to offer Claude.ai login in their own
+applications, and says developers may not collect, store or intermediate Claude.ai credentials or session tokens.
+[Unverified] Whether `oauth-login` fits those terms is not settled by this document; its owner checks a use of an
+account against that page, and `account login` with a setup-token is the route that keeps the sign-in inside
+Anthropic's own binary.
+
+## Plugins
+
+A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).
+
+- **Its token.** The hub mints a backend's token only when the plugin host is about to start it
+  (`POST /internal/plugin-host/plugins/{name}/token`, over the host's shared secret): `evp_` and 32 random bytes in
+  base64url, of which Postgres keeps only the SHA-256 (`plugin_tokens`, schema 0036). Minting revokes the plugin's
+  older tokens, so a token lives as long as the backend it was made for; removing the plugin or the hub turning it off
+  revokes them at once. It never signs in: only the plugin API under `/v1/plugin-api/` takes it, for what the plugin's
+  installed version asks for and the project granted (`evo_agents/hub/server/plugin_tokens.py`).
+- **The secret fields of its config.** A field its schema marks `"x-secret": true` is sealed with
+  `EVO_HUB_SECRETS_KEY`, bound to the plugin, the layer, the project and the agent profile and the field's name
+  (`plugin_config_aad`), and never shown again: answers name it as set, and the digest of an effective config counts
+  it by a fingerprint of its sealed value. Without the key, setting one is a 503. The hub opens them only for the
+  plugin host's pull of its own plugin's payload, which reaches the backend in `initialize` on its stdin, never in its
+  environment or arguments; a hub without the key leaves the field out and names it in `missing_secrets`. The audit
+  row `plugin.config` names the fields that changed, never a value. A worker gets neither: a run records only the
+  version and digest of each plugin's effective config (`run_plugins`).
 
 ## What a run got
 
@@ -249,6 +615,13 @@ Credentials card.
   (`EVO_ENV_TICKET`, set on that one command of the pane's script, good for one answer within 2 minutes), so code the
   run does not trust, such as a verify command or a hidden check of a judge run, gets none of its `env` leases, a
   subscription token among them, from the socket.
+- **A container.** A run whose agent runs in a container of a plugin's environment (`docs/workers.md`, Environments
+  of plugins) gets its `env` leases there and none of the daemon's own environment: the container provider passes
+  each variable by name, so the engine's client reads the value and no command line holds it. Its `git` leases stay
+  out of the container, since the run's git configuration names a helper of the worker that the container does not
+  have: the daemon fetches and pushes the run's repos on the host with them, as for any run. The runtime's login in a
+  container is therefore a lease (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code, a provider's key
+  for opencode or Codex); the machine's own login, its keychain and its `~/.claude` are not there.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
@@ -270,7 +643,10 @@ the token in that order, and are left as they are.
 The agent reaches the hub's MCP through `evo-agents hub mcp`. Inside a run (`EVO_RUN_ID` set and a worker token on
 the machine) it sends the worker token with `X-Evo-Run`, and the hub gives it a principal scoped to the run's
 project, at most writer, never admin, at most the level its owner's grant allows. Once the run ends the worker token
-no longer opens `/mcp` for it. A worker machine needs no machine token at all. The scope is the run the request
+no longer opens `/mcp` for it. `evo-agents kg serve` (the evo-kg plugin's server, which serves the `kg_*` tools of a
+session that has it) does the same inside a run: with `--backend auto` or `hub` it asks the hub's `/mcp` with the
+worker token and `X-Evo-Run`, so the run reads its project's graph on the hub whether or not the machine is signed in
+or knows the worktree's project. A worker machine needs no machine token at all. The scope is the run the request
 names, not a token of the agent's own: the agent holds the worker's token as its daemon does (see "The agent can act
 as its worker" below).
 
@@ -356,6 +732,13 @@ medium findings as `warning:` lines; they never stop the install.
   end its own run and claim the next queued one); and run a worker for each project of a different sensitivity
   under a user of its own (its own uid, home, `~/.evo/worker` and service), whose files and sockets the others cannot
   read.
+- **A shared worker extends this to every member it is shared with** (`docs/workers.md`, Shared workers). The claim
+  holds the runs of one member at a time, so no two members' runs are held side by side, but the agent of a member's
+  run still reads the worker's token: it can end its own run and claim the next queued one, another member's, with
+  its leases and prompt, and the token works from elsewhere until the worker is revoked. The machine's own
+  credentials, and the worktrees of earlier runs, are the daemon user's for every member's run. Share a worker only
+  among members who trust each other's runs with their leases, on a machine whose user holds no credential of its
+  owner beyond the worker's token.
 - A static secret (a GitLab project access token, a `claude setup-token` token) read during a run works until it
   expires on its own service: 90 days, a year. Keep one per project, with the least role (Developer), with an end
   date, bound to the workers that need it.

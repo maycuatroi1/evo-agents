@@ -7,6 +7,11 @@ unchanged file keeps its revision whether or not it is committed.
 Kinds: manifest (harness.yaml), contracts, knowledge, plan, binding, ontology, registry (other root
 YAML files such as deployments.yaml), markdown, yaml. Bindings live where knowledge.yaml's ``bindings``
 points (default ``bindings/``), so a harness whose ``bindings/`` holds another tool's format keeps it.
+
+In a harness whose harness.yaml names a hub project, the hub holds the plans and ``plans/`` only copies of them: the
+run reads the plans through ``ctx.plans``, which ``kg sync`` passes, and each plan the hub holds becomes the item of
+its copy at the hub's revision, with the hub's label and a link to its page, whatever the file on disk holds
+(``hub_plans``). A plan the hub does not list is read from disk, and so is every plan when the hub is not read.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.harness import Harness, load_yaml
-from evo_agents.kg.connectors import _git
+from evo_agents.kg.connectors import _git, hub_plans
 from evo_agents.kg.connectors._files import (
     DEFAULT_EXCLUDE,
     asset_item,
@@ -97,6 +102,22 @@ def walk(root: Path):
             yield full, full.relative_to(root).as_posix()
 
 
+def checkout_state(root: Path) -> tuple[set[str], dict[str, str], str]:
+    """Of a harness that is a git checkout: the tracked paths whose content is HEAD's, the time of the last commit
+    of each path, and the origin; nothing of one that is not."""
+    clean: set[str] = set()
+    times: dict[str, str] = {}
+    if not _git.is_repo(root):
+        return clean, times, ""
+    try:  # each as far as it goes: a checkout without an origin still has its commit times
+        head = _git.resolve(root, "HEAD")
+        clean = _git.tracked_clean(root)
+        times = _git.last_change_times(root, head)
+        return clean, times, _git.git(root, "remote", "get-url", "origin").strip()
+    except _git.GitError:
+        return clean, times, ""
+
+
 def run(ctx):
     sid = ctx.source_id
     yield hello("harness", __version__, list_complete=True, rev_exact=True)
@@ -107,17 +128,7 @@ def run(ctx):
         yield {"type": "closed", "status": "error", "exception": message}
         return
 
-    clean: set[str] = set()
-    times: dict[str, str] = {}
-    origin = ""
-    if _git.is_repo(root):
-        try:
-            head = _git.resolve(root, "HEAD")
-            clean = _git.tracked_clean(root)
-            times = _git.last_change_times(root, head)
-            origin = _git.git(root, "remote", "get-url", "origin").strip()
-        except _git.GitError:
-            pass
+    clean, times, origin = checkout_state(root)
     entry = own_entry(ctx.harness, root, origin)
     repo_name = entry.get("name") or root.name
     branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
@@ -125,12 +136,15 @@ def run(ctx):
     include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
 
     assets = ctx.source.get("assets", True)
+    from_hub, cursor = yield from hub_plans.read(ctx, root)
     count = 0
     for full, rel in walk(root):
         kind = harness_kind(rel, bindings)
         wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
         if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
             continue
+        if hub_plans.plan_copy(rel) in from_hub:
+            continue  # a copy of a plan the hub holds: the hub's revision stands for it below
         data = full.read_bytes()
         rev_time = times.get(rel) if rel in clean else None
         rev_time = rev_time or epoch_to_iso(full.stat().st_mtime)
@@ -147,5 +161,11 @@ def run(ctx):
         item["props"]["repo"] = repo_name
         yield finalize_item(item)
         count += 1
+    for plan_id, plan in sorted(from_hub.items()):
+        if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):
+            yield hub_plans.item(sid, plan, repo_name)
+            count += 1
+    if cursor is not None:
+        yield {"type": "state", "cursor": cursor}
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
     yield {"type": "closed", "status": "ok"}

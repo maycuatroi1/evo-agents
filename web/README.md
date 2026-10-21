@@ -23,6 +23,7 @@ EVO_HUB_API_INTERNAL_URL=http://127.0.0.1:8080 pnpm dev
 | `EVO_HUB_API_INTERNAL_URL` | runtime, and at build time for the rewrite | where server components reach the API; when set at build time, `/v1/*` is also forwarded there so the browser stays on one origin (local runs, Playwright, the image: `web/Dockerfile` builds with `http://api:8080` unless given `--build-arg EVO_HUB_API_INTERNAL_URL=...`) |
 | `EVO_HUB_WEB_TIME_ZONE` | runtime | time zone of dates rendered on the server, `Asia/Ho_Chi_Minh` by default |
 | `PORT`, `HOSTNAME` | runtime | where `pnpm start` (the standalone server) listens |
+| `EVO_WEB_FIXTURES` | build time | `1` builds the routes of the tests' fixtures too (`page.fixture.tsx`, `layout.fixture.tsx`: the native page of the core plugin notes); Playwright's build sets it, the image never does |
 
 Sign-in is GitHub's web flow on the API (`/v1/auth/web/login`), so the API needs
 `EVO_HUB_PUBLIC_URL` set to the address the browser uses for the web, plus the client secret and session
@@ -32,7 +33,7 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 
 | Command | What it does |
 | --- | --- |
-| `pnpm lint` | ESLint, no warnings allowed, then `scripts/check-structure.mjs`. Together they hold `src/` to files of 400 lines and imports in one direction, with no cycle; `eslint/structure.mjs` has the rules and a baseline that may only shrink |
+| `pnpm lint` | ESLint, no warnings allowed, then `scripts/check-structure.mjs` (not run by CI). Together they hold `src/` to files of 400 lines and imports in one direction, with no cycle; `eslint/structure.mjs` has the rules and a baseline that may only shrink |
 | `pnpm typecheck` | route types, then `tsc --noEmit` |
 | `pnpm test` | Vitest unit tests |
 | `pnpm gen:api` | regenerates `src/lib/api/schema.d.ts` from `evo-agents hub openapi` (this checkout's Python; set `PYTHON` to choose the interpreter) |
@@ -41,7 +42,10 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 | `pnpm exec playwright test` | end-to-end tests, see below |
 
 CI fails when `schema.d.ts` differs from what `pnpm gen:api` writes. After changing an API model, run it and
-commit the result.
+commit the result. The document holds the routes of the core plugins the hub's image installs, Telegram's among them,
+so that Python has them too, installed after evo-ak:
+`uv pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt` (`docs/plugins.md`, section Core plugins).
+The end-to-end stack needs them as well, for `e2e/telegram.spec.ts`.
 
 CI also fails when a route loads more JS first than its budget in `bundle-budget.json`: the gzip size of the chunks
 the build lists for the route, in kB of 1000 bytes. Load the heavy part later (`next/dynamic`), or raise the budget
@@ -54,7 +58,9 @@ Playwright starts two servers: `e2e/hub_stack.py` (a database of its own on the 
 moto's S3 as the blob store, `evo-agents hub serve` from this checkout) and the web's production build. Tests
 sign in through the real web flow against the fake GitHub and seed projects, grants, memories and skills through
 the API; a skill bundle is downloaded from the moto bucket the way a browser follows a presigned URL, and the
-knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`).
+knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`). The plugin specs
+publish the sample plugin of `tests/fixtures/plugins/sample`, which the stack signs with a key the hub trusts, and the
+hub runs through `e2e/hub_serve.py`, which puts the tests' core plugin notes in its image.
 
 ```sh
 pnpm exec playwright install chromium firefox
@@ -69,15 +75,16 @@ drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 183
 `E2E_WEB_PORT`, `E2E_API_PORT` and `E2E_STACK_PORT` to run two checkouts at once, and set
 `E2E_REUSE_SERVERS=1` to reuse servers that are already up. The API log is `e2e/.stack/hub-serve.log`.
 
-CI runs the specs in four shards (`pnpm exec playwright test --shard=<i>/4`), each with a Postgres, a stack and a
+CI runs the specs in six shards (`pnpm exec playwright test --shard=<i>/6`), each with a Postgres, a stack and a
 production build of its own; a failed shard uploads its report as `playwright-report-<i>`. A pull request that
 touches neither `web/` nor the Python package skips them, and one that touches only `web/` skips the Python tests.
 
 `E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts`,
-`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts` and `e2e/insights-screenshots.spec.ts`, which write review
-screenshots of the shell, the memories, skills, knowledge graph, runs and Insights pages (a run's page and its diff, the
-Run plan dialog, a plan run's banner and page included) in light and dark (the memories, skills, runs and Insights ones
-also at 375 px).
+`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts`, `e2e/insights-screenshots.spec.ts` and
+`e2e/workers-screenshots.spec.ts`, which write review screenshots of the shell, the memories, skills, knowledge graph,
+runs, Insights and workers pages (a run's page and its diff, the Run plan dialog, a plan run's banner and page, a
+worker's Version card and its update notes included) in light and dark (the memories, skills, runs, Insights and workers
+ones also at 375 px).
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log

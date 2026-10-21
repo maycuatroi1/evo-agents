@@ -5,7 +5,7 @@ import { ChevronsUpDown, FolderGit2, LayoutDashboard, Search, TriangleAlert, X }
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { useVisibilityName } from "@/components/data/visibility";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -28,6 +28,51 @@ export const SWITCH_CLASS =
 export function useCurrentProject(): string | null {
   const params = useParams<{ project?: string }>();
   return typeof params.project === "string" ? decodeURIComponent(params.project) : null;
+}
+
+const LAST_PROJECT_KEY = "hub.shell.project";
+
+function lastProject(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_PROJECT_KEY);
+  } catch {
+    return null; // storage refused (a private window, blocked site data)
+  }
+}
+
+// Another tab opened a project; this tab's own visits re-render through the URL.
+function subscribeLastProject(listener: () => void) {
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
+}
+
+/**
+ * The project a page outside /p/<project> stands in with: the one last opened in this browser while the visitor can
+ * still open it, else the first the visitor holds a grant on, else the first listed (a hub admin's project without a
+ * grant); null when the list holds none.
+ */
+export function defaultProject(projects: readonly Pick<Project, "name" | "role">[], last: string | null): string | null {
+  const remembered = last === null ? undefined : projects.find((project) => project.name === last);
+  return (remembered ?? projects.find((project) => project.role !== null) ?? projects[0])?.name ?? null;
+}
+
+/**
+ * The project the shell shows: the URL's, else `defaultProject` once GET /v1/projects has answered, so a visitor who
+ * can open a project never sees the switcher empty. A page under /p/<project> is remembered as the last opened.
+ */
+export function useSelectedProject(): string | null {
+  const current = useCurrentProject();
+  const { data: projects } = useQuery({ ...projectsQuery(browserApi), enabled: current === null });
+  const last = useSyncExternalStore(subscribeLastProject, lastProject, () => null);
+  useEffect(() => {
+    if (current === null) return;
+    try {
+      window.localStorage.setItem(LAST_PROJECT_KEY, current);
+    } catch {
+      // storage refused: the first project stands in next time
+    }
+  }, [current]);
+  return current ?? defaultProject(projects ?? [], last);
 }
 
 /** The project's tile: its initials in the text colour's ink, square-ish since it names something. */
@@ -150,14 +195,15 @@ function moveFocus(event: KeyboardEvent<HTMLElement>, list: HTMLElement | null, 
  * The project switcher: every project the visitor can open, found by name in the field at its top, each with the
  * visitor's role, the Visibility of their grant, its repos, its active plans and its open decisions (an amber count).
  * The projects are GET /v1/projects (never a list of its own); the counts come from GET /v1/me/overview, read when the
- * switcher opens, so a page that never opens it does not ask. Choosing a project opens its overview; Home sits at the
- * foot. The list is a navigation of links: the arrow keys move through it from the field.
+ * switcher opens, so a page that never opens it does not ask. Outside a project it names the one `useSelectedProject`
+ * stands in with. Choosing a project opens its overview; Home sits at the foot. The list is a navigation of links: the
+ * arrow keys move through it from the field.
  */
 export function ProjectSwitcher() {
   const t = useTranslations("projectSwitcher");
   const tRoles = useTranslations("roles");
   const { isMobile, setOpenMobile } = useSidebar();
-  const current = useCurrentProject();
+  const current = useSelectedProject();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const field = useRef<HTMLInputElement>(null);

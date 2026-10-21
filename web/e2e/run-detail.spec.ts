@@ -2,11 +2,14 @@ import type { Locator, Page } from "@playwright/test";
 
 import { call } from "../src/lib/api/client";
 
+import { createAgentByApi } from "./support/agents";
 import { signOut } from "./support/auth";
+import { agentAnswers, chatHeartbeat, chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import {
+  chooseRunAction,
   claimRun,
   COMMIT,
   dispatch,
@@ -15,8 +18,11 @@ import {
   leaseCredentials,
   liveWorker,
   LONG_PLAN_RUN_PLAN,
+  openPlanStepFolds,
+  openRunDetails,
   PLAN_RUN_BRANCH,
   PLAN_RUN_PLAN,
+  PLAN_RUN_TITLES,
   planRunBody,
   planRunUnderway,
   reportState,
@@ -36,6 +42,7 @@ import {
   uploadDiff,
   workerInbox,
 } from "./support/runs";
+import { localAsk, localEvents, localState, registerLocal } from "./support/local";
 import { putSecretByApi, recordResponses, runCredentialsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
 
@@ -44,8 +51,8 @@ import { toast } from "./support/toast";
  * events, messages and diff the way the daemon does (docs/workers.md). The page follows the run's stream, so a line the
  * worker sends shows within 2 seconds; a stream that drops comes back with Last-Event-ID and repeats no line; a stream
  * that cannot be used gives way to reading events. The owner approves, cancels, takes over, hands back and messages
- * the agent; anyone else reads only. The owner alone sees the credentials the run got, never a value. Pages render in
- * English.
+ * the agent; anyone else reads only. The owner alone sees the credentials the run got, never a value. A turn of a chat
+ * session heads its page with the session's title, which turn it is and a link to each turn. Pages render in English.
  */
 test.skip(isDeployed, "runs a fake worker against the local stack");
 
@@ -117,9 +124,13 @@ test("the runs list leads to the run, whose log shows a new line within 2 second
   await page.waitForURL(`**${runPath(project, run.id)}`);
   await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Run #${run.id}`);
   await expect(page.getByRole("navigation", { name: "Current location" })).toContainText(`#${run.id}`);
-  await expect(main(page).getByTestId("run-state")).toHaveText("Running");
-  await expect(main(page).locator('[data-testid="run-phase"][data-phase="running"]')).toHaveAttribute("data-status", "current");
-  await expect(main(page).locator('[data-testid="run-phase"][data-phase="leased"]')).toHaveAttribute("data-status", "done");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "running");
+  // A running run needs no phases and no words in its head: its status line is for screen readers.
+  await expect(main(page).getByTestId("run-timeline")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-status-line")).toContainText(`Running for`);
+  await expect(main(page).getByTestId("run-status-line")).toContainText(`on ${live.worker.name}`);
+  await expect(main(page).getByTestId("run-status-line")).toHaveClass(/\bsr-only\b/);
+  await openRunDetails(page);
   await expect(main(page).getByTestId("run-worker")).toHaveText(live.worker.name);
 
   // The Trace is the first tab: the agent's words, the tool call with its command, the moves and the verify line.
@@ -132,6 +143,15 @@ test("the runs list leads to the run, whose log shows a new line within 2 second
   await expect(trace).toHaveAttribute("aria-live", "polite");
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
   await expect(trace.getByTestId("trace-message")).toHaveText("Reading plan rollout.");
+  // The tool call is a row named by what it does, its command under it; opened, the call runs with its clock.
+  const group = trace.getByTestId("trace-group");
+  await expect(group).toHaveAttribute("data-intent", "test");
+  await expect(group).toHaveAttribute("data-running", "true");
+  await expect(group.getByTestId("trace-group-title")).toHaveText("Ran tests");
+  await expect(group.getByTestId("trace-group-detail")).toHaveText("pytest -q tests/hub/test_queue.py");
+  await expect(group.getByTestId("trace-tool")).toHaveCount(0);
+  await group.getByTestId("trace-group-toggle").click();
+  await expect(group.getByTestId("trace-group-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(trace.getByTestId("trace-tool")).toHaveAttribute("data-status", "in_progress");
   await expect(trace.getByTestId("trace-tool-running")).toBeVisible();
   await expect(trace.getByTestId("trace-tool-arg")).toHaveText("pytest -q tests/hub/test_queue.py");
@@ -251,8 +271,28 @@ test("when the stream cannot be used, the page reads the events instead", async 
   await expect(line(page, "read while polling")).toBeVisible({ timeout: 4_000 });
   await reportState(live, run.id, { state: "failed", error: "the agent stopped" });
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "ended", { timeout: 4_000 });
-  await expect(main(page).getByTestId("run-state")).toHaveText("Failed");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "failed");
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Failed after");
+  await openRunDetails(page);
   await expect(main(page).getByTestId("run-error-text")).toHaveText("the agent stopped");
+});
+
+test("a failed run shows its cause, a way into the triage thread and who could run it again", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+  await reportState(live, run.id, { state: "failed", error: "pnpm test exited 1", failure_cause: "verify_failed" });
+
+  await open(page, runPath(project, run.id));
+  const triage = main(page).getByTestId("run-triage");
+  await expect(triage).toBeVisible();
+  await expect(triage.getByTestId("run-triage-cause")).toHaveText("verify_failed");
+  await expect(triage.getByTestId("run-triage-guessed")).toHaveCount(0);
+  // The hub opens the thread when the project has a triage agent; with none, the page says so.
+  await expect(triage.getByTestId("run-triage-thread").or(triage.getByTestId("run-triage-no-thread"))).toBeVisible();
+  const candidates = triage.getByTestId("run-triage-candidates");
+  await expect(candidates).toBeVisible();
+  await candidates.locator("summary").click();
+  await expect(candidates.getByTestId("run-triage-worker").first()).toBeVisible();
 });
 
 test("Approve turns a run in review done, and the plan shows its step done", async ({ page, member }) => {
@@ -261,9 +301,10 @@ test("Approve turns a run in review done, and the plan shows its step done", asy
   await runToReview(live, run.id);
 
   await open(page, runPath(project, run.id));
-  await expect(main(page).getByTestId("run-state")).toHaveText("Review");
-  await expect(main(page).locator('[data-testid="run-phase"][data-phase="review"]')).toHaveAttribute("data-status", "current");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "review");
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Waiting for review for");
   await expect(main(page).getByTestId("run-note-review")).toBeVisible();
+  await openRunDetails(page);
   const result = main(page).getByTestId("run-result");
   await expect(result.getByTestId("run-verify")).toContainText("exit 0");
   await expect(result.getByTestId("run-verify")).toContainText("pnpm test");
@@ -275,8 +316,8 @@ test("Approve turns a run in review done, and the plan shows its step done", asy
 
   await main(page).getByTestId("run-approve").click();
   await expect(toast(page, `Run #${run.id} approved`)).toContainText(`Step 2 of ${RUN_PLAN} is done.`);
-  await expect(main(page).getByTestId("run-state")).toHaveText("Done");
-  await expect(main(page).locator('[data-testid="run-phase"][data-phase="done"]')).toHaveAttribute("data-status", "done");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "done");
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Done in");
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "ended");
   await expect(traceOf(page)).toContainText("Review to Done, by the owner");
   await expect(main(page).getByTestId("run-approve")).toHaveCount(0);
@@ -293,31 +334,35 @@ test("Cancel stops a queued run at once, and asks the worker to stop a running o
   const queued = runs[1];
 
   await open(page, runPath(project, queued.id));
-  await expect(main(page).getByTestId("run-state")).toHaveText("Queued");
-  await main(page).getByTestId("run-cancel").click();
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "queued");
+  // A queued run's head shows its phases, and Cancel run is the last item of the menu of actions.
+  await expect(main(page).locator('[data-testid="run-phase"][data-phase="queued"]')).toHaveAttribute("data-status", "current");
+  await chooseRunAction(page, "run-cancel");
   let dialog = page.getByTestId("cancel-run-dialog");
   await expect(dialog).toContainText("stops at once");
   await dialog.getByTestId("cancel-run-dialog-confirm").click();
   await expect(dialog).toBeHidden();
   await expect(toast(page, `Run #${queued.id} cancelled`)).toBeVisible();
-  await expect(main(page).getByTestId("run-state")).toHaveText("Cancelled");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "cancelled");
   await expect(main(page).locator('[data-testid="run-phase"][data-status="stopped"]')).toHaveAttribute("data-phase", "queued");
 
   await open(page, runPath(project, run.id));
-  await main(page).getByTestId("run-cancel").click();
+  await chooseRunAction(page, "run-cancel");
   dialog = page.getByTestId("cancel-run-dialog");
   await expect(dialog).toContainText("next heartbeat");
   await dialog.getByTestId("cancel-run-dialog-confirm").click();
   await expect(toast(page, `Cancel of run #${run.id} asked`)).toContainText("next heartbeat");
   await expect(main(page).getByTestId("run-note-cancel")).toBeVisible();
-  await expect(main(page).getByTestId("run-cancel")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-actions-menu")).toHaveCount(0); // nothing is left to cancel
+  await expect(page.getByTestId("run-cancel")).toHaveCount(0);
   await expect(main(page).getByTestId("run-composer")).toHaveCount(0);
   expect(await runControl(live, run.id)).toMatchObject({ held: true, cancel: true });
 
   // The worker stops the agent and reports it: the page follows through the stream.
   await reportState(live, run.id, { state: "cancelled" });
-  await expect(main(page).getByTestId("run-state")).toHaveText("Cancelled", { timeout: 4_000 });
-  await expect(main(page).locator('[data-testid="run-phase"][data-status="stopped"]')).toHaveAttribute("data-phase", "running");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "cancelled", { timeout: 4_000 });
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Cancelled after");
+  await expect(main(page).getByTestId("run-timeline")).toHaveCount(0); // it ran: the status line says it
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "ended");
   await expect(main(page).getByTestId("run-rerun")).toBeVisible();
 });
@@ -363,14 +408,14 @@ test("Take over shows the attach command and Remote Control, and Hand back follo
   expect(await runControl(live, run.id)).toMatchObject({ takeover: true });
 
   await reportState(live, run.id, { state: "interactive" });
-  await expect(main(page).getByTestId("run-state")).toHaveText("Interactive", { timeout: 4_000 });
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "interactive", { timeout: 4_000 });
   await expect(main(page).getByTestId("run-note-interactive")).toContainText(`evo-agents worker attach ${run.id}`);
   await main(page).getByTestId("run-handback").click();
   await expect(toast(page, `Hand back of run #${run.id} asked`)).toBeVisible();
   await expect(main(page).getByTestId("run-note-handback")).toBeVisible();
   expect(await runControl(live, run.id)).toMatchObject({ handback: true });
   await reportState(live, run.id, { state: "running" });
-  await expect(main(page).getByTestId("run-state")).toHaveText("Running", { timeout: 4_000 });
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "running", { timeout: 4_000 });
   await expect(main(page).getByTestId("run-takeover")).toBeVisible();
 });
 
@@ -393,7 +438,10 @@ test("someone other than the owner reads the run but gets no message box, no Tak
   await expect(main(page).getByTestId("run-note-owner")).toContainText(`Only ${me.login}, who dispatched this run`);
   await expect(main(page).getByTestId("run-composer")).toHaveCount(0);
   await expect(main(page).getByTestId("run-takeover")).toHaveCount(0);
-  await expect(main(page).getByTestId("run-cancel")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-actions-menu")).toHaveCount(0); // no menu of actions, so no Cancel run
+  await expect(page.getByTestId("run-cancel")).toHaveCount(0);
+  await openRunDetails(page, { all: true });
+  await expect(main(page).getByTestId("run-worker")).toHaveText(live.worker.name);
   await expect(main(page).getByTestId("run-worker").getByRole("link")).toHaveCount(0); // another member's worker
 });
 
@@ -416,6 +464,10 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   const received = recordResponses(page);
 
   await open(page, runPath(project, run.id));
+  // The owner's Credentials are with the rest of the details, behind Show all details.
+  await openRunDetails(page);
+  await expect(main(page).getByTestId("run-credentials")).toHaveCount(0);
+  await openRunDetails(page, { all: true });
   const card = main(page).getByTestId("run-credentials");
   await expect(card.getByRole("heading", { name: "Credentials" })).toBeVisible();
   await expect(card.getByTestId("run-lease-item")).toHaveCount(2);
@@ -432,7 +484,7 @@ test("the owner sees the credentials the run got, never a value, and nobody else
 
   // The run ends: the hub takes its leases back, and the page shows it without a reload.
   await reportState(live, run.id, { state: "failed", error: "the agent stopped" });
-  await expect(main(page).getByTestId("run-state")).toHaveText("Failed", { timeout: 4_000 });
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "failed", { timeout: 4_000 });
   await expect(card.locator('[data-testid="run-lease-item"][data-state="revoked"]')).toHaveCount(2, { timeout: 10_000 });
   await expect(env.getByTestId("run-lease-state")).toHaveText("Revoked");
   await expect(env.getByTestId("run-lease-revoked")).not.toHaveText("not yet");
@@ -450,6 +502,7 @@ test("the owner sees the credentials the run got, never a value, and nobody else
   await signOut(page);
   await signInAs(other);
   await open(page, runPath(project, run.id));
+  await openRunDetails(page, { all: true });
   await expect(main(page).getByTestId("run-details")).toBeVisible();
   await expect(main(page).getByTestId("run-credentials")).toHaveCount(0);
   const refused = await runCredentialsOf(other, project, run.id);
@@ -493,6 +546,7 @@ test("the repo and the commit lead to GitHub, and every address in the trace, th
   });
 
   await open(page, runPath(project, run.id));
+  await openRunDetails(page, { all: true });
   // The repo of the project, registered with its GitHub origin, and the commit on it.
   const details = main(page).getByTestId("run-details");
   await expectExternal(details.getByTestId("run-repo-link"), "https://github.com/example-org/api", "api");
@@ -501,8 +555,12 @@ test("the repo and the commit lead to GitHub, and every address in the trace, th
   await expectExternal(result.getByTestId("run-verify").getByRole("link"), "https://ci.example.org/health", "https://ci.example.org/health");
   await expectExternal(result.getByTestId("run-evidence").getByRole("link", { name: /pull\/7/ }), pr, pr);
 
-  // The trace: the agent's words and the command's output link the pull request; a javascript: line stays text.
+  // The trace: the agent's words and the command's output link the pull request; a javascript: line stays text. The
+  // failed call shows open under its row, which stays folded.
   const trace = traceOf(page);
+  await expect(trace.getByTestId("trace-group")).toHaveAttribute("data-intent", "github");
+  await expect(trace.getByTestId("trace-group-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(trace.getByTestId("trace-group-title")).toHaveText("Ran gh, 1 failed");
   await expect(trace.getByTestId("trace-message").getByRole("link", { name: /pull\/7/ })).toHaveAttribute("href", pr);
   const output = trace.getByTestId("trace-tool-output");
   await expectExternal(output.getByRole("link"), pr, pr);
@@ -525,6 +583,7 @@ test("a plan run's repos and branches lead to their pages, a repo without an ori
   await admin.registerProject(project);
 
   await open(page, runPath(project, run.id));
+  await openRunDetails(page);
   const repos = main(page).getByTestId("run-repos");
   const api = repos.locator("li").filter({ hasText: "api" });
   await expectExternal(api.getByTestId("run-repo-link"), "https://github.com/example-org/api", "api");
@@ -539,6 +598,7 @@ test("a plan run's repos and branches lead to their pages, a repo without an ori
   // On a forge the page does not know, the repo still leads to its page, and its branch is text.
   await admin.registerProject(project, { repos: [{ name: "api", origin: "git@git.example.net:team/api.git", default_branch: "main", path: "api" }] });
   await open(page, runPath(project, run.id));
+  await openRunDetails(page);
   await expectExternal(api.getByTestId("run-repo-link"), "https://git.example.net/team/api", "api");
   await expect(api.getByTestId("run-branch")).not.toHaveAttribute("href");
   await expect(api.getByRole("link")).toHaveCount(1);
@@ -546,24 +606,26 @@ test("a plan run's repos and branches lead to their pages, a repo without an ori
   // An origin the page cannot read as a web page (here a script) is never a link.
   await admin.registerProject(project, { repos: [{ name: "api", origin: "javascript:alert(document.domain)", default_branch: "main", path: "api" }] });
   await open(page, runPath(project, run.id));
+  await openRunDetails(page);
   await expect(api.getByTestId("run-repo-name")).toHaveText("api");
   await expect(repos.getByRole("link")).toHaveCount(0);
   await expect(main(page).locator('a[href^="javascript:"]')).toHaveCount(0);
 });
 
-test("the run page says each thing once: no hint of when a card fills or who sees it, and an empty card is one line", async ({ page, member }) => {
+test("the run page says each thing once: no hint of when a card fills or who sees it, and a card with nothing to show is not drawn", async ({
+  page,
+  member,
+}) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const { project, live, run } = await runningRun(me);
 
   await open(page, runPath(project, run.id));
   await expect(main(page).getByTestId("log-status")).toHaveAttribute("data-status", "live");
-  // Usage and Result, with nothing yet, are their title and a short state.
-  const usage = main(page).getByTestId("run-usage");
-  await expect(usage.getByTestId("run-usage-empty")).toHaveText("Nothing reported yet");
-  await expect(usage).toHaveText("UsageNothing reported yet");
-  const result = main(page).getByTestId("run-result");
-  await expect(result.getByTestId("run-result-empty")).toHaveText("None yet");
-  await expect(result).toHaveText("ResultNone yet");
+  // Details holds the details; Usage and Result, with nothing yet, are not drawn at all.
+  await openRunDetails(page, { all: true });
+  await expect(main(page).getByTestId("run-details")).toBeVisible();
+  await expect(main(page).getByTestId("run-usage")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-result")).toHaveCount(0);
   // Credentials: its head links the Secrets page, with no sentence of who sees the card.
   const credentials = main(page).getByTestId("run-credentials");
   await expect(credentials.getByTestId("run-credentials-empty")).toHaveText("None yet.");
@@ -575,21 +637,29 @@ test("the run page says each thing once: no hint of when a card fills or who see
   }
 });
 
-test("a plan run's head names its plan once, with its title only when it says more than the id", async ({ page, member }) => {
+test("a plan run's head names its plan once, as its id, then the step in progress and how far the plan is", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedPlanRunPlan(me, project);
   const { run } = await planRunUnderway(me, project, uniqueName("head"));
 
   await open(page, runPath(project, run.id));
-  const planLink = main(page).getByTestId("run-plan-link");
+  const head = main(page).getByTestId("run-header");
+  const planLink = head.getByTestId("run-plan-link");
   await expect(planLink).toHaveText(PLAN_RUN_PLAN);
   await expect(planLink).toHaveAttribute("href", `/p/${project}/plans/${PLAN_RUN_PLAN}`);
-  await expect(planLink.locator("..")).toHaveText(`Plan ${PLAN_RUN_PLAN}: ${planRunBody().title}`);
+  await expect(head).not.toContainText(planRunBody().title);
+  const step = head.getByTestId("run-current-step");
+  await expect(step).toHaveText(`Step 2: ${PLAN_RUN_TITLES["2"]}`);
+  await expect(step).toHaveAttribute("href", `/p/${project}/plans/${PLAN_RUN_PLAN}/steps/2`);
+  await expect(head.getByTestId("run-progress-text")).toHaveText("1/4 steps");
+  await expect(head.getByRole("progressbar", { name: "Steps of the plan done" })).toHaveAttribute("aria-valuenow", "1");
+  await expect(head.getByRole("heading", { level: 1 })).toHaveText(`Run #${run.id}`);
+  await openRunDetails(page);
   await expect(main(page).getByTestId("run-plan-steps")).not.toContainText("As the hub holds the plan");
   await expect(main(page)).not.toContainText("Every step not done yet");
 
-  // A plan whose title is its id: the head says the plan once.
+  // A plan whose title is its id: the head says the plan once too.
   const plain = "plain-plan";
   const api = bearerClient(await machineToken(me));
   await call(
@@ -600,7 +670,8 @@ test("a plan run's head names its plan once, with its title only when it says mo
   );
   const { run: second } = await planRunUnderway(me, project, uniqueName("head"), { dispatch: { plan_id: plain } });
   await open(page, runPath(project, second.id));
-  await expect(main(page).getByTestId("run-plan-link").locator("..")).toHaveText(`Plan ${plain}`);
+  await expect(head.getByTestId("run-plan-link")).toHaveText(plain);
+  expect((await head.innerText()).split(plain).length - 1, "the head names the plan once").toBe(1);
 });
 
 test("the diff page shows the diff the worker uploaded, file by file, and downloads it", async ({ page, member }) => {
@@ -665,7 +736,7 @@ test("past 2,000 lines the log renders only the rows in view", async ({ page, me
   await expect(log.getByTestId("log-line")).toHaveCount(62);
 });
 
-test("the Trace pairs each tool call with its result, opens a failed one, folds the thinking, and the usage card adds up", async ({
+test("the Trace groups each tool call with its result by what it did, opens a failed one, folds the thinking, and the usage card adds up", async ({
   page,
   member,
 }) => {
@@ -705,7 +776,18 @@ test("the Trace pairs each tool call with its result, opens a failed one, folds 
 
   await open(page, runPath(project, run.id));
   const trace = traceOf(page);
+  // Each call is a row named by what it did: the edit, then the tests. Folded, only the failed call shows its line.
+  const groups = trace.getByTestId("trace-group");
+  await expect(groups).toHaveCount(2);
+  await expect(groups.nth(0)).toHaveAttribute("data-intent", "edit");
+  await expect(groups.nth(0).getByTestId("trace-group-title")).toHaveText(/^Edited 1 file\s*\+3 −1$/);
+  await expect(groups.nth(0).getByTestId("trace-group-detail")).toHaveText("queue.ts");
+  await expect(groups.nth(1)).toHaveAttribute("data-intent", "test");
+  await expect(groups.nth(1).getByTestId("trace-group-title")).toHaveText("Ran tests, 1 failed");
+  await expect(groups.nth(1).getByTestId("trace-group-detail")).toHaveText("pytest -q");
   const tools = trace.getByTestId("trace-tool");
+  await expect(tools).toHaveCount(1);
+  await groups.nth(0).getByTestId("trace-group-toggle").click();
   await expect(tools).toHaveCount(2);
 
   // The edit: its file, its diff stat, folded; opened, its change as a diff.
@@ -721,23 +803,25 @@ test("the Trace pairs each tool call with its result, opens a failed one, folds 
   const failed = tools.nth(1);
   await expect(failed).toHaveAttribute("open", "");
   await expect(failed.getByTestId("trace-exit")).toHaveText("exit 1");
-  await expect(trace.getByTestId("trace-item").filter({ hasText: "Run the tests" }).getByTestId("trace-tool-arg")).toHaveText("pytest -q");
+  await expect(failed.getByTestId("trace-tool-arg")).toHaveText("pytest -q");
   const result = failed.getByTestId("trace-tool-output");
   await expect(result).toContainText("test_20 FAILED");
   await expect(result).not.toContainText("test_21 FAILED");
   await result.getByRole("button", { name: "Show the full output (30 lines)" }).click();
   await expect(result).toContainText("test_30 FAILED");
 
-  // The thinking folded over the agent's words, the plan as a checklist, the rate-limit event raw.
+  // The thinking folded over the agent's words, the plan as a checklist, the rate-limit event left to the Raw log.
   const thought = trace.getByTestId("trace-thought");
   await expect(thought).toContainText(/^Thought (briefly|for)/);
   await thought.getByText(/^Thought/).click();
   await expect(thought).toContainText("The queue needs a lease column before claim can use it.");
   await expect(trace.getByTestId("trace-plan")).toContainText("Make the tests pass");
-  await expect(trace.getByTestId("trace-raw")).toContainText("1 runtime event");
+  await expect(trace.getByTestId("trace-raw-left")).toHaveText("1 runtime event not shown: see the Raw log.");
+  await expect(trace).not.toContainText("rate_limit_event");
   await expect(trace).not.toContainText("cache_read_input_tokens");
 
   // The usage card adds up the report: the tokens in four parts, the cost as the runtime reported it.
+  await openRunDetails(page);
   const usage = main(page).getByTestId("run-usage");
   await expect(usage.getByTestId("run-usage-total")).toHaveText("9,252");
   await expect(usage.getByTestId("run-usage-cost")).toHaveText("$0.42 as reported");
@@ -760,7 +844,8 @@ test("a plan run's trace says what the agent asked, and Answer leads to the deci
   const { run, decision } = await planRunUnderway(me, project, uniqueName("studio"), { waiting: true });
 
   await open(page, runPath(project, run.id));
-  await expect(main(page).locator('[data-testid="run-phase"][data-phase="running"]')).toHaveAttribute("data-tone", "waiting");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "waiting");
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Waiting for an answer for");
   const ask = traceOf(page).getByTestId("trace-item").filter({ hasText: "Asked you" });
   await expect(ask).toContainText("Deploy the plan-runs build to staging now?");
   await expect(ask.getByTestId("trace-ask-link")).toHaveAttribute("href", `#run-decision-${decision}`);
@@ -776,13 +861,14 @@ test("a plan run's trace says what the agent asked, and Answer leads to the deci
 test("past 500 items the Trace renders only the ones in view, follows the newest, and offers the way back to it", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const { project, live, run } = await runningRun(me);
+  // Reads and edits in turn: calls that do the same work in a row would be one row, so each call here is a row.
   await sendEvents(
     live,
     run.id,
-    Array.from({ length: 520 }, (_, index) => ({
-      kind: "tool_call",
-      body: { toolCallId: `call-${index + 1}`, title: "Read", kind: "read", status: "completed", rawInput: { file_path: `src/file-${index + 1}.ts` } },
-    })),
+    Array.from({ length: 520 }, (_, index) => {
+      const [title, kind] = index % 2 === 0 ? ["Read", "read"] : ["Edit", "edit"];
+      return { kind: "tool_call", body: { toolCallId: `call-${index + 1}`, title, kind, status: "completed", rawInput: { file_path: `src/file-${index + 1}.ts` } } };
+    }),
   );
 
   await open(page, runPath(project, run.id));
@@ -793,7 +879,7 @@ test("past 500 items the Trace renders only the ones in view, follows the newest
   // rows' places reach layout at once, so the end the trace scrolls to is the one the measured rows make.
   expect(await trace.locator("ol").first().evaluate((list) => getComputedStyle(list).transitionProperty)).toBe("none");
   await trace.scrollIntoViewIfNeeded();
-  await expect(trace.getByTestId("trace-tool-arg").filter({ hasText: "src/file-520.ts" })).toBeInViewport();
+  await expect(trace.getByTestId("trace-group-detail").filter({ hasText: "file-520.ts" })).toBeInViewport();
   // The rows rendered sit one under the other, each where the one before it ends, as in the plain list.
   const largestGap = () =>
     trace.getByTestId("trace-item").evaluateAll((rows) =>
@@ -841,6 +927,9 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
   ]) {
     await page.setViewportSize(size);
     await open(page, runPath(project, run.id));
+    // Details opens the side column, with every detail and every step of the plan shown.
+    await openRunDetails(page, { all: true });
+    await openPlanStepFolds(aside);
     await expect(aside.getByTestId("run-decision")).toBeVisible();
     await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
     await expect(aside.getByTestId("run-lease-item")).toHaveCount(2);
@@ -866,11 +955,12 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
     await expect(aside).toBeFocused();
     await page.keyboard.press("End");
     await expect.poll(() => aside.evaluate((element) => Math.ceil(element.scrollTop + element.clientHeight) >= element.scrollHeight)).toBe(true);
-    // At its end its last card, Credentials, ends level with the session card, both in the window, and the page has
-    // not moved.
-    const credentialsBottom = await bottom(aside.getByTestId("run-credentials"));
-    expect(Math.abs(credentialsBottom - (await bottom(session))), `at ${size.width} px the two regions end level`).toBeLessThanOrEqual(1);
-    expect(credentialsBottom).toBeLessThanOrEqual(size.height);
+    // At its end its last card, Details with the credentials in it, ends level with the session card, both in the
+    // window, and the page has not moved.
+    await expect(aside.getByTestId("run-side").locator(":scope > section").last()).toHaveAttribute("data-testid", "run-details");
+    const detailsBottom = await bottom(aside.getByTestId("run-details"));
+    expect(Math.abs(detailsBottom - (await bottom(session))), `at ${size.width} px the two regions end level`).toBeLessThanOrEqual(1);
+    expect(detailsBottom).toBeLessThanOrEqual(size.height);
     // They start level too: the decision at the top of the side column, beside the session card's tabs.
     const sessionTop = (await session.boundingBox())!.y;
     await aside.evaluate((element) => element.scrollTo({ top: 0 }));
@@ -881,12 +971,56 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
   // side column does not scroll there, so Tab does not stop on it.
   await page.setViewportSize({ width: 1024, height: 900 });
   await open(page, runPath(project, run.id));
+  await openRunDetails(page, { all: true });
+  await openPlanStepFolds(aside);
   await expect(aside.getByTestId("run-plan-step")).toHaveCount(11);
   const top = async (testId: string) => (await main(page).getByTestId(testId).boundingBox())!.y;
   expect(await top("run-decisions")).toBeLessThan(await top("run-side"));
   expect(await top("run-side")).toBeLessThan(await top("run-log"));
   await expect(aside).not.toHaveAttribute("tabindex");
   expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
+});
+
+test("a turn of a chat session heads its page with the session's title, which turn it is and a link to each turn", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer" });
+  const live = await chatWorker(me, project, uniqueName("mini"));
+  const asks = ["please fix the flaky wait test", "one more thing: the retries"];
+  const {
+    runs: [first, second],
+  } = await chatSession(me, handle, live, asks);
+  const session = `@${handle} in Release talk: @${handle} ${asks[0]}`;
+
+  // The latest turn: the session's title on top, "Turn 2 of 2" with its own words, and both turns by number.
+  await open(page, runPath(project, second));
+  const head = main(page).getByTestId("run-session");
+  await expect(head.getByTestId("run-session-title")).toHaveText(session);
+  await expect(head.getByTestId("run-turn")).toHaveText("Turn 2 of 2");
+  await expect(head.getByTestId("run-turn-text")).toHaveText(`@${handle} ${asks[1]}`);
+  const nav = head.getByRole("navigation", { name: "Turns of this session" });
+  const links = nav.getByTestId("run-turn-link");
+  await expect(links).toHaveText(["1", "2"]);
+  await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
+  await expect(links.nth(0)).toHaveAccessibleName(`Turn 1: @${handle} ${asks[0]}`);
+
+  // The first turn, one link away: its words are the session's, so the head says only which turn it is.
+  await links.nth(0).click();
+  await page.waitForURL(`**${runPath(project, first)}`);
+  await expect(head.getByTestId("run-turn")).toHaveText("Turn 1 of 2");
+  await expect(head.getByTestId("run-turn-text")).toHaveCount(0);
+  await expect(links.nth(0)).toHaveAttribute("aria-current", "page");
+
+  // A session of one turn heads its page with its title alone.
+  await agentAnswers(live, second, "Done.");
+  await chatHeartbeat(live);
+  const {
+    runs: [alone],
+  } = await chatSession(me, handle, live, ["a new thread"]);
+  await open(page, runPath(project, alone));
+  await expect(head.getByTestId("run-session-title")).toHaveText(`@${handle} in Release talk: @${handle} a new thread`);
+  await expect(head.getByRole("navigation")).toHaveCount(0);
 });
 
 test.describe("in Vietnamese", () => {
@@ -897,11 +1031,50 @@ test.describe("in Vietnamese", () => {
     const { project, run } = await runningRun(me);
     await open(page, runPath(project, run.id));
     await expect(main(page).getByRole("heading", { level: 1 })).toContainText(`Run #${run.id}`);
-    await expect(main(page).getByTestId("run-state")).toHaveText("Đang chạy");
+    await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "running");
     await expect(main(page).getByTestId("run-takeover")).toHaveText("Tiếp quản");
     await expect(main(page).getByTestId("log-status")).toHaveText("Trực tiếp");
     await expect(traceOf(page)).toContainText("Đã nhận sang Đang chạy, do worker");
     await expect(main(page).getByRole("tab", { name: "Log thô" })).toBeVisible();
     await expect(main(page).getByTestId("run-composer")).toContainText("Nhắn cho agent");
   });
+});
+
+test("a local session's run page shows its machine, account, plan, step, log and question, and none of a worker run's controls", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const { run } = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000a01", { profile: "work", machine: "laptop-binh" });
+  await localState(me, project, run.id, { state: "running", plan_id: RUN_PLAN, step_key: "2" });
+  await localEvents(me, project, run.id, [say("Reading the queue module.")]);
+  const decision = await localAsk(me, project, run.id, "Fix the failing queue test or skip it?");
+
+  await open(page, runPath(project, run.id));
+  const view = main(page);
+  await expect(view.getByTestId("run-detail")).toHaveAttribute("data-kind", "local");
+  await expect(view.getByTestId("run-detail")).toHaveAttribute("data-state", "waiting");
+  // The head says where the session runs and what it waits for; its details are behind Details.
+  await expect(view.getByTestId("run-header")).toContainText("laptop-binh");
+  await expect(view.getByTestId("run-status-line")).toContainText("Waiting for an answer");
+  await openRunDetails(page);
+  await expect(view.getByTestId("run-machine")).toHaveText("laptop-binh");
+  await expect(view.getByTestId("run-account")).toHaveText(`${me.login}@example.com`);
+  await expect(view.getByTestId("run-claude-profile")).toHaveText("work");
+  await expect(view.getByTestId("run-local-plan")).toHaveText(RUN_PLAN);
+  await expect(view.getByTestId("run-local-step")).toHaveText("2");
+  await expect(view.getByTestId("run-last-activity")).not.toHaveText("None");
+  await expect(traceOf(page).getByTestId("trace-message")).toHaveText("Reading the queue module.");
+
+  // What the session asked is the kit's decision card, with the answer form for its owner.
+  const card = view.locator(`#run-decision-${decision}`);
+  await expect(card.getByRole("heading", { level: 3, name: "Fix the failing queue test or skip it?" })).toBeVisible();
+  await card.getByRole("radio", { name: /Fix the test/ }).check();
+  await card.getByTestId("decision-send").click();
+  await expect(card.getByTestId("decision-answer-option")).toContainText("Fix the test");
+
+  // No worker, no lease and no control of the hub over the session.
+  for (const id of ["run-cancel", "run-takeover", "run-handback", "run-approve", "run-rerun", "run-composer", "run-tab-terminal", "run-worker"]) {
+    await expect(view.getByTestId(id)).toHaveCount(0);
+  }
+  await expect(view.getByTestId("run-local-note")).toContainText("The hub only shows it");
 });

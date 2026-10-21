@@ -1,6 +1,6 @@
 "use client";
 
-import { GitBranch, Hourglass, LockKeyhole, Plus, RefreshCw, Trash2, Variable } from "lucide-react";
+import { GitBranch, GitMerge, Hourglass, LockKeyhole, Plus, RefreshCw, Trash2, Variable } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -33,7 +33,7 @@ const NARROW_HIDDEN = {
   updated: "hidden xl:table-cell",
 };
 
-const KIND_ICONS: Record<SecretKind, typeof Variable> = { env: Variable, git: GitBranch };
+const KIND_ICONS: Record<SecretKind, typeof Variable> = { env: Variable, git: GitBranch, forge: GitMerge };
 
 /** A secret's kind as a tag, an icon and a word: it names what the secret is, never a state. */
 export function SecretKindBadge({ kind }: { kind: SecretKind }) {
@@ -51,14 +51,18 @@ const MONO = (chunks: ReactNode) => <span className="font-mono">{chunks}</span>;
 const PLAIN = (chunks: string) => chunks;
 
 /**
- * What the secret is for, the row's second line: the variable it sets, or the origins it answers for and the user git
- * sends, with the same words as its tooltip.
+ * What the secret is for, the row's second line: the variable it sets, the origins it answers for and the user git
+ * sends, or the GitLab projects whose merge requests the hub drives with it, with the same words as its tooltip.
  */
 function useTarget() {
   const t = useTranslations("secrets");
   return useCallback(
     (secret: Secret): { text: string; shown: ReactNode } => {
       if (secret.kind === "env") return { text: secret.env_var ?? "", shown: MONO(secret.env_var ?? "") };
+      if (secret.kind === "forge") {
+        const prefix = { prefix: secret.url_prefix ?? "" };
+        return { text: t.markup("forgeTarget", { ...prefix, code: PLAIN }), shown: t.rich("forgeTarget", { ...prefix, code: MONO }) };
+      }
       const values = { prefix: secret.url_prefix ?? "", user: secret.username ?? "" };
       return { text: t.markup("gitTarget", { ...values, code: PLAIN }), shown: t.rich("gitTarget", { ...values, code: MONO }) };
     },
@@ -141,7 +145,12 @@ function SecretsTable({
       helper.display({
         id: "workers",
         header: () => t("columns.workers"),
-        cell: (info) => <ChipList items={info.row.original.workers} empty={t("anyWorker")} compact />,
+        cell: (info) =>
+          info.row.original.kind === "forge" ? (
+            <span className="text-xs text-muted-foreground">{t("hubOnly")}</span>
+          ) : (
+            <ChipList items={info.row.original.workers} empty={t("anyWorker")} compact />
+          ),
       }),
       helper.accessor((row) => (row.expires_at ? new Date(row.expires_at) : new Date(8.64e15)), {
         id: "expires",

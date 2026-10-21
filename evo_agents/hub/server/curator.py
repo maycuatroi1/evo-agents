@@ -33,11 +33,12 @@ breaker look at the night (``outcomes.check_circuit``: once the charter's ``circ
 of the night in a row failed or were reverted, every schedule of the project is paused with the reason in
 ``pause_reason`` and no member in ``paused_by``, and their owner gets the notice curator_paused), then it cancels its
 queued runs when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it
-may): the
-night's review run first, when the night has none yet and the worker runs review runs
-(``evo_agents.hub.server.collect``), else the judge run of a change of the Curator that waits for one, else the
-Builder of a change the Curator planned (``evo_agents.hub.server.changes``), else a plan run of the charter's
-night_plans, as ``evo_agents.hub.curator`` says, audited as curator.dispatch with the owner as actor and no token.
+may): the night's review run first, when the night has none yet and the worker runs review runs
+(``evo_agents.hub.server.collect``), else the night's history run once its review run was queued
+(``evo_agents.hub.server.history``), else the judge run of a change of the Curator that waits for one, else the replay
+run of a change that waits for one (``evo_agents.hub.server.replays``), else the Builder of a change the Curator
+planned (``evo_agents.hub.server.changes``), else a plan run of the charter's night_plans, as ``evo_agents.hub.curator``
+says, audited as curator.dispatch with the owner as actor and no token.
 GET .../curator also names the last review run of the project, with how many findings and proposals it wrote, and its
 last morning brief (``evo_agents.hub.server.brief``). A night's cost is that of its runs (their ``usage``), each agent
 session once at its largest total, as Claude Code reports a session's running total. The charter also names what the
@@ -56,10 +57,8 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import (
-    Numeric,
     Text,
     and_,
-    case,
     cast,
     column,
     exists,
@@ -76,21 +75,23 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, ledger, review, runs, tables
+from evo_agents.hub import curator, ledger, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettings, ReviewSettings
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.models import ModelName
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, plan_run_repos, unfit
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.hub.server.workers import WORKER_NAME
+from evo_agents.hub.server.worker_models import WORKER_NAME
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +102,6 @@ PAUSE = "curator.pause"  # every schedule of the project paused: "<project>"
 RESUME = "curator.resume"  # and let run again: "<project>"
 DISPATCH = "curator.dispatch"  # a schedule queued a plan run: "<project>/<plan> run:<id> schedule:<id> night=<date>"
 NIGHT_SHIFT = "night_shift"
-QUEUED_OR_HELD = ("queued", *runs.HELD_STATES)  # a schedule queues its next run once none of its runs is in these
 MAX_CHARTER_REVISIONS = 1000  # the revisions GET .../charter/revisions lists at most
 CURATOR_STATES = ("running", "on_duty", "idle", "paused")  # where a project's night shift stands, for people
 DEFAULT_NIGHTS, MAX_NIGHTS = 14, 90  # the nights GET .../curator/nights lists, by default and at most
@@ -172,22 +172,6 @@ class CircuitBreaker(BaseModel):
     )
 
 
-class ReviewSettings(BaseModel):
-    """How the night's review run of the Curator looks (``evo_agents.hub.review``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    lenses: int = Field(
-        review.LENSES_PER_NIGHT, ge=1, le=len(review.LENSES), description="lenses a night looks through, in turn"
-    )
-    days: int = Field(
-        review.REVIEW_DAYS, ge=1, le=curator.MAX_REVIEW_DAYS, description="the days of sessions and runs it counts"
-    )
-    budget_usd: float | None = Field(
-        None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most the review run may cost; null: as any run"
-    )
-
-
 class CharterBody(BaseModel):
     """What an admin writes."""
 
@@ -231,6 +215,8 @@ class CharterBody(BaseModel):
         "or proposes its revert",
     )
     review: ReviewSettings = Field(default_factory=ReviewSettings)
+    replay: ReplaySettings = Field(default_factory=ReplaySettings)
+    history: HistorySettings = Field(default_factory=HistorySettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
@@ -268,8 +254,12 @@ class CharterBody(BaseModel):
     def _run_within_night(self):
         if self.run_budget_usd is not None and self.run_budget_usd > self.night_budget_usd:
             raise ValueError("run_budget_usd is over night_budget_usd: a run never gets more than the night has")
-        if self.review.budget_usd is not None and self.review.budget_usd > self.night_budget_usd:
-            raise ValueError("review.budget_usd is over night_budget_usd: a run never gets more than the night has")
+        caps = (("review", self.review.budget_usd), ("replay", self.replay.budget_usd))
+        for name, cap in (*caps, ("history", self.history.budget_usd)):
+            if cap is not None and cap > self.night_budget_usd:
+                raise ValueError(
+                    f"{name}.budget_usd is over night_budget_usd: a run never gets more than the night has"
+                )
         return self
 
 
@@ -635,47 +625,6 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
 # Where the night shift stands
 
 
-def _usage_cost(usage):
-    """A run's cost from its usage, as ``curator.run_cost`` reads it: total_cost_usd, else cost, else 0."""
-    total, other = usage["total_cost_usd"], usage["cost"]
-    return case(
-        (func.jsonb_typeof(total) == "number", func.greatest(cast(total, Numeric), 0)),
-        (func.jsonb_typeof(other) == "number", func.greatest(cast(other, Numeric), 0)),
-        else_=0,
-    )
-
-
-@dataclass(frozen=True)
-class NightFigures:
-    runs: int
-    cost_usd: float
-    active_run_id: int | None
-
-
-def _night_figures(schedule_id: int, night: date):
-    """One row: how many runs schedule ``schedule_id`` queued for ``night``, what they cost (each session once, at
-    its largest total, a run without a session on its own), and the run of the schedule queued or held now."""
-    r = tables.runs
-    of_night = (r.c.schedule_id == schedule_id, r.c.schedule_night == night)
-    session = func.coalesce(r.c.session_id, literal("run:") + cast(r.c.id, Text))
-    per_session = select(func.max(_usage_cost(r.c.usage)).label("cost")).where(*of_night).group_by(session).subquery()
-    count = select(func.count()).select_from(r).where(*of_night).scalar_subquery()
-    cost = select(func.coalesce(func.sum(per_session.c.cost), 0)).scalar_subquery()
-    active = (
-        select(r.c.id)
-        .where(r.c.schedule_id == schedule_id, r.c.state.in_(QUEUED_OR_HELD))
-        .order_by(r.c.id)
-        .limit(1)
-        .scalar_subquery()
-    )
-    return select(count.label("runs"), cost.label("cost"), active.label("active_run_id"))
-
-
-async def night_figures(conn: AsyncConnection, schedule_id: int, night: date) -> NightFigures:
-    row = (await conn.execute(_night_figures(schedule_id, night))).one()
-    return NightFigures(runs=row.runs, cost_usd=float(row.cost or 0), active_run_id=row.active_run_id)
-
-
 def _schedules(project_id: int):
     s, w, owner, pauser = tables.schedules, tables.workers, tables.users.alias("owner"), tables.users.alias("pauser")
     return (
@@ -922,7 +871,7 @@ def _night_costs(project_id: int, nights: list[date]):
     r, s = tables.runs, tables.schedules
     session = func.coalesce(r.c.session_id, literal("run:") + cast(r.c.id, Text))
     per_session = (
-        select(r.c.schedule_night.label("night"), func.max(_usage_cost(r.c.usage)).label("cost"))
+        select(r.c.schedule_night.label("night"), func.max(usage_cost(r.c.usage)).label("cost"))
         .where(
             r.c.schedule_id.in_(select(s.c.id).where(s.c.project_id == project_id)),
             r.c.schedule_night.in_(nights),
@@ -1106,8 +1055,8 @@ async def resume(request: Request, project: ProjectName, user: CurrentUser) -> C
 
 
 def _due(now: datetime | None):
-    """Each night_shift schedule with its project, its owner's login, the newest revision of its charter, and the
-    local time in the charter's zone at ``now`` (the database's now when None)."""
+    """Each night_shift schedule of a project the Curator is on for, with its project, its owner's login, the newest
+    revision of its charter, and the local time in the charter's zone at ``now`` (the database's now when None)."""
     s, c, p, u = tables.schedules, tables.charters, tables.projects, tables.users
     newest = (
         select(c.c.project_id, func.max(c.c.revision).label("revision")).group_by(c.c.project_id).subquery("newest")
@@ -1129,7 +1078,7 @@ def _due(now: datetime | None):
         .join(u, u.c.id == s.c.owner_id)
         .join(newest, newest.c.project_id == s.c.project_id)
         .join(c, and_(c.c.project_id == newest.c.project_id, c.c.revision == newest.c.revision))
-        .where(s.c.kind == NIGHT_SHIFT)
+        .where(s.c.kind == NIGHT_SHIFT, hub_settings.feature_on("curator", s.c.project_id))
         .order_by(s.c.id)
     )
 
@@ -1329,19 +1278,25 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
     return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker)
 
 
-async def _fire(conn: AsyncConnection, due) -> str:
+async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
     from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
+    from evo_agents.hub.server.history import queue_history  # it queues runs through this module
+    from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due)
     if gate is None:
         return word
     if await queue_review(conn, due, gate) is not None:
         return "review"
+    if await queue_history(conn, due, gate) is not None:
+        return "history"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
-    if await queue_builder(conn, due, gate) is not None:
+    if await queue_replay(conn, due, gate) is not None:
+        return "replay"
+    if await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
         return "builder"
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
@@ -1359,16 +1314,16 @@ async def _fire(conn: AsyncConnection, due) -> str:
     return "queued"
 
 
-async def fire_schedules(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
-    """One pass of ``hub.fire_schedules`` over every night_shift schedule, each in a transaction of its own, at
-    ``now`` (the database's now when None); how many schedules ended in each outcome."""
+async def fire_schedules(engine: AsyncEngine, *, curator_app: bool, now: datetime | None = None) -> dict:
+    """One pass of ``hub.fire_schedules`` over each night_shift schedule, in a transaction of its own, at ``now`` (the
+    database's now when None), ``curator_app`` whether this hub has the Curator's App; how many ended each outcome."""
     async with engine.begin() as conn:
         due = (await conn.execute(_due(now))).all()
     outcomes: Counter = Counter()
     for row in due:
         try:
             async with engine.begin() as conn:
-                outcomes[await _fire(conn, row)] += 1
+                outcomes[await _fire(conn, row, curator_app=curator_app)] += 1
         except Exception:  # one schedule failing leaves the others their turn
             log.exception("a schedule failed", extra={"project": row.project, "schedule_id": row.id})
             outcomes["failed"] += 1

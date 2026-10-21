@@ -10,6 +10,7 @@ export type BuildStatus = KgBuild["status"];
 export type GraphRef = Schemas["GraphRef"];
 export type GraphSummary = Schemas["GraphSummary"];
 export type KindCount = Schemas["KindCount"];
+export type SourceRead = Schemas["SourceRead"];
 export type KgNode = Schemas["KgNode"];
 export type NodeLabel = Schemas["NodeLabel"];
 export type NodeSearch = Schemas["NodeSearch"];

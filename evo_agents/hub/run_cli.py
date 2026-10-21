@@ -1,20 +1,20 @@
 """``evo-agents hub run``: dispatch plan steps to your own workers, and follow, steer and end their runs.
 
-``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a
-plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent
-session or with ``--session-per-step`` in a new session for each step, and ``author``
-queues an author run, a plan written from your request with the create-exec-plan skill on a worker of yours (POST
-/v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the
-project. ``list`` and ``show`` read runs of every kind. ``logs``
-prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's
-server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send`` leaves a message for the run's
-agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls.
-``credentials`` lists the leases the run got of its owner's secrets and of the hub's GitHub App (GET
-.../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan``,
-``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such
-as why a worker whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
-``docs/workers.md`` describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared
-next to the flag.
+``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a plan
+run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent session or
+with ``--session-per-step`` in a new session for each step, and ``author`` queues an author run, a plan written from
+your request with the create-exec-plan skill on a worker of yours (POST /v1/projects/{p}/author-runs,
+``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
+of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
+.../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
+until the hub sends ``end``. ``send`` leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``,
+``handback`` and ``rerun`` are the owner's controls. ``credentials`` lists the leases the run got of its owner's secrets
+and of the hub's GitHub App (GET .../runs/{id}/credentials, the owner only), never their values. Every command after
+``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
+message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
+dispatched with a token. ``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand,
+and all but ``rerun`` ``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes
+the protocol behind them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
 
 ``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
 only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
@@ -43,18 +43,28 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from evo_agents import __version__
-from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H, MAX_REQUEST_BYTES
+from evo_agents.hub.author import MAX_REQUEST_BYTES
+from evo_agents.hub.chats import chat_link
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.run_cli_candidates import register_candidates
+from evo_agents.hub.run_cli_options import (
+    account_option,
+    author_options,
+    dispatch_options,
+    kind_text,
+    list_options,
+    plan_options,
+    rerun_body,
+    rerun_options,
+    usage_error,
+)
+from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
-    APPROVALS,
     EVENT_KINDS,
     MAX_MODEL_CHARS,
-    MODES,
-    PLAN_TIMEOUT_CHOICES,
-    RUN_STATES,
     RUNTIMES,
     STEADY_GAP_SECONDS,
     STEADY_SECONDS,
@@ -63,7 +73,6 @@ from evo_agents.hub.runs import (
 from evo_agents.hub.sse import sse_messages
 
 EXIT_USAGE = 2
-REQUESTED_RUNTIMES = ("any", *RUNTIMES)
 EVENTS_PAGE = 1000  # the most events GET .../events answers at once
 STREAM_TIMEOUT = 60.0  # seconds without a byte, pings included, before a followed stream counts as dropped
 RECONNECTS = 5  # tries in a row to open a followed stream again that bring no event before giving up
@@ -128,11 +137,16 @@ RUN_KEYS = (
     "failure_cause",
     "session_per_step",
 )
+RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its agent profile, where its agent runs
+RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
+RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
+RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
 CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "messages", "more")
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
+LEASE_KEYS += ("profile", "profile_id", "profile_version")
 RUN = returns_object(*RUN_KEYS, schema="Run")
 
 KIND_LABELS = {
@@ -159,16 +173,6 @@ def _runs_path(project: str, run_id: int | None = None, action: str | None = Non
 
 def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
-def _worker_id(hub, login: str, worker: str) -> int:
-    """The id ``worker`` names: an id as given, else the id of the caller's own worker of that name."""
-    if worker.isascii() and worker.isdigit():
-        return int(worker)
-    for row in hub.call("GET", "/v1/workers"):
-        if row["name"] == worker and row["owner"] == login:
-            return row["id"]
-    raise HubError(f"you have no worker named {worker!r} (revoked ones aside); the Workers page of the hub lists yours")
 
 
 def _step(run: dict) -> str:
@@ -209,11 +213,6 @@ def _model_check(args) -> str | None:
     if not args.model.strip() or len(args.model) > MAX_MODEL_CHARS or not args.model.isprintable():
         return f"--model takes one line of 1 to {MAX_MODEL_CHARS} characters"
     return None
-
-
-def _usage_error(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
 
 
 def _with_project(args, project: str) -> str:
@@ -398,7 +397,7 @@ def _runtime(run: dict) -> str:
 def cmd_dispatch(args) -> int:
     refused = _model_check(args)
     if refused:
-        return _usage_error(refused)
+        return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan), "steps": args.steps}
@@ -408,8 +407,9 @@ def cmd_dispatch(args) -> int:
         "mode": args.mode,
         "approval": args.approval,
         "timeout_min": args.timeout,
+        "account": args.account,
     }
-    body.update({key: value for key, value in chosen.items() if value is not None})
+    body.update({key: value for key, value in {**chosen, "profile": args.agent}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     queued = hub.call("POST", _runs_path(project), body)
@@ -430,12 +430,13 @@ def cmd_dispatch(args) -> int:
 def cmd_plan(args) -> int:
     refused = _model_check(args)
     if refused:
-        return _usage_error(refused)
+        return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
+    chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
@@ -461,15 +462,16 @@ def cmd_plan(args) -> int:
 def cmd_author(args) -> int:
     text = sys.stdin.read() if args.request == "-" else args.request
     if not text.strip():
-        return _usage_error("the request is empty: say what the plan should achieve")
+        return usage_error("the request is empty: say what the plan should achieve")
     if len(text.encode()) > MAX_REQUEST_BYTES:
-        return _usage_error(
-            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes"
+        return usage_error(
+            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes",
         )
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
+    chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in chosen.items() if value is not None})
     run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
     if args.json:
@@ -492,7 +494,15 @@ def cmd_list(args) -> int:
         query.append(("plan_id", _plan_id(args.plan)))
     if args.worker is not None:
         query.append(("worker_id", _worker_id(hub, credentials.login, args.worker)))
-    given = {"step": args.step, "dispatched_by": args.by, "q": args.search, "limit": args.limit, "offset": args.offset}
+    given = {
+        "step": args.step,
+        "dispatched_by": args.by,
+        "kind": args.kind,
+        "account": args.account,
+        "q": args.search,
+        "limit": args.limit,
+        "offset": args.offset,
+    }
     query += [(key, value) for key, value in given.items() if value is not None]
     listed = hub.call("GET", _runs_path(project) + (f"?{urlencode(query)}" if query else ""))
     if args.json:
@@ -523,38 +533,50 @@ def cmd_list(args) -> int:
     return 0
 
 
-def _plan_run_kind(run: dict) -> str:
+def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
+    """What the run does: its kind and title, or its step; its project or plan; a chat run's chat and message."""
+    kind, plan = run["kind"], f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"
+    if kind == "step":
+        return [("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")), ("plan", plan)]
     each = "a new session for each step" if run.get("session_per_step") else "one session"
-    return f"plan run: every step of the plan not done yet, in {each}"
-
-
-def _describe(run: dict) -> list[tuple[str, str]]:
-    """The fields of a run that say something, as (label, text) pairs."""
-    plan_run = run["kind"] in ("plan", "review", "judge", "author")  # these have repos too, and no step
-    lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
-    if run["kind"] == "review":
-        lines.append(("kind", "review run: the Curator reads the project and proposes changes; it pushes nothing"))
-        if run["title"]:
-            lines.append(("title", run["title"]))
+    said = kind_text(run) or f"plan run: every step of the plan not done yet, in {each}"
+    lines = [("kind", said)] + ([("title", run["title"])] if run["title"] else [])
+    if kind == "review":
         lines.append(("project", run["project"]))
-    elif run["kind"] == "judge":
-        lines.append(
-            ("kind", "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing")
-        )
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    elif run["kind"] == "author":
-        lines.append(("kind", "author run: a plan written from your request with create-exec-plan; it pushes nothing"))
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    elif plan_run:
-        lines.append(("kind", _plan_run_kind(run)))
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    else:
-        lines.append(("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")))
-    if run["kind"] not in ("review", "author") or run.get("plan_id"):
-        lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
+    if kind == "chat":
+        link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
+        lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
+        lines.append(("message", link))
+    if kind not in ("review", "author", "chat", "task", "local", "judge") or run.get("plan_id"):
+        lines.append(("plan", plan))
+    return lines
+
+
+def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
+    """A local run has no worker, repos, attempts or lease: its machine, directory and account, and what it did."""
+    lines = [("state", run["state"]), *_what(run, hub_url)]
+    where = f"{run['machine']}, {run['cwd']}"
+    lines += [
+        ("machine", where),
+        ("account", run["claude_email"] + (f" ({run['claude_profile']})" if run["claude_profile"] else "")),
+    ]
+    lines.append(("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC"))
+    if run["last_activity_at"]:
+        lines.append(("last activity", f"{_when(run['last_activity_at'])} UTC"))
+    if run["finished_at"]:
+        lines.append(("ended", f"{_when(run['finished_at'])} UTC"))
+    if run["waiting_since"] and run["state"] == "waiting":
+        lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+    if run["session_id"]:
+        lines.append(("session", run["session_id"]))
+    lines.append(("events", f"{run['last_seq']}"))
+    return lines
+
+
+def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
+    """The fields of a run that say something, as (label, text) pairs; ``_describe_local`` says those of a local run."""
+    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
+    lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
         lines.append(("repos", (_repos(run) or "none") + commit))
@@ -646,7 +668,7 @@ def cmd_show(args) -> int:
         _print_json(run)
         return 0
     print(f"Run #{run['id']}")
-    lines = _describe(run)
+    lines = (_describe_local if run["kind"] == "local" else _describe)(run, hub.url)
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         first, *rest = str(text).splitlines() or [""]
@@ -679,7 +701,7 @@ def cmd_logs(args) -> int:
     for event in page["events"]:
         print_event(event)
     shown = f"{len(page['events'])} event(s) shown, the last of the run is {page['last_seq']}"
-    hint = "" if page["state"] in TERMINAL_STATES else "; --follow prints the next ones as they come"
+    hint = "" if page["state"] in (*TERMINAL_STATES, "ended") else "; --follow prints the next ones as they come"
     print(f"Run #{args.run} is {page['state']}: {shown}{hint}.")
     return 0
 
@@ -834,7 +856,7 @@ def _control(action: str, said: Callable[[dict], str]):
     @_client_command
     def command(args) -> int:
         hub, _ = _signed_in()
-        run = hub.call("POST", _runs_path(_project(args), args.run, action))
+        run = hub.call("POST", _runs_path(_project(args), args.run, action), rerun_body(args))
         if args.json:
             _print_json(run)
             return 0
@@ -845,45 +867,19 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
-def _plan_options(plan, with_model) -> None:
-    """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
-    plan.add_argument(
-        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
-    )
-    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
-    with_model(plan)
-    plan.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    plan.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=PLAN_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
-        "decision and parked do not count",
-    )
-    plan.add_argument(
-        "--session-per-step",
-        action="store_true",
-        help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
-        "than one session for every step; a worker takes it once its daemon says it runs one",
-    )
-
-
 def register_runs(hsub) -> None:
     run = hsub.add_parser(
         "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
     )
     rsub = run.add_subparsers(dest="run_command", required=True)
     project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
-    run_help = "the run's id, as `hub run list` shows it"
 
     def with_project(parser) -> None:
         parser.add_argument("--project", help=project_help)
 
     def with_run(parser) -> None:
-        parser.add_argument("run", metavar="RUN", type=int, help=run_help)
+        parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
+        with_project(parser)
 
     def with_model(parser) -> None:
         parser.add_argument(
@@ -893,39 +889,27 @@ def register_runs(hsub) -> None:
         )
 
     dispatch = rsub.add_parser(
-        "dispatch", help="queue a run of each step named for a worker of yours, all of them or none (needs writer)"
+        "dispatch",
+        help="queue a run of each step named for a worker of yours or one shared with you, all of them or none "
+        "(needs writer)",
     )
     dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
     dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
     with_project(dispatch)
-    dispatch.add_argument(
-        "--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has"
-    )
-    dispatch.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    dispatch.add_argument(
-        "--worker", help="pin the runs to this worker of yours, by id or name (default: any of yours that can take one)"
-    )
-    dispatch.add_argument(
-        "--approval",
-        choices=APPROVALS,
-        help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
-        "the worker runs again exits 0",
-    )
-    dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+    dispatch_options(dispatch)
     with_model(dispatch)
+    account_option(dispatch)
     json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
     dispatch.set_defaults(func=cmd_dispatch)
 
     plan = rsub.add_parser(
         "plan",
-        help="queue a plan run: one run, on a worker of yours, that does every step of the plan not done yet "
-        "(needs writer)",
+        help="queue a plan run: one run, on a worker of yours or one shared with you, that does every step of the plan "
+        "not done yet (needs writer)",
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")
     with_project(plan)
-    _plan_options(plan, with_model)
+    plan_options(plan, with_model)
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 
@@ -940,58 +924,18 @@ def register_runs(hsub) -> None:
         help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
     )
     with_project(authored)
-    authored.add_argument(
-        "--plan",
-        metavar="PLAN",
-        help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
-    )
-    authored.add_argument(
-        "--worker",
-        required=True,
-        help="the worker of yours to run it on, by id or name; it needs the harness checked out",
-    )
-    authored.add_argument(
-        "--runtime",
-        choices=REQUESTED_RUNTIMES,
-        help=f"default: {AUTHOR_RUNTIMES[0]}, the one runtime an author run takes; the hub refuses another",
-    )
-    authored.add_argument("--model", help="the model, as Claude Code names it (default: Claude Code's own choice)")
-    authored.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=AUTHOR_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, AUTHOR_TIMEOUT_CHOICES))} (default {DEFAULT_TIMEOUT_H})",
-    )
+    author_options(authored)
     json_option(authored, RUN)
     authored.set_defaults(func=cmd_author)
 
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
-    listed.add_argument(
-        "--state",
-        action="append",
-        choices=RUN_STATES,
-        metavar="STATE",
-        help=f"only runs in this state, one of {', '.join(RUN_STATES)}; repeat it for several",
-    )
-    listed.add_argument("--plan", help="only runs of this plan")
-    listed.add_argument("--step", help="only runs of this step key")
-    listed.add_argument("--worker", help="only runs this worker of yours claimed, by id or name")
-    listed.add_argument("--by", metavar="LOGIN", help="only runs this member dispatched")
-    listed.add_argument(
-        "--search",
-        metavar="TEXT",
-        help="text in the title, step, plan, repo, branch, worker, login or error, or a run number such as #12",
-    )
-    listed.add_argument("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)")
-    listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")
+    list_options(listed)
     json_option(listed, returns_object(*RUN_LIST_KEYS, schema="RunList"))
     listed.set_defaults(func=cmd_list)
 
     show = rsub.add_parser("show", help="one run: state, step, worker, commit, verify results, evidence")
     with_run(show)
-    with_project(show)
     json_option(show, RUN)
     show.set_defaults(func=cmd_show)
 
@@ -999,7 +943,6 @@ def register_runs(hsub) -> None:
         "logs", help="a run's events: what its agent said and did, and its moves; --follow prints them as they come"
     )
     with_run(logs)
-    with_project(logs)
     logs.add_argument(
         "-f", "--follow", action="store_true", help="keep reading the run's live stream until the run ends"
     )
@@ -1025,7 +968,6 @@ def register_runs(hsub) -> None:
     )
     with_run(send)
     send.add_argument("text", metavar="TEXT", help="at most 8 KiB; - reads it from stdin")
-    with_project(send)
     json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
     send.set_defaults(func=cmd_send)
 
@@ -1033,7 +975,6 @@ def register_runs(hsub) -> None:
         "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
     )
     with_run(chat)
-    with_project(chat)
     json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
     chat.set_defaults(func=cmd_chat)
 
@@ -1043,13 +984,14 @@ def register_runs(hsub) -> None:
         "value (owner only)",
     )
     with_run(credentials)
-    with_project(credentials)
     json_option(credentials, returns_array(*LEASE_KEYS, schema="RunLease"))
     credentials.set_defaults(func=cmd_credentials)
 
+    register_candidates(rsub, with_run, _project)
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
         with_run(parser)
-        with_project(parser)
+        if action == "rerun":
+            rerun_options(parser)
         json_option(parser, RUN)
         parser.set_defaults(func=_control(action, said))

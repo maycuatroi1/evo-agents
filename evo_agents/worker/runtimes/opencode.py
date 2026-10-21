@@ -13,6 +13,10 @@ run`` prints is parsed here.
 - Permissions: every ``permission.asked`` of the session, or of a session it started, is answered ``once``
   (``POST /permission/:id/reply``), which is what ``opencode run --auto`` does ("auto-approve permissions that are
   not explicitly denied"): a rule of the owner's config that denies something still denies it.
+- Compaction: the server's OPENCODE_CONFIG_CONTENT gets ``compaction.prune`` on (``compaction_env``), so at the end
+  of a turn opencode clears tool outputs older than its newest 40,000 tokens of them (opencode 1.18.34). It stays as
+  opencode has it when the owner's config sets it (``owner_prune``) or EVO_WORKER_OPENCODE_COMPACTION_PRUNE is
+  ``off``, ``false`` or ``0``; the profile's ``permission`` is merged after it.
 - The model is the run's ``model``, else ``EVO_WORKER_OPENCODE_MODEL``, else the ``model`` of the owner's opencode
   config, as ``provider/model``, split at its first ``/`` into the ``providerID`` and ``modelID`` of each prompt; a
   model the server does not list fails the start with that reason, since opencode would only answer with an unknown
@@ -21,10 +25,21 @@ run`` prints is parsed here.
 - The turn is over when the session goes idle (``session.status`` ``idle``) and every prompt sent has reached the
   session; ``session.error`` (``MessageAbortedError`` after an abort, a provider error) fails it. The exit code of
   nothing is read.
+- A run under an agent profile that limits tool, skill or model, or has instructions, gets them as
+  ``evo_agents.worker.runtimes.profiles`` says: ``permission`` rules in the server's OPENCODE_CONFIG_CONTENT
+  (``server_env``) and in the session's rules, with ``deny`` for the MCP servers ``GET /mcp`` names that the profile
+  leaves out (a resumed session gets them again with ``PATCH /session/:id``), a model of its allowlist, never the
+  config's, and the instructions after the headless note in each prompt's ``system``.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) give opencode their skills,
+  MCP servers and instructions: OPENCODE_CONFIG_CONTENT of the server gains each pack's ``skills/`` in
+  ``skills.paths`` and each server in ``mcp`` (``local`` for stdio, ``remote`` for http and SSE), and the instructions
+  follow the profile's in each prompt's ``system``. A pack with subagents or hooks fails the run before its agent
+  starts (``pack_refusal``).
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
-  of 171).
+  of 171); and the ``cache.read`` and ``cache.write`` of the first step that read any context, the first request
+  (``common.FIRST_REQUEST``).
 
 Checked with opencode 1.18.34 (``evo-agents worker selftest --runtime opencode``).
 """
@@ -37,11 +52,17 @@ import json
 import logging
 import re
 import secrets
+import shutil
 import signal
 import socket
+import tempfile
 from collections.abc import AsyncIterator, Mapping
+from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker.environments import HOST_ENVIRONMENT
+from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -50,6 +71,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    first_request,
     kill_group,
     larger,
     message_chunk,
@@ -61,7 +83,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
 )
 
@@ -87,6 +108,13 @@ RUN_RULES = [
 # Events of the session that repeat what message.part.updated, message.updated and session.status say. The
 # session.next.* family carries the same content again, piece by piece.
 IGNORED = frozenset({"session.updated", "session.diff", "session.idle", "message.part.delta", "message.updated"})
+# The variable that turns off ``compaction.prune`` for the runs of this worker (``compaction_env``), and the names of
+# an opencode config file, in the global folder and in a project.
+PRUNE_SETTING = "EVO_WORKER_OPENCODE_COMPACTION_PRUNE"
+CONFIG_NAMES = ("config.json", "opencode.json", "opencode.jsonc")
+_STRING = r'("(?:\\.|[^"\\])*")'
+_COMMENTS = re.compile(_STRING + r"|//[^\n]*|/\*.*?\*/", re.S)
+_TRAILING_COMMAS = re.compile(_STRING + r"|,(?=\s*[}\]])")
 TOOL_KINDS = {
     "read": "read",
     "edit": "edit",
@@ -113,6 +141,58 @@ def parse_models(output: str | None) -> list[str] | None:
         return None
     lines = (ESCAPES.sub("", line).strip() for line in output.splitlines())
     return [line for line in lines if MODEL_LINE.match(line)] or None
+
+
+def jsonc(text: str):
+    """``text`` as opencode reads a config: JSON with comments and trailing commas; None when it is not that."""
+
+    def strings_only(match: re.Match) -> str:
+        return match.group(1) or ""
+
+    try:
+        return json.loads(_TRAILING_COMMAS.sub(strings_only, _COMMENTS.sub(strings_only, text)))
+    except ValueError:
+        return None
+
+
+def config_paths(env: Mapping[str, str], worktree: Path) -> list[Path]:
+    """The owner's opencode config files: the global ones (``$XDG_CONFIG_HOME/opencode``, else ``~/.config/opencode``),
+    the file OPENCODE_CONFIG names, and the worktree's (``opencode.json[c]``, ``.opencode/opencode.json[c]``)."""
+    base = Path(env.get("XDG_CONFIG_HOME") or Path(env.get("HOME") or Path.home()) / ".config") / "opencode"
+    paths = [base / name for name in CONFIG_NAMES]
+    if env.get("OPENCODE_CONFIG"):
+        paths.append(Path(env["OPENCODE_CONFIG"]).expanduser())
+    return paths + [folder / name for folder in (worktree, worktree / ".opencode") for name in CONFIG_NAMES[1:]]
+
+
+def owner_prune(env: Mapping[str, str], worktree: Path) -> bool:
+    """Whether the owner's opencode config sets ``compaction.prune``: in OPENCODE_CONFIG_CONTENT or in a file of
+    ``config_paths``. OPENCODE_CONFIG_CONTENT overrides those files, so a run setting it there would override them."""
+    texts = [env.get(profiles.CONFIG_CONTENT) or ""]
+    for path in config_paths(env, worktree):
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            texts.append(path.read_text(encoding="utf-8"))
+    for text in texts:
+        data = jsonc(text) if text.strip() else None
+        compaction = data.get("compaction") if isinstance(data, dict) else None
+        if isinstance(compaction, dict) and "prune" in compaction:
+            return True
+    return False
+
+
+def compaction_env(env: Mapping[str, str], worktree: Path) -> dict[str, str]:
+    """The environment of a run's ``opencode serve``: ``env`` with ``compaction.prune`` on in OPENCODE_CONFIG_CONTENT,
+    merged into what the variable already held; ``env`` as it is when EVO_WORKER_OPENCODE_COMPACTION_PRUNE is ``off``,
+    ``false`` or ``0``, when the owner's config sets ``compaction.prune`` (``owner_prune``), or when the variable holds
+    something other than a JSON object."""
+    if env.get(PRUNE_SETTING, "").strip().lower() in ("off", "false", "0") or owner_prune(env, worktree):
+        return dict(env)
+    own = env.get(profiles.CONFIG_CONTENT) or ""
+    content = jsonc(own) if own.strip() else {}
+    if not isinstance(content, dict):
+        return dict(env)
+    compaction = content.get("compaction") if isinstance(content.get("compaction"), dict) else {}
+    return {**env, profiles.CONFIG_CONTENT: json.dumps({**content, "compaction": {**compaction, "prune": True}})}
 
 
 def free_port() -> int:
@@ -180,19 +260,22 @@ class Server:
             self._drain.cancel()
 
 
-async def start_server(binary: str, cwd: str, env: Mapping[str, str]) -> Server:
-    """``opencode serve`` on 127.0.0.1 at a free port, with a random password, once it listens."""
+async def start_server(
+    binary: str, cwd: str, env: Mapping[str, str], *, context=None, directory: Path | None = None
+) -> Server:
+    """``opencode serve`` on 127.0.0.1 at a free port, with a random password, once it listens. In a container
+    (``context.environment``, its spec in ``directory``) it listens on every address of the container, and the engine
+    publishes the port on the worker's 127.0.0.1 alone."""
+    environment = context.environment if context is not None else HOST_ENVIRONMENT
     password = secrets.token_urlsafe(32)
     port = free_port()
+    env = {**env, "OPENCODE_SERVER_PASSWORD": password}
+    args = ("serve", "--hostname", environment.listen_host, "--port", str(port))
+    command = environment.command(binary, args, context=context, directory=directory, env=env, publish=port)
     process = await asyncio.create_subprocess_exec(
-        binary,
-        "serve",
-        "--hostname",
-        "127.0.0.1",
-        "--port",
-        str(port),
+        *command,
         cwd=cwd,
-        env={**env, "OPENCODE_SERVER_PASSWORD": password},
+        env=env,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -214,6 +297,8 @@ async def start_server(binary: str, cwd: str, env: Mapping[str, str]) -> Server:
 
     try:
         url = await asyncio.wait_for(listening(), START_TIMEOUT)
+        if environment.container:  # the address it listens on is the container's; the engine publishes the port here
+            url = f"http://127.0.0.1:{port}"
     except BaseException as exc:
         kill_group(process.pid, signal.SIGKILL)
         with contextlib.suppress(Exception):
@@ -237,6 +322,8 @@ class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
     interactive = True
+    pack_kinds = ("skills", "mcp_servers", "instructions")
+    pack_transports = packs.TRANSPORTS
 
     @classmethod
     def detect(cls) -> Detection:
@@ -253,8 +340,13 @@ class OpencodeAdapter(QueueAdapter):
 
         return OpencodeTui(context, session_id)
 
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        return profiles.model_refusal(profiles.Profile.of(run), run)
+
     def __init__(self, context: RunContext):
         super().__init__(context)
+        self.profile = profiles.profile_of(context)
         self._session = context.resume_session
         self._server: Server | None = None
         self._http = None
@@ -269,11 +361,13 @@ class OpencodeAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict = {}
         self._peak: int | None = None  # the largest context of a step: input, cache read and cache write
+        self._first: dict | None = None  # the cache read and cache write of the first step (FIRST_REQUEST)
         self._cost = 0.0
         self._summary: str | None = None
         self.model: tuple[str, str] | None = None
         self.variant = run_setting(context, self.runtime, "effort")
         self.server_url: str | None = None
+        self._dir: Path | None = None  # in a container: where its command's spec is
 
     @property
     def session_id(self) -> str | None:
@@ -283,8 +377,21 @@ class OpencodeAdapter(QueueAdapter):
         return self._server.pid if self._server is not None else None
 
     async def start_server(self) -> Server:
-        """``opencode serve`` for this run; a test hands it a server of its own."""
-        return await start_server(which(self.binary, self.context.env), str(self.context.worktree), self.context.env)
+        """``opencode serve`` for this run, where its environment runs it; a test hands it a server of its own."""
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
+        directory = None
+        if environment.container:  # the spec of the container's command, removed with the adapter
+            self._dir = directory = Path(tempfile.mkdtemp(prefix="evo-opencode-"))
+        worktree = str(self.context.worktree)
+        return await start_server(program, worktree, self.server_env(), context=self.context, directory=directory)
+
+    def server_env(self) -> dict[str, str]:
+        """The environment of the run's server: the agent's, with ``compaction.prune`` on (``compaction_env``), the
+        permissions of its profile (``profiles.opencode_env``) and the skills and MCP servers of its agent packs
+        (``packs.opencode_env``)."""
+        env = compaction_env(self.context.env, self.context.worktree)
+        return packs.opencode_env(profiles.opencode_env(env, self.profile), self.context.packs)
 
     # HTTP
 
@@ -304,10 +411,12 @@ class OpencodeAdapter(QueueAdapter):
             return json.loads(text) if text.strip() else None
 
     async def _resolve_model(self) -> tuple[str, str]:
-        name = run_setting(self.context, self.runtime, "model")
+        name = profiles.session_model(self.context, self.runtime)
         hint = "set EVO_WORKER_OPENCODE_MODEL to provider/model (the selftest takes --model)"
         if self._run_model():
             hint = "dispatch it with a model as `opencode models` lists it, provider/model"
+        if not name and self.profile is not None and self.profile.allowed("model") is not None:
+            raise RuntimeError(f"opencode has no model agent profile {self.profile.label} allows")
         if not name:
             config = await self._request("GET", "/config") or {}
             name = config.get("model") if isinstance(config.get("model"), str) else None
@@ -324,6 +433,19 @@ class OpencodeAdapter(QueueAdapter):
             raise RuntimeError(f"opencode lists no model {name}: {hint}")
         return provider, model
 
+    async def _profile_rules(self) -> list[dict]:
+        """The session's rules for the run's profile (``profiles.opencode_rules``), with the MCP servers the server
+        names; none without a profile."""
+        if self.profile is None:
+            return []
+        servers: list[str] = []
+        if self.profile.servers() is not None:
+            listing = await self._request("GET", "/mcp")
+            if not isinstance(listing, dict):  # unlisted, a server the profile leaves out would stay
+                raise RuntimeError(f"opencode answered GET /mcp with no servers by name: {cut(str(listing), 200)}")
+            servers = [name for name in listing if isinstance(name, str)]
+        return profiles.opencode_rules(self.profile, servers)
+
     def _run_model(self) -> bool:
         """Whether the model is the run's own, which the dispatch named."""
         value = self.context.run.get("model") if isinstance(self.context.run, Mapping) else None
@@ -334,7 +456,9 @@ class OpencodeAdapter(QueueAdapter):
         body = {
             "parts": [{"type": "text", "text": text}],
             "model": {"providerID": provider, "modelID": model},
-            "system": HEADLESS_NOTE,
+            "system": packs.with_instructions(
+                profiles.with_instructions(HEADLESS_NOTE, self.profile), self.context.packs
+            ),
         }
         if self.variant:
             body["variant"] = self.variant
@@ -350,11 +474,14 @@ class OpencodeAdapter(QueueAdapter):
         self.server_url = self._server.url
         self._http = aiohttp.ClientSession(auth=aiohttp.BasicAuth(self._server.username, self._server.password))
         self.model = await self._resolve_model()
+        rules = RUN_RULES + await self._profile_rules()
         if self.context.resume_session:
             await self._request("GET", f"/session/{self.context.resume_session}")
+            if self.profile is not None:  # the rules of the profile hold in the session it goes on with
+                await self._request("PATCH", f"/session/{self.context.resume_session}", {"permission": rules})
         else:
             title = cut(f"evo-agents run {self.context.run.get('id')}: {self.context.run.get('title') or ''}", 100)
-            created = await self._request("POST", "/session", {"title": title, "permission": RUN_RULES})
+            created = await self._request("POST", "/session", {"title": title, "permission": rules})
             self._session = str(created["id"])
         self._tree.add(self._session)
         self._stream = await self._http.get(
@@ -466,7 +593,10 @@ class OpencodeAdapter(QueueAdapter):
         if isinstance(cache, dict):
             flat.update({f"cache_{key}": value for key, value in cache.items()})
         add_numbers(self._usage, flat)
-        self._peak = larger(self._peak, token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write")))
+        context = token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write"))
+        self._peak = larger(self._peak, context)
+        if self._first is None and context:
+            self._first = first_request(flat.get("cache_read"), flat.get("cache_write"))
         cost = part.get("cost") if isinstance(part.get("cost"), (int, float)) else None
         self._cost += cost or 0
         return [usage_update(tokens, cost, reason=part.get("reason"))]
@@ -500,7 +630,7 @@ class OpencodeAdapter(QueueAdapter):
         self.emit([raw({"type": "permission.asked", "properties": request, "reply": "once"})])
 
     def _outcome(self) -> Outcome:
-        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak)
+        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak, self._first)
         if self.interrupted:
             return Outcome(False, "interrupted", usage, self._summary)
         if self._error:
@@ -526,3 +656,7 @@ class OpencodeAdapter(QueueAdapter):
             await self._http.close()
         if self._server is not None:
             await self._server.stop()
+
+    def _cleanup(self) -> None:
+        if self._dir is not None:
+            shutil.rmtree(self._dir, ignore_errors=True)

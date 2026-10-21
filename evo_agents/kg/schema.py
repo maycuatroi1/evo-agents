@@ -17,7 +17,8 @@ HUB_KINDS = {
     "Directory": "a directory of a repo that holds at least one item",
     "Repo": "a repository declared in harness.yaml",
     "Symbol": "a class, function or method",
-    "Commit": "a commit, referenced as repo@sha",
+    "Commit": "a commit: one a git source read from its ref's history, or one prose names as repo@sha",
+    "PullRequest": "a pull request of a repo on GitHub, as a git source of that repo read it",
     "Plan": "an exec-plan",
     "PlanStep": "one step of an exec-plan",
     "Seam": "a contract seam from contracts.yaml",
@@ -25,6 +26,11 @@ HUB_KINDS = {
     "UseCase": "a use case code",
     "Ticket": "a ticket or issue",
     "Person": "a person",
+    "Chat": "a group chat of the hub",
+    "ChatThread": "a thread of a group chat: its first message and the replies to it",
+    "ChatMessage": "a message of a group chat, named by the hub, whose text only search reads",
+    "Claim": "a claim of a Lean Canvas of the hub, by its code (CL-3): a hypothesis about a product, with its status",
+    "SignalKey": "a key of a project's registry of signals on the hub: what a product measures, as kb.search.latency",
 }
 
 HUB_RELATIONS = {
@@ -49,6 +55,9 @@ HUB_RELATIONS = {
     "implements": ("*", "*"),
     "verifies": ("*", "*"),
     "schedules": ("*", "*"),
+    "changes": ("Commit", "*"),  # a commit to a file or document it changed (a merge: against its first parent)
+    "merged_as": ("PullRequest", "Commit"),  # a merged pull request to the commit that merged it
+    "measured_by": ("Claim", "SignalKey"),  # a claim of a Lean Canvas to a signal key that measures it
 }
 
 ITEM_KIND_TO_NODE = {
@@ -59,6 +68,12 @@ ITEM_KIND_TO_NODE = {
     "html": "Document",
     "wiki": "Document",
     "page": "Document",
+    "commit": "Commit",
+    "pr": "PullRequest",
+    "ticket": "Ticket",
+    "chat": "Chat",
+    "thread": "ChatThread",
+    "message": "ChatMessage",
 }
 
 FORBIDDEN_ONTOLOGY_KEYS = {"same_as", "equivalent", "equals", "identify"}

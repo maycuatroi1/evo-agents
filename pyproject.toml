@@ -32,7 +32,8 @@ hub-server = [
     "alembic>=1.16",
     # Queries are SQLAlchemy Core on the pool above; the asyncio extra brings greenlet, which 2.1 no longer installs.
     "sqlalchemy[asyncio]>=2.1.3,<2.2",
-    "pydantic>=2.7",
+    # 2.12: Field(exclude_if=...) leaves an absent key of the heartbeat answer out (nightly, update_now).
+    "pydantic>=2.12",
     "sentry-sdk>=2.20",
     "httpx>=0.27",
     "boto3==1.42.91",
@@ -44,6 +45,8 @@ hub-server = [
     "evo-ak[graphify]",
     # Pinned: /mcp subclasses MCPServer and mounts its Streamable HTTP app, whose surface still moves within 2.x.
     "mcp==2.3.0",
+    # Keyless Sigstore signatures of plugin bundles (evo_agents.plugins.signing): the Verifier and policy API of 4.x.
+    "sigstore>=4.5,<5",
 ]
 # `evo-agents worker`, the daemon that runs plan steps on a member's machine: aiohttp for its HTTP and websocket,
 # and the SDKs of the runtimes its adapters drive.
@@ -64,6 +67,22 @@ evo-agents = "evo_agents.cli:main"
 harness = "evo_agents.kg.connectors.harness:run"
 git = "evo_agents.kg.connectors.git:run"
 
+# The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has. telegram and chats are
+# evo-agents-core-plugins', which deploy/hub/core-plugins.txt pins into the image.
+[project.entry-points."evo_agents.plugins"]
+builder = "evo_agents.core_plugins.builder:MANIFEST"
+srs = "evo_agents.core_plugins.srs:MANIFEST"
+tasks = "evo_agents.core_plugins.tasks:MANIFEST"
+canvas = "evo_agents.core_plugins.canvas:MANIFEST"
+
+# The Python environment a worker's run makes in a worktree of this repo (evo_agents.worker.venvs, docs/workers.md):
+# the extras CI tests with and the core plugins the hub's image installs, so `python -m pytest` and `python -m
+# evo_agents` see the entry points of the branch and of every core plugin, whatever the machine's own python has.
+[tool.evo-agents.worker]
+venv = true
+extras = ["test", "graphify", "hub-server", "worker"]
+requirements = ["deploy/hub/core-plugins.txt"]
+
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
 
@@ -77,6 +96,7 @@ evo_agents = [
     "hub/migrations/*.mako",
     "hub/migrations/versions/*.py",
     "hub/migrations/sql/*",
+    "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
 ]
 
 [tool.ruff]
@@ -85,20 +105,30 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+# ruff format wraps what it can at line-length; what is left is cosmetic
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# tests import pytest fixtures and take them as parameters of the same name
+"tests/**" = ["F811"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "empty_db: hub_db is an empty database, not a copy of the migrated template (tests/hub/conftest.py)",
+    "structure: evo_agents against its structure budgets (tests/test_structure.py); runs only with -m structure",
 ]
+# The structure budgets are a check to run when wanted, not part of the suite or of CI (docs/structure.md):
+# `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.
+addopts = ["-m", "not structure"]
 # Read by pytest-asyncio when it is installed (the tests do not need it); tests/conftest.py declares the option
 # otherwise, so pytest does not warn about an unknown key.
 asyncio_default_fixture_loop_scope = "function"
 
 # Boundaries between the packages of evo_agents, checked by `lint-imports` (docs/structure.md, section Package
 # boundaries). Each contract's ignore_imports lists the imports that break it today: those lists only shrink, and
-# tests/test_structure.py fails a change that adds an entry main does not have.
+# `pytest -m structure tests/test_structure.py` fails a change that adds an entry main does not have.
 [tool.importlinter]
 root_package = "evo_agents"
 
@@ -143,7 +173,7 @@ type = "forbidden"
 source_modules = ["evo_agents.hub.*"]
 forbidden_modules = ["evo_agents.hub.server"]
 ignore_imports = [
-    # `hub serve` and `hub openapi` start or dump the app.
+    # `hub serve` and `hub openapi` start or dump the app; `hub worker` takes Sentry and the release pass from it.
     "evo_agents.hub.cli -> evo_agents.hub.server.app",
     "evo_agents.hub.openapi -> evo_agents.hub.server.app",
     # The audit row of a pruned graph build.
@@ -180,6 +210,93 @@ shape or a limit into the models. Other modules import the service and the model
 of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "plugins-standalone"
+name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
+type = "forbidden"
+source_modules = ["evo_agents.plugins"]
+forbidden_modules = ["evo_agents.cli", "evo_agents.worker", "evo_agents.hub", "evo_agents.kg", "evo_agents.harness"]
+broken_contract_guidance = """\
+The hub, the worker, the knowledge graph and the harness loader share evo_agents.plugins to read, trust and place a \
+plugin, so it imports none of them and loads on a core install. Pass what it needs from the caller as an argument \
+(the trusted publishers, the release, a checker of Sigstore bundles), or move the code that needs the hub into \
+evo_agents.hub. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "core-plugins-by-entry-point"
+name = "No package of evo_agents imports evo_agents.core_plugins: the hub reaches a core plugin through its manifest"
+type = "forbidden"
+source_modules = [
+    "evo_agents.cli",
+    "evo_agents.worker",
+    "evo_agents.hub",
+    "evo_agents.kg",
+    "evo_agents.harness",
+    "evo_agents.plugins",
+    "evo_agents.schema",
+]
+forbidden_modules = ["evo_agents.core_plugins"]
+broken_contract_guidance = """\
+A core plugin that evo-ak ships is a plugin like any other: the hub and the worker find it in the entry point group \
+evo_agents.plugins and import the Python its manifest names when they use it (evo_agents.hub.plugin_calls), so it \
+can leave the distribution without a change elsewhere. Reach it through its manifest, or move what the core needs \
+out of the plugin into evo_agents.hub. See docs/plugins.md, section Core plugins."""
+
+[[tool.importlinter.contracts]]
+id = "srs-plugin-own-package"
+name = "The core plugin srs imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.srs"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.canvas",
+    "evo_agents.core_plugins.tasks",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin srs is one package that leans on the hub alone (its tables, its access rules, its server's \
+dependencies). It imports no other core plugin, nor the worker or the command line: those reach it through its \
+manifest and its routes. Move what both need into evo_agents.hub, or call the route. See docs/plugins.md, \
+section Core plugins."""
+
+[[tool.importlinter.contracts]]
+id = "tasks-plugin-own-package"
+name = "The core plugin tasks imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.tasks"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.canvas",
+    "evo_agents.core_plugins.srs",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin tasks is one package that leans on the hub alone (its tables, the tables of srs and plans it links \
+to, its access rules, its server's dependencies). It imports no other core plugin, the plugin srs included, nor the \
+worker or the command line: it reads srs items through evo_agents.hub.tables.srs and finds them by code with \
+evo_agents.hub.tables_srs.code_key. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
+plugins."""
+
+[[tool.importlinter.contracts]]
+id = "canvas-plugin-own-package"
+name = "The core plugin canvas imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.canvas"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.srs",
+    "evo_agents.core_plugins.tasks",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin canvas is one package that leans on the hub alone (its tables, its access rules, its server's \
+dependencies). It imports no other core plugin, the plugin srs included, nor the worker or the command line: what \
+it reads of srs it reads through evo_agents.hub.tables.srs. Move what both need into evo_agents.hub. See \
+docs/plugins.md, section Core plugins."""
+
+[[tool.importlinter.contracts]]
 id = "packages-acyclic"
 name = "The packages of evo_agents import each other without cycles"
 type = "acyclic_siblings"
@@ -200,7 +317,7 @@ ignore_imports = [
     "evo_agents.harness -> evo_agents.kg.schema",
 ]
 broken_contract_guidance = """\
-Packages import downward only: cli, then worker, hub, kg, harness and schema. An import going up closes a cycle, \
+Packages import downward only: cli and core_plugins, then worker, hub, kg, harness, plugins and schema. An import going up closes a cycle, \
 even inside a function, since import-linter reads those too. Move the shared code down into the package both can \
 import (a type into evo_agents.kg or evo_agents.schema, a client helper into evo_agents.hub), or have the upper \
 package pass it down as an argument. See docs/structure.md, section Package boundaries."""

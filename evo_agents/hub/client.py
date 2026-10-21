@@ -1,9 +1,11 @@
 """The hub client behind ``evo-agents hub login``, ``logout``, ``whoami``, ``token`` and ``admin``.
 
-Standard library only: the core package keeps PyYAML as its only dependency. Credentials live in ~/.evo/hub, where
-``config.json`` holds ``{url, login}`` and ``token`` the machine token; the directory is mode 0700 and both files
-0600. Each file is written to a temporary file in the same directory, flushed to disk and renamed over the old
-one, so a crash leaves the old file or the new one, never half a token.
+Standard library only: the core package keeps PyYAML as its only dependency. Credentials live in ~/.evo/hub, or in
+$EVO_HUB_HOME when it is set, where ``config.json`` holds ``{url, login}`` and ``token`` the machine token; the
+directory is mode 0700 and both files 0600. One machine keeps a login per hub that way: a harness whose project lives
+on another hub sets EVO_HUB_HOME (in the ``env`` of its .claude/settings.json, say) to the directory of that login.
+Each file is written to a temporary file in the same directory, flushed to disk and renamed over the old one, so a
+crash leaves the old file or the new one, never half a token.
 
 Requests carry the token as a Bearer header and never follow a redirect, which would hand the header to whatever
 host the redirect names. A hub URL must be https, or http to a loopback address for local runs. Every request has
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import hashlib
 import http.client
 import json
 import os
@@ -64,6 +67,8 @@ MAX_IDLE = 8  # kept-alive connections per hub
 DIR_MODE = 0o700
 FILE_MODE = 0o600
 LOGIN_HINT = "run `evo-agents hub login --url URL`"
+HOME_VARIABLE = "EVO_HUB_HOME"  # the directory of the login, instead of ~/.evo/hub
+TRANSIENT = frozenset({408, 429, 502, 503, 504})  # answers that may not come again
 
 
 class HubError(Exception):
@@ -74,6 +79,16 @@ class HubError(Exception):
         self.status = status
         self.code = code
         self.payload = payload  # the hub's JSON error body, such as the current version a 409 carries
+
+    @property
+    def from_hub(self) -> bool:
+        """The answer is the hub's own error, ``{error, message}`` (``evo_agents.hub.server.errors``), and not a page
+        of a proxy in front of it."""
+        return (
+            isinstance(self.code, str)
+            and isinstance(self.payload, dict)
+            and isinstance(self.payload.get("message"), str)
+        )
 
 
 class NotSignedIn(HubError):
@@ -99,6 +114,13 @@ def exit_status(exc: HubError) -> int:
     return EXIT_FAILED
 
 
+def transient(exc: HubError) -> bool:
+    """Whether the failure may pass: sending the same request again later may succeed. That is no answer, a 408, 429,
+    502, 503 or 504, or a 404 that is not the hub's own: the proxy in front of a hub answers 502 or 404 for a moment
+    while the hub is redeployed."""
+    return isinstance(exc, Unreachable) or exc.status in TRANSIENT or (exc.status == 404 and not exc.from_hub)
+
+
 @dataclass(frozen=True)
 class Credentials:
     url: str
@@ -112,7 +134,16 @@ class Credentials:
 
 
 def hub_dir() -> Path:
-    return Path.home() / ".evo" / "hub"
+    """``$EVO_HUB_HOME`` with ``~`` expanded, else ``~/.evo/hub``; a blank value is unset. A relative value raises
+    HubError: hooks and the MCP proxy start in whatever directory the session is in, so a relative login directory
+    would move with it, into a checkout perhaps."""
+    value = os.environ.get(HOME_VARIABLE, "").strip()
+    if not value:
+        return Path.home() / ".evo" / "hub"
+    directory = Path(value).expanduser()
+    if not directory.is_absolute():
+        raise HubError(f"{HOME_VARIABLE} must be an absolute path or start with ~/, not {value!r}")
+    return directory
 
 
 def check_url(url: str, what: str = "the hub URL") -> str:
@@ -368,13 +399,49 @@ def put_presigned(url: str, path: Path, timeout: float = TIMEOUT) -> None:
         raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
 
 
-class Hub:
-    """Calls to one hub, as the holder of ``token`` when one is given."""
+def get_presigned(url: str, path: Path, size: int, timeout: float = TIMEOUT) -> str:
+    """GET a presigned URL the hub handed out into the file at ``path``, which must come to exactly ``size`` bytes;
+    return the hex SHA-256 of what was written. A longer or shorter answer, or any status but 200, is a HubError and
+    leaves no file. The URL is a credential until it expires: an error names its host only."""
+    request = urllib.request.Request(url, method="GET", headers={"User-Agent": f"evo-agents/{__version__}"})
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with _OPENER.open(request, timeout=timeout) as response, open(path, "wb") as handle:
+            while chunk := response.read(1024 * 1024):
+                written += len(chunk)
+                if written > size:
+                    raise HubError(f"the blob store at {_origin(url)} sent more than the {size} bytes asked for")
+                digest.update(chunk)
+                handle.write(chunk)
+    except urllib.error.HTTPError as exc:
+        exc.close()
+        path.unlink(missing_ok=True)
+        raise HubError(f"the blob store at {_origin(url)} answered HTTP {exc.code} to a download", exc.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+        path.unlink(missing_ok=True)
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else str(exc) or type(exc).__name__
+        raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+    except HubError:
+        path.unlink(missing_ok=True)
+        raise
+    if written != size:
+        path.unlink(missing_ok=True)
+        raise HubError(f"the blob store at {_origin(url)} sent {written} of the {size} bytes asked for")
+    return digest.hexdigest()
 
-    def __init__(self, url: str, token: str | None = None, timeout: float = TIMEOUT):
+
+class Hub:
+    """Calls to one hub, as the holder of ``token`` when one is given. ``headers`` go with every request besides the
+    client's own, such as the worker protocol's header on the routes of a worker daemon."""
+
+    def __init__(
+        self, url: str, token: str | None = None, timeout: float = TIMEOUT, headers: Mapping[str, str] | None = None
+    ):
         self.url = check_url(url)
         self.token = token
         self.timeout = timeout
+        self.headers = dict(headers or {})
 
     def __repr__(self) -> str:
         return f"Hub({self.url!r})"
@@ -382,7 +449,7 @@ class Hub:
     def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
         """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise. ``timeout``
         replaces the hub's own for this request, for one whose work grows with its size, such as a blob commit."""
-        headers = {"Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
+        headers = {**self.headers, "Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         data = None

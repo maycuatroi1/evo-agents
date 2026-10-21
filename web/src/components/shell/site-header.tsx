@@ -19,11 +19,28 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useWorkerName } from "@/components/workers/hooks";
+import { useChatTitle } from "@/lib/use-chat-title";
 import { cn } from "@/lib/utils";
 
 import { HOME_NAV, HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
+import { usePluginPageTitle } from "./plugin-nav";
 
 type Crumb = { label: string; href?: string };
+
+/** The Curator's own pages as the trail names them, by their segment under `/p/{project}/curator`. */
+const CURATOR_CRUMBS: Record<string, "curatorProposals" | "curatorHistory" | "curatorGraph" | "curatorRuntime" | "curatorCharter"> = {
+  proposals: "curatorProposals",
+  history: "curatorHistory",
+  graph: "curatorGraph",
+  runtime: "curatorRuntime",
+  charter: "curatorCharter",
+};
+
+/** The merge queue's pages below the queue name themselves (Figures, Policy). */
+const MERGE_QUEUE_CRUMBS: Record<string, "mergeQueueFigures" | "mergeQueuePolicy"> = {
+  figures: "mergeQueueFigures",
+  policy: "mergeQueuePolicy",
+};
 
 /** The last part of a page's path as a crumb: a name as it is, a number as #id. */
 function itemLabel(part: string): string {
@@ -42,6 +59,27 @@ function useCrumbs(): Crumb[] {
   const pathname = usePathname();
   const parts = pathname.split("/").filter(Boolean);
   const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
+  const chatTitle = useChatTitle(parts[0] === "chats" ? parts[1] : undefined);
+  const pluginPage = parts[0] === "p" && parts[2] === "x";
+  const pageTitle = usePluginPageTitle(
+    pluginPage ? decodeURIComponent(parts[1]) : null,
+    pluginPage ? decodeURIComponent(parts[3] ?? "") : undefined,
+    pluginPage ? decodeURIComponent(parts[4] ?? "") : undefined,
+  );
+  if (parts[0] === "p" && parts[1] && pluginPage) {
+    // A plugin's page names itself as its menu item does, after the project.
+    const project = decodeURIComponent(parts[1]);
+    const crumbs: Crumb[] = [{ label: project, href: projectHref(project) }];
+    const page: Crumb = { label: pageTitle ?? itemLabel(parts[4] ?? parts[3] ?? "") };
+    const rest = parts.slice(5);
+    if (rest.length === 0) return [...crumbs, page];
+    // A page below it (a core plugin's native pages: a document, an item of it): the plugin's page links back, the
+    // object below it goes by its id and links to itself from deeper pages, and an item at the end goes by its id too.
+    const base = `/${parts.slice(0, 5).join("/")}`;
+    crumbs.push({ ...page, href: base }, { label: itemLabel(rest[0]), href: rest.length > 1 ? `${base}/${rest[0]}` : undefined });
+    if (rest.length > 2) crumbs.push({ label: itemLabel(rest[rest.length - 1]) });
+    return crumbs;
+  }
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);
     const section = PROJECT_NAV.find((item) => item.segment !== "" && item.segment === parts[2]);
@@ -58,13 +96,18 @@ function useCrumbs(): Crumb[] {
           label: itemLabel(parts[3]),
           href: parts[4] ? projectHref(project, `${section.segment}/${parts[3]}`) : undefined,
         });
+        // An agent goes by its handle, as everywhere else: @handle.
+        if (section.segment === "agents") crumbs[2].label = `@${itemLabel(parts[3])}`;
         // A run's diff is the one page below an item that names itself in the trail.
         if (section.segment === "runs" && parts[4] === "diff" && !parts[5]) crumbs.push({ label: t("runDiff") });
-        // The Curator's pages name themselves (Proposals, Charter), and a proposal is #id below Proposals.
-        if (section.segment === "curator" && (parts[3] === "proposals" || parts[3] === "charter")) {
-          crumbs[2].label = t(parts[3] === "proposals" ? "curatorProposals" : "curatorCharter");
+        // The Curator's pages name themselves (Proposals, History, Charter), and a proposal is #id below Proposals.
+        const curatorPage = section.segment === "curator" && Object.hasOwn(CURATOR_CRUMBS, parts[3]) ? CURATOR_CRUMBS[parts[3]] : undefined;
+        if (curatorPage) {
+          crumbs[2].label = t(curatorPage);
           if (parts[4]) crumbs.push({ label: itemLabel(parts[4]) });
         }
+        const mergePage = section.segment === "merge-queue" && Object.hasOwn(MERGE_QUEUE_CRUMBS, parts[3]) ? MERGE_QUEUE_CRUMBS[parts[3]] : undefined;
+        if (mergePage) crumbs[2].label = t(mergePage);
       }
     }
     return crumbs;
@@ -72,7 +115,7 @@ function useCrumbs(): Crumb[] {
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   if (hub && parts.length > 1) {
-    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? itemLabel(parts[1]) }];
+    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? chatTitle ?? itemLabel(parts[1]) }];
   }
   if (hub) return [{ label: t(hub.label) }];
   return [{ label: t("home") }];
