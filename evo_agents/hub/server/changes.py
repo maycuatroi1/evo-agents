@@ -25,7 +25,9 @@ active, no step ready, or a worker on duty that cannot build it.
 
 When the Builder ends done with every step of the plan done (``builder_ended``), the change waits for its pull
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
-request. The job ``curator.changes`` (``advance``) opens the pull request with the workers' App, reads its files and
+request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
+its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
+The job ``curator.changes`` (``advance``) opens the pull request with the workers' App, reads its files and
 runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those files also
 give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request really
 changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by key, which
@@ -75,7 +77,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, judge, runs, tables, tiers
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, change_tiers, skill_release
+from evo_agents.hub.server import audit, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -351,7 +353,7 @@ async def curator_policy(
     replay run, a history run, or any run of a Curator's plan); None for any other run."""
     role = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history"}.get(kind, "builder")
     change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
-    if change is None and role == "builder":
+    if change is None and (role == "builder" or (role == "judge" and not plan_id)):  # no plan: the merge queue's
         return None
     charter = await _charter(conn, project_id)
     secret = charter.get("git_secret")
@@ -773,7 +775,7 @@ async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
             notice_kind="run_failed",
             project_id=found.project_id,
             run_id=found.run_id,
-            title=f"Judge run #{found.run_id} of {found.plan_id} failed",
+            title=await merge_gate.judge_run_title(conn, found.run_id, found.plan_id),
             body=error,
             details={"run_kind": "judge", "plan_id": found.plan_id, "error": error},
             link=run_link(found.project, found.run_id),
@@ -1517,15 +1519,11 @@ async def advance(
     for change in await _due_changes(engine):
         try:
             if change.forge != "github":
-                if change.state == "judged":
+                if change.state == "judged":  # open, or handed to the merge queue when its policy says so
+                    outcome, why = await merge_gate.curator_judged(engine, change)
                     async with engine.begin() as conn:
-                        why = "a merge request on GitLab stays open: the hub never merges one"
-                        if not change.passed:
-                            why = "the Judge did not pass it: " + "; ".join(
-                                (change.verdict or {}).get("failures") or []
-                            )
                         await _set(conn, change.id, state="open", reason=reason_line(why))
-                    outcomes["open"] += 1
+                    outcomes[outcome] += 1
                 continue
             if github_app is None:
                 outcomes["no_app"] += 1

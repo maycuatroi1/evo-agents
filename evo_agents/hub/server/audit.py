@@ -132,6 +132,32 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
+# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
+# "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
+# approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
+POLICY_SET = "policy.set"
+# The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
+# no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
+# opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a
+# Judge, "<project>/<repo> !<iid> into=<branch> sha=<merged head> before=<the branch's head before>" when it merged one.
+MERGE_OPEN = "merge.open"
+MERGE_JUDGE = "merge.judge"
+MERGE_MERGE = "merge.merge"
+# What follows a merge of the queue (evo_agents.hub.server.post_merge), in the project: the hub ran the PROD deploy job,
+# "<project>/<repo> !<iid> job=<name> sha=<commit>[ carries=<!iid,...>]", or the rollback job, "... job=<name>
+# to=<commit>", or opened a revert, "<project>/<repo> !<iid> revert=!<iid> branch=<branch>"; an admin approved a PROD
+# release, "<project>/<repo> !<iid> approved", asked for a revert, "<project>/<repo> !<iid> revert=asked", or answered
+# an audit sample, "<project>/<repo> !<iid> sample=<id> result=<ok|faulty>". Never a note.
+MERGE_DEPLOY = "merge.deploy"
+MERGE_ROLLBACK = "merge.rollback"
+MERGE_REVERT = "merge.revert"
+MERGE_RELEASE = "merge.release"
+MERGE_SAMPLE = "merge.sample"
+# The breaker of a repo of the merge queue (evo_agents.hub.server.merge_breaker), in the project: it tripped,
+# "<project>/<repo> cause=<cause> causes=<cause,...> paused=<!iid,...>", or an admin reset it, "<project>/<repo>
+# resumed=<!iid,...>".
+MERGE_BREAKER = "merge.breaker"
+MERGE_RESUME = "merge.resume"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

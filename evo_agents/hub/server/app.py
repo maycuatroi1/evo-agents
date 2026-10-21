@@ -336,6 +336,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_packs,
         agent_profiles,
         agent_types,
+        autonomy_policies,
         branding,
         chat_agents,
         chat_direct,
@@ -346,6 +347,8 @@ def create_app(config: HubConfig) -> FastAPI:
         chats,
         credentials,
         features,
+        merge_judge,
+        merge_view,
         plugin_host,
         plugin_ui,
         plugins,
@@ -394,6 +397,9 @@ def create_app(config: HubConfig) -> FastAPI:
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         signal_keys.router,
+        autonomy_policies.router,
+        merge_view.router,
+        merge_judge.worker_router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

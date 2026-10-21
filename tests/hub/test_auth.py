@@ -88,6 +88,10 @@ HUB_TABLES |= pg.SIGNAL_TABLES  # migration 0074
 HUB_TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0075
 HUB_TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0076
 HUB_TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0077
+HUB_TABLES |= pg.POLICY_TABLES  # migration 0079
+HUB_TABLES |= pg.MERGE_TABLES  # migration 0081
+HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0083
+HUB_TABLES |= pg.BREAKER_TABLES  # migration 0084
 
 
 @pytest.fixture

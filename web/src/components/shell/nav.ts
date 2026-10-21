@@ -6,6 +6,7 @@ import {
   Brain,
   ChartColumn,
   FolderKanban,
+  GitMerge,
   Inbox,
   LayoutDashboard,
   ListChecks,
@@ -43,6 +44,7 @@ export type NavLabel =
   | "overview"
   | "plans"
   | "runs"
+  | "mergeQueue"
   | "insights"
   | "signals"
   | "curator"
@@ -98,6 +100,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: FolderKanban, segment: "" },
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
+  { label: "mergeQueue", icon: GitMerge, segment: "merge-queue" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
   { label: "signals", icon: RadioTower, segment: "signals" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },

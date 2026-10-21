@@ -13,6 +13,7 @@ import {
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
+  PowerOff,
   Rocket,
   Send,
   Sunrise,
@@ -71,6 +72,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   plugin_disabled: { icon: Unplug },
   builder_proposal: { icon: Hammer },
   canvas_baseline: { icon: ClipboardCheck },
+  merge_paused: { icon: PowerOff },
   release: { icon: Tags },
 };
 

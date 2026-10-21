@@ -4855,6 +4855,101 @@
         "schema": "Memory"
       }
     },
+    "hub merge list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "requests",
+          "samples",
+          "breakers"
+        ],
+        "schema": "MergeQueueView"
+      }
+    },
+    "hub merge resume": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "repo",
+          "state",
+          "cause",
+          "reason",
+          "tripped_at",
+          "trips",
+          "resumed_by",
+          "resumed_at",
+          "red_since",
+          "resumed"
+        ],
+        "schema": "BreakerReset"
+      }
+    },
     "hub migrate": {
       "positionals": [],
       "options": [
@@ -6377,6 +6472,185 @@
         }
       ],
       "json": null
+    },
+    "hub policy diff": {
+      "positionals": [
+        {
+          "name": "base",
+          "metavar": "FROM",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "head",
+          "metavar": "TO",
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "from_revision",
+          "to_revision",
+          "changes"
+        ],
+        "schema": "PolicyComparison"
+      }
+    },
+    "hub policy history": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "revision",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "PolicyRevision"
+      }
+    },
+    "hub policy set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "revision",
+          "policy",
+          "effective",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "PolicyWritten"
+      }
+    },
+    "hub policy show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "revision",
+          "policy",
+          "effective",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "AutonomyPolicy"
+      }
     },
     "hub project list": {
       "positionals": [],
@@ -8471,7 +8745,8 @@
           "repeatable": false,
           "choices": [
             "env",
-            "git"
+            "git",
+            "forge"
           ]
         },
         {
@@ -11861,7 +12136,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.26.1"
+      "version": "0.27.0"
     },
     "paths": {
       "/v1/health": {
@@ -48597,6 +48872,1256 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/policy": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Show Policy",
+          "description": "The project's policy now: what its newest revision sets, and every key as it reads.",
+          "operationId": "show_policy_v1_projects__project__policy_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Write Policy",
+          "description": "Write the project's policy whole as its next revision; an admin of the project alone may.",
+          "operationId": "write_policy_v1_projects__project__policy_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PolicyWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/revisions": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Policy Revisions",
+          "description": "Every revision of the project's policy, the newest first, each with the keys whose value it changed.",
+          "operationId": "policy_revisions_v1_projects__project__policy_revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PolicyRevision"
+                    },
+                    "title": "Response Policy Revisions V1 Projects  Project  Policy Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/revisions/{revision}": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Show Policy Revision",
+          "description": "One revision of the project's policy whole.",
+          "operationId": "show_policy_revision_v1_projects__project__policy_revisions__revision__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "revision",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 1,
+                "title": "Revision"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/policy/compare": {
+        "get": {
+          "tags": [
+            "policy"
+          ],
+          "summary": "Compare Policy",
+          "description": "The keys whose value differs between two revisions of the project's policy, each as it reads now.",
+          "operationId": "compare_policy_v1_projects__project__policy_compare_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "from",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 2147483647,
+                "minimum": 0,
+                "description": "the older revision; 0 for no policy",
+                "title": "From"
+              },
+              "description": "the older revision; 0 for no policy"
+            },
+            {
+              "name": "to",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the newer revision; the newest when left out",
+                "title": "To"
+              },
+              "description": "the newer revision; the newest when left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PolicyComparison"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue": {
+        "get": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Show Queue",
+          "description": "The merge requests of the project's queue (``repo``'s alone when given), newest first, each with its ledger, and\nits audit samples.",
+          "operationId": "show_queue_v1_projects__project__merge_queue_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Repo"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeQueueView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue/figures": {
+        "get": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Queue Figures",
+          "description": "For each repo, agent and model, the merges of the last ``days``: how many, reverted, rolled back, passed by\nthe Judge and found wrong, and the time in the queue and to the checks.",
+          "operationId": "queue_figures_v1_projects__project__merge_queue_figures_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Repo"
+              }
+            },
+            {
+              "name": "days",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 365,
+                "minimum": 1,
+                "default": 30,
+                "title": "Days"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeFigures"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue/samples/{sample_id}": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Answer Sample",
+          "description": "An admin of the project answers an audit sample: ``ok``, or ``faulty``, which counts against the Judge.",
+          "operationId": "answer_sample_v1_projects__project__merge_queue_samples__sample_id__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "sample_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Sample Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleAnswer"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeSample"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue/{queue_id}/release": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Approve Release",
+          "description": "An admin approves the PROD release of a merge whose repo the policy releases by hand (``prod_release``\nmanual): the hub's next pass runs its deploy job, carrying the merges before it.",
+          "operationId": "approve_release_v1_projects__project__merge_queue__queue_id__release_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "queue_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Queue Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QueuedMergeRequest"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue/{queue_id}/revert": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Ask Revert",
+          "description": "An admin asks the hub to revert a merge it followed after its merge, such as one of the suspects of a failed\ncheck it could not tell apart: the hub's next pass opens its revert, first in the queue.",
+          "operationId": "ask_revert_v1_projects__project__merge_queue__queue_id__revert_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "queue_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Queue Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QueuedMergeRequest"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Resume Repo",
+          "description": "An admin of the project resets the breaker of a repo that tripped: its paused merge requests wait for their turn\nagain, at their place, and what trips it counts from now.",
+          "operationId": "resume_repo_v1_projects__project__merge_queue_repos__repo__resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "title": "Repo"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BreakerReset"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/merge-judge": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge Judge Inputs",
+          "description": "What the judge run of the queue this worker holds reads, with the run's own key.",
+          "operationId": "merge_judge_inputs_v1_worker_runs__run_id__merge_judge_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeJudgeInputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/merge-verdict": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge Verdict",
+          "description": "The verdict of the judge run of the queue this worker holds, with the run's own key: the gates it closes.",
+          "operationId": "merge_verdict_v1_worker_runs__run_id__merge_verdict_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeVerdictIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeVerdict"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -50658,6 +52183,78 @@
           ],
           "title": "AuthoredPlan"
         },
+        "AutonomyPolicy": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "0 while the project has none: every repo off, every key at its default"
+            },
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "the keys the revision sets, as its writer wrote them"
+            },
+            "effective": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Effective",
+              "description": "every key at the value the revision sets or its default, each repo of the project included"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of it"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "revision",
+            "policy",
+            "effective",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "AutonomyPolicy",
+          "description": "One revision of a project's autonomy policy."
+        },
         "AvatarUpload": {
           "properties": {
             "data": {
@@ -50952,6 +52549,121 @@
           ],
           "title": "BrandingImage"
         },
+        "BreakerReset": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of armed, tripped"
+            },
+            "cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cause",
+              "description": "what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it tripped last, each thing that tripped it"
+            },
+            "tripped_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tripped At"
+            },
+            "trips": {
+              "type": "integer",
+              "title": "Trips",
+              "description": "how often it tripped"
+            },
+            "resumed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed By",
+              "description": "the admin who reset it last"
+            },
+            "resumed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed At",
+              "description": "what trips it counts from then"
+            },
+            "red_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Red Since",
+              "description": "the hub saw its target branch turn red then, none passing since"
+            },
+            "resumed": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Resumed",
+              "description": "the iids of the merge requests it had paused, ready again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "state",
+            "cause",
+            "reason",
+            "tripped_at",
+            "trips",
+            "resumed_by",
+            "resumed_at",
+            "red_since",
+            "resumed"
+          ],
+          "title": "BreakerReset",
+          "description": "A breaker an admin reset, and the merge requests waiting for their turn again."
+        },
         "BriefSummary": {
           "properties": {
             "id": {
@@ -51231,7 +52943,8 @@
                 "branding",
                 "features",
                 "plugin_config",
-                "agent"
+                "agent",
+                "policy"
               ],
               "title": "Kind"
             },
@@ -51241,13 +52954,13 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent)"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy"
             },
             "change": {
               "additionalProperties": true,
               "type": "object",
               "title": "Change",
-              "description": "set: field -> value; unset: the fields it clears"
+              "description": "set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
             },
             "summary": {
               "type": "string",
@@ -58065,6 +59778,29 @@
           ],
           "title": "DigestSummary"
         },
+        "Dimension": {
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "title": "Verdict"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Reason",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict"
+          ],
+          "title": "Dimension"
+        },
         "Dispatch": {
           "properties": {
             "plan_id": {
@@ -62953,6 +64689,729 @@
           ],
           "title": "MemoryRevision"
         },
+        "MergeBreaker": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of armed, tripped"
+            },
+            "cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cause",
+              "description": "what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it tripped last, each thing that tripped it"
+            },
+            "tripped_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tripped At"
+            },
+            "trips": {
+              "type": "integer",
+              "title": "Trips",
+              "description": "how often it tripped"
+            },
+            "resumed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed By",
+              "description": "the admin who reset it last"
+            },
+            "resumed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed At",
+              "description": "what trips it counts from then"
+            },
+            "red_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Red Since",
+              "description": "the hub saw its target branch turn red then, none passing since"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "state",
+            "cause",
+            "reason",
+            "tripped_at",
+            "trips",
+            "resumed_by",
+            "resumed_at",
+            "red_since"
+          ],
+          "title": "MergeBreaker",
+          "description": "The breaker of a repo of the queue: armed, or tripped until an admin resets it."
+        },
+        "MergeEvent": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "gate": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate",
+              "description": "the gate's number, 0 to 7, for kind gate"
+            },
+            "gate_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate Name"
+            },
+            "passed": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Passed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "detail": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Detail"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "gate",
+            "gate_name",
+            "passed",
+            "reason",
+            "sha",
+            "run_id",
+            "detail",
+            "created_at"
+          ],
+          "title": "MergeEvent"
+        },
+        "MergeFigure": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent profile of the run that made them, or person for a person's"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "merged": {
+              "type": "integer",
+              "title": "Merged"
+            },
+            "reverted": {
+              "type": "integer",
+              "title": "Reverted",
+              "description": "merged, then found the culprit of a failed check"
+            },
+            "rolled_back": {
+              "type": "integer",
+              "title": "Rolled Back",
+              "description": "merged, then PROD went back for their deploy"
+            },
+            "judge_misses": {
+              "type": "integer",
+              "title": "Judge Misses",
+              "description": "passed by the Judge, then reverted, rolled back or sampled faulty"
+            },
+            "wait_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wait Seconds",
+              "description": "the mean time from ready to merged"
+            },
+            "wait_seconds_max": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wait Seconds Max"
+            },
+            "uat_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uat Seconds",
+              "description": "the mean time from merged to the UAT check passed"
+            },
+            "prod_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prod Seconds",
+              "description": "the mean time from merged to the PROD check passed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "agent",
+            "model",
+            "merged",
+            "reverted",
+            "rolled_back",
+            "judge_misses",
+            "wait_seconds",
+            "wait_seconds_max",
+            "uat_seconds",
+            "prod_seconds"
+          ],
+          "title": "MergeFigure",
+          "description": "The merges of one repo, agent and model in the window."
+        },
+        "MergeFigures": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days"
+            },
+            "figures": {
+              "items": {
+                "$ref": "#/components/schemas/MergeFigure"
+              },
+              "type": "array",
+              "title": "Figures"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "days",
+            "figures"
+          ],
+          "title": "MergeFigures"
+        },
+        "MergeJudgeInputs": {
+          "properties": {
+            "queue_id": {
+              "type": "integer",
+              "title": "Queue Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "type": "integer",
+              "title": "Iid"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "base_branch": {
+              "type": "string",
+              "title": "Base Branch"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "second": {
+              "type": "boolean",
+              "title": "Second",
+              "description": "the second Judge, of a merge request of high risk"
+            },
+            "verify": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Verify"
+            },
+            "protected_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Protected Paths"
+            },
+            "hidden_checks": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Hidden Checks",
+              "description": "commands run in the worktree; never logged, never shown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "queue_id",
+            "repo",
+            "iid",
+            "branch",
+            "base_branch",
+            "head_sha",
+            "second",
+            "verify",
+            "protected_paths",
+            "hidden_checks"
+          ],
+          "title": "MergeJudgeInputs",
+          "description": "What a judge run of the queue reads: the merge request, the verify of its plan's steps in the repo, the\ncharter's protected paths, and the project's hidden checks, which no other run reads."
+        },
+        "MergeQueueView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "requests": {
+              "items": {
+                "$ref": "#/components/schemas/QueuedMergeRequest"
+              },
+              "type": "array",
+              "title": "Requests",
+              "description": "newest first"
+            },
+            "samples": {
+              "items": {
+                "$ref": "#/components/schemas/MergeSample"
+              },
+              "type": "array",
+              "title": "Samples",
+              "description": "the audit samples, those waiting first, at most 50",
+              "default": []
+            },
+            "breakers": {
+              "items": {
+                "$ref": "#/components/schemas/MergeBreaker"
+              },
+              "type": "array",
+              "title": "Breakers",
+              "description": "the breaker of each repo the queue passed over, by repo",
+              "default": []
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "requests"
+          ],
+          "title": "MergeQueueView"
+        },
+        "MergeSample": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "queue_id": {
+              "type": "integer",
+              "title": "Queue Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iid"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result",
+              "description": "null until an admin answers: one of ok, faulty"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "answered_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered By"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "queue_id",
+            "repo",
+            "iid",
+            "title",
+            "web_url",
+            "result",
+            "note",
+            "answered_by",
+            "answered_at",
+            "created_at"
+          ],
+          "title": "MergeSample",
+          "description": "A merge request drawn for an audit sample, and an admin's answer."
+        },
+        "MergeVerdict": {
+          "properties": {
+            "queue_id": {
+              "type": "integer",
+              "title": "Queue Id"
+            },
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "this Judge's verdict, its checks and the worker's reading of the diff"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "where the merge request stands now"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "queue_id",
+            "passed",
+            "state",
+            "reason"
+          ],
+          "title": "MergeVerdict"
+        },
+        "MergeVerdictIn": {
+          "properties": {
+            "verdict": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict",
+              "description": "the Judge agent's; null when it gave none"
+            },
+            "reasons": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reasons"
+            },
+            "head_sha": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head Sha",
+              "description": "the commit the worktree was at"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "verify": {
+              "items": {
+                "$ref": "#/components/schemas/VerifyResult"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Verify"
+            },
+            "hidden": {
+              "items": {
+                "$ref": "#/components/schemas/HiddenResult"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Hidden"
+            },
+            "signs": {
+              "items": {
+                "$ref": "#/components/schemas/Sign"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Signs"
+            },
+            "paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 3000,
+              "title": "Paths"
+            },
+            "dimensions": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/Dimension"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dimensions",
+              "description": "each dimension the Judge judged apart, with its verdict and reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict",
+            "head_sha"
+          ],
+          "title": "MergeVerdictIn"
+        },
         "Message": {
           "properties": {
             "id": {
@@ -63754,6 +66213,7 @@
                     "plugin_disabled",
                     "builder_proposal",
                     "canvas_baseline",
+                    "merge_paused",
                     "release"
                   ]
                 },
@@ -67122,6 +69582,225 @@
           ],
           "title": "PluginVersion"
         },
+        "PolicyChange": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "dotted: merge.hold_until, repos.<repo>.mode, repos.<repo>.jobs.uat_check"
+            },
+            "before": {
+              "title": "Before"
+            },
+            "after": {
+              "title": "After"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "before",
+            "after"
+          ],
+          "title": "PolicyChange"
+        },
+        "PolicyComparison": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "from_revision": {
+              "type": "integer",
+              "title": "From Revision"
+            },
+            "to_revision": {
+              "type": "integer",
+              "title": "To Revision"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/components/schemas/PolicyChange"
+              },
+              "type": "array",
+              "title": "Changes",
+              "description": "each key whose value differs, as the two revisions read now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "from_revision",
+            "to_revision",
+            "changes"
+          ],
+          "title": "PolicyComparison"
+        },
+        "PolicyRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the dotted keys whose value differs from the revision before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "PolicyRevision"
+        },
+        "PolicyWrite": {
+          "properties": {
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "sections repos, merge, judge, breaker, audit; a key left out reads as its default"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the policy is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "policy"
+          ],
+          "title": "PolicyWrite",
+          "description": "The next revision of the policy: the whole of it, as its writer wants it."
+        },
+        "PolicyWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "0 while the project has none: every repo off, every key at its default"
+            },
+            "policy": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Policy",
+              "description": "the keys the revision sets, as its writer wrote them"
+            },
+            "effective": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Effective",
+              "description": "every key at the value the revision sets or its default, each repo of the project included"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of it"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the newest revision is this policy already: nothing was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "revision",
+            "policy",
+            "effective",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "PolicyWritten"
+        },
         "Problem": {
           "properties": {
             "path": {
@@ -68432,6 +71111,340 @@
             "queued"
           ],
           "title": "Queued"
+        },
+        "QueuedMergeRequest": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iid",
+              "description": "null while the hub could not open it"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "one of plan, task, builder, label, revert"
+            },
+            "target_branch": {
+              "type": "string",
+              "title": "Target Branch"
+            },
+            "source_branch": {
+              "type": "string",
+              "title": "Source Branch"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            },
+            "steps": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Steps"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of gating, judging, ready, rebasing, testing, merging, merged, verifying, releasing, done, rolling_back, reverting, reverted, blocked, paused, closed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it waits or is blocked, the gate first"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "fingerprint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fingerprint"
+            },
+            "risk": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Risk"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            },
+            "judge_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Judge Run Id"
+            },
+            "queued_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queued At"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/MergeEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "its ledger, the newest 100 first"
+            },
+            "before_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Sha",
+              "description": "the head of the target branch its last turn rebased it onto"
+            },
+            "rebases": {
+              "type": "integer",
+              "title": "Rebases",
+              "description": "its rebases again in a row since its gates last passed",
+              "default": 0
+            },
+            "after_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Sha",
+              "description": "its commit on the target branch, once merged"
+            },
+            "reverts_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverts Id",
+              "description": "a revert's: the merge request of the queue it undoes"
+            },
+            "uat_result": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uat Result",
+              "description": "its own UAT check: one of passed, failed, none"
+            },
+            "prod_result": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prod Result",
+              "description": "its own PROD check: one of passed, failed, none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "iid",
+            "source",
+            "target_branch",
+            "source_branch",
+            "run_id",
+            "plan_id",
+            "steps",
+            "change_id",
+            "profile",
+            "model",
+            "title",
+            "web_url",
+            "state",
+            "reason",
+            "head_sha",
+            "fingerprint",
+            "risk",
+            "verdict",
+            "judge_run_id",
+            "queued_at",
+            "merged_at",
+            "created_at",
+            "updated_at",
+            "events"
+          ],
+          "title": "QueuedMergeRequest",
+          "description": "A merge request of the queue: where it comes from, where it stands and why, and its ledger."
         },
         "RateLimitAnswer": {
           "properties": {
@@ -73941,6 +76954,36 @@
           ],
           "title": "RuntimeToolStat"
         },
+        "SampleAnswer": {
+          "properties": {
+            "result": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "faulty"
+              ],
+              "title": "Result",
+              "description": "faulty counts as a pass of the Judge found wrong"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "result"
+          ],
+          "title": "SampleAnswer"
+        },
         "Schedule": {
           "properties": {
             "id": {
@@ -74270,7 +77313,8 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind"
             },
@@ -74296,7 +77340,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git: the https prefix of the origins it answers for"
+              "description": "kinds git and forge: the https prefix of the origins it answers for"
             },
             "username": {
               "anyOf": [
@@ -74372,10 +77416,11 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind",
-              "description": "env: a variable of the agent's environment; git: what git's credential helper answers"
+              "description": "env: a variable of the agent's environment; git: what git's credential helper answers; forge: a GitLab token the hub alone uses to drive merge requests, never leased to a run"
             },
             "env_var": {
               "anyOf": [
@@ -74401,7 +77446,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash"
+              "description": "kinds git and forge: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash"
             },
             "username": {
               "anyOf": [
@@ -74427,7 +77472,7 @@
               "maxItems": 100,
               "minItems": 1,
               "title": "Projects",
-              "description": "the projects whose runs get it; the writer role on each"
+              "description": "the projects whose runs get it; the writer role on each, the admin role for kind forge"
             },
             "workers": {
               "items": {
@@ -74437,7 +77482,7 @@
               "type": "array",
               "maxItems": 100,
               "title": "Workers",
-              "description": "names of the caller's own workers that are not revoked; left out or empty for any of them"
+              "description": "names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge"
             },
             "expires_at": {
               "anyOf": [
@@ -74450,7 +77495,7 @@
                 }
               ],
               "title": "Expires At",
-              "description": "after this no run gets it; in the future"
+              "description": "after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge"
             },
             "oauth": {
               "anyOf": [
@@ -74491,7 +77536,8 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind"
             },
@@ -74517,7 +77563,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git: the https prefix of the origins it answers for"
+              "description": "kinds git and forge: the https prefix of the origins it answers for"
             },
             "username": {
               "anyOf": [

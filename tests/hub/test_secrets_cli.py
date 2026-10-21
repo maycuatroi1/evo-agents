@@ -130,6 +130,11 @@ def test_expires_is_a_day_that_ends_at_midnight_utc():
         (("n", "--kind", "git"), "--kind git needs --url-prefix"),
         (("n", "--kind", "git", "--url-prefix", "https://h", "--env-var", "API"), "--env-var belongs to --kind env"),
         (("n", "--kind", "env", "--env-var", "API", "--expires", "2027-02-30"), "--expires takes a day"),
+        (("n", "--kind", "forge", "--expires", "2027-01-31"), "--kind forge needs --url-prefix"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g"), "--kind forge needs --expires"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g", "--username", "u"), "takes no --username"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g", "--worker", "mac-mini"), "takes no --worker"),
+        (("n", "--kind", "forge", "--url-prefix", "https://h/g", "--env-var", "API"), "not forge"),
     ],
 )
 def test_arguments_are_checked_before_the_value_is_read(monkeypatch, capsys, tmp_path, args, problem):
@@ -153,6 +158,7 @@ def test_without_a_sign_in_the_value_is_not_asked_for(monkeypatch, capsys, tmp_p
     [
         ("env", "", "no value: pipe it on stdin"),
         ("git", "glpat-first-line\nglpat-second-line\n", "the value of a secret of kind git is one line"),
+        ("forge", "glpat-first-line\nglpat-second-line\n", "the value of a secret of kind forge is one line"),
         ("env", "sk-" + "x" * 16384, "a secret's value is at most 16384"),
         ("env", "sk-before\x00after", "holds a NUL character"),
     ],
@@ -162,6 +168,8 @@ def test_a_value_the_hub_would_refuse_is_refused_without_being_shown(
 ):
     home = write_credentials(tmp_path / "home", HUB_URL, "owner", "evh_unused")  # never reached: refused before
     target = ("--env-var", "API") if kind == "env" else ("--url-prefix", "https://gitlab.example.org/group")
+    if kind == "forge":
+        target += ("--expires", "2027-01-31")
     args = ("hub", "secret", "set", "n", "--kind", kind, *target, "--project", "demo")
     result = run_cli(monkeypatch, capsys, home, *args, stdin=io.StringIO(value))
     assert result.code == 2 and result.out == "" and problem in result.err
@@ -179,7 +187,7 @@ def test_the_commands_of_secrets_and_leases_are_in_the_contract():
     printed = commands()
     assert {"hub secret set", "hub secret list", "hub secret delete", "hub run credentials"} <= set(printed)
     options = {o["flags"][0]: o for o in printed["hub secret set"]["options"]}
-    assert options["--kind"]["required"] and options["--kind"]["choices"] == ["env", "git"]
+    assert options["--kind"]["required"] and options["--kind"]["choices"] == ["env", "git", "forge"]
     assert options["--project"]["required"] and options["--project"]["repeatable"]
     assert options["--worker"]["repeatable"] and not options["--worker"]["required"]
     assert printed["hub secret set"]["json"] is None and printed["hub secret delete"]["json"] is None
@@ -367,6 +375,36 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
     assert gone.code == 1 and gone.err.startswith("error: you have no secret named gitlab-kb on this hub")
     theirs = secret_cli(hub, monkeypatch, capsys, "other", "delete", "claude-oauth")
     assert theirs.code == 1 and "you have no secret named claude-oauth" in theirs.err
+
+
+@needs_pg
+def test_an_admin_of_the_project_sets_and_lists_a_forge_secret_without_ever_printing_its_value(
+    hub, monkeypatch, capsys
+):
+    token, group = sample("glpat-"), "https://gitlab.lumenops.example/fir-gb-lumen"
+    args = ("set", "gitlab-merge", "--kind", "forge", "--url-prefix", group, "--expires", "2099-01-31")
+    refused = secret_cli(hub, monkeypatch, capsys, "owner", *args, "--project", PROJECT, stdin=io.StringIO(token))
+    assert refused.code == 1 and "needs the admin role on it; you hold writer" in refused.err
+    admin = {"role": "admin", "max_level": "internal"}
+    granted = hub.client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=admin, headers=hub.headers["admin"])
+    assert granted.status_code == 200, granted.text
+
+    written = ok(
+        secret_cli(hub, monkeypatch, capsys, "owner", *args, "--project", PROJECT, stdin=io.StringIO(token + "\n"))
+    )
+    assert written.out == (
+        f"Created secret gitlab-merge (forge, {group}) for project(s) evo-agents, used by the hub alone, never leased "
+        "to a run; it ends 2099-01-31 00:00 UTC. The hub keeps the value sealed and never shows it again.\n"
+    )
+    listed = as_json(secret_cli(hub, monkeypatch, capsys, "owner", "list", "--json"))
+    assert_json_keys("hub secret list", listed)
+    assert [(s["name"], s["kind"], s["url_prefix"], s["username"], s["workers"]) for s in listed] == [
+        ("gitlab-merge", "forge", group, None, [])
+    ]
+    table = ok(secret_cli(hub, monkeypatch, capsys, "owner", "list"))
+    assert table.out.splitlines()[1].split()[:5] == ["gitlab-merge", "forge", group, PROJECT, "-"]
+    for result in (refused, written, table):
+        nowhere(result, token)
 
 
 @needs_pg

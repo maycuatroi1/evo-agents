@@ -38,6 +38,7 @@ from evo_agents.hub import (
     tables_accounts,
     tables_curator,
     tables_kg,
+    tables_merge,
     tables_plugins,
     tables_profiles,
     tables_release,
@@ -967,7 +968,7 @@ agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
-hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043
+hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks, canvas = tables_plugins.core_plugin_tables(metadata)  # srs (0046), tasks (0047), canvas (0073)
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
@@ -978,6 +979,7 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
+merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

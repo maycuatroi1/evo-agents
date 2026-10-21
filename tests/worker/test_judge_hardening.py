@@ -67,15 +67,18 @@ def judge_inputs(head: str, hidden: list[str], verify: list[str] | None = None) 
     }
 
 
-def judged(machine, head: str, inputs: dict, scenario: list, *, leases: dict | None = None) -> dict:  # noqa: F811
-    """A judge run of the change at ``head``, its agent following ``scenario``, ended; (hub, run id)."""
+def judged(
+    machine, head: str, inputs: dict, scenario: list, *, leases: dict | None = None, claim: dict | None = None
+) -> dict:  # noqa: F811
+    """A judge run of the change at ``head`` (with ``claim`` over what its claim says of it), its agent following
+    ``scenario``, ended; (hub, run id)."""
     machine.scenarios({"judge": scenario})
     found = {}
 
     async def body(hub, daemon):
         if leases is not None:
             hub.leases = Every(leases)
-        run_id = hub.queue_judge_run("alpha", curator(head), inputs)
+        run_id = hub.queue_judge_run("alpha", {**curator(head), **(claim or {})}, inputs)
         assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
         found.update(hub=hub, run=run_id)
 
@@ -116,6 +119,38 @@ def test_judge_run_runs_the_changes_commands_without_the_workers_home_or_credent
     for path in machine.home.root.rglob("*"):
         if path.is_file():
             assert key not in path.read_text(encoding="utf-8", errors="replace"), path
+
+
+def test_judge_run_of_a_merge_request_reads_and_posts_on_the_queues_routes_with_its_dimensions(machine):  # noqa: F811
+    """A judge run whose claim names no change judges a merge request of the hub's merge queue (plan
+    gitlab-merge-queue, step 4): it asks GET .../merge-judge and posts to POST .../merge-verdict, with what the Judge
+    said of each dimension."""
+    head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
+    dimensions = {
+        "work": {"verdict": "pass", "reason": "It adds the helper."},
+        "tests": {"verdict": "fail"},
+        "scope": {"verdict": "maybe"},
+    }
+    said = json.dumps({"verdict": "fail", "reasons": "No test.", "dimensions": dimensions})
+    found = judged(
+        machine,
+        head,
+        {**judge_inputs(head, []), "queue_id": 3},
+        [{"say": f"I read it.\n```json\n{said}\n```"}],
+        claim={
+            "change_id": None,
+            "forge": "gitlab",
+            "pr_url": "https://gitlab.example.org/northwind/alpha/-/merge_requests/3",
+        },
+    )
+    hub = found["hub"]
+    (sent,) = hub.verdicts
+    assert (sent["route"], sent["verdict"], sent["reasons"]) == ("merge-verdict", "fail", "No test.")
+    assert sent["dimensions"] == {  # one with a verdict that is neither pass nor fail is left out
+        "work": {"verdict": "pass", "reason": "It adds the helper."},
+        "tests": {"verdict": "fail", "reason": ""},
+    }
+    assert hub.judge_routes == ["merge-judge"] and hub.judge_refused == []
 
 
 def test_judge_run_kills_what_a_command_left_and_reads_no_verdict_file(machine):  # noqa: F811

@@ -7,7 +7,7 @@ other run, another worker's or one that ended, is 404 as for a state report. The
 for a run of one step, its repos for a plan run, and for a chat run those it started with and those its agent opened
 since, ``chat_agents.open_repo``) and their origins in project_repos, compared in the form of
 ``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
-project, on any of their workers or on this one, and that has not expired:
+project, on any of their workers or on this one, and that has not expired, never one of kind forge (``LEASED_KINDS``):
 
 - each secret of kind env, one per variable: the account the run took already, else one bound to this worker before
   one bound to any, by the strategy of the owner's policy for the project (``account_choice``);
@@ -20,13 +20,12 @@ project, on any of their workers or on this one, and that has not expired:
 
 A run of the Curator (a review run, a judge run, or a run of a plan the Curator made: ``changes.curator_policy``) gets
 less, and from elsewhere: its GitHub token comes from the Curator's App (EVO_HUB_CURATOR_APP_*), whose installation
-tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the
-Curator's App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on
-GitHub; for other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only
-those the charter lists (``env_secrets``). Each ask of a Builder of the Curator checks again, with the Curator's App,
-that the ruleset of each of its repos on GitHub still keeps that App off the default branch
-(``pulls.check_ruleset``, kept as the repo's last check): a repo whose check does not pass, or cannot be made now, gets
-no token, and its reason says why.
+tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the Curator's
+App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on GitHub; for
+other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only those the
+charter lists (``env_secrets``). Each ask of a Builder of the Curator checks again, with the Curator's App, that the
+ruleset of each of its repos on GitHub still keeps that App off the default branch (``pulls.check_ruleset``, kept as the
+repo's last check): a repo whose check does not pass, or cannot be made now, gets no token, and its reason says why.
 
 A release run gets its runtime's login alone of its owner's secrets (``credentials.RELEASE_ENV_VARS``), no git secret,
 and for its repo on GitHub a token of the workers' App without workflows (``credentials.github_workflows``), which its
@@ -90,9 +89,9 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     GITHUB_HOST,
     GITHUB_TOKEN_REFRESH_SECONDS,
+    LEASED_KINDS,
     PROVIDERS,
     RELEASE_ENV_VARS,
-    SECRET_KINDS,
     Lease,
     github_permissions,
     github_repo,
@@ -141,7 +140,7 @@ class CredentialLease(BaseModel):
     """One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."""
 
     id: int = Field(description="the lease; the same id when it is asked for again")
-    kind: Literal[SECRET_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
+    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
     provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
     name: str = Field(description="the secret's name, or github-app:<account>")
     env_var: str | None = Field(description="kind env: the variable it sets")
@@ -334,6 +333,7 @@ def _bound_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool
         )
         .where(
             s.c.owner_id == owner_id,
+            s.c.kind.in_(LEASED_KINDS),
             s.c.deleted_at.is_(None),
             or_(s.c.expires_at.is_(None), live),
             bound,
