@@ -11,8 +11,17 @@ sessions have a digest. The digest keeps that skill's fields and adds the figure
   ``input_tokens``, ``output_tokens``, ``cache_creation_input_tokens`` and ``cache_read_input_tokens``;
 - ``tools``: per tool, under ``gen_ai.tool.name`` as OpenTelemetry's GenAI conventions name it, how many calls and how
   many of them failed (a tool result marked as an error);
-- ``bash``: the same per program of the Bash calls (``program``: the command's first word that is not ``cd`` or a
-  variable, with the subcommand of the tools that have one, ``git push`` or ``python -m pytest``);
+- ``bash``: the same per program of the Bash calls (``friction.programs``: each part's first word that is not ``cd``
+  or a variable, with the subcommand of the tools that have one, ``git push`` or ``python -m pytest``), a command that
+  runs several programs counting a call for each; a failure counts for a program when the command ran it alone or its
+  output names it (``friction.blame``), and ``bash_kinds`` splits those by kind: ``usage_errors``, ``env_errors`` and
+  ``other_errors`` (``friction.error_kind``); ``bash_compound`` counts the commands that ran several programs, and their
+  failures that count for none, by kind;
+- ``skills``: per skill loaded, through the Skill tool or typed by the person as ``/name`` (``calls``, ``typed`` of
+  them, ``failed`` Skill calls), and in the windows from each load to the person's next turn the Bash commands
+  (``bash``), their failures by kind, the person's interrupts and corrections (``friction.SkillTally``); a Codex
+  session counts a skill only when the person named it, which its rollout marks; ``interrupts`` and ``turns`` are the
+  session's (the turns of the person);
 - ``user_turns``: what the person wrote, each cut to USER_TURN_CHARS, the first MAX_USER_TURNS of them; text that
   starts with ``<`` (command output, reminders) is not the person's;
 - ``commands``: the Bash commands, each once, the most repeated first, and ``repeated_commands`` those run more than
@@ -48,20 +57,24 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import shlex
 import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evo_agents.hub import friction
 from evo_agents.hub.client import FILE_MODE, write_atomic
+
+# The hub's checks of a digest (``server.digests``) and the tests read these here.
+from evo_agents.hub.friction import MAX_NAME as MAX_NAME
+from evo_agents.hub.friction import MAX_PROGRAMS as MAX_PROGRAMS
+from evo_agents.hub.friction import MAX_SKILLS as MAX_SKILLS
+from evo_agents.hub.friction import program as program
 
 MIN_MESSAGES = 6  # a session with fewer is not digested (harness.py digest)
 MAX_SESSION_ID = 100
 SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
-MAX_NAME = 200  # characters of a tool, program or model name
 MAX_CWD = 4096
 MAX_USER_TURNS = 40
 USER_TURN_CHARS = 600
@@ -73,7 +86,6 @@ ERROR_CHARS = 400
 MAX_FILES = 40
 PATH_CHARS = 1024
 MAX_TOOLS = 200
-MAX_PROGRAMS = 100
 MAX_MODELS = 20
 MAX_COUNT = 10**9
 USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
@@ -84,6 +96,7 @@ TOOL_NAME = "gen_ai.tool.name"  # OpenTelemetry GenAI's attribute for the name o
 READ_TOOLS = frozenset({"Read"})
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 SHELL_TOOLS = frozenset({"Bash"})
+SKILL_TOOL = "Skill"  # Claude Code's tool that loads a skill, named by its input's ``skill``
 SYNTHETIC_MODEL = "<synthetic>"  # what Claude Code writes for a message no model sent
 # The spool of the PostToolUse hook (``evo_agents.hub.spool``): its directory under the home, as a call that reads a
 # spool file names it, and the note it puts in the place of a result it cut, which names the result's size and the
@@ -93,12 +106,6 @@ SPOOL_NOTE = re.compile(
     r"\[evo-hub: (?:this output has (?P<output>[\d,]+) characters|the read returned [\d,]+ lines \((?P<read>[\d,]+) "
     r"characters\))[^\n]*?\.evo[/\\]+tool-output[/\\]"
 )
-# Programs whose first argument names what they do.
-SUBCOMMANDS = frozenset(
-    {"git", "gh", "docker", "kubectl", "npm", "pnpm", "yarn", "uv", "pip", "cargo", "go", "make", "evo-agents", "evo"}
-)
-VALUED_OPTIONS = {"git": ("-C", "-c", "--git-dir", "--work-tree"), "docker": ("--context", "-H")}
-SKIPPED_PROGRAMS = frozenset({"cd", "pushd", "export", "source", ".", "set", "time", "env", "sudo", "nohup"})
 STATE_FILE = "digest-state.json"
 STATE_VERSION = 1
 KEEP_SECONDS = 90 * 86400  # a session the state remembers, after its last push
@@ -212,33 +219,6 @@ def read_lines(path: Path):
                 continue
 
 
-def program(command: str) -> str | None:
-    """The program a Bash command runs: the first word that is not ``cd``, a variable or a wrapper, with the subcommand
-    of the programs that take one; None for a command without one."""
-    for part in re.split(r"&&|\|\||;|\||\n", command):
-        try:
-            words = shlex.split(part, comments=True)
-        except ValueError:
-            words = part.split()
-        while words and (re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]) or words[0] in SKIPPED_PROGRAMS):
-            skipped = words.pop(0)
-            if skipped in ("cd", "pushd", "source", "."):
-                words = []  # its argument is a directory or a file, not a program
-        if not words:
-            continue
-        name = os.path.basename(words[0]) or words[0]
-        given = words[1:]
-        while given and given[0] in VALUED_OPTIONS.get(name, ()):
-            given = given[2:]  # an option and its value, before the subcommand
-        rest = [word for word in given if not word.startswith("-")]
-        if name.startswith("python") and len(words) > 2 and words[1] == "-m":
-            return _cut(f"{name} -m {words[2]}", MAX_NAME)
-        if name in SUBCOMMANDS and rest:
-            return _cut(f"{name} {rest[0]}", MAX_NAME)
-        return _cut(name, MAX_NAME)
-    return None
-
-
 def _timestamp(value) -> datetime | None:
     if not isinstance(value, str):
         return None
@@ -264,12 +244,12 @@ class _Tally:
         self.commands: Counter = Counter()
         self.calls: Counter = Counter()
         self.failed: Counter = Counter()
-        self.bash_calls: Counter = Counter()
-        self.bash_failed: Counter = Counter()
+        self.bash = friction.BashTally()
+        self.skills = friction.SkillTally()
         self.errors: Counter = Counter()
         self.read: set[str] = set()
         self.edited: set[str] = set()
-        self.tool_uses: dict[str, tuple[str, str | None]] = {}  # tool_use id: (tool, program of a Bash call)
+        self.tool_uses: dict[str, tuple[str, str | None]] = {}  # tool_use id: (tool, the command of a Bash call)
         self.models: dict[str, str] = {}  # message id: model
         self.usage: dict[str, dict] = {}  # message id: its usage; each line of a message holds the whole
         self.contexts: dict[str, int] = {}  # message id: the tokens of its context, the main thread's
@@ -300,17 +280,25 @@ class _Tally:
         if text and not text.startswith("<") and len(self.user_turns) < MAX_USER_TURNS:
             self.user_turns.append(_cut(text, USER_TURN_CHARS))
         for item in items:
-            if item.get("type") != "tool_result":
-                continue
-            tool, ran = self.tool_uses.get(str(item.get("tool_use_id")), ("unknown", None))
-            if main:
-                self._main_result(str(item.get("tool_use_id")), tool, item)
-            if not item.get("is_error"):
-                continue
-            self.failed[tool] += 1
-            if ran is not None:
-                self.bash_failed[ran] += 1
-            self.errors[(tool, _cut(_result_text(item).strip(), ERROR_CHARS))] += 1
+            if item.get("type") == "tool_result":
+                self._result(item, main)
+        if main:
+            self.skills.person(text)
+
+    def _result(self, item: dict, main: bool) -> None:
+        call = str(item.get("tool_use_id"))
+        tool, command = self.tool_uses.get(call, ("unknown", None))
+        if main:
+            self._main_result(call, tool, item)
+        if not item.get("is_error"):
+            return
+        self.failed[tool] += 1
+        text = _result_text(item).strip()
+        if command is not None:
+            self.skills.bash(self.bash.fail(command, text))
+        if tool == SKILL_TOOL:
+            self.skills.load_failed(call)
+        self.errors[(tool, _cut(text, ERROR_CHARS))] += 1
 
     def _main_result(self, call: str, tool: str, item: dict) -> None:
         """A result of the main thread: the characters the model read, and the size before the cut of one the spool
@@ -341,14 +329,16 @@ class _Tally:
         self.calls[tool] += 1
         if main and names_spool(given):
             self.spool_reads.add(str(item.get("id")))
-        ran = None
+        command = None
         if tool in SHELL_TOOLS:
-            command = str(given.get("command") or "")
+            command = str(given.get("command") or "") or None
             if command:
                 self.commands[_cut(command, COMMAND_CHARS)] += 1
-                ran = program(command) or "unknown"
-                self.bash_calls[ran] += 1
-        self.tool_uses[str(item.get("id"))] = (tool, ran)
+                self.bash.call(command)
+                self.skills.bash()
+        elif tool == SKILL_TOOL:
+            self.skills.load(given.get("skill"), typed=False, call_id=str(item.get("id")))
+        self.tool_uses[str(item.get("id"))] = (tool, command)
         path = given.get("file_path") or given.get("notebook_path")
         if isinstance(path, str) and path:
             if tool in READ_TOOLS:
@@ -380,10 +370,7 @@ class _Tally:
                 {TOOL_NAME: name, "calls": n, "errors": min(self.failed[name], n)}
                 for name, n in _ranked(self.calls)[:MAX_TOOLS]
             ],
-            "bash": [
-                {"program": name, "calls": n, "errors": min(self.bash_failed[name], n)}
-                for name, n in _ranked(self.bash_calls)[:MAX_PROGRAMS]
-            ],
+            "bash": self.bash.program_figures(),
             "user_turns": self.user_turns,
             "commands": [command for command, _ in commands[:MAX_COMMANDS]],
             "repeated_commands": [{"command": c, "n": n} for c, n in commands if n > 1][:MAX_REPEATED],
@@ -395,6 +382,7 @@ class _Tally:
             "peak_context_tokens": max(self.contexts.values(), default=None),
             "compactions": min(len(self.compactions), MAX_COUNT),
             "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(chars)[:MAX_TOOLS]],
+            **friction.digest_fields(self.bash, self.skills),
             "spool_results": min(len(self.spooled), MAX_COUNT),
             "spool_original_chars": min(sum(self.spooled.values()), MAX_COUNT),
             "spool_reads": min(len(self.spool_reads), MAX_COUNT),
@@ -456,8 +444,8 @@ class _CodexTally:
         self.commands: Counter = Counter()
         self.calls: Counter = Counter()
         self.failed: Counter = Counter()
-        self.bash_calls: Counter = Counter()
-        self.bash_failed: Counter = Counter()
+        self.bash = friction.BashTally()
+        self.skills = friction.SkillTally()
         self.errors: Counter = Counter()
         self.edited: set[str] = set()
         self.models: Counter = Counter()  # the models of the turns, as a Counter of names
@@ -480,12 +468,18 @@ class _CodexTally:
             model = payload.get("model")
             if isinstance(model, str) and model:
                 self.models[_cut(model, MAX_NAME)] += 1
+        elif kind == "response_item" and payload.get("type") == "message" and payload.get("role") == "user":
+            named = friction.codex_skill(_codex_text(payload.get("content")))
+            if named is not None:
+                self.skills.load(named, typed=True)
         elif kind == "event_msg":
             inner = payload.get("type")
             if inner == "token_count":
                 self._tokens(payload.get("info") or {})
             elif inner == "item_completed":
                 self._item(payload.get("item") or {})
+            elif inner == "turn_aborted" and payload.get("reason") == "interrupted":
+                self.skills.interrupt()
 
     def _tokens(self, info: dict) -> None:
         last = info.get("last_token_usage")
@@ -506,8 +500,10 @@ class _CodexTally:
         if kind == "UserMessage":
             self.messages += 1
             text = _codex_text(item.get("content")).strip()
-            if text and not text.startswith("<") and len(self.user_turns) < MAX_USER_TURNS:
-                self.user_turns.append(_cut(text, USER_TURN_CHARS))
+            if text and not text.startswith("<"):
+                self.skills.turn(text)
+                if len(self.user_turns) < MAX_USER_TURNS:
+                    self.user_turns.append(_cut(text, USER_TURN_CHARS))
         elif kind == "AgentMessage":
             self.messages += 1
         elif kind == "CommandExecution":
@@ -529,13 +525,14 @@ class _CodexTally:
         command = codex_command(item).strip()
         if names_spool(command):
             self.spool_reads += 1
+        output = str(item.get("aggregated_output") or "")
         if command:
             self.commands[_cut(command, COMMAND_CHARS)] += 1
-            ran = program(command) or "unknown"
-            self.bash_calls[ran] += 1
+            self.bash.call(command)
+            self.skills.bash()
             if failed:
-                self.bash_failed[ran] += 1
-        output = str(item.get("aggregated_output") or "")
+                code = item.get("exit_code") if isinstance(item.get("exit_code"), int) else None
+                self.skills.bash(self.bash.fail(command, output, code))
         self.chars[CODEX_SHELL_TOOL] = min(self.chars[CODEX_SHELL_TOOL] + len(output), MAX_COUNT)
         if failed:
             self.failed[CODEX_SHELL_TOOL] += 1
@@ -579,10 +576,7 @@ class _CodexTally:
                 {TOOL_NAME: name, "calls": n, "errors": min(self.failed[name], n)}
                 for name, n in _ranked(self.calls)[:MAX_TOOLS]
             ],
-            "bash": [
-                {"program": name, "calls": n, "errors": min(self.bash_failed[name], n)}
-                for name, n in _ranked(self.bash_calls)[:MAX_PROGRAMS]
-            ],
+            "bash": self.bash.program_figures(),
             "user_turns": self.user_turns,
             "commands": [command for command, _ in commands[:MAX_COMMANDS]],
             "repeated_commands": [{"command": c, "n": n} for c, n in commands if n > 1][:MAX_REPEATED],
@@ -594,6 +588,7 @@ class _CodexTally:
             "peak_context_tokens": self.peak,
             "compactions": min(len(self.compactions), MAX_COUNT),
             "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(self.chars)[:MAX_TOOLS]],
+            **friction.digest_fields(self.bash, self.skills),
             "spool_results": 0,  # the spool hook leaves a Codex result as it is
             "spool_original_chars": 0,
             "spool_reads": min(self.spool_reads, MAX_COUNT),

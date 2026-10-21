@@ -40,7 +40,8 @@ from evo_agents.hub.tiers import CHANGE_KINDS, REJECTED_DAYS, normalize_path
 
 # lens: what the Reviewer looks for through it, in the order the nights take them.
 LENSES: dict[str, str] = {
-    "tool_errors": "tools and commands that fail often, in sessions and in runs: the failures that repeat",
+    "tool_errors": "tools and commands that fail often, in sessions and in runs: the failures that repeat, and of "
+    "each program the wrong calls (usage_errors) apart from what the environment broke (env_errors)",
     "environment": "failures that come from the environment rather than the work: commands the harness blocks, the "
     "hub answering 5xx, the network, rate limits, credentials, tools missing on the machine",
     "corrections": "where the person corrected an agent: the same correction more than once is a missing rule",
@@ -54,7 +55,9 @@ LENSES: dict[str, str] = {
     "harness": "what the harness puts into every context (the figures' harness): the always-loaded files (CLAUDE.md, "
     "AGENTS.md, memory) of each repo and their size, the instructions of MCP servers, the skill list, the text of "
     "hooks and the output of tools, in tokens, and the spool; where a shorter harness would carry the same rules",
-    "skills_memory": "skills and memories: learned skills waiting for review, duplicates, ones that contradict",
+    "skills_memory": "skills and memories: which skills get loaded, which snag (Bash failures, interrupts and "
+    "corrections after a load, against the baseline) and whether the runs that load them get done; learned skills "
+    "waiting for review, duplicates, ones that contradict",
     "cost": "what the runs and sessions cost, and where the same result could cost less",
     "security": "secrets in the open, permissions wider than needed, text in data that tries to steer an agent",
     "product_goals": "how far the charter's goals are, and the next step that would move the first of them",
@@ -74,7 +77,7 @@ DEFER_DAYS = (1, 90)  # the fewest and most days a proposal is deferred
 DEFAULT_DEFER_DAYS = 7
 
 EVIDENCE_KINDS = ("session", "transcript", "run", "code")
-DIGEST_FIELDS = ("user_turns", "commands", "repeated_commands", "errors", "files_edited", "tools", "bash")
+DIGEST_FIELDS = ("user_turns", "commands", "repeated_commands", "errors", "files_edited", "tools", "bash", "skills")
 MAX_TITLE_CHARS = 200
 MAX_BODY_BYTES = 16 * 1024  # the markdown of a finding, or the summary of a proposal
 MAX_EVIDENCE = 50  # evidence items of one finding or proposal
@@ -89,6 +92,7 @@ MAIN_FILE = "main"
 REPO_NAME = r"^[^\x00-\x1f\x7f/:][^\x00-\x1f\x7f:]{0,199}$"
 MAX_LINE = 10_000_000
 FIGURES_BYTES = 12 * 1024  # the figures in the prompt; curator_figures gives them whole
+TIER_LENSES = ("tool_errors", "skills_memory")  # the lenses whose prompt says which tier of the skill figures has data
 GOALS_BYTES = 3 * 1024
 REPOS_BYTES = 3 * 1024
 EARLIER_BYTES = 3 * 1024  # what earlier nights found, in the prompt; curator_findings gives more
@@ -99,6 +103,7 @@ PLAYBOOK_BYTES = 3 * 1024  # the playbook's entries in the prompt; curator_playb
 FIGURE_KEYS = (
     "tools",
     "programs",
+    "skills",
     "environment",
     "failed_runs",
     "repeated_commands",
@@ -421,6 +426,39 @@ def _figures_text(figures: dict, lenses=()) -> str:
     return clip(json.dumps(shown, ensure_ascii=False, indent=1, default=str), FIGURES_BYTES)
 
 
+def skill_tiers(figures: dict) -> list[str]:
+    """What the night's figures say of skills and commands in each of three tiers, and which tier has no data: whether
+    they are called, whether they snag, whether the work they are loaded for gets done."""
+    skills = [item for item in figures.get("skills") or [] if isinstance(item, dict)]
+    sessions = figures.get("sessions") if isinstance(figures.get("sessions"), dict) else {}
+    counted, digests = sessions.get("with_skills") or 0, sessions.get("digests") or 0
+    in_runs = [item for item in skills if item.get("runs")]
+    lines = []
+    if skills:
+        loads, typed = sum(item.get("calls") or 0 for item in skills), sum(item.get("typed") or 0 for item in skills)
+        failed = sum(item.get("failed") or 0 for item in skills)
+        lines.append(f"- Called: {len(skills)} skills, {loads} loads ({typed} typed as /name), {failed} that failed.")
+    else:
+        lines.append("- Called: no data; no digest or run of the span recorded a skill.")
+    if counted:
+        lines.append(
+            f"- Snags: {counted} of {digests} session digests count the friction after each load and the kinds of "
+            "Bash failures; compare each skill's error_rate and interrupt_rate with the baselines, and the programs' "
+            "usage_errors and env_errors (a command that ran several programs counts in sessions.compound_bash)."
+        )
+    else:
+        lines.append(
+            f"- Snags: no data; none of the {digests} session digests counts friction or kinds of failures (their "
+            "evo-hub plugin predates them)."
+        )
+    if in_runs:
+        runs = sum(item.get("runs") or 0 for item in in_runs)
+        lines.append(f"- Work done: {len(in_runs)} skills loaded in {runs} runs; read each skill's run_outcomes.")
+    else:
+        lines.append("- Work done: no data; no run that ended in the span recorded the skills it loaded.")
+    return lines
+
+
 def _earlier_text(earlier: dict) -> list[str]:
     """What earlier nights found through the night's lenses, and the proposals the owner rejected lately, as the
     prompt shows them (``evo_agents.hub.server.earlier.for_prompt``)."""
@@ -491,6 +529,8 @@ def build_review_prompt(
     lines += ["", *_earlier_text(earlier or {})]
     lines += ["", "# The playbook of the Curator for this project (curator_playbook gives it whole)"]
     lines.append(clip("\n".join(playbook), PLAYBOOK_BYTES) if playbook else "- empty: add what you learn tonight")
+    if any(name in TIER_LENSES for name in lenses):
+        lines += ["", "# Skills and commands by tier: which tier of the figures has data", *skill_tiers(figures or {})]
     lines += [
         "",
         "# The night's figures, shortened (curator_figures gives them whole)",

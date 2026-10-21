@@ -231,7 +231,14 @@ def test_collect_counts_the_night_figures_and_queues_one_review_run(review):
     assert causes["harness_blocked"]["evidence"] == [f"session:{SESSION}:errors:0"]
     bash = next(item for item in figures["tools"] if item["tool"] == "Bash")
     assert (bash["calls"], bash["errors"], bash["source"]) == (40, 6, "sessions")
-    assert figures["programs"][0] == {"program": "sleep", "calls": 6, "errors": 3, "error_rate": 0.5}
+    assert figures["programs"][0] == {
+        "program": "sleep",
+        "calls": 6,
+        "errors": 3,
+        "error_rate": 0.5,
+        "usage_errors": 0,  # a digest of a client that does not tell the kinds of failures adds none
+        "env_errors": 0,
+    }
     assert figures["repeated_commands"][0]["command"] == "uv run pytest -q"
     assert figures["corrections"] == [
         {
@@ -268,6 +275,95 @@ def test_collect_counts_failed_runs_by_the_cause_their_worker_reported_else_by_t
     ((figures,),) = sql(review.db, select(cf.c.figures))
     failed = {item["cause"]: (item["failed"], item["runs"]) for item in figures["failed_runs"]}
     assert failed == {"missing_tool": (1, [ended[0]]), "credentials": (1, [ended[1]])}
+
+
+SKILLED = "0199a3c1-0000-7000-8000-0000000051c1"
+
+
+def skill_run(review, loaded: list[dict], state: str, **values) -> int:
+    """A run of plan fleet, claimed, that ended ``state`` with the Skill tool's figures ``loaded`` (as the hub writes
+    them when a run ends: tests.hub.test_tool_stats checks that)."""
+    client, worker, owner = review.client, review.worker, review.headers["owner"]
+    dispatched = client.post(f"/v1/projects/{PROJECT}/runs", json={"plan_id": "fleet", "steps": [2]}, headers=owner)
+    assert dispatched.status_code == 201, dispatched.text
+    run_id = claim(client, worker)["id"]
+    set_run(review.db, run_id, state=state, finished_at=func.now(), **values)
+    row = {"run_id": run_id, "tool_name": "Skill", "calls": 3, "errors": 1, "duration_ms": 0, "skills": loaded}
+    sql(review.db, insert(tables.run_tool_stats).values(**row))
+    return run_id
+
+
+def step_done(db, run_id: int, seq: int, step: str) -> None:
+    """A step report of the run's worker after its verify ran again, as the hub keeps it (a system event)."""
+    body = {"text": f"step {step}: done", "step_report": {"step": step, "status": "done", "repo": "evo-agents"}}
+    sql(db, insert(tables.run_events).values(run_id=run_id, seq=seq, kind="system", body=body))
+
+
+def test_collect_counts_skills_with_the_friction_after_them_and_the_outcome_of_the_runs_that_loaded_them(
+    review, tmp_path
+):
+    from evo_agents.hub.digest import build
+    from tests.hub.test_digest import skill_session, write_transcript
+
+    client, db = review.client, review.db
+    push_digest(
+        client, review.headers["owner"], SKILLED, build(write_transcript(tmp_path / "s.jsonl", skill_session()), "/w")
+    )
+    failed = skill_run(
+        review,
+        [{"skill": "execute-plan", "calls": 1, "errors": 0}],
+        "failed",
+        error="gave up",
+        failure_cause="missing_tool",
+    )
+    done = skill_run(
+        review,
+        [{"skill": "execute-plan", "calls": 2, "errors": 0}, {"skill": "stop-slop", "calls": 1, "errors": 1}],
+        "done",
+    )
+    step_done(db, done, 1000, "1")
+    step_done(db, done, 1001, "2")
+    assert collected(client, NIGHT)["review"] == 1
+    shown = client.get(f"/v1/projects/{PROJECT}/curator/figures", headers=review.headers["reader"]).json()
+    figures = shown["figures"]
+
+    skills = {item["skill"]: item for item in figures["skills"]}
+    assert [item["skill"] for item in figures["skills"]] == ["execute-plan", "stop-slop", "no-such-skill"]
+    plan = dict(skills["execute-plan"])
+    outcomes = plan.pop("run_outcomes")
+    assert sorted(outcomes.pop("run_ids")) == sorted([failed, done])
+    assert outcomes == {"done": 1, "verified_steps": 2, "failed": {"missing_tool": 1}, "lost": {}}
+    assert plan == {
+        "skill": "execute-plan",
+        "calls": 4,  # typed once in the session, loaded 3 times by the runs' Skill tool
+        "typed": 1,
+        "failed": 0,
+        "sessions": 1,
+        "runs": 2,
+        "bash": 3,
+        "usage_errors": 2,
+        "env_errors": 1,
+        "other_errors": 0,
+        "error_rate": 1.0,
+        "baseline_error_rate": 1.0,  # the one digest that counts skills: 4 Bash calls, 4 failed
+        "interrupts": 1,
+        "corrections": 1,
+        "interrupt_rate": 1.0,
+        "baseline_interrupt_rate": 0.25,  # 1 interrupt in 4 turns of the person
+        "evidence": [f"session:{SKILLED}:skills:0"],
+    }
+    outcomes = {name: item["run_outcomes"] for name, item in skills.items()}
+    assert outcomes["stop-slop"] == {"done": 1, "verified_steps": 2, "failed": {}, "lost": {}, "run_ids": [done]}
+    assert (skills["stop-slop"]["calls"], skills["stop-slop"]["failed"], skills["stop-slop"]["runs"]) == (2, 1, 1)
+    assert outcomes["no-such-skill"] == {"done": 0, "verified_steps": 0, "failed": {}, "lost": {}, "run_ids": []}
+
+    sessions = figures["sessions"]
+    assert (sessions["digests"], sessions["with_skills"]) == (2, 1), "the older digest counts no skill"
+    assert sessions["compound_bash"] == {"calls": 2, "errors": 1, "usage_errors": 1, "env_errors": 0, "other_errors": 0}
+    programs = {item["program"]: item for item in figures["programs"]}
+    assert (programs["evo-agents hub"]["usage_errors"], programs["evo-agents hub"]["env_errors"]) == (1, 1)
+    assert all("usage_errors" in item and "env_errors" in item for item in figures["programs"])  # a18's check
+    assert "evo-agents kg" not in programs, "the zsh failure counts for no program"
 
 
 def test_the_night_shift_queues_the_review_before_a_plan_run_and_a_worker_without_reviews_gets_plan_runs(night, hub_db):  # noqa: F811

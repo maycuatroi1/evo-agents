@@ -17,8 +17,9 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import digest, hooks, spool
+from evo_agents.hub import digest, friction, hooks, spool
 from evo_agents.hub.digest import CODEX_META, DigestState, build, fingerprint, program
+from evo_agents.hub.redact import redact_data
 from tests.hub import pg
 
 SESSION = "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5c6d"
@@ -413,6 +414,211 @@ def test_a_codex_rollout_under_six_messages_and_a_zero_peak_make_no_digest(tmp_p
 )
 def test_the_program_of_a_bash_digest_command(command, expected):
     assert program(command) == expected
+
+
+# Skills and the friction after each load, and the kinds of the Bash failures (``evo_agents.hub.friction``)
+
+TYPED = (
+    "<command-message>execute-plan</command-message>\n<command-name>/execute-plan</command-name>\n"
+    "<command-args>curator-agent</command-args>"
+)
+WRONG_OPTION = (
+    "Exit code 2\nusage: evo-agents hub plan show [-h] [--json] PLAN\n"
+    "evo-agents hub plan show: error: unrecognized arguments: --bogus"
+)
+NO_HUB = "Exit code 69\nerror: cannot reach https://hub.test: [Errno 61] Connection refused"
+ZSH = "Exit code 1\nusage: evo-agents kg scrub [-h] [--all] [--purge]\n\n(eval):1: = not found"
+
+
+def skill_session() -> list[dict]:
+    """The person types /execute-plan; in its window evo-agents is called with a wrong option (exit 2), cannot reach the
+    hub (exit 69), and a compound command fails because of zsh; the person interrupts, then corrects the agent. The
+    model then loads stop-slop with the Skill tool, an ls in a pipe fails and names itself, a Skill call fails, and
+    the person's /compact, a built-in command, closes the windows."""
+    return [
+        said(TYPED, 1),
+        said("Base directory for this skill: /skills/execute-plan", 2) | {"isMeta": True},
+        answered("m1", 3, tool_use("t1", "Bash", command="evo-agents hub plan show curator-agent --bogus")),
+        result("t1", 4, WRONG_OPTION, error=True),
+        answered("m2", 5, tool_use("t2", "Bash", command="cd /work && evo-agents hub plan show curator-agent")),
+        result("t2", 6, NO_HUB, error=True),
+        answered("m3", 7, tool_use("t3", "Bash", command="evo-agents kg scrub --help; echo ======")),
+        result("t3", 8, ZSH, error=True),
+        said("[Request interrupted by user]", 9),
+        said("không, dùng --json thôi", 10),
+        answered("m4", 11, tool_use("t4", "Skill", skill="stop-slop", args="the report")),
+        result("t4", 12, "Launching skill: stop-slop"),
+        said("Base directory for this skill: /skills/stop-slop", 13) | {"isMeta": True},
+        answered("m5", 14, tool_use("t5", "Bash", command="ls -la /nope | head -5")),
+        result("t5", 15, "Exit code 1\nls: /nope: No such file or directory", error=True),
+        answered("m6", 16, tool_use("t6", "Skill", skill="no-such-skill")),
+        result("t6", 17, "<tool_use_error>Unknown skill: no-such-skill</tool_use_error>", error=True),
+        said("<command-name>/compact</command-name>\n<command-message>compact</command-message>", 18),
+        said("Thanks, push it.", 19),
+        answered("m7", 20, {"type": "text", "text": "Pushed."}),
+    ]
+
+
+def test_the_digest_counts_skills_loaded_by_the_skill_tool_and_typed_as_slash_name_but_not_builtin_commands(tmp_path):
+    found = build(write_transcript(tmp_path / "s.jsonl", skill_session()), "/work")
+    by_name = {item["skill"]: item for item in found["skills"]}
+    assert [item["skill"] for item in found["skills"]] == ["execute-plan", "no-such-skill", "stop-slop"]
+    assert "compact" not in by_name, "a command built into Claude Code is not a skill"
+    assert (by_name["execute-plan"]["calls"], by_name["execute-plan"]["typed"]) == (1, 1)
+    assert (by_name["stop-slop"]["calls"], by_name["stop-slop"]["typed"], by_name["stop-slop"]["failed"]) == (1, 0, 0)
+    assert (by_name["no-such-skill"]["calls"], by_name["no-such-skill"]["failed"]) == (1, 1)
+    assert {"gen_ai.tool.name": "Skill", "calls": 2, "errors": 1} in found["tools"]
+    assert (found["turns"], found["interrupts"]) == (4, 1), "the typed commands are turns; the interrupt is not"
+
+
+def test_the_digest_counts_the_friction_after_each_load_until_the_persons_next_turn(tmp_path):
+    found = build(write_transcript(tmp_path / "s.jsonl", skill_session()), "/work")
+    by_name = {item["skill"]: item for item in found["skills"]}
+    assert by_name["execute-plan"] == {
+        "skill": "execute-plan",
+        "calls": 1,
+        "typed": 1,
+        "failed": 0,
+        "bash": 3,
+        "usage_errors": 2,  # the wrong option (exit 2), and the zsh failure whose output is a usage
+        "env_errors": 1,  # exit 69: the hub could not be reached
+        "other_errors": 0,
+        "interrupts": 1,
+        "corrections": 1,  # the turn that closed its window corrects the agent
+    }
+    assert by_name["stop-slop"] | {"skill": None} == {
+        "skill": None,
+        "calls": 1,
+        "typed": 0,
+        "failed": 0,
+        "bash": 1,
+        "usage_errors": 0,
+        "env_errors": 0,
+        "other_errors": 1,
+        "interrupts": 0,
+        "corrections": 0,  # /compact closed its window: a turn, not a correction
+    }
+    assert by_name["no-such-skill"]["bash"] == 0, "loaded after the ls: its window holds no command"
+
+
+def test_the_digest_counts_a_bash_failure_for_a_program_only_when_it_ran_alone_or_named_itself(tmp_path):
+    found = build(write_transcript(tmp_path / "s.jsonl", skill_session()), "/work")
+    assert found["bash"] == [
+        {"program": "evo-agents hub", "calls": 2, "errors": 2},
+        {"program": "echo", "calls": 1, "errors": 0},
+        {"program": "evo-agents kg", "calls": 1, "errors": 0},  # the zsh failure is not evo-agents'
+        {"program": "head", "calls": 1, "errors": 0},
+        {"program": "ls", "calls": 1, "errors": 1},  # in a pipe, but its output names it: "ls: ..."
+    ]
+    assert found["bash_kinds"] == [
+        {"program": "evo-agents hub", "usage_errors": 1, "env_errors": 1, "other_errors": 0},
+        {"program": "ls", "usage_errors": 0, "env_errors": 0, "other_errors": 1},
+    ]
+    assert found["bash_compound"] == {"calls": 2, "errors": 1, "usage_errors": 1, "env_errors": 0, "other_errors": 0}
+
+
+@pytest.mark.parametrize(
+    "text, alone, code, kind",
+    [
+        (WRONG_OPTION, "evo-agents hub", None, "usage"),
+        (NO_HUB, "evo-agents hub", None, "environment"),
+        ("Exit code 75\nerror: the hub at https://hub.test answered HTTP 503", "evo-agents hub", None, "environment"),
+        ("Exit code 1\nerror: no plan foo in project p", "evo-agents hub", None, "other"),
+        ("Exit code 1\nerror: cannot reach https://hub.test: timed out", "evo-agents hub", None, "environment"),
+        ("error: no plan foo", "evo-agents hub", 2, "usage"),  # Codex gives the exit code apart
+        ("Exit code 2\nls: unrecognized option '--bogus'", "ls", None, "usage"),
+        ("Exit code 2\nfatal: not a git repository", "git status", None, "other"),  # 2 says nothing but evo-agents'
+        ("Blocked: sleep 30 followed by tail is not allowed", None, None, "environment"),
+        ("Command timed out after 2m 0.0s", "python -m pytest", None, "environment"),
+        ("Exit code 1\nFAILED tests/test_queue.py::test_claim", "python -m pytest", None, "other"),
+        ("Exit code 69\nsomething", None, None, "other"),  # a command of several programs: its code says nothing
+    ],
+)
+def test_the_kind_of_a_failed_bash_command(text, alone, code, kind):
+    assert friction.error_kind(text, alone, code) == kind
+
+
+@pytest.mark.parametrize(
+    "command, expected",
+    [
+        ("evo-agents kg scrub --help; echo ======", ["evo-agents kg", "echo"]),
+        ("cd /a && FOO=1 python -m pytest -q 2>&1 | tail -20", ["python -m pytest", "tail"]),
+        ("git add a && git commit -m 'a; b | c'", ["git add", "git commit"]),
+        ("python3 - <<'EOF'\nimport os; print(os.getcwd()) | x\nEOF\ngrep -E 'a|b' f", ["python3", "grep"]),
+        ("for f in a b; do wc -l $f; done", ["wc"]),
+        ("if [ -f x ]; then cat x; fi", ["[", "cat"]),
+        ("(cd sub && make test)", ["make test"]),
+        ("git status\ngit status", ["git status"]),
+        ('grep "unbalanced', ["grep"]),
+        ("cd /tmp", []),
+    ],
+)
+def test_the_programs_of_a_bash_command(command, expected):
+    assert friction.programs(command) == expected
+
+
+def test_skill_names_in_a_digest_go_through_the_secret_redaction(tmp_path):
+    token = "gh" + "p_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"  # built from pieces: the commit's secret scan
+    lines = [
+        said("Load it.", 1),
+        answered("m1", 2, tool_use("t1", "Skill", skill=token)),
+        result("t1", 3, "Launching skill"),
+        said(f"<command-name>/deploy-{token}</command-name>", 4),
+        answered("m2", 5, {"type": "text", "text": "ok"}),
+        said("Thanks.", 6),
+    ]
+    found = build(write_transcript(tmp_path / "s.jsonl", lines), "/work")
+    assert len(found["skills"]) == 2
+    cleaned = redact_data(found)
+    assert token not in json.dumps(cleaned)
+    assert sorted(item["skill"] for item in cleaned["skills"]) == ["deploy-ghp_***", "ghp_***"]
+
+
+def test_a_codex_digest_counts_a_skill_only_when_the_person_named_it(tmp_path):
+    named = "<skill>\n<name>stop-slop</name>\n<path>/skills/stop-slop/SKILL.md</path>\n---\nname: stop-slop"
+    lines = [
+        *codex_rollout()[:3],  # meta, turn context, the person's first message
+        cx("response_item", {"type": "message", "role": "user", "content": [{"type": "input_text", "text": named}]}, 1),
+        item(
+            2,
+            type="CommandExecution",
+            id="c1",
+            command=["/bin/zsh", "-lc", "evo-agents hub plan show x --bogus"],
+            exit_code=2,
+            status="completed",
+            aggregated_output="evo-agents hub plan show: error: unrecognized arguments: --bogus",
+        ),
+        cx("event_msg", {"type": "turn_aborted", "turn_id": "t1", "reason": "interrupted"}, 3),
+        item(4, type="UserMessage", id="u2", content=[{"type": "text", "text": "Again, with --json."}]),
+        item(
+            5,
+            type="CommandExecution",
+            id="c2",
+            command=["/bin/zsh", "-lc", "cat /skills/create-slide/SKILL.md"],  # the model reads one: not counted
+            exit_code=0,
+            status="completed",
+            aggregated_output="---",
+        ),
+        *[item(6 + n, type="AgentMessage", id=f"a{n}", content=[{"type": "Text", "text": "x"}]) for n in range(3)],
+    ]
+    found = build(write_transcript(tmp_path / "rollout.jsonl", lines), "/work/proj")
+    assert found["skills"] == [
+        {
+            "skill": "stop-slop",
+            "calls": 1,
+            "typed": 1,
+            "failed": 0,
+            "bash": 1,
+            "usage_errors": 1,
+            "env_errors": 0,
+            "other_errors": 0,
+            "interrupts": 1,
+            "corrections": 1,  # "Again, ..." closed its window
+        }
+    ]
+    assert (found["turns"], found["interrupts"]) == (2, 1)
+    assert found["bash_kinds"] == [{"program": "evo-agents hub", "usage_errors": 1, "env_errors": 0, "other_errors": 0}]
+    assert build(write_transcript(tmp_path / "plain.jsonl", codex_rollout()), "/w")["skills"] == []
 
 
 def test_the_digest_state_keeps_sessions_per_hub_and_forgets_old_ones(tmp_path):

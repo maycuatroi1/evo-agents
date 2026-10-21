@@ -34,7 +34,7 @@
   holds no socket here.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
-stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
+stderr and exit status 69, 75 or 1 (``client.exit_status``); a command lacking the worker extra says how to get it (2).
 ``run`` on a machine that is not a worker, such as one revoked with ``revoke``, exits ``home.EXIT_REVOKED`` (3, or
 what EVO_WORKER_REVOKED_EXIT says), so a service does not start it again and again. ``run`` needs the extra (aiohttp)
 and so does ``join``; the others need the core package only.
@@ -60,7 +60,7 @@ from urllib.parse import quote
 
 from evo_agents import __version__
 from evo_agents.hub import runs
-from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
+from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import chat_cli, playbook_cli, triage_cli
 from evo_agents.worker.agent_input import evidence_items, read_text
@@ -92,7 +92,7 @@ def _worker_command(func):
             return EXIT_USAGE
         except (HubError, WorkerStateError) as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
+            return exit_status(exc) if isinstance(exc, HubError) else EXIT_FAILED
 
     return run
 
@@ -230,8 +230,8 @@ def cmd_join(args) -> int:
         answer = asyncio.run(join())
     except hubapi.HubProblem as exc:
         if exc.status == 429 and exc.retry_after is not None:
-            raise HubError(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
-        raise HubError(str(exc)) from None
+            raise exc.hub_error(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
+        raise exc.hub_error() from None
     config, token = _config_of(url, answer)
     _joined(home, config, token, "Joined")
     return 0
@@ -535,7 +535,7 @@ def _with_hub(agent: _AgentRun, work):
     try:
         return asyncio.run(go())
     except hubapi.HubProblem as exc:
-        raise HubError(str(exc), exc.status, exc.code) from None
+        raise exc.hub_error() from None
     except gitops.GitError as exc:
         raise WorkerStateError(str(exc)) from None
 

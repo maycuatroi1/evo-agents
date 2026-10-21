@@ -10446,6 +10446,34 @@ export interface components {
              */
             added: number;
         };
+        /** CompoundBash */
+        CompoundBash: {
+            /**
+             * Calls
+             * @description Bash commands that ran several programs
+             */
+            calls: number;
+            /**
+             * Errors
+             * @description their failures whose output named none of their programs
+             */
+            errors: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+        };
         /** ConfigField */
         ConfigField: {
             /** Name */
@@ -11256,7 +11284,7 @@ export interface components {
              * Field
              * @description session: the list of the digest
              */
-            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash") | null;
+            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash" | "skills") | null;
             /**
              * Index
              * @description session: the entry of that list, from 0
@@ -15726,6 +15754,23 @@ export interface components {
             /** Errors */
             errors: number;
         };
+        /** ProgramKinds */
+        ProgramKinds: {
+            /** Program */
+            program: string;
+            /**
+             * Usage Errors
+             * @description failures of a wrong call: a usage line, an unknown option or choice
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @description failures the environment caused: the hub or the network, a timeout, a block
+             */
+            env_errors: number;
+            /** Other Errors */
+            other_errors: number;
+        };
         /** Project */
         Project: {
             /** Name */
@@ -15934,6 +15979,11 @@ export interface components {
              * @description per tool and runtime, the most called first
              */
             tools: components["schemas"]["RuntimeToolStat"][];
+            /**
+             * Skills
+             * @description per skill the Skill tool loaded, the most called first
+             */
+            skills?: components["schemas"]["RuntimeSkillStat"][];
         };
         /** Proposal */
         Proposal: {
@@ -18729,6 +18779,11 @@ export interface components {
              * @description the most called first; empty for a run that has not ended
              */
             tools: components["schemas"]["ToolStat"][];
+            /**
+             * Skills
+             * @description what the Skill tool loaded, the most called first; empty before schema 0087
+             */
+            skills?: components["schemas"]["SkillStat"][];
         };
         /** RunUploadRequest */
         RunUploadRequest: {
@@ -18773,6 +18828,26 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** RuntimeSkillStat */
+        RuntimeSkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Runs
+             * @description runs that loaded the skill
+             */
+            runs: number;
         };
         /** RuntimeToolStat */
         RuntimeToolStat: {
@@ -19210,6 +19285,28 @@ export interface components {
              * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
              */
             tool_result_chars?: components["schemas"]["ToolChars"][] | null;
+            /**
+             * Bash Kinds
+             * @description per program with failures, how many of each kind; null when an older client pushed the digest
+             */
+            bash_kinds?: components["schemas"]["ProgramKinds"][] | null;
+            /** @description Bash commands that ran several programs; null when a client that did not count them pushed */
+            bash_compound?: components["schemas"]["CompoundBash"] | null;
+            /**
+             * Skills
+             * @description per skill loaded, its loads and the friction after them, the most loaded first; null when a client that did not count them pushed the digest
+             */
+            skills?: components["schemas"]["SkillCount"][] | null;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent
+             */
+            interrupts?: number | null;
+            /**
+             * Turns
+             * @description turns of the person, the commands they typed among them
+             */
+            turns?: number | null;
             /**
              * Spool Results
              * @description results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest
@@ -19663,6 +19760,63 @@ export interface components {
              */
             published_at: string;
         };
+        /** SkillCount */
+        SkillCount: {
+            /**
+             * Skill
+             * @description the skill, as the Skill tool or the person's /name named it
+             */
+            skill: string;
+            /**
+             * Calls
+             * @description loads: through the Skill tool, and typed by the person
+             */
+            calls: number;
+            /**
+             * Typed
+             * @description loads the person typed as /name (Codex: named with $name)
+             */
+            typed: number;
+            /**
+             * Failed
+             * @description calls of the Skill tool that answered an error
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Bash
+             * @description Bash commands from each load to the person's next turn
+             * @default 0
+             */
+            bash: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent in those windows
+             * @default 0
+             */
+            interrupts: number;
+            /**
+             * Corrections
+             * @description turns that closed a window and read as a correction of the agent
+             * @default 0
+             */
+            corrections: number;
+        };
         /** SkillHistory */
         SkillHistory: {
             /**
@@ -19684,6 +19838,21 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+        };
+        /** SkillStat */
+        SkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
         };
         /** SourceRead */
         SourceRead: {
