@@ -102,6 +102,14 @@ it does nothing. On a working day:
 The notice kinds `pm_daily` and `pm_escalation` are in `runs.NOTICE_KINDS` and the check of `notifications.notice_kind`
 (`docs/notifications.md`).
 
+## Web
+
+The manifest has one native page, `daily`, in the project's menu (`/p/{project}/x/pm/daily`; `/p/{project}/x/pm`, the
+link of the digest, redirects to it). It shows the eight sections of one day (`?date=YYYY-MM-DD`, today in the project's
+timezone by default): done, sprint, late, review, stale, blocked, escalate and load. Each task links to its page in tasks;
+each blocker names who it waits on and its age. A 409 (tasks not enabled, or a config of pm the hub refuses) shows the
+hub's reason with links to the plugins' pages. Code: `web/src/components/pm`, `web/src/app/(app)/p/[project]/x/pm`.
+
 ## Code
 
 `workdays` counts days, `settings` reads the config of pm and the statuses of tasks, `reads` reads the facts from the
