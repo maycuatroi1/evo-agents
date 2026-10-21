@@ -289,7 +289,8 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
   `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision), and
-  `task.result` with `runs:dispatch`, only to the plugin whose agent type ran the task (section Agent types). A payload
+  `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
+  task (section Agent types). A payload
   carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
@@ -824,7 +825,8 @@ it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed bran
 in its next attempt on the same branch. A task run is never rerun: the plugin hands the task again (409).
 
 **The plugin learns the end through its events**: when the run is done, failed or cancelled, the hub writes the event
-`task.result` for the plugin of the agent type alone, while the project grants it `runs:dispatch`. Its payload holds:
+`task.result` for the plugin of the agent type alone, while the project grants it `runs:dispatch`; a core plugin, which
+hands its own types tasks without that grant, gets it all the same. Its payload holds:
 
 - `task_id`, `run_id`, `attempt`, `project`, `agent_type` and `state`;
 - `branch`;

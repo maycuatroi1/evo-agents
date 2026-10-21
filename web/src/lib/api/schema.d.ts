@@ -7387,10 +7387,10 @@ export interface components {
             budget_usd: number;
             /**
              * Kind
-             * @description group: members are added and removed; direct: one person and one agent, for good
+             * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set, on this hub; null for none, and always for a direct chat
@@ -7608,7 +7608,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread" | "direct") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle") | null;
             /**
              * Login
              * @description the person it reached
@@ -7943,10 +7943,10 @@ export interface components {
             agents: string[];
             /**
              * Kind
-             * @description group, or direct: one person and one agent
+             * @description group; direct: one person and one agent; or settle: a group chat the hub opened for its agent
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set; null for none, and always for a direct chat

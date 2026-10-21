@@ -7,7 +7,9 @@ sources that show it, a summary, and its status: open, resolved or waived. Witho
 finding names at least one, and the hub looks each up before it writes anything: a code some item of the project holds
 (a use case's, or any coded item's, of any document), the id of a node of the project's knowledge graph on the hub,
 or a path a File or Document node of that graph carries (``repo:path``, or the path alone), the graph read as the
-agent of the run reads it (``plugin_calls.CoreContext.graph_refs``). A finding carries the label of its document.
+agent of the run reads it (``plugin_calls.CoreContext.graph_refs``). A finding carries the label of its document, and
+keeps the author emails of the newest commits of the files its sources name, as that lookup found them
+(``commit_authors``): whom its settle chat invites (``settle``). No route returns them.
 
 The agent of a run of @ba writes them with the tool srs__finding (``agent``): it records one, resolves or waives an
 open one, and reopens one settled at most REOPEN_HOURS ago. A resolution says how it was settled and names either
@@ -19,7 +21,9 @@ with a reason (``server``, ``evo-agents hub srs waive``), and every member with 
 ``approval_hold`` is the gate of an approval (``reviews.review``): a version is not approved while its document has an
 open finding of level decide, whatever version it was found on, or while @ba's review of the version's current round
 (srs_versions.review_run_id, ``auto_review``) is queued or running. A review that failed, was cancelled or was lost
-holds nothing, nor does a round no review was handed for; a request for changes is never held.
+holds nothing, nor does a round no review was handed for; a request for changes is never held. The refusal names each
+open finding with its chat link: the first message of the settle chat it is settled in while it is open (``settle``
+sets it when it opens the chat), the message that settled it once one did.
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ from evo_agents.hub.tables_srs import (
     FINDING_KINDS,
     FINDING_LEVELS,
     MAX_CHAT_LINK_CHARS,
+    MAX_COMMIT_AUTHORS,
     MAX_SOURCE_CHARS,
     MAX_SOURCES,
     SOURCE_KINDS,
@@ -187,24 +192,31 @@ def chat_link(link: str | None) -> str | None:
     return link
 
 
-async def graph_problems(project: str, sources: list[Source], graph_refs) -> list[str]:
-    """Why each node and path of ``sources`` is not in the project's knowledge graph on the hub; ``graph_refs`` is
-    ``CoreContext.graph_refs``, awaited before the document is locked, since it may fetch the graph."""
+async def looked_up(project: str, sources: list[Source], graph_refs) -> tuple[list[str], tuple[str, ...]]:
+    """(why each node and path of ``sources`` is not in the project's knowledge graph on the hub, the author emails of
+    the newest commits of the files they name); ``graph_refs`` is ``CoreContext.graph_refs``, awaited before the
+    document is locked, since it may fetch the graph."""
     ids = [source.ref for source in sources if source.kind == "node"]
     paths = [source.ref for source in sources if source.kind == "path"]
     if not ids and not paths:
-        return []
+        return [], ()
     if graph_refs is None:
         return [
             f"node ids and paths are looked up only by a tool on the hub's /mcp; {project}'s graph is not read here"
-        ]
+        ], ()
     refs = await graph_refs(ids, paths)
     if refs.why:
-        return [f"node ids and paths are looked up in the knowledge graph of project {project}, and {refs.why}"]
+        return [f"node ids and paths are looked up in the knowledge graph of project {project}, and {refs.why}"], ()
     where = f"the knowledge graph of project {project} as the run reads it"
-    return [f"no node of {where} has id {ref}" for ref in refs.ids] + [
+    problems = [f"no node of {where} has id {ref}" for ref in refs.ids] + [
         f"no File or Document node of {where} carries path {ref}" for ref in refs.paths
     ]
+    return problems, tuple(refs.authors)[:MAX_COMMIT_AUTHORS]
+
+
+async def graph_problems(project: str, sources: list[Source], graph_refs) -> list[str]:
+    """Why each node and path of ``sources`` is not in the project's knowledge graph on the hub (``looked_up``)."""
+    return (await looked_up(project, sources, graph_refs))[0]
 
 
 async def held_problems(
@@ -247,10 +259,16 @@ class NewFinding:
 
 
 async def record(
-    conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, new: NewFinding, run_id: int | None
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    doc: DocumentRow,
+    new: NewFinding,
+    run_id: int | None,
+    commit_authors: tuple[str, ...] = (),
 ) -> FindingRow:
-    """Write ``new`` on ``doc``, whose row lock the caller holds, with the label of the document; the codes and
-    versions of its sources are checked here, its nodes and paths by the caller first (``graph_problems``)."""
+    """Write ``new`` on ``doc``, whose row lock the caller holds, with the label of the document and the authors of
+    the newest commits of its sources' files; the codes and versions of its sources are checked here, its nodes and
+    paths by the caller first (``looked_up``, which gives ``commit_authors``)."""
     if new.kind not in FINDING_KINDS or new.level not in FINDING_LEVELS:
         raise SrsError(
             422, f"a finding's kind is one of {', '.join(FINDING_KINDS)}, its level one of {', '.join(FINDING_LEVELS)}"
@@ -273,6 +291,7 @@ async def record(
         "summary": new.summary,
         "run_id": run_id,
         "label": doc.label,
+        "commit_authors": list(dict.fromkeys(commit_authors))[:MAX_COMMIT_AUTHORS],
     }
     return await finding(conn, doc, (await conn.execute(insert(f).values(values).returning(f.c.id))).scalar_one())
 
@@ -344,7 +363,7 @@ async def reopen(conn: AsyncConnection, doc: DocumentRow, finding_id: int) -> Fi
 
 def _named(row: FindingRow) -> str:
     about = f", {row.item_code or row.item}" if row.item else ""
-    chat = f", settled in {row.chat_link}" if row.chat_link else ""
+    chat = f", chat {row.chat_link}" if row.chat_link else ""
     return f"#{row.id} ({row.kind}{about}{chat})"
 
 
@@ -398,6 +417,7 @@ __all__ = [
     "findings",
     "graph_problems",
     "held_problems",
+    "looked_up",
     "record",
     "refused",
     "reopen",

@@ -4,7 +4,8 @@ follow the run.
 
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
-writer on the profile's project, when the chat's budget is spent, or when no worker of the person can take it now. Each
+writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
+the chat's budget is spent, or when no worker of the person can take it now. Each
 (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
 its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
@@ -413,13 +414,27 @@ async def _admins_only(conn: AsyncConnection, profile_id: int) -> bool:
     return False
 
 
+async def _attends(conn: AsyncConnection, hand: Hand) -> bool:
+    """Whether ``hand``'s profile is the agent of its settle chat, which every member of its project wakes."""
+    if hand.chat.kind != chats.SETTLE:
+        return False
+    c = tables.chats
+    agent = (await conn.execute(select(c.c.direct_profile_id).where(c.c.id == hand.chat.chat_id))).scalar_one()
+    return agent == hand.profile.id
+
+
 async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     profile, g = hand.profile, tables.grants
     if profile.deleted_at is not None:
         return f"@{profile.handle} was deleted: it takes no new work"
     query = select(g.c.role).where(g.c.user_id == hand.dispatcher_id, g.c.project_id == profile.project_id)
     role = (await conn.execute(query)).scalar_one_or_none()
-    if not has_role(role, "writer"):
+    if role is None and await _attends(conn, hand):
+        return (
+            f"@{profile.handle} works for the members of project {profile.project} in this settle chat, and "
+            f"{hand.dispatcher} holds no grant there"
+        )
+    if not has_role(role, "writer") and not await _attends(conn, hand):
         return (
             f"@{profile.handle} works for the writers of project {profile.project}, and {hand.dispatcher} holds "
             f"{role or 'no grant'} there"

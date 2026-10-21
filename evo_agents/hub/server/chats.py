@@ -19,9 +19,12 @@ and the mention keeps the run it made or woke, or why it made none, which the hu
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
 (the mention ``via`` thread). In a direct chat (``chat_direct``) a message whose mentions do not reach its agent goes to
 it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
-outside a thread starts a new session. Elsewhere a message that mentions no agent makes no run and asks no model
-anything. A message these routes answer carries how far each run it handed work to is while that run is on its way
-(``chat_progress``): waiting for its worker, a step of its setup, working, as the reader may read the run.
+outside a thread starts a new session. In a settle chat (``chats.SETTLE``, which the hub opens) every message of a
+person whose mentions do not reach the chat's agent goes to it ``via`` settle, in the sender's session of the message's
+thread, a member who reads the agent's project alone included (``chat_runs.hand_work``). Elsewhere a message that
+mentions no agent makes no run and asks no model anything. A message these routes answer carries how far each run it
+handed work to is while that run is on its way (``chat_progress``): waiting for its worker, a step of its setup,
+working, as the reader may read the run.
 
 PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
 creator does (403), audited as chat.budget.
@@ -354,6 +357,8 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)
+    elif chat.kind == chats.SETTLE:
+        kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
         kept += await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)

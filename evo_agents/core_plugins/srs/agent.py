@@ -15,7 +15,9 @@ does too: what a tool answers reaches the machine the agent runs on.
   documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
 - ``propose`` answers the agent of a chat run of @ba alone (the profile of the project's agent type ``ba``, while it
   is on). Its changes, checked as a save is, become the document's next version, written as the person and drafted by
-  the run, and go to review at once; the person, its author, never approves it. Its schema takes no drop, and a code
+  the run, and go to review at once; the person, its author, never approves it. In the settle chat of a version of the
+  document (``settle``) the version is written as the author of that version instead, who must hold writer, whoever
+  woke @ba there: a member who settled a conflict keeps the right to approve what follows from it. Its schema takes no drop, and a code
   an item holds never changes (``writes.store_problems``). A version it sends to review is reviewed by @ba in turn
   (``auto_review``), as every version is each time it enters review.
 - ``comment`` answers the agent of a run of @ba: a chat run, or the review run of ``auto_review``. The comment is the
@@ -51,6 +53,7 @@ from evo_agents.core_plugins.srs.diff import text_of
 from evo_agents.core_plugins.srs.doc import Document, SrsError
 from evo_agents.core_plugins.srs.edits import edited
 from evo_agents.core_plugins.srs.models import SrsChange, edit_changes
+from evo_agents.core_plugins.srs.settle import proposer
 from evo_agents.core_plugins.srs.template import code_key
 from evo_agents.core_plugins.srs.writes import Writer, give_screen_codes, write_version
 from evo_agents.hub import tables
@@ -327,15 +330,26 @@ def compare_path(project: str, slug: str, low: int, high: int) -> str:
     return f"/p/{quote(project, safe='')}/x/srs/documents/{quote(slug, safe='')}/compare?from={low}&to={high}"
 
 
+async def _author(conn: AsyncConnection, who: Acting, doc: store.DocumentRow) -> tuple[Principal, ProjectAccess]:
+    """(who a version @ba proposes of ``doc`` is written as, their access): the author of the version whose settle
+    chat the run is in (``settle.proposer``), else the person the run acts for."""
+    author_id = await proposer(conn, who.run_id, doc.id)
+    if author_id is None or author_id == who.person.user_id:
+        return who.person, who.access
+    author = await _principal(conn, author_id, None)
+    return author, await _access(conn, author, who.access.name)
+
+
 async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     _ba_run(who, "propose", ("chat",))
-    reviews.writer(who.access, "proposing a version")
     try:
         changes = edit_changes(CHANGES.validate_python(args["changes"]))
     except ValidationError as exc:
         raise SrsError(422, f"the changes are not taken: {exc.errors()[0]['msg']}") from None
-    slug, access = args["document"], who.access
+    slug = args["document"]
     doc = await _document(conn, who, slug, lock=True)
+    author, access = await _author(conn, who, doc)
+    reviews.writer(access, f"proposing a version as {author.login}")
     latest = await store.snapshot(conn, await store.version(conn, doc))
     number = args["base_version"]
     base = (
@@ -346,7 +360,7 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     content = edited(latest, base, changes)
     await give_screen_codes(conn, access.project_id, content)
     settings = await store.settings(conn, access)
-    writer = Writer(access.project_id, doc.id, who.person.user_id, False, who.run_id)
+    writer = Writer(access.project_id, doc.id, author.user_id, False, who.run_id)
     made = await write_version(conn, writer, content, latest, settings.template, args["summary"])
     doc = await store.document(conn, access, slug, who.sink)
     sent = await reviews.submit(conn, access, doc, made, settings)
@@ -354,7 +368,7 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     new = await store.snapshot(conn, sent)
     since = latest.version.number
     said = [
-        f"Version {made} of {slug} is in review, drafted by run #{who.run_id} and written as {who.person.login}, who "
+        f"Version {made} of {slug} is in review, drafted by run #{who.run_id} and written as {author.login}, who "
         "therefore does not approve it: another member of the project does.",
         f"Compare it with version {since}: {compare_path(access.name, slug, since, made)}",
     ]
@@ -428,7 +442,7 @@ async def _finding(conn: AsyncConnection, who: Acting, args: dict, graph_refs) -
     settling = action == "resolve"
     sources = findings.sources_of(args.get("sources"), settling=settling)
     link = findings.chat_link(args.get("chat_link"))
-    problems = await findings.graph_problems(who.access.name, sources, graph_refs)
+    problems, authors = await findings.looked_up(who.access.name, sources, graph_refs)
     if problems:
         raise findings.refused(problems)
     doc = await _document(conn, who, args["document"], lock=True)
@@ -436,7 +450,8 @@ async def _finding(conn: AsyncConnection, who: Acting, args: dict, graph_refs) -
         new = findings.NewFinding(
             args["kind"], args["level"], args["summary"], sources, args.get("version"), args.get("item")
         )
-        return _finding_text(await findings.record(conn, who.access, doc, new, who.run_id), doc.slug, "is recorded")
+        row = await findings.record(conn, who.access, doc, new, who.run_id, authors)
+        return _finding_text(row, doc.slug, "is recorded")
     if action == "reopen":
         return _finding_text(await findings.reopen(conn, doc, args["finding"]), doc.slug, "is open again")
     status = findings.RESOLVED if settling else findings.WAIVED

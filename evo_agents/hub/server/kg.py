@@ -802,9 +802,10 @@ async def unknown_refs(
     state, user: Principal, project: str, sink: str | None, ids: list[str], paths: list[str]
 ) -> UnknownRefs:
     """Which of node ``ids`` and ``paths`` (``repo:path``, or a path alone) the project's latest successful build
-    lacks, as ``user`` reads it through ``sink`` (the project's hub sink when None) with ``tool_result``'s rule.
-    Never raises for the graph: when it cannot look them up (no grant, no graph yet, none readable now) every one
-    counts as lacking, and ``why`` says so."""
+    lacks, as ``user`` reads it through ``sink`` (the project's hub sink when None) with ``tool_result``'s rule, and the
+    author emails of the newest commits of the files they name (``kg_graph.HubSession.unknown``). Never raises for the
+    graph: when it cannot look them up (no grant, no graph yet, none readable now) every one counts as lacking, and
+    ``why`` says so."""
     if not ids and not paths:
         return UnknownRefs((), ())
     every = (tuple(ids), tuple(paths))

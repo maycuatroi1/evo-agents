@@ -551,8 +551,8 @@ titled with the agent's name. A person has one direct chat with each agent: the 
 agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
 of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
 for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
-there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group` or `direct`, in
-Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group`, `direct` or
+`settle`, in Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
 agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
 leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
@@ -561,6 +561,20 @@ hop 1 for the person, within the chat's budget, and a reply in the thread of the
 reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
+**Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
+with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
+findings of level decide open (`docs/srs-plugin.md`, `evo_agents/core_plugins/srs/settle.py`). It is a group chat in
+all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
+whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
+message's thread, within the chat's budget and hops: an `@` of it makes the same one run, and a mention of another
+agent hands that one work as in any chat and wakes the chat's agent too. And a person with any grant on the agent's
+project wakes the chat's agent, a reader too; any other agent of the chat still works for the writers of its project
+alone. Its members change as a group chat's do, and it may have an image. The hub opens it with no model asked: the
+creator is the version's author (or the run_as of the agent type when the author no longer clears its label), the
+people the plugin's rules name are added (each gets `chat_added`, from "the hub"), those it cannot add are named with
+why in its first message, which is the hub's and mentions the agent; the run that mention starts acts for the type's
+run_as, as any run a message of the hub wakes. Opening one is audited as `chat.create` in the agent's project.
 
 **Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
@@ -678,7 +692,10 @@ every direct chat a group chat of the same person and agent, and a mention `via`
 0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
 chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
 event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
-whose objects stay in the bucket with nothing referring to them.
+whose objects stay in the bucket with nothing referring to them. Schema 0067 adds the kind `settle` (its agent in
+`chats.direct_profile_id`, no person) and the `via` settle of a mention, with the table `srs_settle_chats` of the core
+plugin srs. Going back to 0066 makes every settle chat a group chat of the same members, its agent no longer named on
+its row, reads a mention `via` settle as `via` thread, and drops the table.
 
 ### What a triage agent may do on its own
 
