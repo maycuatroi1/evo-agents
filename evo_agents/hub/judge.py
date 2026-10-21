@@ -27,7 +27,8 @@ proposal goes to tier 3 and the Judge fails it. What a verify command runs is re
 
 ``judge_runtime`` says what the Judge runs on: Codex when the project's policy declares a sink for Codex (an id
 ``codex@...``) whose clearance covers the project's label and the worker on duty has it, else Claude Code with a model
-other than the Builder's. ``final_verdict`` passes a change only when the Judge's agent passed it, every verify command
+other than the Builder's (``evo_agents.hub.judges``, with ``codex_cleared``, where the Judges of the merge queue are
+chosen too). ``final_verdict`` passes a change only when the Judge's agent passed it, every verify command
 of the plan and every hidden check ran and exited 0, the diff showed no sign, and the commit judged is the pull
 request's head. The Judge's agent gives its verdict as the JSON object that ends its last message
 (``verdict_from_message``): it travels in the daemon's memory, never through a file the code under test could write.
@@ -36,7 +37,9 @@ requires, it is green only when each of them passed (a check run of the App the 
 never when the ruleset requires none or the head commit's message asks CI to skip it (SKIP_CI). ``merge_decision`` says
 whether the hub merges a pull request now, waits, or leaves it open for its owner: only a tier 0 change on GitHub,
 passed by the Judge at the pull request's head, with CI green, no protected path touched, a repo whose ruleset the hub
-checked, and tier 0 among the charter's ``auto_merge``.
+checked, and tier 0 among the charter's ``auto_merge``. A merge request on GitLab the Judge passed goes to the hub's
+merge queue when the project's autonomy policy has its repo in mode auto and a forge secret covers it
+(``evo_agents.hub.merge_gate``), whatever its tier; otherwise it stays open, as before the policy.
 
 A Curator's plan is the hub's to write (``progress_free``): after the hub made it, a write may change the status,
 done_at, evidence and note of its steps and the plan's status, nothing else; and a plan whose id starts with
@@ -52,6 +55,8 @@ from urllib.parse import urlsplit
 
 from evo_agents.hub import tiers
 from evo_agents.hub.credentials import GITHUB_HOST, normalize_origin
+from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home before evo_agents.hub.judges
+from evo_agents.hub.judges import judge_runtime as judge_runtime
 from evo_agents.hub.replay import harness_path
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 from evo_agents.hub.verify_words import programs as programs  # its home before evo_agents.hub.verify_words
@@ -85,7 +90,6 @@ MAX_SIGNS = 50
 MAX_SIGN_TEXT = 200
 MAX_PATHS = 3000  # changed paths a verdict names, as GitHub lists at most 3000 files of a pull request
 MAX_CHECK_OUTPUT_CHARS = 60_000  # GitHub takes 65535 in a check run's summary
-CODEX_SINK = "codex@"  # the start of the id of a sink of the Codex runtime in a project's policy
 CI_OK = frozenset({"success", "neutral", "skipped"})  # a check run's conclusion that lets a merge go
 REQUIRED_OK = frozenset({"success"})  # what a check the ruleset requires must have concluded
 GITLAB_PUSH_OPTIONS = ("merge_request.create", "merge_request.target={target}", "merge_request.remove_source_branch")
@@ -702,54 +706,6 @@ def raised_reason(signs: list[dict]) -> str:
     return f"the diff of the Builder shows signs of score hacking ({shown}): tier 3"
 
 
-# Who judges
-
-
-def codex_cleared(rules, label: dict | None) -> bool:
-    """Whether the project's policy (``rules``, an ``access.ProjectRules``) declares a sink for Codex whose clearance
-    covers ``label``, the project's label as stored: an id starting with CODEX_SINK, of a level and location the
-    project's ladder knows, at or above the label's."""
-    stored = rules.stored(label) if label is not None else rules.top()
-    if stored is None or not stored.projects <= {rules.name}:
-        return False
-    closed = getattr(rules, "_closed", set())
-    for sink_id, clearance in rules.policy.sinks.items():
-        if not str(sink_id).lower().startswith(CODEX_SINK) or sink_id in closed:
-            continue
-        if stored.level <= clearance.level and stored.location <= clearance.location:
-            return True
-    return False
-
-
-def _other_model(model: str | None) -> str:
-    """A Claude model other than ``model`` (the Builder's; None is the runtime's default, Opus)."""
-    return "sonnet" if model is None or "opus" in model.lower() else "opus"
-
-
-def judge_runtime(
-    judge: dict, builder: dict, *, codex_allowed: bool, worker_runtimes: set[str] | frozenset[str]
-) -> tuple[str, str | None, str]:
-    """(runtime, model, why) of the Judge, from the charter's ``judge`` and ``builder`` roles: Codex when the policy
-    clears it and the worker on duty has it, else Claude Code with a model other than the Builder's."""
-    wanted_model = judge.get("model")
-    if codex_allowed and "codex" in worker_runtimes:
-        model = wanted_model if judge.get("runtime") == "codex" else None
-        return "codex", model, "the project's policy clears Codex for its label"
-    why = (
-        "the project's policy declares no sink for Codex that clears its label"
-        if not codex_allowed
-        else "the worker on duty has no Codex"
-    )
-    builder_model = builder.get("model")
-    if builder.get("runtime", "claude-code") == "claude-code":
-        chosen = wanted_model if judge.get("runtime") == "claude-code" else None
-        if chosen is None or chosen == builder_model:
-            chosen = _other_model(builder_model)
-        return "claude-code", chosen, f"{why}: Claude Code with a model other than the Builder's"
-    chosen = wanted_model if judge.get("runtime") == "claude-code" else None
-    return "claude-code", chosen, f"{why}: Claude Code, another runtime than the Builder's"
-
-
 # The verdict
 
 
@@ -926,12 +882,16 @@ class MergeFacts:
     ci: str  # ci_state's
     ci_reasons: tuple[str, ...] = ()
     mergeable: bool | None = None
+    queue: bool = False  # GitLab: the policy has the repo in mode auto and a forge secret covers its origin
 
 
 def merge_decision(facts: MergeFacts) -> tuple[str, list[str]]:
-    """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running, and
-    ``("open", why)`` when it stays open for its owner. Every condition fails closed."""
+    """``("merge", [])`` when the hub merges the pull request now, ``("wait", why)`` when CI is still running,
+    ``("queue", why)`` when a merge request on GitLab goes to the merge queue, and ``("open", why)`` when it stays open
+    for its owner. Every condition fails closed."""
     if facts.forge != "github":
+        if facts.queue and facts.passed:
+            return "queue", ["its repo is in mode auto with a forge secret: the merge queue gates and merges it"]
         return "open", ["a merge request on GitLab stays open: the hub never merges one"]
     if facts.pr_merged:
         return "open", ["the pull request was merged already, not by the hub"]

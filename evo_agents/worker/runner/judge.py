@@ -1,4 +1,7 @@
-"""A judge run (kind ``judge``, ``JudgeRun``): the Curator's Judge of one change.
+"""A judge run (kind ``judge``, ``JudgeRun``): the Curator's Judge of one change, or the Judge of a merge request of
+the hub's merge queue on GitLab, whose claim names no change (``merge_gate.judges_merge_request``): it reads its inputs
+from GET /v1/worker/runs/{id}/merge-judge and posts its verdict, with what the Judge said of each dimension
+(``merge_gate.dimensions_from_message``), to POST /v1/worker/runs/{id}/merge-verdict, the rest as below.
 
 Once it holds its leases, the worker reads the plan's verify commands and the project's hidden checks from the hub
 (GET /v1/worker/runs/{id}/judge with the run's own key, which the claim handed the daemon and only its memory holds;
@@ -27,7 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import judge, knowledge_diff, runs
+from evo_agents.hub import judge, knowledge_diff, merge_gate, runs
 from evo_agents.worker import gitops, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
@@ -53,21 +56,28 @@ class JudgeRun:
     def __init__(self, run: Run):
         self.run = run
         change = run.curator or {}
-        run.title = run.spec.get("title") or f"judge of change #{change.get('change_id')}"
+        self.merge = merge_gate.judges_merge_request(change)  # a merge request of the hub's merge queue
+        judged = f"merge request {change.get('pr_url')}" if self.merge else f"change #{change.get('change_id')}"
+        run.title = run.spec.get("title") or f"judge of {judged}"
         self.directory = RunDirectory(run)
         self.conversation = Conversation(run, self.directory)
         self.head: str | None = None
         self.merge_base: str | None = None
         self.git_dir: str | None = None  # the worktree's git directory, as it was made
+        self.dimensions: dict | None = None  # what the Judge of a merge request said of each dimension
 
     async def steps(self) -> None:
         run, change = self.run, self.run.curator or {}
         repos = [entry for entry in run.spec.get("repos") or [] if isinstance(entry, dict)]
+        judged = (
+            f"merge request {change.get('pr_url')} of the hub's merge queue"
+            if self.merge
+            else f"the Curator's change #{change.get('change_id')}"
+        )
         run.note(
-            f"Run #{run.id} claimed by worker {run.daemon.config.name}: the Judge of the Curator's change "
-            f"#{change.get('change_id')} of project {run.project}, {run.runtime}, timeout {run.timeout_s // 60} min "
-            "of agent time. It reads and judges: nothing is committed or pushed, and the Builder's transcript is not "
-            "read."
+            f"Run #{run.id} claimed by worker {run.daemon.config.name}: the Judge of {judged} of project "
+            f"{run.project}, {run.runtime}, timeout {run.timeout_s // 60} min of agent time. It reads and judges: "
+            "nothing is committed or pushed, and the Builder's transcript is not read."
         )
         cls = run.agent.runtime_class()
         if len(repos) != 1 or not repos[0].get("repo"):
@@ -109,6 +119,8 @@ class JudgeRun:
             "signs": signs,
             "paths": judge.changed_paths(files)[: judge.MAX_PATHS],
         }
+        if self.merge:
+            body["dimensions"] = self.dimensions
         await self.post(body)
 
     def run_path(self) -> str | None:
@@ -119,8 +131,9 @@ class JudgeRun:
     async def inputs(self) -> dict:
         """What the hub gives the Judge to read, asked with the run's own key; held in memory alone."""
         run = self.run
+        ask = run.daemon.hub.merge_judge_inputs if self.merge else run.daemon.hub.judge_inputs
         try:
-            found = await run.daemon.hub.judge_inputs(run.id, run.judge_key)
+            found = await ask(run.id, run.judge_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not give the Judge its inputs: {exc}") from None
         return found if isinstance(found, dict) else {}
@@ -232,8 +245,9 @@ class JudgeRun:
     async def post(self, body: dict) -> None:
         """Post the verdict with the run's own key, and end the run done."""
         run = self.run
+        send = run.daemon.hub.merge_verdict if self.merge else run.daemon.hub.verdict
         try:
-            answer = await run.daemon.hub.verdict(run.id, body, run.judge_key)
+            answer = await send(run.id, body, run.judge_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not take the Judge's verdict: {exc}") from None
         passed = answer.get("passed") if isinstance(answer, dict) else None
@@ -297,10 +311,13 @@ class JudgeRun:
         """The verdict that ends the Judge agent's last message, from its own output (``judge.verdict_from_message``);
         a file in the run's directory, which the code under test can write, counts for nothing."""
         outcome = self.run.outcome
-        verdict, reasons = judge.verdict_from_message(outcome.summary if outcome is not None else None)
+        message = outcome.summary if outcome is not None else None
+        verdict, reasons = judge.verdict_from_message(message)
         if verdict is None:
             self.run.note(f"{reasons}: no verdict, which fails the change.")
             return None, None
+        if self.merge:
+            self.dimensions = merge_gate.dimensions_from_message(message)
         return verdict, reasons or None
 
     def prompt(self) -> str:

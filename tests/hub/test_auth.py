@@ -79,6 +79,7 @@ HUB_TABLES |= pg.HISTORY_TABLES  # migration 0059
 HUB_TABLES |= pg.SEARCH_TABLES  # migration 0060
 HUB_TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 HUB_TABLES |= pg.POLICY_TABLES  # migration 0066
+HUB_TABLES |= pg.MERGE_TABLES  # migration 0068
 
 
 @pytest.fixture

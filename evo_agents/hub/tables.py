@@ -1,11 +1,8 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
-migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage``, ``tables_workers`` and ``tables_curator``
-hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
-
-The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
-equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
-(CHECK constraints and triggers live in the migrations only). A table is an attribute of its name."""
+migration from (``migrations/env.py``). Modules ``tables_<area>`` hold them by area; ``tables.srs`` and ``tables.tasks``
+are core plugins'. The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py``
+keeps the two equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations
+name them (CHECK constraints and triggers live in the migrations only). A table is an attribute of its name."""
 
 from __future__ import annotations
 
@@ -40,6 +37,7 @@ from evo_agents.hub import (
     tables_accounts,
     tables_curator,
     tables_kg,
+    tables_merge,
     tables_plugins,
     tables_profiles,
     tables_sessions,
@@ -997,4 +995,5 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
+merge_queue, merge_events = tables_merge.merge_tables(metadata)  # the merge queue on GitLab and its ledger (0068)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)

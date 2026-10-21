@@ -1,7 +1,8 @@
 """The hub's calls to GitLab, made with a project's forge secret (``evo_agents.hub.server.forge``): read a project's
-merge settings and protected branches, read a merge request, its diff and commits and the pipelines and jobs of a
-commit, rebase a merge request, merge it with the sha the hub checked, comment on it, play or retry a job, and revert
-commits onto a branch of their own with a merge request of them (plan gitlab-merge-queue, criterion a3).
+merge settings and protected branches, read a merge request, its diff and commits, who labeled it and the role of a
+member, and the pipelines and jobs of a commit, open and rebase a merge request, merge it with the sha the hub checked,
+comment on it, play or retry a job, and revert commits onto a branch of their own with a merge request of them (plan
+gitlab-merge-queue, criteria a3 and a4).
 
 GitLab's REST API v4 is at ``https://<host>[:port]/api/v4`` of the origin's host (``project_of``), and a project is
 named by its path, URL-encoded (``group%2Frepo``). The token travels in the PRIVATE-TOKEN header of each request alone:
@@ -275,6 +276,7 @@ class FileDiff:
     new_file: bool
     renamed_file: bool
     deleted_file: bool
+    cut: bool = False  # GitLab left the patch out (too_large or collapsed): what changed cannot be read
 
     @classmethod
     def read(cls, f: _Fields) -> FileDiff:
@@ -285,6 +287,7 @@ class FileDiff:
             new_file=f.flag("new_file"),
             renamed_file=f.flag("renamed_file"),
             deleted_file=f.flag("deleted_file"),
+            cut=f.flag("too_large") or f.flag("collapsed"),
         )
 
 
@@ -293,10 +296,32 @@ class Commit:
     id: str
     title: str
     parent_ids: tuple[str, ...]
+    message: str = ""  # the whole message, the title its first line
 
     @classmethod
     def read(cls, f: _Fields) -> Commit:
-        return cls(f.word("id"), f.text("title") or "", f.words("parent_ids"))
+        return cls(f.word("id"), f.text("title") or "", f.words("parent_ids"), f.text("message") or "")
+
+
+@dataclass(frozen=True)
+class LabelEvent:
+    """Who added or removed a label of a merge request, as GET .../resource_label_events lists it."""
+
+    user_id: int | None
+    username: str | None
+    label: str | None
+    action: str  # add, remove
+
+    @classmethod
+    def read(cls, f: _Fields) -> LabelEvent:
+        user, label = f.child("user"), f.child("label")
+        user_id = user.data.get("id") if user is not None else None
+        return cls(
+            user_id=user_id if type(user_id) is int else None,
+            username=user.text("username") if user is not None else None,
+            label=label.text("name") if label is not None else None,
+            action=f.word("action"),
+        )
 
 
 # The client
@@ -465,6 +490,24 @@ class GitLab:
         """Every file merge request ``iid`` changes, with its patch."""
         path = f"{self._project(project)}/merge_requests/{iid}/diffs"
         return [FileDiff.read(item) for item in await self._pages(path, f"reading the diff of !{iid} of {project}")]
+
+    async def label_events(self, project: str, iid: int) -> list[LabelEvent]:
+        """Who added and removed each label of merge request ``iid``, the oldest first."""
+        path = f"{self._project(project)}/merge_requests/{iid}/resource_label_events"
+        items = await self._pages(path, f"reading the label events of !{iid} of {project}")
+        return [LabelEvent.read(item) for item in items]
+
+    async def access_level(self, project: str, user_id: int) -> int | None:
+        """The access level user ``user_id`` holds on ``project``, inherited ones included (10 Guest, 20 Reporter, 30
+        Developer, 40 Maintainer, 50 Owner); None when the user is not a member."""
+        doing = f"reading the role of user {user_id} on {project}"
+        path = f"{self._project(project)}/members/all/{int(user_id)}"
+        try:
+            return (await self._object("GET", path, doing)).number("access_level")
+        except GitLabRefused as exc:
+            if exc.status == 404:
+                return None
+            raise
 
     async def merge_request_commits(self, project: str, iid: int) -> list[Commit]:
         """The commits of merge request ``iid``, in the order GitLab lists them."""

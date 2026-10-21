@@ -563,10 +563,11 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.task_dispatch import task_prompt
 
         return await task_prompt(conn, view)
-    if view.kind == "judge":
+    if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
         from evo_agents.hub.server.changes import judge_prompt
+        from evo_agents.hub.server.merge_judge import merge_prompt
 
-        return await judge_prompt(conn, view)
+        return await merge_prompt(conn, view) or await judge_prompt(conn, view)
     if view.kind == "history":
         from evo_agents.hub.history import RUN_PROMPT
 
@@ -662,6 +663,10 @@ async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> Cu
     from evo_agents.hub.server.history import history_claim  # it queues runs through this package
 
     found = await run_curator(conn, project_id, view)
+    if found is None and view.kind == "judge":  # a judge run of the merge queue is guarded as the Curator's are
+        from evo_agents.hub.server.merge_judge import merge_claim
+
+        found = await merge_claim(conn, view)
     if found is not None and view.kind == "history":
         found.update(await history_claim(conn, view.id))
     return None if found is None else CuratorSpec(**found)

@@ -14,6 +14,8 @@ passed over with a warning naming its id. None means the project has no forge se
 no key: the hub then leaves the project's merge requests there as they are, open for a person, as before
 (criterion a3). ``ForgeToken.gitlab`` opens the client of ``evo_agents.hub.server.gitlab`` with it; the caller keeps
 the token no longer than its calls, and nothing writes its value to a log line, an error, an event or the audit.
+``has_forge`` says whether such a secret covers an origin without opening one, for a caller that only decides whether
+the merge queue takes a merge request (``evo_agents.hub.server.merge_gate``).
 """
 
 from __future__ import annotations
@@ -79,6 +81,14 @@ def _usable(project_id: int):
 def _preference(row) -> tuple:
     """The longest url_prefix first, then the secret written last, then the newest."""
     return (-len(normalize_origin(row.url_prefix)), -row.updated_at.timestamp(), -row.id)
+
+
+async def has_forge(conn: AsyncConnection, project_id: int, origin: str | None) -> bool:
+    """Whether a forge secret ``forge_token`` would consider covers ``origin`` of project ``project_id``; none is
+    opened, so a secret that would not open still counts."""
+    if not origin or project_of(origin) is None:
+        return False
+    return any(matches(row.url_prefix, origin) for row in await conn.execute(_usable(project_id)))
 
 
 async def forge_token(conn: AsyncConnection, sealer: Sealer | None, project_id: int, origin: str) -> ForgeToken | None:
