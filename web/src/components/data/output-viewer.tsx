@@ -6,19 +6,21 @@ import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { baseName, downloadHref, type RunOutput } from "@/lib/outputs";
 
 import { SafeMarkdown } from "./markdown";
 import { OutputView, ZOOMS } from "./output-views";
-import { SOURCE_ICON, useByteSize } from "./output-tile";
+import { useByteSize } from "./byte-size";
+import { SOURCE_ICON } from "./output-source";
 
 /**
  * The viewer of a list of outputs, a dialog over the page: the file's name as its title, its size, kind, source and
  * when it came under it, then the file itself as its kind is shown (output-views.tsx), and its caption under that.
  * The arrow keys (and on a touch screen a swipe) move to the file before or after, Esc closes, and an image zooms with
  * its buttons, `+`, `-` and `0`, or a double click. Download saves the file under its own name; `actions` adds what
- * the surface offers for the file shown (on a run's page: Show in trace, Delete). Full screen under 640 px. Loaded on
- * demand (`next/dynamic`), so a page that never opens a file carries none of it.
+ * the surface offers for the file shown (on a run's page: Show in trace, Delete), at the foot under 768 px. Full screen
+ * under 640 px. Loaded on demand (`next/dynamic`), so a page that never opens a file carries none of it.
  */
 export type OutputViewerProps = {
   outputs: readonly RunOutput[];
@@ -27,17 +29,20 @@ export type OutputViewerProps = {
   onOpenChange: (id: number | null) => void;
   /** What the surface adds for the output shown; `show` moves the viewer to another output, or closes it (null). */
   actions?: (output: RunOutput, show: (id: number | null) => void) => ReactNode;
+  /** What takes focus once the viewer closes: the button that opened it, when it is still on the page. */
+  returnFocus?: () => HTMLElement | null;
 };
 
 const SKIP_KEYS = new Set(["INPUT", "TEXTAREA", "SELECT", "VIDEO", "AUDIO"]);
 
-export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputViewerProps) {
+export function OutputViewer({ outputs, openId, onOpenChange, actions, returnFocus }: OutputViewerProps) {
   const t = useTranslations("outputs.viewer");
   const tSource = useTranslations("outputs.source");
   const tKind = useTranslations("outputs.viewer.kind");
   const format = useFormatter();
   const size = useByteSize();
   const metaId = useId();
+  const phone = useIsMobile();
   const index = openId === null ? -1 : outputs.findIndex((output) => output.id === openId);
   // What the dialog shows while it closes: the last output it showed.
   const [last, setLast] = useState<RunOutput | null>(null);
@@ -68,6 +73,17 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputV
     else if (image && event.key === "0") setZoom(1);
   };
   const SourceIcon = SOURCE_ICON[output.source];
+  const fileActions = (
+    <div className="flex items-center gap-1 max-md:gap-2 max-md:[&>*]:flex-1" data-testid="output-viewer-actions">
+      <Button asChild variant="outline" size="sm">
+        <a href={downloadHref(output.url)} download={baseName(output.name)} data-testid="output-viewer-download">
+          <Download aria-hidden="true" />
+          {t("download")}
+        </a>
+      </Button>
+      {actions?.(output, onOpenChange)}
+    </div>
+  );
 
   return (
     <Dialog open={current !== null} onOpenChange={(open) => (open ? undefined : onOpenChange(null))}>
@@ -75,6 +91,12 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputV
         showCloseButton={false}
         aria-describedby={metaId}
         onKeyDown={onKeyDown}
+        onCloseAutoFocus={(event) => {
+          const target = returnFocus?.();
+          if (!target?.isConnected) return;
+          event.preventDefault();
+          target.focus();
+        }}
         className="flex h-dvh max-h-dvh w-full max-w-full flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[min(92dvh,64rem)] sm:max-w-[min(96vw,84rem)] sm:rounded-lg"
         data-testid="output-viewer"
         data-output-id={output.id}
@@ -98,7 +120,7 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputV
               </p>
             </DialogDescription>
           </div>
-          <div className="flex flex-wrap items-center gap-1 max-sm:order-last max-sm:w-full max-sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1 max-md:order-last max-md:w-full max-md:justify-between">
             {total > 1 ? (
               <div className="flex items-center gap-0.5" role="group" aria-label={t("navigation")}>
                 <Button type="button" variant="ghost" size="icon" onClick={() => go(-1)} aria-label={t("previous")} aria-keyshortcuts="ArrowLeft" data-testid="output-viewer-previous">
@@ -128,15 +150,7 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputV
                 </Button>
               </div>
             ) : null}
-            <div className="flex items-center gap-1">
-              <Button asChild variant="outline" size="sm" className="max-md:min-w-11">
-                <a href={downloadHref(output.url)} download={baseName(output.name)} data-testid="output-viewer-download">
-                  <Download aria-hidden="true" />
-                  <span className="max-md:sr-only">{t("download")}</span>
-                </a>
-              </Button>
-              {actions?.(output, onOpenChange)}
-            </div>
+            {phone ? null : fileActions}
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={() => onOpenChange(null)} aria-label={t("close")} data-testid="output-viewer-close">
             <X aria-hidden="true" />
@@ -150,6 +164,8 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions }: OutputV
             <SafeMarkdown className="text-[13px] leading-5 text-muted-foreground [&_p]:my-0 [&_p+p]:mt-2">{output.caption}</SafeMarkdown>
           </div>
         ) : null}
+        {/* On a phone the file's actions sit at the foot, in reach of the thumb, above the safe area. */}
+        {phone ? <footer className="shrink-0 border-t bg-popover px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">{fileActions}</footer> : null}
       </DialogContent>
     </Dialog>
   );

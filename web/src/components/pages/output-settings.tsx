@@ -4,7 +4,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import { useTranslations } from "next-intl";
 import { useId } from "react";
 
-import { useByteSize } from "@/components/data/output-tile";
+import { useByteSize } from "@/components/data/byte-size";
 import { useWriteFailure } from "@/components/feedback/notice";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

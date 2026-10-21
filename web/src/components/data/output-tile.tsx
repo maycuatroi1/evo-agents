@@ -8,18 +8,17 @@ import {
   FileSpreadsheet,
   FileText,
   Film,
-  FolderOpen,
   ImageIcon,
   ImageOff,
   type LucideIcon,
-  Paperclip,
-  Wrench,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { baseName, byteParts, extensionOf, type OutputSource, type RunOutput, textKind } from "@/lib/outputs";
+import { baseName, extensionOf, type RunOutput, textKind } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
+
+import { useByteSize } from "./byte-size";
 
 /**
  * The faces of an output (lib/outputs.ts): its icon by how it is viewed, an image's thumbnail loaded lazily from the
@@ -45,17 +44,6 @@ const ICONS: Record<Exclude<RunOutput["viewer"], "text"> | keyof typeof TEXT_ICO
   ...TEXT_ICON,
 };
 
-/** Each source's icon: a file the agent sent (attached), one a tool's result held, one of the run's output folder. */
-export const SOURCE_ICON: Record<OutputSource, LucideIcon> = { sent: Paperclip, tool: Wrench, outputs: FolderOpen };
-
-/** A byte count as a person reads it: "230 bytes", "34.5 kB", "1.2 GB". */
-export function useByteSize() {
-  const format = useFormatter();
-  return (bytes: number) => {
-    const { value, unit } = byteParts(bytes);
-    return format.number(value, { style: "unit", unit, unitDisplay: unit === "byte" ? "long" : "short", maximumFractionDigits: unit === "byte" ? 0 : 1 });
-  };
-}
 
 /** What a screen reader hears for an output's button: "Open screenshot.png, image, 34.5 kB". */
 export function useOutputName() {

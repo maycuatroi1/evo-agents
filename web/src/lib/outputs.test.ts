@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { baseName, byteParts, downloadHref, extensionOf, outputLinks, parseCsv, prettyJson, textKind } from "./outputs";
+import { parseCsv, prettyJson } from "./output-text";
+import { baseName, byteParts, downloadHref, extensionOf, outputLinks, textKind } from "./outputs";
 
 const SHA = "a".repeat(64);
 const OTHER = "b".repeat(64);

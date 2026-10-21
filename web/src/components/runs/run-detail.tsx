@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, PanelRight } from "lucide-react";
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -45,8 +46,11 @@ import { TracePreview } from "./trace-preview";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
 import { logSignal, useRunLog } from "./use-run-log";
-import { OutputsPreview, RunOutputsPanel } from "./run-outputs";
+import { OutputsPreview } from "./run-outputs-preview";
 import { TraceOutputsContext, useRunOutputs } from "./use-run-outputs";
+
+/** The Outputs tab's grid, loaded once a run has files. */
+const RunOutputsPanel = dynamic(() => import("./run-outputs").then((module) => module.RunOutputsPanel));
 
 /** The plan and step under the head: `brand` links with a quiet underline, told apart from the line's words without
  * colour (the kit draws them bare; axe's link-in-text-block asks for more than a colour). */
