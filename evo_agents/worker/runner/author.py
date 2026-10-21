@@ -96,10 +96,11 @@ class AuthorRun:
         if resume_of is not None:  # the parked run's directory, worktrees and skills, when they are still here
             self.conversation.adopt()
         bundles = await self.fetch_skills() if self.directory.path is None else []
+        named = [entry.get("repo") for entry in repos]
+        await access.take_credentials(run, named, clone=named[:1])  # the harness is cloned when this worker lacks it
+        run.check()
         held = self.held_repos(repos)
         names = [entry.get("repo") for entry in held]
-        await access.take_credentials(run, names)
-        run.check()
         await access.check(run, names, path=access.run_path(run))
         run.check()
         await self.prepare(held, bundles)
@@ -184,7 +185,7 @@ class AuthorRun:
         if not isinstance(harness, str) or run.daemon.checkout_for(run.project, harness) is None:
             raise RunFailed(
                 f"this worker has no checkout of {run.project}/{harness}, the project's harness, which an author run "
-                "reads the project's plans in: clone it where the harness registry places it, then dispatch again"
+                "reads the project's plans in, and could not clone it"
             )
         held = []
         for entry in repos:

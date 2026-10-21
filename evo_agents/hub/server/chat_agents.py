@@ -63,6 +63,7 @@ from evo_agents.hub.server.chat_views import (
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.profile_store import Profile, by_id
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId, RunRepo
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -489,10 +490,15 @@ async def open_repo(request: Request, run_id: RunId, body: ChatRepoIn, user: Cur
             raise HTTPException(422, f"project {project} has no repo {name}: its repos are {listed}")
         worker = await worker_of(conn, user)
         if f"{project}/{name}" not in (worker.checkouts or {}):
-            raise HTTPException(
-                409,
-                f"worker {worker.name} has no checkout of {name} of project {project}: the run cannot open it here",
-            )
+            # a daemon that clones what it lacks clones it first, from the origin a project lists for it
+            if runs.CLONES_CHECKOUTS not in (worker.features or ()):
+                why = "the run cannot open it here"
+            elif not await repo_origins(conn, run.project_id, run.principal.user_id, [name]):
+                why = "and no project of the run's owner lists an origin to clone it from"
+            else:
+                why = None
+            if why is not None:
+                raise HTTPException(409, f"worker {worker.name} has no checkout of {name} of project {project}: {why}")
         repos = [dict(entry) for entry in run.repos if isinstance(entry, dict)]
         added = name not in [entry.get("repo") for entry in repos]
         if added:

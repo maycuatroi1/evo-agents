@@ -292,6 +292,9 @@ describe("workers for a dispatch", () => {
     expect(fitWorker(worker({ runtimes: {} }), request).problem).toEqual({ kind: "runtime", runtime: "any" });
     expect(fitWorker(worker(), { ...request, repos: ["api", "web"] }).problem).toEqual({ kind: "checkout", repos: ["web"] });
     expect(fitWorker(worker(), { ...request, repos: ["web", "api", "docs"] }).problem).toEqual({ kind: "checkout", repos: ["web", "docs"] });
+    // A daemon that clones the repos it lacks takes the runs whatever its checkouts.
+    expect(fitWorker(worker({ features: ["clones_checkouts"] }), { ...request, repos: ["web", "docs"] })).toMatchObject({ fit: "now", problem: null });
+    expect(fitWorker(worker({ features: ["clones_checkouts"], checkouts: {} }), request)).toMatchObject({ fit: "now", problem: null });
     // A plan run with a session for each step goes only to a daemon that says it runs one.
     expect(fitWorker(worker(), { ...request, sessionPerStep: true }).problem).toEqual({ kind: "sessionPerStep" });
     expect(fitWorker(worker({ features: [] }), { ...request, sessionPerStep: true }).fit).toBe("no");

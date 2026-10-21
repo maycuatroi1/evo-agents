@@ -190,8 +190,13 @@ bound to the run's project, bound to no worker or to this one, and not past its 
   its start, so a run that began before keeps its token without it until that token is renewed. A run of the
   Curator never gets it.
 
-The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
-`username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
+A repo's origin is the one the run's project registers for it, else the one another project registers for a repo of
+that name, among the projects the run's owner holds a grant on, when they agree on it (`repo_origins`).
+
+The answer is `{leases, missing, repos}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
+`username`, `value` and `expires_at`, as `Lease.from_json` reads them. `repos` names each repo of the run with its
+`origin`, `path` and the `project` that registered them, which a worker without a checkout of it clones from
+([Repos a run clones](workers.md#repos-a-run-clones)). `missing` names each repo whose origin nothing
 covers, with its origin (null when the project registered none) and the reason: no origin, no `git` secret covering
 it, "the GitHub App is not installed on owner/repo", "LOGIN cannot push to owner/repo on GitHub: ...", no GitHub
 App configured, GitHub failing. Without

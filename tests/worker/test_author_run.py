@@ -145,9 +145,11 @@ def test_an_author_run_needs_the_harness_checked_out_and_claude_code(machine):  
 
     async def body(hub, daemon):
         ticket = hub.add_skill(author.AUTHOR_SKILL, 1, skill_bundle(machine.tmp))
-        harness_missing = hub.queue_author_run(["gamma", "alpha"], [ticket])
+        harness_missing = hub.queue_author_run(["gamma", "alpha"], [ticket])  # no checkout, no origin to clone
         assert await hub.wait_state(harness_missing, "done", "failed", timeout=WAIT) == "failed"
-        assert "no checkout of demo/gamma, the project's harness" in hub.runs[harness_missing]["error"]
+        failed = hub.runs[harness_missing]
+        assert "no checkout of demo/gamma, and neither project demo nor another project" in failed["error"]
+        assert failed["failure_cause"] == "origin"
         other_runtime = hub.queue_author_run(["alpha"], [ticket], runtime="opencode")
         assert await hub.wait_state(other_runtime, "done", "failed", timeout=WAIT) == "failed"
         assert "runs on claude-code only, not opencode" in hub.runs[other_runtime]["error"]

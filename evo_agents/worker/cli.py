@@ -199,8 +199,8 @@ def print_checkouts(config: WorkerConfig) -> None:
     missing = [p for p in config.projects if not any(key.startswith(f"{p}/") for key in found)]
     for project in missing:
         print(
-            f"  no checkout of {project} found: run `evo-agents hub registry pull`, or clone its repos where the "
-            "harness registry says"
+            f"  no checkout of {project} found: a run of it clones the repos it needs; `evo-agents hub registry "
+            "pull` finds those cloned here already"
         )
 
 
@@ -412,7 +412,7 @@ def cmd_status(args) -> int:
     for key in sorted(found):
         print(f"  checkout {key}: {found[key]['path']} ({found[key].get('branch') or 'detached'})")
     if not found:
-        print("  no checkout of the worker's projects found")
+        print("  no checkout of the worker's projects found: each run clones the repos it needs")
     unfinished = [r for r in records if not r.get("finished_at")]
     print(f"  runs kept here: {len(records)} ({len(unfinished)} not ended); spool: {status['spool_bytes']} bytes")
     print(*(f"  {line}" for line in [*home.kg_sync_lines(), f"state: {home.root}"]), sep="\n")
