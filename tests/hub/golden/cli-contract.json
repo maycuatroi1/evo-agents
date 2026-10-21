@@ -12525,7 +12525,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.29.4"
+      "version": "0.32.0"
     },
     "paths": {
       "/v1/health": {
@@ -61547,6 +61547,14 @@
               },
               "type": "array",
               "title": "Missing"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/RunRepoSource"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "each repo of the run, in the run's order"
             }
           },
           "type": "object",
@@ -80457,6 +80465,59 @@
           ],
           "title": "RunRepo",
           "description": "A repo of a plan run, with the branch the plan names for it."
+        },
+        "RunRepoSource": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "as a project registered it; null when none did"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path",
+              "description": "as that project registered it: relative to its workspace, ~/..., or absolute"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the project that registered it: the run's, or another of its owner's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "origin",
+            "path",
+            "project"
+          ],
+          "title": "RunRepoSource",
+          "description": "A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it."
         },
         "RunSkill": {
           "properties": {
