@@ -7,10 +7,13 @@ repo, the Curator's change, the Builder's agent profile and model), where it sta
 the head the gates last read and when the hub first saw it, the patch the Judge judged (``merge_gate.
 patch_fingerprint``), the Judges' verdicts, the risk, the judge run in flight and its own key (a SHA-256), and what the
 queue and what follows a merge fill in later (the time it became ready, the merge and the commits around it, its
-rebases since its gates last passed, 0069). One merge request of a target branch has the turn at a time
-(merge_queue_turn_key, 0069).
+rebases since its gates last passed, 0069; the merge request a revert of the hub undoes, the results of its own UAT
+and PROD checks with when each passed, since when the hub waits for what it watches, and what it follows on GitLab,
+0070). One merge request of a target branch has the turn at a time (merge_queue_turn_key, 0069).
 merge_events (0068) is its ledger, only ever added to: each gate passed or not with its reason, each verdict, and
 what the queue, the release and the breaker do later (``merge_gate.EVENT_KINDS``).
+merge_samples (0070) holds the merge requests drawn for an audit sample, one each, and an admin's answer
+(``post_merge.SAMPLE_RESULTS``) with a note.
 """
 
 from __future__ import annotations
@@ -85,17 +88,28 @@ def _queue(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         Column("rebases", SmallInteger, nullable=False, server_default="0"),  # since its gates last passed (0069)
+        Column("reverts_id", BigInteger),  # a revert's: the merge request it undoes (0070)
+        Column("uat_result", Text),  # its own UAT check: passed, failed or none (0070)
+        _when("uat_at"),  # its UAT check passed, or a later merge's cleared it (0070)
+        Column("prod_result", Text),  # its own PROD check (0070)
+        _when("prod_at"),
+        _when("waits_since"),  # the hub waits for the job or pipeline it watches since then (0070)
+        Column("follow", JSONB, nullable=False, server_default="{}"),  # what the hub follows on GitLab (0070)
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_queue_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_queue_run_id_fkey"),
         ForeignKeyConstraint(
             ["change_id"], ["curator_changes.id"], ondelete="SET NULL", name="merge_queue_change_id_fkey"
         ),
         ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="SET NULL", name="merge_queue_judge_run_id_fkey"),
+        ForeignKeyConstraint(
+            ["reverts_id"], ["merge_queue.id"], ondelete="CASCADE", name="merge_queue_reverts_id_fkey"
+        ),
         PrimaryKeyConstraint("id", name="merge_queue_pkey"),
         UniqueConstraint("project_id", "repo", "iid", name="merge_queue_project_id_repo_iid_key"),
         Index("merge_queue_state_idx", "project_id", "state", "id"),
         Index("merge_queue_judge_run_idx", "judge_run_id"),
         Index("merge_queue_run_idx", "run_id"),
+        Index("merge_queue_reverts_idx", "reverts_id"),
     )
     Index(  # one merge request for each plan and repo
         "merge_queue_plan_key",
@@ -140,6 +154,27 @@ def _events(metadata: MetaData) -> Table:
     )
 
 
-def merge_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """merge_queue and merge_events (0068), added to ``metadata``."""
-    return _queue(metadata), _events(metadata)
+def _samples(metadata: MetaData) -> Table:
+    return Table(
+        "merge_samples",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("queue_id", BigInteger, nullable=False),
+        Column("result", Text),  # null until an admin answers: ok or faulty
+        Column("note", Text),
+        Column("answered_by", BigInteger),
+        _when("answered_at"),
+        _stamp("created_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_samples_project_id_fkey"),
+        ForeignKeyConstraint(["queue_id"], ["merge_queue.id"], ondelete="CASCADE", name="merge_samples_queue_id_fkey"),
+        ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="SET NULL", name="merge_samples_answered_by_fkey"),
+        PrimaryKeyConstraint("id", name="merge_samples_pkey"),
+        UniqueConstraint("queue_id", name="merge_samples_queue_id_key"),
+        Index("merge_samples_project_idx", "project_id", "id"),
+    )
+
+
+def merge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
+    """merge_queue and merge_events (0068) and merge_samples (0070), added to ``metadata``."""
+    return _queue(metadata), _events(metadata), _samples(metadata)

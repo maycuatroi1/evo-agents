@@ -25,8 +25,10 @@ writes). Its turn:
   merge because the target branch moved sends it back to ``ready``, for any other reason blocks it with GitLab's
   words. A merge GitLab made while the hub did not hear its answer is read from GitLab at the next move.
 
-``merged`` is where what follows a merge takes it on (step 6 of the plan). The Curator's change of a merge request
-merged is ``merged`` too, with its line in the proposal's ledger. Each move is a line of the queue's ledger
+``merged`` is where what follows a merge takes it on (``evo_agents.hub.server.post_merge``): a revert merged reverts
+its culprit, and the merge may be drawn for an audit sample. A revert the hub opened goes first in line, and no merge
+before it holds its turn back. The Curator's change of a merge request merged is ``merged`` too, with its line in the
+proposal's ledger. Each move is a line of the queue's ledger
 (merge_events: ``rebased``, ``pipeline``, ``retried``, ``gate``, ``head``, ``queued``, ``merged``), each merge a line of
 audit (``merge.merge``), and the hub comments once on a merge request its turn blocked (``merge_gate.RepoPass``).
 
@@ -46,9 +48,10 @@ from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import merge_gate, tables
+from evo_agents.hub import merge_gate, post_merge, tables
 from evo_agents.hub.server import audit, ledger
 from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
 
 log = logging.getLogger(__name__)
@@ -111,14 +114,14 @@ class Turn:
             return (await conn.execute(query)).scalar_one_or_none()
 
     async def start(self) -> int | None:
-        """Give the turn to the merge request ready first, unless it waits for something on GitLab or one merged
-        before holds the turn (``held``); its id, or None."""
+        """Give the turn to the merge request ready first, a revert before any other, unless it waits for something
+        on GitLab or one merged before holds the turn (``held``; a revert is never held); its id, or None."""
         q = tables.merge_queue
         not_waiting = or_(q.c.reason.is_(None), ~q.c.reason.startswith(merge_gate.WAITS, autoescape=True))
         query = (
             select(q)
             .where(self._branch(), q.c.state == "ready", q.c.iid.is_not(None), not_waiting)
-            .order_by(q.c.queued_at.asc().nulls_last(), q.c.id)
+            .order_by(q.c.source != post_merge.REVERT, q.c.queued_at.asc().nulls_last(), q.c.id)
             .limit(1)
             .with_for_update()
         )
@@ -126,7 +129,7 @@ class Turn:
             row = (await conn.execute(query)).one_or_none()
             if row is None:
                 return None
-            held = await self.held(conn)
+            held = None if row.source == post_merge.REVERT else await self.held(conn)
             if held is not None:
                 if held != row.reason:
                     await queue.set_row(conn, row.id, reason=held)
@@ -296,7 +299,7 @@ class Turn:
         async with self.engine.begin() as conn:
             _, body = await self.found.expected_branch(conn, row)
         files = merge_gate.files_of(await self.gl.merge_request_diffs(self.path, mr.iid))
-        hacked = self.found.hacked(files, body)
+        hacked = self.found.hacked(files, body) if row.source != post_merge.REVERT else None
         if hacked is not None:
             return await self.blocked(row.id, f"at its rebased head, {hacked}", gate=3)
         same = merge_gate.patch_fingerprint(files) == row.fingerprint
@@ -363,6 +366,7 @@ class Turn:
             )
             if row.change_id is not None:
                 await curator_merged(conn, row, after)
+            await after_merge.merged(conn, f, row, after)
         f.outcomes["merged"] += 1
         log.info("merge queue merged", extra={"project": f.project.name, "queue_id": row_id, "sha": after})
         return True

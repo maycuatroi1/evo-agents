@@ -995,5 +995,5 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
-merge_queue, merge_events = tables_merge.merge_tables(metadata)  # the merge queue on GitLab and its ledger (0068)
+merge_queue, merge_events, merge_samples = tables_merge.merge_tables(metadata)  # the merge queue (0068, 0070)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)

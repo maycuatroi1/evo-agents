@@ -98,6 +98,7 @@ TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.POLICY_TABLES  # migration 0066
 TABLES |= pg.MERGE_TABLES  # migration 0068
+TABLES |= pg.SAMPLE_TABLES  # migration 0070
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -172,8 +173,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_five_tables(hub_db):
-    assert len(TABLES) == 105  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_six_tables(hub_db):
+    assert len(TABLES) == 106  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1448,6 +1449,45 @@ def test_0069_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
     kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
     assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+
+
+def test_0070_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0069")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q, s = t.merge_queue, t.merge_samples
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "merged"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0070")
+    rows = select(q.c.iid, q.c.state, q.c.uat_result, q.c.follow, q.c.reverts_id)
+    assert query(hub_db, rows) == [(1, "merged", None, {}, None)]
+    culprit = query(hub_db, select(q.c.id).where(q.c.iid == 1))[0][0]
+    revert = {**row, "iid": 2, "source": "revert", "source_branch": "evo-revert/1", "reverts_id": culprit}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values(revert))
+        conn.execute(update(q).values(state="reverting", uat_result="failed").where(q.c.iid == 1))
+        conn.execute(insert(s).values(project_id=ids["project"], queue_id=culprit))
+        for bad in (
+            update(q).values(uat_result="maybe").where(q.c.iid == 1),
+            update(q).values(reverts_id=None).where(q.c.iid == 2),  # a revert names what it undoes
+            update(q).values(reverts_id=culprit).where(q.c.iid == 1),  # and no other row does
+            update(q).values(follow=[]).where(q.c.iid == 1),
+            insert(s).values(project_id=ids["project"], queue_id=culprit),  # one sample a merge request
+            update(s).values(result="faulty"),  # an answer has its time
+            update(s).values(result="unsure", answered_at=func.now()),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(update(s).values(result="faulty", answered_at=func.now(), note="It drops the totals."))
+    assert query(hub_db, select(s.c.result, s.c.note)) == [("faulty", "It drops the totals.")]
+    # Going back drops the samples, the reverts the hub opened and the columns, and keeps the other rows.
+    move_to(hub_db, "0069", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

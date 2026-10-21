@@ -10,8 +10,9 @@ of the same GitLab project (never a fork), and it comes from one of SOURCES: a r
 request the hub opens for a plan once every step the plan names for the repo is done, plan runs and step runs alike,
 from the branch the plan names for the repo; ``task``: the one it opens of a task run's branch once the run ended done;
 ``builder``: the Curator's, which its push opened and whose Judge passed it), or a person's, labeled with the policy's
-``merge.opt_in_label`` by a member of the GitLab project of role Developer or above (``label``). A draft waits. A merge
-request out of scope stays as it is today, open for a person.
+``merge.opt_in_label`` by a member of the GitLab project of role Developer or above (``label``); or the revert the hub
+opens of a merge request whose check failed after its merge (``revert``, ``evo_agents.hub.post_merge``). A draft
+waits. A merge request out of scope stays as it is today, open for a person.
 
 **Gates** (GATES), each recorded in the queue's ledger with its reason; the first that does not pass stops the
 others:
@@ -43,7 +44,8 @@ removes, without their numbers or context), so a rebase that keeps the patch kee
 **The queue** (criterion a5; ``evo_agents.hub.server.merge_turn`` runs it). A merge request ``ready`` waits for its
 turn on its target branch; one of a branch has the turn at a time (TURN_STATES), and a merge request merged before it
 holds the next turn back until it reaches the policy's ``merge.hold_until`` (``holds_turn``). A turn sent back because
-the target branch moved keeps its place, MAX_REBASES times in a row at most.
+the target branch moved keeps its place, MAX_REBASES times in a row at most. A revert goes first, and passes gate 1 and
+a check that its diff undoes the one merged (in the place of gate 3) instead of the Judges.
 """
 
 from __future__ import annotations
@@ -58,9 +60,10 @@ from datetime import datetime
 from evo_agents.hub import autonomy, judge, tiers
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 
-SOURCES = ("plan", "task", "builder", "label")
+SOURCES = ("plan", "task", "builder", "label", "revert")
 # Where a merge request of the queue stands (merge_queue.state). The gate moves gating and judging to ready or
-# blocked; the queue, what follows a merge, and the breaker move the others (steps 5 to 7 of the plan).
+# blocked; the queue, what follows a merge (evo_agents.hub.post_merge), and the breaker move the others (steps 5 to 7
+# of the plan).
 STATES = (
     "gating",  # gates 0 to 3 run on each pass, until it passes them, waits, or is blocked
     "judging",  # its judge run (gates 4 and 5), then the risk (6) and the second Judge (7)
@@ -68,13 +71,13 @@ STATES = (
     "rebasing",
     "testing",
     "merging",
-    "merged",
-    "verifying",
-    "releasing",
-    "done",
-    "rolling_back",
-    "reverting",
-    "reverted",
+    "merged",  # merged: the hub waits for its commit's pipeline on the target branch
+    "verifying",  # its UAT check
+    "releasing",  # its UAT check settled: the deploy to PROD and the PROD check
+    "done",  # what follows its merge is over
+    "rolling_back",  # its PROD check failed after a retry: the rollback job of PROD
+    "reverting",  # the culprit of a failed check: the hub opens its revert, first in the queue
+    "reverted",  # its revert merged
     "blocked",  # a gate did not pass: it waits for a new push, or for a person
     "paused",
     "closed",  # merged or closed by a person on GitLab, or out of scope

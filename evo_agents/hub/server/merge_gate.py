@@ -20,8 +20,11 @@ the GitLab client, for as long as the pass needs it:
   first gate; in ``gating`` it runs gates 0 to 3 and computes the risk (gate 6) with the knowledge graph, read as the
   admin who wrote the policy; in ``judging`` it queues the next judge run (``merge_judge.queue_judge``) or, after
   JUDGE_ATTEMPTS runs without a verdict, blocks it.
+- follows each merge of the repo's target branch on: its checks, PROD, the rollback and the revert of a culprit
+  (``evo_agents.hub.server.post_merge``), whose revert it gates by its pipeline and by its diff undoing the one
+  merged, with no Judge;
 - moves the turn of the repo's target branch on: the merge requests ``ready`` are rebased, tested and merged one at a
-  time (``evo_agents.hub.server.merge_turn``).
+  time, a revert first (``evo_agents.hub.server.merge_turn``).
 
 A gate that does not pass leaves the merge request ``gating`` with why when it waits for something on GitLab (its
 pipeline, the project's settings, the end of its draft), or ``blocked`` with why; a blocked one moves only after a
@@ -381,8 +384,9 @@ class RepoPass:
                 await self.move(row_id)
             except GitLabRefused as exc:
                 await self.refused(row_id, exc)
-        from evo_agents.hub.server import merge_turn  # it moves the rows through this module
+        from evo_agents.hub.server import merge_turn, post_merge  # they move the rows through this module
 
+        await post_merge.follow(self)
         await merge_turn.take_turns(self)
 
     async def refused(self, row_id: int, exc: GitLabRefused) -> None:
@@ -749,6 +753,11 @@ class RepoPass:
                 await hold(conn, row, 2, problem, blocked=True)
                 return
         files = merge_gate.files_of(await self.gl.merge_request_diffs(self.path, mr.iid))
+        if row.source == "revert":  # its diff must undo the one merged, in the place of gate 3 and the Judges
+            from evo_agents.hub.server import post_merge
+
+            await post_merge.revert_gated(self, row_id, mr, files)
+            return
         hacked = self.hacked(files, body)
         if hacked is not None:
             async with self.engine.begin() as conn:
