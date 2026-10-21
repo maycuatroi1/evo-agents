@@ -263,6 +263,7 @@ def create_app(config: HubConfig) -> FastAPI:
         local_runs,
         notifications,
         output_content,
+        output_notices,
         overview,
         proposals,
         release_claims,
@@ -278,6 +279,7 @@ def create_app(config: HubConfig) -> FastAPI:
         local_runs.batch_router,
         notifications.router,
         notifications.worker_router,
+        output_notices.router,  # the notices a member turned off
         overview.router,
         curator.router,
         proposals.router,
