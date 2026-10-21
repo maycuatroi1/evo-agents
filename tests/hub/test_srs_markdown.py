@@ -14,7 +14,7 @@ import pytest
 # srs.template imports code_key from evo_agents.hub.tables_srs, whose tables need SQLAlchemy.
 pytest.importorskip("sqlalchemy", reason="the core plugin srs needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.core_plugins.srs import checks, markdown
+from evo_agents.core_plugins.srs import USE_CASE_FIELDS, checks, markdown
 from evo_agents.core_plugins.srs.diff import diff
 from evo_agents.core_plugins.srs.template import TemplateError, code_key, template_of
 
@@ -64,6 +64,60 @@ def test_srs_use_case_fields_aliases_and_steps_come_from_its_tables():
     security = next(item for item in doc.items if item.code == "NFR-SEC-01")
     assert security.fields["group"] == "SEC" and security.title == "Card data never reaches the shop's servers"
     assert doc.items[security.parent].title == "5. Non-Functional Requirements"
+
+
+ICE_USE_CASE = """# 2. Use Case Specifications
+
+## UC ITS-1: Connect a ticketing system
+
+| Item | Content |
+|---|---|
+| ID | UC ITS-1 |
+| Claim | CL-3 |
+| Actor | Tenant admin |
+| Intent | The tenant's agents read and open tickets |
+| Context | The customer hands over one instance and one integration account |
+| Expected result | The provider is saved as reachable or unreachable with the reason |
+| Mức ưu tiên | Cao |
+
+| Step | Actor | Action |
+|---|---|---|
+| 1 | Tenant admin | Enters the base URL and the credential |
+
+| Field | Type |
+|---|---|
+| Base URL | text |
+"""
+
+
+def test_srs_a_use_case_keeps_intent_context_expectation_and_every_other_row_of_its_table_of_items():
+    (use_case,) = [item for item in parsed(ICE_USE_CASE).items if item.kind == "use_case"]
+    fields = {name: value for name, value in use_case.fields.items() if name != "steps"}
+    assert fields == {
+        "id": "UC ITS-1",
+        "claim": "CL-3",
+        "actor": "Tenant admin",
+        "intent": "The tenant's agents read and open tickets",
+        "context": "The customer hands over one instance and one integration account",
+        "expectation": "The provider is saved as reachable or unreachable with the reason",
+        "mức_ưu_tiên": "Cao",
+    }  # the head (Item, Content) and a table no row of which the template names stay out
+    assert [step["step"] for step in use_case.fields["steps"]] == ["1"]
+    assert set(markdown.ITEM_FIELDS.values()) <= set(USE_CASE_FIELDS)
+
+
+def test_srs_a_use_case_fills_the_fields_the_config_requires_before_it_is_submitted():
+    doc = parsed(ICE_USE_CASE)
+    assert checks.problems(doc, template_of()) == []
+    required = template_of(required=["expectation", "trigger", "context"])
+    assert required.required == ("actor", "context", "trigger", "expectation")
+    found = [(problem.level, problem.check, problem.message) for problem in checks.problems(doc, required)]
+    assert found == [("error", "uc_field_missing", "use case UC ITS-1 has no Trigger")]
+    without = parsed(ICE_USE_CASE.replace("| Expected result |", "| Outcome |"))
+    found = {problem.message for problem in checks.blocking(checks.problems(without, required))}
+    assert found == {"use case UC ITS-1 has no Trigger", "use case UC ITS-1 has no Expectation"}
+    with pytest.raises(TemplateError, match="required_use_case_fields: 'priority'"):
+        template_of(required=["priority"])
 
 
 def test_srs_a_heading_inside_a_fenced_block_is_text():

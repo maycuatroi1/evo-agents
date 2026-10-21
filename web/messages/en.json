@@ -6855,10 +6855,13 @@
       "id": "ID",
       "status": "Status",
       "objective": "Objective",
+      "intent": "Intent",
       "actor": "Actor",
+      "context": "Context",
       "trigger": "Trigger",
       "pre_condition": "Pre-condition",
-      "post_condition": "Post-condition"
+      "post_condition": "Post-condition",
+      "expectation": "Expectation"
     },
     "editor": {
       "goneTitle": "The latest version, v{version}, no longer holds this item",

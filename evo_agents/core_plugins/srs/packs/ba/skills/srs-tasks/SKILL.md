@@ -14,8 +14,9 @@ proposal: the tool makes each for the member who approved the version.
 ## 1. Read the use case
 
 For each frame task of the list, read its use case with `srs__read` (`document`, `item`: the use case's code, such as
-`UC ORD-1`). It answers the use case with the items under it: its actor, trigger, pre- and post-conditions, the steps
-of its activity flow, its business rules (`BR ORD1-2`) and the screens it uses. Read a screen or a common rule it names
+`UC ORD-1`). It answers the use case with the items under it: its actor, trigger, pre- and post-conditions (or its
+intent, context and expectation), the steps of its activity flow, its business rules (`BR ORD1-2`) and the screens it
+uses. Read a screen or a common rule it names
 when the split depends on it.
 
 ## 2. Cut it into child tasks
@@ -25,7 +26,7 @@ A child task is one piece of work that one developer or tester finishes and chec
 - a screen, or the part of one the use case adds;
 - an API or a service change the steps need;
 - the check of a business rule, or of a few that belong together;
-- the tests of the flow, from the actor's trigger to the post-condition.
+- the tests of the flow, from the actor's trigger to the post-condition, or to each check of its Expectation.
 
 Make a handful per use case, not one per step. Every business rule of the use case lands in exactly one child task, so
 nothing it says is left out or done twice. Do not invent work the use case does not ask for.

@@ -3,10 +3,10 @@
 Errors that refuse a save (``doc.SAVE_CHECKS``): a code that does not match its kind's pattern, a code twice in the
 document. ``writes`` adds those only the hub's tables tell: a code another item of the project holds or held, a code
 changed, a coded item dropped by a member who is not an admin. Errors that block submitting a version: a business rule
-outside every use case, a use case without an actor, a link to an item the version does not have or a screen that is
-none. Warnings only show: a business rule whose code does not match its use case's, a business rule naming a step its
-use case does not have, and what reading the Markdown noted (a heading that skips a level, one the template does not
-name, coded rows kept as text).
+outside every use case, a use case without an actor or another field the config requires (``required_use_case_fields``),
+a link to an item the version does not have or a screen that is none. Warnings only show: a business rule whose code
+does not match its use case's, a business rule naming a step its use case does not have, and what reading the Markdown
+noted (a heading that skips a level, one the template does not name, coded rows kept as text).
 """
 
 from __future__ import annotations
@@ -75,22 +75,41 @@ def _ref_problems(doc: Document, item: Item, kinds: dict[str, str]) -> list[Prob
     return found
 
 
-def rule_problems(doc: Document) -> list[Problem]:
-    """Business rules outside use cases or out of step with theirs, use cases without an actor, and broken links."""
+def _filled(item: Item, field: str) -> bool:
+    return bool(str(item.fields.get(field) or "").strip())
+
+
+def _field_problems(item: Item, template: Template) -> list[Problem]:
+    """The fields the template requires (its actor always) that a use case leaves empty."""
+    found: list[Problem] = []
+    for field in template.required:
+        if _filled(item, field):
+            continue
+        if field == "actor":
+            found.append(_problem(ERROR, "uc_no_actor", f"use case {item.code} names no actor", item))
+        else:
+            name = field.replace("_", "-").capitalize()
+            found.append(_problem(ERROR, "uc_field_missing", f"use case {item.code} has no {name}", item))
+    return found
+
+
+def rule_problems(doc: Document, template: Template) -> list[Problem]:
+    """Business rules outside use cases or out of step with theirs, use cases without a field the template requires,
+    and broken links."""
     found: list[Problem] = []
     kinds = {item.key: item.kind for item in doc.items if item.key}
     for index, item in enumerate(doc.items):
         if item.kind == "business_rule":
             found.extend(_rule_problems(doc, index))
-        elif item.kind == "use_case" and not str(item.fields.get("actor") or "").strip():
-            found.append(_problem(ERROR, "uc_no_actor", f"use case {item.code} names no actor", item))
+        elif item.kind == "use_case":
+            found.extend(_field_problems(item, template))
         found.extend(_ref_problems(doc, item, kinds))
     return found
 
 
 def problems(doc: Document, template: Template) -> list[Problem]:
     """Everything wrong with ``doc`` that the document alone tells, what reading it noted first."""
-    return [*doc.notes, *code_problems(doc, template), *rule_problems(doc)]
+    return [*doc.notes, *code_problems(doc, template), *rule_problems(doc, template)]
 
 
 def blocking(found: list[Problem]) -> list[Problem]:

@@ -426,7 +426,9 @@ async def project_settings(conn: AsyncConnection, project_id: int, project: str)
     merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
     values = {name: item.value for name, item in merged.fields.items() if not item.secret}
     try:
-        template = template_of(values.get("template"), values.get("code_patterns"))
+        template = template_of(
+            values.get("template"), values.get("code_patterns"), values.get("required_use_case_fields")
+        )
     except TemplateError as exc:
         raise SrsError(409, f"the config of plugin {PLUGIN} in project {project}: {exc}") from None
     roles, policy = dict(values.get("roles") or {}), dict(values.get("approval_policy") or {})
