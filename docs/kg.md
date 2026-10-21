@@ -372,9 +372,12 @@ on a forge, a link to the commit. `behind` is counted from the clone's remote-tr
 clone without that branch has no `base` and no `behind`. A build copies the read into the source's coverage, so the
 graph says what it holds wherever it is read:
 
-- `kg status`, `kg_status` and the SessionStart note (`commits read: app 1550c7a (3 behind origin/main)`) name, per
-  git source, the commit read and how far behind it is. On a machine with the checkout they count `behind` again with
-  `git rev-list --count`, still without the network, and fall back to the count stored at sync.
+- `kg status` and `kg_status` name, per git source, the commit read and how far behind it is. The SessionStart note
+  (and `kg status --brief`), which reaches every session, counts the sources and names only those not current:
+  `commits read: 16 sources, 13 current; behind: app 1550c7a (3 behind origin/main)`, or `commits read: 16 sources,
+  all current`; a source with no branch to count against is listed under `behind unknown`. On a machine with the
+  checkout they count `behind` again with `git rev-list --count`, still without the network, and fall back to the
+  count stored at sync.
 - The hub has no checkout: it shows the count of the machine that synced the source, from the cursor of the newest run
   among those it merged. Its graph page has a card, Commits read, with a row per git source the member may see: the
   commit (a link to it on the forge, and a button that copies the SHA), the ref, and a badge when the commit is
