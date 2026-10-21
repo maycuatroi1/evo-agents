@@ -111,7 +111,9 @@ def of_project(hub, who: str = "reader", **params) -> dict:
 
 def prune(hub) -> dict:
     state = hub.client.app.state
-    found = SimpleNamespace(engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app)
+    found = SimpleNamespace(
+        engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app, blobs=state.blobs
+    )
     context = SimpleNamespace(additional_context={"hub": found})
     return hub.client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
 

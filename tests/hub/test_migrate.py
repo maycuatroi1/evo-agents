@@ -110,6 +110,7 @@ TABLES |= pg.POLICY_TABLES  # migration 0079
 TABLES |= pg.MERGE_TABLES  # migration 0081
 TABLES |= pg.SAMPLE_TABLES  # migration 0083
 TABLES |= pg.BREAKER_TABLES  # migration 0084
+TABLES |= pg.OUTPUT_TABLES  # migration 0085
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -184,8 +185,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_twenty_eight_tables(hub_db):
-    assert len(TABLES) == 128  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_tables(hub_db):
+    assert len(TABLES) == 130  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2028,6 +2029,50 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
+
+
+def test_0085_keeps_one_output_a_file_of_a_run_its_links_and_the_switch_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0084")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _local_run(ids, "s-outputs"))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0085")
+    o, k, d, p, e = t.run_outputs, t.run_output_links, t.decisions, t.projects, t.chat_events
+    output = {"run_id": run_id, "project_id": ids["project"], "source": "sent", "name": "shot.png"}
+    output |= {"media_type": "image/png", "size": 10, "sha256": "b" * 64}
+    asked = {"run_id": run_id, "project_id": ids["project"], "category": "question", "question": "Ship it?"}
+    with live.connect(hub_db) as conn:
+        assert one(conn, select(p.c.output_tool_images)) is True  # on unless an admin turns it off
+        output_id = one(conn, insert(o).values(output).returning(o.c.id))
+        options = [{"key": "yes", "label": "Yes"}, {"key": "no", "label": "No"}]
+        decision_id = one(conn, insert(d).values({**asked, "options": options}).returning(d.c.id))
+        conn.execute(insert(k).values(output_id=output_id, decision_id=decision_id))
+        for bad in (
+            insert(o).values(output),  # one output a SHA-256 of a run
+            insert(o).values({**output, "sha256": "c" * 64, "source": "screen"}),
+            insert(o).values({**output, "sha256": "c" * 64, "name": ""}),
+            insert(o).values({**output, "sha256": "C" * 64}),
+            insert(o).values({**output, "sha256": "c" * 64, "size": 200 * 1024 * 1024 + 1}),
+            insert(o).values({**output, "sha256": "c" * 64, "caption": ""}),
+            insert(k).values(output_id=output_id),  # a link names a decision or a message
+            insert(k).values(output_id=output_id, decision_id=decision_id),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(insert(e).values(chat_id=_chat(conn, ids), seq=1, kind="message_changed", body={}))
+    # Going back drops the outputs, their links, the switch and the events of 0085's kind.
+    move_to(hub_db, "0084", down=True)
+    assert query(hub_db, select(func.count()).select_from(e).where(e.c.kind == "message_changed")) == [(0,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+
+
+def _chat(conn, ids) -> int:
+    """A group chat the seeded user created; its id."""
+    chats = hub_tables.chats
+    return one(conn, insert(chats).values(title="Release talk", created_by=ids["user"]).returning(chats.c.id))
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

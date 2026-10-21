@@ -54,6 +54,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
+from evo_agents.hub import outputs
 from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
 from evo_agents.plugins.bundle import KIND as PLUGIN_KIND
 from evo_agents.plugins.bundle import MAX_BUNDLE as MAX_PLUGIN_BUNDLE
@@ -77,6 +78,7 @@ KIND_LIMITS = {
     "run-log": 64 * MiB,  # the whole log of one run of a plan step, which its worker uploads when the run ends
     "run-diff": 8 * MiB,  # the diff of that run's commits
     "transcript": 48 * MiB,  # a part of a session's transcript, gzip of its redacted lines (evo_agents.hub.transcripts)
+    outputs.KIND: outputs.MAX_FILE_BYTES,  # a file a run's agent made, an output of the run (evo_agents.hub.outputs)
     PLUGIN_KIND: MAX_PLUGIN_BUNDLE,  # a plugin's tar.gz, which the hub holds itself (evo_agents.plugins.bundle)
 }
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -358,6 +360,30 @@ class BlobStore:
             finally:
                 body.close()
         raise AssertionError("unreachable")
+
+    def open_range(self, sha256: str, first: int | None = None, last: int | None = None):
+        """(an iterator of the bytes of blob ``sha256`` in CHUNK pieces, their count): bytes ``first`` to ``last``
+        (both included; ``last`` None: to the end) or the whole blob, as the store reads them; None when there is no
+        such blob. The iterator closes the store's answer once read, or once closed itself; a body cut off on the way
+        raises BlobStoreUnavailable from it, as the answer has started by then. For a caller that has checked the
+        requester may see what refers to the blob, and that the range lies inside it."""
+        params = {"Key": blob_key(sha256)}
+        if first is not None:
+            params["Range"] = f"bytes={first}-{'' if last is None else last}"
+        response = self._call("GetObject", "get_object", **params)
+        if response is None:
+            return None
+        body = response["Body"]
+
+        def chunks():
+            try:
+                yield from body.iter_chunks(CHUNK)
+            except (BotoCoreError, ConnectionError, TimeoutError) as exc:
+                raise _unavailable("GetObject", exc) from None
+            finally:
+                body.close()
+
+        return chunks(), int(response["ContentLength"])
 
     def put_file(self, sha256: str, path: Path, *, replace: bool = False) -> bool:
         """Store the file at ``path`` as blob ``sha256``, which the caller computed from these very bytes, unless the

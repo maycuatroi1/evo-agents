@@ -159,7 +159,7 @@ class LocalDecisionAsk(DecisionAsk):
 # The run of the member's session
 
 
-async def _own(conn: AsyncConnection, user: Principal, project: str, run_id: int, *, write: bool = True):
+async def owned_local_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, *, write: bool = True):
     """(access, row) of local run ``run_id`` of ``project`` that ``user`` owns, its row locked: state, event_seq,
     events_acked, project_id, name (the project's), plan_id, plan_revision, step_key, dispatched_by and kind. 404 for
     any other run, as for none; 403 without the writer role (``write``) or any grant."""
@@ -340,7 +340,7 @@ async def report_state(
     An ended run takes nothing but the PUT that registers the session again (409)."""
     r = tables.runs
     async with request.app.state.engine.begin() as conn:
-        access, row = await _own(conn, user, project, run_id)
+        access, row = await owned_local_run(conn, user, project, run_id)
         if row.state == "ended":
             raise HTTPException(
                 409, f"local run {run_id} ended: register the session again with PUT .../local-runs/<session id>"
@@ -379,7 +379,7 @@ async def post_events(
     """Store the events of the batch that follow the ones stored, and say up to where the machine's spool may go: as
     the worker's POST /v1/worker/runs/{id}/events does."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await _own(conn, user, project, run_id)
+        _, row = await owned_local_run(conn, user, project, run_id)
         await conn.execute(_touch(run_id))
         return await store_events(request, conn, run_id, row.state, row.event_seq, row.events_acked, body.events)
 
@@ -398,7 +398,7 @@ async def ask(request: Request, project: ProjectName, run_id: RunId, body: Local
     the open decisions a run may hold."""
     r = tables.runs
     async with request.app.state.engine.begin() as conn:
-        _, row = await _own(conn, user, project, run_id)
+        _, row = await owned_local_run(conn, user, project, run_id)
         if row.state == "ended":
             raise HTTPException(409, f"local run {run_id} ended: register the session again to ask a decision")
         if row.state != "waiting":
@@ -462,7 +462,7 @@ async def take_decision(
     with streams.subscribe(run_id) as wakeup:
         while True:
             async with request.app.state.engine.begin() as conn:
-                await _own(conn, user, project, run_id, write=False)
+                await owned_local_run(conn, user, project, run_id, write=False)
                 state = (await _decision_of(conn, run_id, decision_id, project)).state
                 left = deadline - time.monotonic()
                 if state != "open" or left <= 0:
@@ -485,7 +485,7 @@ async def answered_on_the_spot(
     there first. Nothing goes to the session's inbox: it has the answer."""
     r, d, u = tables.runs, tables.decisions, tables.users
     async with request.app.state.engine.begin() as conn:
-        access, row = await _own(conn, user, project, run_id)
+        access, row = await owned_local_run(conn, user, project, run_id)
         locked = (
             select(d.c.state, d.c.options, d.c.step_key, d.c.answered_by, u.c.login)
             .join_from(d, u, u.c.id == d.c.answered_by, isouter=True)
@@ -547,7 +547,7 @@ async def take_inbox(
     decisions, as a worker's inbox hands them to its agent."""
     ack = (body or InboxAck()).ack
     async with request.app.state.engine.begin() as conn:
-        await _own(conn, user, project, run_id)
+        await owned_local_run(conn, user, project, run_id)
         await conn.execute(_touch(run_id))
         if ack is not None:
             await conn.execute(deliver(run_id, ack))
@@ -581,4 +581,4 @@ async def end_silent(engine, batch: int = 500, silent_for: int = runs.LOCAL_SILE
     return ended
 
 
-__all__ = ["end_silent", "note_progress", "router", "batch_router", "writing_run"]
+__all__ = ["end_silent", "note_progress", "owned_local_run", "router", "batch_router", "writing_run"]

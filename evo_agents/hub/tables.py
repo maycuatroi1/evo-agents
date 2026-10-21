@@ -39,6 +39,7 @@ from evo_agents.hub import (
     tables_curator,
     tables_kg,
     tables_merge,
+    tables_outputs,
     tables_plugins,
     tables_profiles,
     tables_release,
@@ -970,6 +971,7 @@ plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
+run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0085)
 srs, tasks, canvas = tables_plugins.core_plugin_tables(metadata)  # srs (0046), tasks (0047), canvas (0073)
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
