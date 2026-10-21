@@ -14,6 +14,10 @@ takes a transaction-level advisory lock of the project, held until commit: the e
 transaction after the other, and their ids grow in the order they become visible. ``after`` reads the rows of one
 project past a cursor in that order; a reader keeps one cursor per project.
 
+An event of a project whose Loop is on also queues a tick of the Loop in the same transaction
+(``loop_jobs.on_event``), so a tick follows each event; a project whose Loop is off gets none (plan loop-engine,
+criteria a4 and a11).
+
 The payload carries ids and states, never a text a project's labels may keep from a reader: the same payload a plugin
 granted the event's permission gets (``plugin_events``), whose ``v`` (VERSION) is the version of its shape.
 
@@ -28,7 +32,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, func, insert, literal, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import loop_jobs, tables
 
 CLAIM = "canvas.claim"  # a rev of a claim of a Lean Canvas (core plugin canvas)
 BASELINE = "canvas.baseline"  # a baseline of a canvas, approved
@@ -52,13 +56,15 @@ class HubEvent:
 
 async def record(conn: AsyncConnection, kind: str, project_id: int, payload: dict) -> int:
     """Write event ``kind`` of project ``project_id`` in the caller's transaction, after every event of the project
-    an earlier transaction wrote; its id."""
+    an earlier transaction wrote, and queue a tick of its Loop when that is on; its id."""
     if kind not in KINDS:
         raise ValueError(f"{kind!r} is not a kind of hub event this release writes")
     await conn.execute(select(func.pg_advisory_xact_lock(literal(LOCK_BASE, BigInteger) + project_id)))
     e = tables.hub_events
     statement = insert(e).values(project_id=project_id, kind=kind, payload=payload)
-    return await conn.scalar(statement.returning(e.c.id))
+    event_id = await conn.scalar(statement.returning(e.c.id))
+    await loop_jobs.on_event(conn, project_id)
+    return event_id
 
 
 async def after(conn: AsyncConnection, project_id: int, cursor: int = 0, limit: int = MAX_READ) -> list[HubEvent]:
