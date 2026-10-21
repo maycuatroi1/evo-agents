@@ -3,16 +3,16 @@
 
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
-version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
-the one approved last) and comment; dropping a coded item takes an admin. An admin also retires items by their codes
-(POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the next version, a draft saved as any other,
-without those items and their subtrees. The author of a version in review, or an admin, withdraws it (POST
-.../versions/{n}/withdraw), for good. An admin archives a document (POST .../documents/{slug}/archive) and unarchives
-it (POST .../unarchive): an archived one is out of the list of documents unless ``all`` asks for it, still read by its
-slug, and refuses every write with 409 (``store.writable``). Approving a version, archiving a document and unarchiving
-it queue a build of the project's knowledge graph, which reads the approved versions of the documents not archived.
-Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with the
-problems that refused it (or a conflict's two texts) in ``detail``.
+version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since the
+one approved last, unless the config's ``self_approval`` is on) and comment; dropping a coded item takes an admin. An
+admin also retires items by their codes (POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the next
+version, a draft saved as any other, without those items and their subtrees. The author of a version in review, or an
+admin, withdraws it (POST .../versions/{n}/withdraw), for good. An admin archives a document (POST
+.../documents/{slug}/archive) and unarchives it (POST .../unarchive): an archived one is out of the list of documents
+unless ``all`` asks for it, still read by its slug, and refuses every write with 409 (``store.writable``). Approving a
+version, archiving a document and unarchiving it queue a build of the project's knowledge graph, which reads the
+approved versions of the documents not archived. Reads go through the sink X-Evo-Sink names, else the project's hub
+sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
 from __future__ import annotations
@@ -359,7 +359,7 @@ async def review_version(
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
-        settings = await store.settings(conn, access)
+        settings = await store.settings(conn, access)  # with self_approval on, the author reviews it too
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
         decided = await reviews.review(conn, access, user, doc, number, asked, settings)
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)

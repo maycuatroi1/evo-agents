@@ -19,7 +19,7 @@ import { ChangeBadge, CodeChip, VersionBadge } from "./badges";
 import { DocumentHead } from "./document-head";
 import { useSrsViewer } from "./hooks";
 import { compareHref, documentHref, itemHref } from "./links";
-import { policyOf, reviewBlock, rolesOf, slots, versionOf } from "./model";
+import { policyOf, reviewBlock, rolesOf, selfApprovalOf, slots, versionOf } from "./model";
 import { ApprovalsCard, ReviewHistory } from "./review-parts";
 import { ReviewForm } from "./review-form";
 import { DraftBanner } from "./submit-banner";
@@ -76,7 +76,10 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
   const detail = useHubQuery(srsDocumentQuery(browserApi, project, latest.slug, version.number === latest.latest_version ? null : version.number));
   const fields = config.data?.fields ?? [];
   const policy = policyOf(fields, latest.kind);
-  const block = viewer ? reviewBlock(viewer, latest, version) : "reader";
+  const selfApproval = selfApprovalOf(fields);
+  const block = viewer ? reviewBlock(viewer, latest, version, selfApproval) : "reader";
+  // An author waits for the config before being told they cannot review: self_approval may let them.
+  const awaitingConfig = block === "author" && config.isPending;
   const approved = latest.approved_version;
   const written = viewer
     ? latest.versions
@@ -139,9 +142,11 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
       ) : null}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          <ApprovalsCard policy={policy} slots={slots(policy, version)} version={version} approved={approved} />
+          <ApprovalsCard project={project} policy={policy} slots={slots(policy, version)} version={version} approved={approved} selfApproval={selfApproval} />
           {version.state === "in_review" ? (
-            block === null && viewer ? (
+            awaitingConfig ? (
+              <ListSkeleton rows={1} />
+            ) : block === null && viewer ? (
               <div className="rounded-md border bg-card p-4">
                 <ReviewForm project={project} slug={latest.slug} version={version} roles={rolesOf(fields, viewer.login)} />
               </div>
@@ -173,7 +178,8 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
 /**
  * A version's review (/p/{project}/x/srs/documents/{slug}/versions/{number}): the approvals the policy asks for and who
  * gave them this round, the reviewer's form for a writer who may review it (nobody who wrote a version since the one
- * approved last, admins included), why another may not, what approving it approves, its checks and its history.
+ * approved last, admins included, unless the project turned `self_approval` on), why another may not, what approving
+ * it approves, its checks and its history.
  */
 export function ReviewPage({ project, slug, number, initialError }: { project: string; slug: string; number: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("srs.review");
