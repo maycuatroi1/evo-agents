@@ -61,6 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
 from evo_agents.hub.server import audit, facet_figures, kg_health, runtime_figures
+from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
@@ -475,8 +476,9 @@ async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, len
 
 
 async def review_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the charter's goals, what
-    earlier nights found through the lenses and the playbook of the Curator."""
+    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
+    (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses and
+    the playbook of the Curator."""
     r, c = tables.runs, tables.charters
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
@@ -493,7 +495,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     )
     repos = [repo.model_dump() for repo in view.repos or []]
     earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
-    goals = charter.get("goals")
+    goals = await project_goals.curator_goals(conn, row.project_id, view.project)
     return review.build_review_prompt(
         view.project, row.schedule_night, lenses, repos, held, goals, earlier=earlier, playbook=playbook
     )

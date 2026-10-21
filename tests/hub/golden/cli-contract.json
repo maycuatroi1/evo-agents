@@ -4298,6 +4298,408 @@
         "schema": "UserEmail"
       }
     },
+    "hub goal close": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "achieved",
+            "dropped",
+            "expired"
+          ]
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "alias",
+          "revision",
+          "statement",
+          "metric",
+          "deadline",
+          "canvas",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectGoalWritten"
+      }
+    },
+    "hub goal list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "active",
+            "paused",
+            "closed"
+          ]
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "alias",
+          "revision",
+          "statement",
+          "metric",
+          "deadline",
+          "canvas",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "ProjectGoal"
+      }
+    },
+    "hub goal set": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--statement"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--metric"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--aggregate"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "last",
+            "mean",
+            "sum",
+            "count",
+            "p50",
+            "p90"
+          ]
+        },
+        {
+          "flags": [
+            "--window-days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--comparator"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            ">=",
+            ">",
+            "<=",
+            "<"
+          ]
+        },
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tenant"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-metric"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--deadline"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-deadline"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--canvas"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-canvas"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rank"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "active",
+            "paused"
+          ]
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "alias",
+          "revision",
+          "statement",
+          "metric",
+          "deadline",
+          "canvas",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at",
+          "changed"
+        ],
+        "schema": "ProjectGoalWritten"
+      }
+    },
+    "hub goal show": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "code",
+          "number",
+          "alias",
+          "revision",
+          "statement",
+          "metric",
+          "deadline",
+          "canvas",
+          "rank",
+          "owner",
+          "status",
+          "close_reason",
+          "note",
+          "created_by",
+          "created_at"
+        ],
+        "schema": "ProjectGoal"
+      }
+    },
     "hub hook local-ask": {
       "positionals": [],
       "options": [],
@@ -12136,7 +12538,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.27.0"
+      "version": "0.28.1"
     },
     "paths": {
       "/v1/health": {
@@ -49309,6 +49711,513 @@
           }
         }
       },
+      "/v1/projects/{project}/goals": {
+        "get": {
+          "tags": [
+            "goals"
+          ],
+          "summary": "List Goals",
+          "description": "The project's goals as they are now, by rank, then by code.",
+          "operationId": "list_goals_v1_projects__project__goals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "active",
+                      "paused",
+                      "closed"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "those of this status alone",
+                "title": "Status"
+              },
+              "description": "those of this status alone"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectGoal"
+                    },
+                    "title": "Response List Goals V1 Projects  Project  Goals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/goals/{ref}": {
+        "get": {
+          "tags": [
+            "goals"
+          ],
+          "summary": "Show Goal",
+          "description": "One goal of the project, at its newest revision or at ``revision``.",
+          "operationId": "show_goal_v1_projects__project__goals__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$",
+                "description": "G-<number>, or the alias of a goal made from the charter",
+                "title": "Ref"
+              },
+              "description": "G-<number>, or the alias of a goal made from the charter"
+            },
+            {
+              "name": "revision",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an older revision",
+                "title": "Revision"
+              },
+              "description": "an older revision"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectGoal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "goals"
+          ],
+          "summary": "Write Goal",
+          "description": "Write a goal whole as its next revision, made when the project has none of code ``ref``; an admin of the\nproject alone may.",
+          "operationId": "write_goal_v1_projects__project__goals__ref__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$",
+                "description": "G-<number>, or the alias of a goal made from the charter",
+                "title": "Ref"
+              },
+              "description": "G-<number>, or the alias of a goal made from the charter"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectGoalWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectGoalWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/goals/{ref}/revisions": {
+        "get": {
+          "tags": [
+            "goals"
+          ],
+          "summary": "Goal Revisions",
+          "description": "Every revision of a goal, the newest first, each with the fields whose value it changed.",
+          "operationId": "goal_revisions_v1_projects__project__goals__ref__revisions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$",
+                "description": "G-<number>, or the alias of a goal made from the charter",
+                "title": "Ref"
+              },
+              "description": "G-<number>, or the alias of a goal made from the charter"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/GoalRevision"
+                    },
+                    "title": "Response Goal Revisions V1 Projects  Project  Goals  Ref  Revisions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/goals/{ref}/close": {
+        "post": {
+          "tags": [
+            "goals"
+          ],
+          "summary": "Close Goal",
+          "description": "Close a goal for a reason, as its next revision; an admin of the project alone may.",
+          "operationId": "close_goal_v1_projects__project__goals__ref__close_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$",
+                "description": "G-<number>, or the alias of a goal made from the charter",
+                "title": "Ref"
+              },
+              "description": "G-<number>, or the alias of a goal made from the charter"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectGoalClose"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectGoalWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/merge-queue": {
         "get": {
           "tags": [
@@ -52944,7 +53853,8 @@
                 "features",
                 "plugin_config",
                 "agent",
-                "policy"
+                "policy",
+                "goal"
               ],
               "title": "Kind"
             },
@@ -52954,7 +53864,7 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which the hub picks for a new one); nothing for policy"
             },
             "change": {
               "additionalProperties": true,
@@ -61224,6 +62134,137 @@
             "what"
           ],
           "title": "Goal"
+        },
+        "GoalMetric": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
+              "title": "Key",
+              "description": "a key of kind number of the project's registry of signals"
+            },
+            "aggregate": {
+              "type": "string",
+              "enum": [
+                "last",
+                "mean",
+                "sum",
+                "count",
+                "p50",
+                "p90"
+              ],
+              "title": "Aggregate"
+            },
+            "window_days": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 90.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days",
+              "description": "null: 90"
+            },
+            "comparator": {
+              "type": "string",
+              "enum": [
+                ">=",
+                ">",
+                "<=",
+                "<"
+              ],
+              "title": "Comparator"
+            },
+            "target": {
+              "type": "number",
+              "title": "Target"
+            },
+            "tenant": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant",
+              "description": "one tenant's alone"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "key",
+            "aggregate",
+            "comparator",
+            "target"
+          ],
+          "title": "GoalMetric",
+          "description": "How to tell a goal is reached: a key of the project's signals summed up over a window, compared with a target,\nas a test card of the plugin canvas compares one."
+        },
+        "GoalRevision": {
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed",
+              "description": "the fields whose value differs from the revision before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "revision",
+            "status",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "GoalRevision"
         },
         "Grant": {
           "properties": {
@@ -70017,6 +71058,488 @@
             "values"
           ],
           "title": "ProjectFeatures"
+        },
+        "ProjectGoal": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "alias": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Alias",
+              "description": "the id of the charter's goal the hub made it from, which names it too"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GoalMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric, so the Curator reads it and nothing else is done"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline"
+            },
+            "canvas": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Canvas",
+              "description": "the slug of the canvas whose product it drives"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's goals, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "achieved",
+                    "dropped",
+                    "expired"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it is closed; null unless it is"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "alias",
+            "revision",
+            "statement",
+            "metric",
+            "deadline",
+            "canvas",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at"
+          ],
+          "title": "ProjectGoal",
+          "description": "A goal of a project at one revision."
+        },
+        "ProjectGoalClose": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "enum": [
+                "achieved",
+                "dropped",
+                "expired"
+              ],
+              "title": "Reason"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the goal is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "ProjectGoalClose"
+        },
+        "ProjectGoalWrite": {
+          "properties": {
+            "statement": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GoalMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline"
+            },
+            "canvas": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Canvas",
+              "description": "the slug of a canvas of the project"
+            },
+            "rank": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rank",
+              "description": "null: kept, or after the project's other goals for a new one"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "a member with the writer role or above; null: kept, or the writer for a new goal"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status",
+              "default": "active"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "achieved",
+                    "dropped",
+                    "expired"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "for a closed goal, and only for one"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "why, for the history"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the goal is at this revision now; 0: new only"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "statement"
+          ],
+          "title": "ProjectGoalWrite",
+          "description": "The next revision of a goal: the whole of it, as its writer wants it."
+        },
+        "ProjectGoalWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "G-<number>, unique in the project and never given again"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "alias": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Alias",
+              "description": "the id of the charter's goal the hub made it from, which names it too"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GoalMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null: no metric, so the Curator reads it and nothing else is done"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline"
+            },
+            "canvas": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Canvas",
+              "description": "the slug of the canvas whose product it drives"
+            },
+            "rank": {
+              "type": "integer",
+              "title": "Rank",
+              "description": "its place among the project's goals, 1 first"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status"
+            },
+            "close_reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "achieved",
+                    "dropped",
+                    "expired"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close Reason",
+              "description": "why it is closed; null unless it is"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the writer said of this revision"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By",
+              "description": "who wrote this revision"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the newest revision is this goal already: nothing was written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "code",
+            "number",
+            "alias",
+            "revision",
+            "statement",
+            "metric",
+            "deadline",
+            "canvas",
+            "rank",
+            "owner",
+            "status",
+            "close_reason",
+            "note",
+            "created_by",
+            "created_at",
+            "changed"
+          ],
+          "title": "ProjectGoalWritten"
         },
         "ProjectGrantCounts": {
           "properties": {

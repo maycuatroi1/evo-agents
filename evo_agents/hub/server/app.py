@@ -347,6 +347,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chats,
         credentials,
         features,
+        goals,
         merge_judge,
         merge_view,
         plugin_host,
@@ -398,6 +399,7 @@ def create_app(config: HubConfig) -> FastAPI:
         signals.router,
         signal_keys.router,
         autonomy_policies.router,
+        goals.router,
         merge_view.router,
         merge_judge.worker_router,
     ):
