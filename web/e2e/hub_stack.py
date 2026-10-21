@@ -38,6 +38,11 @@ every minute: in each charter's window it counts the night's figures and queues 
 /curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
 on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
+The canvas specs need the value check without the hub's worker: POST /canvas/value-check {project} runs one pass of the
+core plugin canvas's job value_check for that project alone (``evo_agents.core_plugins.canvas.value_check``), as the
+worker does on each batch of its signals: each test card against the signals of its metric, as evidence the hub writes
+and proposals of a change of status.
+
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
@@ -344,6 +349,26 @@ def collect_curator(dsn: str) -> dict:
     return asyncio.run(once())
 
 
+def value_check(dsn: str, body: dict) -> dict:
+    """One pass of the value check over the canvases of one project, as the hub's worker runs it on a batch of the
+    project's signals; what it did, counted. Other specs' projects are left alone."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.core_plugins.canvas.value_check import check_project
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            return await check_project(engine, None, str(body["project"]))
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
 def brief_curator(dsn: str, body: dict) -> dict:
     """The morning brief of one project, as the job curator.brief sends it at ``at`` (an ISO time with its zone): the
     words it answers for that project's schedule. Other specs' projects are left alone, so their Inboxes stay as they
@@ -611,6 +636,11 @@ def control_server(
             elif self.path == "/curator/collect":
                 try:
                     self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/canvas/value-check":
+                try:
+                    self._reply(200, value_check(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):

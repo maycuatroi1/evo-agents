@@ -16,6 +16,7 @@ import {
   MoonStar,
   Network,
   Puzzle,
+  RadioTower,
   Server,
   Shield,
   Sparkles,
@@ -42,6 +43,7 @@ export type NavLabel =
   | "plans"
   | "runs"
   | "insights"
+  | "signals"
   | "curator"
   | "agents"
   | "chats"
@@ -95,6 +97,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
+  { label: "signals", icon: RadioTower, segment: "signals" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },
   { label: "agents", icon: Bot, segment: "agents" },
   { label: "memories", icon: BookOpen, segment: "memories" },

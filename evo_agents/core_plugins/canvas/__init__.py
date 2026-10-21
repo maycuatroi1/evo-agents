@@ -22,7 +22,8 @@ proposals, ask @strategist for a brainstorm and import, admins give a canvas a l
 ``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import`` is their client; a
 canvas exports as ``evo-canvas/1`` JSON and imports back keeping its claims' codes. The tables are the hub's
 (``evo_agents.hub.tables_canvas``, migrations 0067 and 0069 to 0072), every row of a canvas carrying its label, the
-project's by default.
+project's by default. The hub's web shows them on the plugin's native pages (``PAGES``): the canvases in the
+project's menu, and under them a canvas's grid of nine cells, a claim's page and a baseline's review.
 
 The plugin contributes the agent type ``strategist`` (criterion a5): the profile @strategist with the pack
 ``canvas/strategist`` (``packs/strategist``: its instructions and the skills lean-canvas, canvas-editing and
@@ -118,6 +119,12 @@ TABLES = (
     ("canvas_baseline_items", "What a baseline asks of each claim, and the decision a writer made of it"),
 )
 
+# The native pages of the hub's web (web/src/app/(app)/p/[project]/x/canvas, web/src/components/canvas): the canvases,
+# with a canvas's grid of nine cells, a claim's page and a baseline's review under it, in the project's menu.
+PAGES = {
+    "canvases": {"title": "Lean Canvas", "icon": "table", "description": "The living Lean Canvas of each product"},
+}
+
 MANIFEST = {
     "id": "canvas",
     "version": "1.0.0",
@@ -189,6 +196,7 @@ MANIFEST = {
             {"name": "canvases", "title": "The canvases of a project and their claims", "python": f"{KG}:kg_source"}
         ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
     },
 }
 

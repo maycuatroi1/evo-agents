@@ -225,6 +225,7 @@ test.describe("shell", () => {
       "nav-plans",
       "nav-runs",
       "nav-insights",
+      "nav-signals",
       "nav-curator",
       "nav-agents",
       "nav-memories",

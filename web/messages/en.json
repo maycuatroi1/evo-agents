@@ -23,6 +23,7 @@
     "plans": "Plans",
     "runs": "Runs",
     "insights": "Insights",
+    "signals": "Signals",
     "kg": "Knowledge graph",
     "admin": "Administration",
     "toggleSidebar": "Show or hide the sidebar",
@@ -4357,7 +4358,8 @@
       "chat_mention": "Someone mentioned you in a chat",
       "chat_added": "Someone added you to a chat",
       "plugin_disabled": "The hub turned off a plugin",
-      "builder_proposal": "@builder proposed a change for you to approve"
+      "builder_proposal": "@builder proposed a change for you to approve",
+      "canvas_baseline": "A Lean Canvas baseline waits for your review"
     },
     "item": {
       "unread": "Unread",
@@ -4366,6 +4368,7 @@
       "view": "View",
       "viewLabel": "View decision #{id}",
       "openRun": "Open run #{id}",
+      "openBaseline": "Review the baseline",
       "markRead": "Mark as read",
       "markReadLabel": "Mark as read: {title}",
       "showMore": "Show all",
@@ -6741,6 +6744,489 @@
       "noPreviewText": "Paste or read a file, then Preview: the hub reads it against the project and writes nothing.",
       "readerTitle": "Importing tasks into {project} takes the writer role",
       "backToBoard": "Back to the board"
+    }
+  },
+  "canvas": {
+    "readerTitle": "You read {project} as a reader",
+    "meta": {
+      "canvases": "Lean Canvas of {project}",
+      "canvas": "{slug}, Lean Canvas of {project}",
+      "claim": "{code} of {slug} in {project}",
+      "baseline": "Baseline {number} of {slug} in {project}"
+    },
+    "status": {
+      "assumption": "Assumption",
+      "testing": "Testing",
+      "validated": "Validated",
+      "invalidated": "Invalidated",
+      "retired": "Retired",
+      "none": "No claims yet"
+    },
+    "baselineStatus": {
+      "proposed": "Waiting for review",
+      "approved": "Approved",
+      "expired": "Expired"
+    },
+    "confidence": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "title": "Confidence: {confidence}"
+    },
+    "evidenceKind": {
+      "signal": "Signal",
+      "feedback": "Feedback",
+      "interview": "Interview",
+      "experiment": "Experiment",
+      "market": "Market",
+      "doc": "Document",
+      "simulation": "Simulation"
+    },
+    "direction": {
+      "supports": "Supports",
+      "contradicts": "Contradicts",
+      "neutral": "Neutral"
+    },
+    "verdict": {
+      "supports": "Supports",
+      "contradicts": "Contradicts",
+      "irrelevant": "Irrelevant",
+      "waiting": "Not judged yet"
+    },
+    "provenance": {
+      "hub": "The hub",
+      "someone": "someone",
+      "agent": "@strategist",
+      "forMember": "for {login}",
+      "model": "({model})"
+    },
+    "list": {
+      "columns": {
+        "canvas": "Canvas",
+        "claims": "Claims",
+        "statuses": "By status",
+        "createdBy": "Created by",
+        "updatedAt": "Updated"
+      },
+      "caption": "Lean Canvases of {project}",
+      "claimsShort": "{count, plural, one {# claim} other {# claims}}",
+      "new": "New canvas",
+      "signals": "Signals",
+      "settings": "Settings",
+      "readerText": "Readers open canvases, claims, evidence and baselines. Editing claims, adding evidence and deciding baselines take the writer role.",
+      "emptyTitle": "No canvas yet",
+      "emptyWriter": "Each product gets a living Lean Canvas: claims in nine cells, each with a status, a test card and evidence, and a baseline your team approves each week. Start with the product you know best.",
+      "emptyReader": "Each product gets a living Lean Canvas: claims in nine cells, each with a status, a test card and evidence. A writer of the project starts the first one."
+    },
+    "newCanvas": {
+      "title": "New canvas",
+      "text": "One canvas per product. Its nine cells start empty; you add claims to them next.",
+      "name": "Product name",
+      "namePlaceholder": "Northwind Checkout",
+      "nameMissing": "Give the product a name.",
+      "slug": "Slug",
+      "slugHelp": "Lower-case letters, digits and hyphens. The canvas's address and the name the CLI and @strategist use.",
+      "slugBad": "Use lower-case letters, digits and hyphens, starting with a letter or a digit.",
+      "description": "Description (optional)",
+      "cancel": "Cancel",
+      "create": "Create canvas",
+      "created": "Canvas {name} created"
+    },
+    "newClaim": {
+      "title": "New claim in {cell}",
+      "text": "A claim starts as rev 1. Keep it to one statement you can test.",
+      "reason": "Why (optional)",
+      "reasonPlaceholder": "Kept with the rev",
+      "cancel": "Cancel",
+      "create": "Add claim",
+      "created": "{code} added to {cell}"
+    },
+    "cell": {
+      "problem": "Problem",
+      "problemHint": "The top problems the customers have, and how they solve them today",
+      "customer_segments": "Customer segments",
+      "customer_segmentsHint": "Who has the problem, and the early adopters among them",
+      "unique_value_proposition": "Unique value proposition",
+      "unique_value_propositionHint": "One clear message of why the product is different and worth buying",
+      "solution": "Solution",
+      "solutionHint": "The smallest set of features that solves each problem",
+      "channels": "Channels",
+      "channelsHint": "The paths to the customers",
+      "revenue_streams": "Revenue streams",
+      "revenue_streamsHint": "How the product makes money: price, model, lifetime value",
+      "cost_structure": "Cost structure",
+      "cost_structureHint": "What it costs to build, run and sell the product",
+      "key_metrics": "Key metrics",
+      "key_metricsHint": "The numbers that tell how the business is doing",
+      "unfair_advantage": "Unfair advantage",
+      "unfair_advantageHint": "What cannot easily be copied or bought"
+    },
+    "grid": {
+      "count": ", {count, plural, =0 {no claims} one {# claim} other {# claims}}",
+      "add": "Add a claim to {cell}",
+      "empty": "No claims yet."
+    },
+    "claimCard": {
+      "due": "Test card due {day}",
+      "overdue": "Past its deadline ({day}) without real evidence",
+      "evidence": "{real} of {count, plural, one {# piece of evidence} other {# pieces of evidence}} real and supporting"
+    },
+    "form": {
+      "text": "Claim",
+      "textPlaceholder": "Shop owners lose a sale when checkout takes more than two minutes",
+      "textMissing": "Write the claim.",
+      "cell": "Cell",
+      "status": "Status",
+      "confidence": "Confidence",
+      "statusHelp": "Testing needs a hypothesis, a test and a deadline. Validated needs real evidence that supports the claim.",
+      "testingHelp": "Testing needs a hypothesis, a test and a deadline on the test card.",
+      "validatedHelp": "The hub accepts validated only with real evidence that supports the claim: not synthetic, not a document or a simulation, and added by a person or confirmed by a writer.",
+      "links": "Links",
+      "useCases": "Use cases",
+      "useCasesPlaceholder": "UC ORD-1, UC ORD-2",
+      "useCasesHelp": "Codes of the project's SRS use cases that realize the claim, separated by commas; at most {max}.",
+      "signalKeys": "Signal keys that measure it",
+      "noKeys": "The project's registry has no signal keys yet. An admin adds them with evo-agents hub signal keys add.",
+      "keyKind": {
+        "number": "number",
+        "feedback": "feedback"
+      }
+    },
+    "card": {
+      "heading": "Test card",
+      "hypothesis": "We believe that",
+      "hypothesisPlaceholder": "shop owners will pay for one-click checkout",
+      "test": "To verify that, we will",
+      "testPlaceholder": "offer it to 20 shops for a month",
+      "metric": "And measure",
+      "noMetric": "No metric",
+      "feedback": "Feedback judged by @strategist",
+      "aggregate": "Aggregate",
+      "aggregates": {
+        "last": "last value",
+        "mean": "mean",
+        "sum": "sum",
+        "count": "count",
+        "p50": "median",
+        "p90": "90th percentile"
+      },
+      "comparator": "We are right if",
+      "threshold": "Threshold",
+      "windowDays": "Over days",
+      "minSamples": "At least samples",
+      "tenant": "Tenant",
+      "tenantPlaceholder": "All tenants",
+      "deadline": "Deadline",
+      "needed": "Testing needs this.",
+      "none": "None",
+      "empty": "No test card yet. Testing needs a hypothesis, a test and a deadline.",
+      "check": "Value check",
+      "checkNumber": "{aggregate} over {days} days {comparator} {threshold}",
+      "checkFeedback": "share of feedback that supports it over {days} days {comparator} {threshold}",
+      "pastDeadline": "past, without real evidence"
+    },
+    "links": {
+      "heading": "Links",
+      "useCases": "Use cases",
+      "signalKeys": "Signal keys",
+      "none": "None"
+    },
+    "field": {
+      "cell": "Cell",
+      "position": "Place in cell",
+      "text": "Claim",
+      "status": "Status",
+      "confidence": "Confidence",
+      "archived": "Archived",
+      "use_cases": "Use cases",
+      "signal_keys": "Signal keys",
+      "card": {
+        "hypothesis": "Hypothesis",
+        "test": "Test",
+        "metric": "Metric",
+        "aggregate": "Aggregate",
+        "window_days": "Window in days",
+        "comparator": "Comparator",
+        "threshold": "Threshold",
+        "min_samples": "Minimum samples",
+        "tenant": "Tenant",
+        "deadline": "Deadline"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "nothing": "Nothing changed.",
+      "was": "was",
+      "now": "now",
+      "none": "None"
+    },
+    "evidence": {
+      "heading": "Evidence ({real} of {count} real and supporting)",
+      "add": "Add evidence",
+      "none": "No evidence yet.",
+      "hidden": "{count, plural, one {# more piece} other {# more pieces}} above what you may read.",
+      "synthetic": "Synthetic",
+      "syntheticTitle": "Rests on simulated people, never real evidence",
+      "real": "Real evidence",
+      "notReal": "Not real evidence: {why}",
+      "observed": "Taken {day}",
+      "confirmedBy": "Confirmed by {login}",
+      "withdrawnBy": "Withdrawn by {login}: {reason}",
+      "openSignals": "Open the signals",
+      "newTab": "(opens in a new tab)",
+      "confirm": "Confirm",
+      "confirmed": "Evidence {id} confirmed",
+      "withdraw": "Withdraw",
+      "withdrawn": "Evidence {id} withdrawn",
+      "withdrawReason": "Why withdraw it",
+      "cancel": "Cancel"
+    },
+    "evidenceForm": {
+      "kind": "Kind",
+      "direction": "It",
+      "summary": "What it says",
+      "summaryPlaceholder": "12 of 20 shop owners said checkout time decides where they buy",
+      "summaryMissing": "Say what the evidence shows.",
+      "url": "Link (optional)",
+      "urlBad": "Use an address that starts with http:// or https://.",
+      "observed": "Taken on (optional)",
+      "synthetic": "Rests on simulated people",
+      "syntheticHelp": "Synthetic evidence never validates a claim.",
+      "simulationHelp": "A simulation is always synthetic.",
+      "cancel": "Cancel",
+      "add": "Add evidence",
+      "added": "Evidence added to {claim}"
+    },
+    "basis": {
+      "number": "The value check read {aggregate} = {value} from {samples} signals over {days} days,",
+      "feedback": "The value check read {value} of {samples} judged feedback supporting it over {days} days,",
+      "against": "against {comparator} {threshold}",
+      "met": "met",
+      "not_met": "not met",
+      "insufficient": "too few samples",
+      "signalsOfTenant": "{metric} of {tenant}"
+    },
+    "judgings": {
+      "heading": "Judged by @strategist ({count})",
+      "feedback": "Feedback",
+      "evidence": "Evidence {id} ({kind})",
+      "why": "Why:"
+    },
+    "history": {
+      "heading": "History ({count, plural, one {# rev} other {# revs}})",
+      "rev": "Rev {rev}",
+      "change": {
+        "create": "created",
+        "edit": "edited",
+        "archive": "archived",
+        "unarchive": "unarchived",
+        "undo": "undo",
+        "import": "imported",
+        "proposal": "proposal accepted",
+        "baseline": "baseline decision"
+      },
+      "undoOf": "undo of rev {rev}",
+      "undo": "Undo rev {rev}",
+      "undoFirst": "Undo rev 1, archiving the claim",
+      "undone": "{claim} rev {rev} taken back",
+      "undoConflict": "{claim} changed since you opened it: {login} wrote rev {rev}. Read it again before you undo.",
+      "compare": "Compare revs",
+      "from": "From",
+      "to": "To",
+      "sameRev": "Pick two different revs.",
+      "comparing": "Comparing...",
+      "compareFailed": "Couldn't compare these revs."
+    },
+    "editor": {
+      "heading": "Edit {claim} at rev {rev}",
+      "reason": "Why (optional)",
+      "reasonPlaceholder": "Kept with the rev",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saved": "{claim} saved",
+      "nothing": "Nothing changed, so nothing was saved",
+      "conflict": "{claim} changed since you opened it at rev {base}: {login} wrote rev {rev}",
+      "conflictText": "Nothing was saved. Their change:",
+      "keepMine": "Apply my changes to rev {rev}",
+      "startAgain": "Start again from rev {rev}"
+    },
+    "claim": {
+      "inCanvas": "In canvas",
+      "created": "Created by {login}",
+      "atRev": "At rev {rev}.",
+      "archived": "Archived",
+      "edit": "Edit",
+      "askReview": "Ask for review now",
+      "reviewOpened": "Baseline {number} opened",
+      "reviewOpenedText": "Another writer of the project decides it.",
+      "openReview": "Open the review",
+      "reviewFailed": "Couldn't open a review of {claim}",
+      "reviewConflict": "A baseline waiting for review holds this claim already, or the claim asks nothing to review.",
+      "readerText": "Readers read claims, their evidence and history. Editing, undoing and adding evidence take the writer role."
+    },
+    "proposals": {
+      "heading": "Proposals waiting ({count})",
+      "newClaim": "New claim",
+      "change": "change at rev {rev}",
+      "accept": "Accept",
+      "reject": "Reject",
+      "rejectReason": "Why reject it (optional)",
+      "cancel": "Cancel",
+      "accepted": "Proposal accepted as {claim}",
+      "rejected": "Proposal {id} rejected"
+    },
+    "baselines": {
+      "heading": "Baselines",
+      "none": "No baseline yet. The hub proposes one each week at the time the plugin's settings name, and a writer may ask for a review of one claim at once.",
+      "name": "Baseline {number}",
+      "weekly": "week {week}",
+      "push": "opened by {login}",
+      "waitingCount": "{count} of {total} waiting",
+      "items": "{count, plural, one {# item} other {# items}}",
+      "waitingTitle": "Baseline {number} waits for review: {count, plural, one {# item} other {# items}}",
+      "waitingText": "Changes of status take effect once writers accept them.",
+      "waitingMore": "{count, plural, one {# more baseline waits} other {# more baselines wait}} too.",
+      "review": "Review"
+    },
+    "page": {
+      "sub": "Created by {login}. {claims, plural, =0 {No claims yet.} one {# claim.} other {# claims.}}",
+      "addClaim": "Add claim",
+      "export": "Export JSON",
+      "exported": "Canvas exported",
+      "exportFailed": "Couldn't export the canvas",
+      "archived": "Show archived claims",
+      "statuses": "Claims by status",
+      "grid": "Canvas",
+      "readerText": "Readers read the canvas, its proposals and baselines. Adding claims and deciding proposals take the writer role."
+    },
+    "baseline": {
+      "title": "Baseline {number}",
+      "weekly": "Week {week}",
+      "push": "Opened at once",
+      "ofCanvas": "Of canvas",
+      "proposed": "Proposed by the hub",
+      "openedBy": "Opened by {login}",
+      "approvedBy": "Approved by {logins}",
+      "nobody": "nobody, nothing waited",
+      "expiredAt": "Expired",
+      "waiting": "{count} of {total} {total, plural, one {item waits} other {items wait}} for a decision",
+      "due": "Proposed for {when} ({zone}). It is approved once no item waits.",
+      "approveWhen": "It is approved once no item waits.",
+      "expiredTitle": "This baseline expired",
+      "expiredText": "Its decisions stand; the claims it did not decide come back in the next baseline.",
+      "items": "Items ({count})",
+      "readerText": "Readers read baselines. Deciding an item takes the writer role."
+    },
+    "item": {
+      "atRev": "at rev {rev}",
+      "from": "from",
+      "to": "to",
+      "overdue": "Its test card's deadline, {day}, passed without real evidence: extend it or retire the claim.",
+      "real": "real",
+      "notReal": "not real",
+      "noEvidence": "No evidence.",
+      "hidden": "{count, plural, one {# more piece} other {# more pieces}} of evidence above what you may read.",
+      "proposers": "May not decide it: {logins}",
+      "by": "by {login}",
+      "newDeadline": "new deadline {day}",
+      "because": "because {reason}",
+      "yours": "You changed this claim's status or opened this baseline, so another writer decides it.",
+      "notYours": "Another writer of the project decides this item."
+    },
+    "itemKind": {
+      "status": "Change of status",
+      "value_check": "Proposed by the value check",
+      "overdue": "Test card past its deadline",
+      "new": "New claim"
+    },
+    "decision": {
+      "accepted": "Accepted",
+      "rejected": "Rejected",
+      "deferred": "Deferred",
+      "extended": "Extended",
+      "retired": "Retired",
+      "included": "Included"
+    },
+    "decide": {
+      "label": "Decide {claim}",
+      "reason": "Why (optional)",
+      "reasonPlaceholder": "Kept with the rev the decision writes",
+      "newDeadline": "New deadline",
+      "deadlineBad": "Pick a day after today.",
+      "choice": {
+        "accepted": "Accept",
+        "rejected": "Reject",
+        "deferred": "Defer",
+        "extended": "Extend",
+        "retired": "Retire"
+      },
+      "done": {
+        "accepted": "{claim} accepted",
+        "rejected": "{claim} rejected",
+        "deferred": "{claim} deferred to the next baseline",
+        "extended": "{claim} extended",
+        "retired": "{claim} retired"
+      }
+    },
+    "snapshot": {
+      "heading": "Snapshot ({count, plural, one {# claim} other {# claims}})",
+      "text": "Each claim at the rev and status in effect when the baseline was approved. It never changes.",
+      "rev": "rev {rev}"
+    }
+  },
+  "signals": {
+    "kind": {
+      "number": "Number",
+      "feedback": "Feedback"
+    },
+    "page": {
+      "title": "Signals",
+      "meta": "Signals of {project}",
+      "keysHeading": "Signal keys",
+      "pick": "Open a key to see its values over time.",
+      "unknownKey": "The registry has no key {key}",
+      "unknownKeyText": "It may have been archived. Pick a key from the list.",
+      "emptyTitle": "No signal keys yet",
+      "emptyText": "A key names what a service measures, such as checkout.conversion. An admin adds keys with evo-agents hub signal keys add and an ingest key with evo-agents hub signal ingest create."
+    },
+    "keys": {
+      "caption": "Signal keys of {project}",
+      "columns": {
+        "key": "Key",
+        "kind": "Kind",
+        "source": "Source",
+        "description": "Measures",
+        "latest": "Latest"
+      },
+      "number": "number",
+      "feedback": "feedback",
+      "noSignal": "No signal yet",
+      "latestFailed": "Couldn't read"
+    },
+    "series": {
+      "tenant": "Tenant",
+      "tenantPlaceholder": "All tenants",
+      "tenantSearch": "Signals of one tenant",
+      "apply": "Apply",
+      "clearTenant": "Show every tenant, not only {tenant}",
+      "rangeLabel": "Span of time",
+      "range": {
+        "7": "7 days",
+        "30": "30 days",
+        "90": "90 days",
+        "365": "1 year"
+      },
+      "count": "{count, plural, one {# signal} other {# signals}} in the last {days} days, the newest first",
+      "chartLabel": "{key}, {count, plural, one {# value} other {# values}} over time; the table below lists them",
+      "tableLabel": "Signals of {key}",
+      "measuredAt": "Measured",
+      "value": "Value",
+      "feedback": "Feedback",
+      "source": "Sent by",
+      "synthetic": "synthetic",
+      "tenantOf": "Tenant {tenant}",
+      "emptyTitle": "No signals in this span",
+      "empty": "Nothing was measured in the last {days} days.",
+      "emptyTenant": "Nothing was measured for {tenant} in the last {days} days."
     }
   }
 }

@@ -125,7 +125,8 @@ function noticeHref(notification: Notification): Route | null {
 /**
  * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
  * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page), and so does a tier 2 proposal of the
- * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run. An unread one is marked by a dot, a
+ * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run, and a Lean Canvas baseline that waits
+ * for review (canvas_baseline) to its review page. An unread one is marked by a dot, a
  * heavier title and the words "Unread" for screen readers, and offers Mark as read.
  */
 export function NotificationItem({
@@ -279,6 +280,19 @@ export function NotificationItem({
               data-testid="notification-run-link"
             >
               {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
+              <ArrowRight className="size-3.5" aria-hidden="true" />
+            </Link>
+          ) : null}
+          {target && notification.run_id === null && notification.notice_kind === "canvas_baseline" ? (
+            <Link
+              href={target}
+              onClick={() => {
+                if (unread) onRead(notification.id);
+              }}
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
+              data-testid="notification-link"
+            >
+              {t("openBaseline")}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}
