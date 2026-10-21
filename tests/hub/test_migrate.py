@@ -541,6 +541,9 @@ def _chat_run(ids, chat_id: int, message_id: int | None, **extra):
     return insert(runs).values(row | extra).returning(runs.c.id)
 
 
+CHATS_0032 = table("chats", column("id"), column("budget_usd"))  # the chat's budget, from 0032 until 0072
+
+
 def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_db):
     move_to(hub_db, "0031")
     t = hub_tables
@@ -577,11 +580,11 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
                 approval="auto",
             ),
             update(runs).values(chat_id=chat_id, chat_message_id=message_id, hop=1).where(runs.c.id == author),
-            update(t.chats).values(budget_usd=0).where(t.chats.c.id == chat_id),
+            update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id),
         ):
             with pytest.raises(errors.CheckViolation):
                 conn.execute(bad)
-    assert query(hub_db, select(t.chats.c.budget_usd)) == [(5.0,)]
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]
 
     # Going back deletes the chat runs, the one going on in another's session and the retry included; the rest stays.
     move_to(hub_db, "0031", down=True)
@@ -1442,6 +1445,25 @@ def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it
     assert "srs_approval_tasks" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
+
+
+def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
+    move_to(hub_db, "0071")
+    before = query(hub_db, SNAPSHOT)
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Ops", created_by=ids["user"]).returning(t.chats.c.id))
+        conn.execute(update(CHATS_0032).values(budget_usd=20).where(CHATS_0032.c.id == chat_id))
+    move_to(hub_db, "0072")
+    assert "budget_usd" not in columns(hub_db, "chats")
+    assert query(hub_db, select(t.chats.c.title)) == [("Ops",)]
+    move_to(hub_db, "0071", down=True)
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]  # what the creator set is gone
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

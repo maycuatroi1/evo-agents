@@ -54,11 +54,9 @@ The agent of a run (a chat run, or a step, plan or author run) talks in chats wi
 run alone, with the worker's token: ``post`` writes in the thread (or in a chat its agent is in), ``react`` puts an
 emoji, ``create`` makes a chat with the run's agent and the person at the origin of the chain, and ``mention`` hands
 work to another agent of the chat. That run is dispatched by the person at the origin of the chain, at one hop more
-than the run that asked (a person's mention is hop 1), within MAX_HOPS, never to the agent's own profile, and within
-the chat's budget: what the chat runs of the chat cost in the last BUDGET_HOURS, as their usage says, below the chat's
-``budget_usd`` (DEFAULT_BUDGET_USD unless its creator changed it). Each run gets what is left as its cost cap, and
-TIME_CAP_SECONDS of agent time, the cap of a runtime that reports no cost. An ``@`` in the agent's reply or in ``post``
-hands work to nobody.
+than the run that asked (a person's mention is hop 1), within MAX_HOPS, never to the agent's own profile. Each run
+gets TIME_CAP_SECONDS of agent time as its cap, and no cost cap. An ``@`` in the agent's reply or in ``post`` hands work
+to nobody.
 """
 
 from __future__ import annotations
@@ -72,11 +70,8 @@ from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR,
 
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
 MAX_HOPS = 3  # a person's mention is hop 1, each agent's mention one more
-DEFAULT_BUDGET_USD = 5.0  # what the chat runs of one chat may cost in BUDGET_HOURS
-MAX_BUDGET_USD = 1000.0
-BUDGET_HOURS = 24  # a rolling window, so no time zone is chosen
 TIMEOUT_MIN = 60  # the agent time of one turn
-TIME_CAP_SECONDS = 30 * 60  # and its time cap, what a runtime that reports no cost (Codex) stops at
+TIME_CAP_SECONDS = 30 * 60  # and its time cap, where the worker stops it
 SNAPSHOT_BYTES = 12 * 1024  # the chat as the prompt shows it, the message that mentioned the agent left out
 THREAD_MESSAGES = 30  # the latest messages of the thread it shows
 BEFORE_MESSAGES = 10  # and of the chat before the thread's first message
@@ -193,9 +188,9 @@ def goes_on(state: str, failure_cause: str | None) -> bool:
     return state == "done" or (state == "failed" and failure_cause in GO_ON_AFTER)
 
 
-def run_budget(left_usd: float) -> dict:
-    """The caps of a chat run when ``left_usd`` of its chat's budget is left: that cost, and TIME_CAP_SECONDS."""
-    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": TIME_CAP_SECONDS}
+def run_budget() -> dict:
+    """The caps of a chat run: TIME_CAP_SECONDS of agent time, and no cost cap."""
+    return {"max_seconds": TIME_CAP_SECONDS}
 
 
 def hop_problem(hop: int, own: bool) -> str | None:
@@ -305,7 +300,6 @@ def _rules(
     login: str,
     branch: str,
     hop: int,
-    budget_usd: float,
     lazy: bool,
     harness: str | None,
     direct: bool = False,
@@ -350,8 +344,8 @@ def _rules(
         f"- In the chat: `{POST_COMMAND} TEXT` posts another message in this thread; `{REACT_COMMAND} MESSAGE EMOJI` "
         f"puts an emoji on a message; `{CREATE_COMMAND} --title TEXT [--person LOGIN]` makes a new chat with you and "
         f"{login}. `{MENTION_COMMAND} HANDLE TEXT` hands work to another agent of this chat: its run goes on for "
-        f"{login}, at hop {hop + 1} of at most {MAX_HOPS}, never to yourself (@{handle}), within the chat's budget of "
-        f"${budget_usd:.2f} for {BUDGET_HOURS} hours. An @ in your reply or in `post` hands work to nobody.",
+        f"{login}, at hop {hop + 1} of at most {MAX_HOPS}, never to yourself (@{handle}). An @ in your reply or in "
+        "`post` hands work to nobody.",
         f"- Keep {RESULT_DIR}/ out of your commits. Before you end each turn, write {RESULT_FILE} as a JSON object "
         'whose "summary" says what you did, what you changed and what is left.',
     ]
@@ -398,7 +392,6 @@ def build_chat_prompt(
     login: str,
     hop: int,
     branch: str,
-    budget_usd: float,
     blocks: list[str],
     repos: list | None = None,
     worktrees: dict | None = None,
@@ -433,7 +426,7 @@ def build_chat_prompt(
         f"You are @{handle} ({agent.get('name') or handle}), an agent of project {agent.get('project')} on the "
         f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
-        *_rules(handle, login, branch, hop, budget_usd, lazy, harness, direct, settle),
+        *_rules(handle, login, branch, hop, lazy, harness, direct, settle),
         "",
         f"People of the chat: {people}. Agents: {agents}.",
         "",

@@ -1,13 +1,12 @@
 "use client";
 
 import { Bot } from "lucide-react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
-import { type Chat, MAX_AGENTS, MAX_BUDGET_USD, MAX_PEOPLE } from "@/lib/chats";
+import { type Chat, MAX_AGENTS, MAX_PEOPLE } from "@/lib/chats";
 
 import { PeoplePicker } from "./people-picker";
 import { useAddableAgents } from "./use-addable-agents";
@@ -100,62 +99,5 @@ export function AddPersonForm({ chat, pending, onAdd }: { chat: Chat; pending: b
         {full ? t("peopleFull", { max: MAX_PEOPLE }) : t("personHint")}
       </p>
     </div>
-  );
-}
-
-/** The chat's budget: what its agents' runs may cost in 24 hours. Its creator changes it; anyone else reads it. */
-export function BudgetForm({ chat, creator, pending, onSave }: { chat: Chat; creator: boolean; pending: boolean; onSave: (usd: number) => void }) {
-  const t = useTranslations("chats.members");
-  const format = useFormatter();
-  const ids = useId();
-  const [value, setValue] = useState(String(chat.budget_usd));
-  const [problem, setProblem] = useState(false);
-  const amount = format.number(chat.budget_usd, { style: "currency", currency: "USD" });
-  if (!creator) {
-    return (
-      <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground" data-testid="chat-budget">
-        {t("budgetRead", { amount, creator: chat.created_by })}
-      </p>
-    );
-  }
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const usd = Number(value);
-    if (!Number.isFinite(usd) || usd <= 0 || usd > MAX_BUDGET_USD) return setProblem(true);
-    setProblem(false);
-    onSave(usd);
-  };
-  const changed = Number(value) !== chat.budget_usd;
-  return (
-    <form onSubmit={submit} noValidate className={FIELD} data-testid="chat-budget-form">
-      <label htmlFor={`${ids}-budget`} className="text-[13px] font-medium">
-        {t("budgetLabel")}
-      </label>
-      <div className={ROW}>
-        <Input
-          id={`${ids}-budget`}
-          type="number"
-          inputMode="decimal"
-          min={0.01}
-          max={MAX_BUDGET_USD}
-          step={0.5}
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setProblem(false);
-          }}
-          aria-invalid={problem || undefined}
-          aria-describedby={`${ids}-budget-hint`}
-          className="w-32 tabular-nums"
-          data-testid="chat-budget-input"
-        />
-        <Button type="submit" variant="outline" disabled={!changed} busy={pending} data-testid="chat-budget-save">
-          {pending ? t("saving") : t("save")}
-        </Button>
-      </div>
-      <p id={`${ids}-budget-hint`} className={problem ? "text-xs font-medium text-danger" : "text-xs text-pretty text-fg-subtle"}>
-        {problem ? t("badBudget", { max: format.number(MAX_BUDGET_USD) }) : t("budgetHint", { amount })}
-      </p>
-    </form>
   );
 }

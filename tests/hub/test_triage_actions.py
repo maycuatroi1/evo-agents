@@ -1,7 +1,8 @@
 """What the agent of a triage thread does on its own (``evo_agents.hub.server.triage_actions``), as criteria a5 and a7 of
 the plan run-failure-triage name them: it reruns the failed step and edits the plan of the failed run inside the frame
 the hub enforces, each act leaves a ``Decision:`` line in the thread and an audit row, and what is outside the frame is
-refused: a step that is done, a clause of the verify dropped, a chain of more than two reruns, a spent budget."""
+refused: a step that is done, a clause of the verify dropped, a chain of more than two reruns. What the chat's runs
+cost refuses nothing."""
 
 from __future__ import annotations
 
@@ -250,13 +251,12 @@ def test_triage_rerun_stops_at_two_reruns_in_a_chain_and_at_one_for_each_cause(c
     assert len(audited(hub_db, "run.triage_rerun")) == 2
 
 
-def test_triage_rerun_over_the_chat_budget_is_refused(client, hub, hub_db):
+def test_triage_rerun_after_costly_chat_runs_is_not_refused(client, hub, hub_db):
     worker, run_id, agent = setup(client, hub, hub_db)
-    sql(hub_db, update(tables.chats).values(budget_usd=0.01))
-    sql(hub_db, update(tables.runs).values(usage={"total_cost_usd": 1.0}).where(tables.runs.c.kind == "chat"))
-    refused = rerun(client, worker, agent)
-    assert refused.status_code == 409 and "budget" in refused.json()["message"]
-    assert audited(hub_db, "run.triage_rerun") == []
+    sql(hub_db, update(tables.runs).values(usage={"total_cost_usd": 100.0}).where(tables.runs.c.kind == "chat"))
+    done = rerun(client, worker, agent)
+    assert done.status_code == 201, done.text
+    assert len(audited(hub_db, "run.triage_rerun")) == 1
 
 
 def test_triage_rerun_on_a_worker_the_owner_does_not_have_is_refused(client, hub, hub_db):

@@ -5,8 +5,8 @@ When a run of kind step, plan or author ends ``failed``, ``open_thread`` finds o
 agent in it, and writes the first message of the thread: what the hub knows of the failure (state, cause and whether the
 hub guessed it, error, plan and step, repo and branch, the last verify, links to the run's page, log and diff, and who
 could run it again: ``runs.service.candidates``) and, last, the mention of the agent, which starts a chat run for the
-owner at hop 1 (``chat_runs.hand_work``: the chat's budget, the writer role and a worker of the owner decide, and a
-refusal is said in the thread). A run has one thread: ``run_triage`` holds it, so a second call finds it. Review, judge,
+owner at hop 1 (``chat_runs.hand_work``: the writer role and a worker of the owner decide, and a refusal is said in
+the thread). A run has one thread: ``run_triage`` holds it, so a second call finds it. Review, judge,
 chat and local runs open none, so the failure of a chat run of triage starts no triage. The switch of a project is
 ``projects.triage_enabled``; the hub's ``chats`` feature must be on. The first message names the plan and the step, so
 each thread says which plan it is about.
@@ -17,8 +17,7 @@ by grant what is labelled at or below it, as the project's runs on no plan are. 
 keeps a chat of its own, "Triage: <plan>", as every plan had before (``_apart``): there its failures reach the owners of
 its runs, who could read the plan when they dispatched them. So does a run whose owner the project's chat cannot take
 (an agent of another project invited into it brings a label they do not clear, or the chat is full); a run with no plan
-then opens no thread. All the threads of the project's chat share its one budget. The triage chats each plan had before
-stay as they are, with their threads.
+then opens no thread. The triage chats each plan had before stay as they are, with their threads.
 
 A run the hub stopped on a usage limit or a refused login (cause ``rate_limit`` or ``account_auth``, an ``account_event``
 stop in its log) while no account of its owner for that variable is ready for the project gets the thread and the facts,
@@ -431,7 +430,7 @@ async def _ask_agent(
     body: str,
 ) -> int | None:
     """Hand the first message of the thread to ``profile`` for the owner (hop 1); the chat run it made, if any. A
-    refusal (the budget, a worker) is said in the thread."""
+    refusal (the writer role, a worker) is said in the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
     via = (
