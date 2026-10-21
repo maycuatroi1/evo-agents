@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Info, LockKeyhole, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { InlineError } from "@/components/admin/notice";
 import type { Notice } from "@/components/feedback/toast";
@@ -26,6 +26,7 @@ import {
   secretBody,
   type SecretField,
   type SecretForm,
+  oneLine,
   secretProblems,
   type SecretProblems,
   utcDay,
@@ -39,6 +40,7 @@ import {
   MAX_USERNAME_CHARS,
   type Secret,
 } from "./queries";
+import { Box, FieldError, Hint } from "./secret-form-parts";
 
 type Props = {
   open: boolean;
@@ -82,39 +84,6 @@ export function SecretDialog({ open, onOpenChange, secret, taken, onSaved }: Pro
   );
 }
 
-function FieldError({ id, text, testId }: { id: string; text?: string | null; testId: string }) {
-  if (!text) return null;
-  return (
-    <p id={id} className="text-xs font-medium text-danger" data-testid={testId}>
-      {text}
-    </p>
-  );
-}
-
-function Hint({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <p id={id} className="text-xs text-pretty text-muted-foreground">
-      {children}
-    </p>
-  );
-}
-
-function Box({ tone, icon: Icon, children, testId }: { tone: "info" | "warning"; icon: typeof Info; children: ReactNode; testId?: string }) {
-  return (
-    <p
-      className={
-        tone === "warning"
-          ? "flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention"
-          : "flex items-start gap-2.5 rounded-md border bg-muted px-3 py-2.5 text-sm text-foreground"
-      }
-      data-testid={testId}
-    >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span className="text-pretty">{children}</span>
-    </p>
-  );
-}
-
 /** Today's day after `now` in UTC: the first end a secret may have. */
 function tomorrow(now: number): string {
   return utcDay(new Date(now + 24 * 60 * 60 * 1000).toISOString());
@@ -150,10 +119,13 @@ function SecretFormBody({
 
   // A project or worker the secret names stays offered on a replace, even when the visitor no longer writes to that
   // project or the worker is gone: the hub then says why it refuses.
+  // A forge secret merges into the project's repos: it binds only to projects the visitor administers.
+  const forge = form.kind === "forge";
   const projectChoices = useMemo(() => {
-    const writable = (projects.data ?? []).filter((project) => project.role === "writer" || project.role === "admin").map((project) => project.name);
+    const roles = forge ? ["admin"] : ["writer", "admin"];
+    const writable = (projects.data ?? []).filter((project) => roles.includes(project.role ?? "")).map((project) => project.name);
     return [...new Set([...writable, ...(secret?.projects ?? [])])].sort();
-  }, [projects.data, secret]);
+  }, [projects.data, secret, forge]);
   const workerChoices = useMemo(() => {
     const own = (workers.data ?? []).filter((worker) => worker.owner === me?.login && worker.status !== "revoked").map((worker) => worker.name);
     return [...new Set([...own, ...(secret?.workers ?? [])])].sort((a, b) => a.localeCompare(b));
@@ -266,9 +238,10 @@ function SecretFormBody({
         ) : null}
 
         <Section legend={t("kind")} testId="secret-kind">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             {kindChoice("env")}
             {kindChoice("git")}
+            {kindChoice("forge")}
           </div>
         </Section>
 
@@ -295,7 +268,7 @@ function SecretFormBody({
             <FieldError id={`${ids}-envVar-error`} text={problem("envVar")} testId="secret-env-var-error" />
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className={cn("grid gap-5", !forge && "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]")}>
             <div className="flex min-w-0 flex-col gap-1.5">
               <Label htmlFor={`${ids}-urlPrefix`}>{t("urlPrefix")}</Label>
               <Input
@@ -316,10 +289,10 @@ function SecretFormBody({
                 aria-required="true"
                 data-testid="secret-url-prefix"
               />
-              <Hint id={`${ids}-urlPrefix-hint`}>{t("urlPrefixHint")}</Hint>
+              <Hint id={`${ids}-urlPrefix-hint`}>{forge ? t("urlPrefixForgeHint") : t("urlPrefixHint")}</Hint>
               <FieldError id={`${ids}-urlPrefix-error`} text={problem("urlPrefix")} testId="secret-url-prefix-error" />
             </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
+            <div className={cn("flex min-w-0 flex-col gap-1.5", forge && "hidden")}>
               <Label htmlFor={`${ids}-username`}>{t("username")}</Label>
               <Input
                 id={`${ids}-username`}
@@ -355,7 +328,7 @@ function SecretFormBody({
             </p>
           ) : noProjects ? (
             <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="secret-no-projects">
-              {t("noProjects")}
+              {forge ? t("noAdminProjects") : t("noProjects")}
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
@@ -383,11 +356,11 @@ function SecretFormBody({
               ))}
             </div>
           )}
-          <Hint id={`${ids}-projects-hint`}>{t("projectsHint")}</Hint>
+          <Hint id={`${ids}-projects-hint`}>{forge ? t("projectsForgeHint") : t("projectsHint")}</Hint>
           <FieldError id={`${ids}-projects-error`} text={problem("projects")} testId="secret-projects-error" />
         </fieldset>
 
-        <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby={`${ids}-workers-hint`} data-testid="secret-workers">
+        <fieldset className={cn("flex min-w-0 flex-col gap-2", forge && "hidden")} aria-describedby={`${ids}-workers-hint`} data-testid="secret-workers">
           <legend className="mb-1.5 text-sm font-medium">{t("workers")}</legend>
           {workers.isPending ? (
             <Skeleton className="h-10 w-full sm:w-1/2" aria-hidden="true" />
@@ -428,7 +401,7 @@ function SecretFormBody({
             aria-describedby={describedBy("expires")}
             data-testid="secret-expires"
           />
-          <Hint id={`${ids}-expires-hint`}>{t("expiresHint")}</Hint>
+          <Hint id={`${ids}-expires-hint`}>{forge ? t("expiresForgeHint") : t("expiresHint")}</Hint>
           <FieldError id={`${ids}-expires-error`} text={problem("expires")} testId="secret-expires-error" />
         </div>
 
@@ -459,13 +432,13 @@ function SecretFormBody({
             data-testid="secret-value"
           />
           <Hint id={`${ids}-value-hint`}>
-            {adding ? t("valueHint") : t("valueReplaceHint")} {form.kind === "git" ? t("valueOneLine") : t("valueLines")}
+            {adding ? t("valueHint") : t("valueReplaceHint")} {forge ? t("valueForge") : oneLine(form.kind) ? t("valueOneLine") : t("valueLines")}
           </Hint>
           <FieldError id={`${ids}-value-error`} text={problem("value")} testId="secret-value-error" />
         </div>
 
         <Box tone="warning" icon={TriangleAlert} testId="secret-warning">
-          {t("warning")}
+          {forge ? t("warningForge") : t("warning")}
         </Box>
         {error ? (
           <div className="flex flex-col gap-2">

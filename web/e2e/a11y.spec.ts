@@ -54,6 +54,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import {
   documentPath,
@@ -122,6 +123,17 @@ async function seedWorkers(me: Member) {
   const api = await apiOf(me);
   await api.POST("/v1/workers/{worker_id}/drain", { params: { path: { worker_id: draining.id } } });
   return idle;
+}
+
+/** A new project where `me` is an admin, with repos on GitLab and two revisions of its policy. */
+async function mergeQueueProject(me: Member): Promise<string> {
+  const project = uniqueName("mq");
+  const hub = new HubAdmin();
+  await hub.registerProject(project);
+  await hub.grant(project, me.login, "admin", "internal");
+  await gitlabRepos(hub, project);
+  await seedPolicy(me, project);
+  return project;
 }
 
 /** The runs plan in the first project of `me`, a live worker, and two runs: one failed on it, one queued. */
@@ -1376,6 +1388,84 @@ const PAGES: Entry[] = [
       await expect(screen.getByTestId("decision-back")).toBeVisible();
       await expect(screen.getByTestId("decision-bar")).toBeInViewport();
       expect((await screen.boundingBox())?.width).toBe(375);
+    },
+  },
+  {
+    name: "merge queue with a tripped breaker, its merge requests and samples, then a merge request's sheet, for an admin",
+    open: async ({ page, me }) => {
+      const project = await mergeQueueProject(me);
+      const seeded = await seedMergeQueue(project, { admin: me.login });
+      await open(page, mergeQueuePath(project));
+      await expect(page.locator("#main").getByTestId("breaker-banner")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("sample-ok")).toBeVisible();
+      await expectNoSeriousViolations(page, "merge queue for an admin");
+      await open(page, `${mergeQueuePath(project)}?mr=${seeded.requests["40"]}`);
+      await expect(page.getByTestId("merge-request-sheet").getByTestId("merge-release")).toBeVisible();
+    },
+  },
+  {
+    name: "merge queue read by a writer, then its figures",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await seedMergeQueue(project);
+      await open(page, mergeQueuePath(project));
+      await expect(page.locator("#main").getByTestId("merge-queue-read-only")).toBeVisible();
+      await expectNoSeriousViolations(page, "merge queue for a writer");
+      await open(page, mergeQueuePath(project, "/figures"));
+      await expect(page.locator("#main").getByTestId("merge-figures-table")).toBeVisible();
+    },
+  },
+  {
+    name: "policy with its revisions and a comparison, then its form with errors",
+    open: async ({ page, me }) => {
+      const project = await mergeQueueProject(me);
+      await open(page, mergeQueuePath(project, "/policy"));
+      await expect(page.locator("#main").getByTestId("policy-compare").getByTestId("policy-change")).toHaveCount(3);
+      await expectNoSeriousViolations(page, "policy");
+      await open(page, `${mergeQueuePath(project, "/policy")}?edit=1`);
+      const form = page.locator("#main").getByTestId("policy-form");
+      await form.getByTestId("policy-field-policy-merge.pipeline_minutes").fill("0");
+      await form.getByTestId("policy-save").click();
+      await expect(form.getByTestId("policy-form-problems")).toBeVisible();
+    },
+  },
+  {
+    name: "inbox with the merge queue's notices",
+    open: async ({ page, me }) => {
+      const project = await mergeQueueProject(me);
+      await seedMergeQueue(project, { admin: me.login, notify: me.login });
+      await open(page, "/inbox");
+      await expect(page.locator("#main").getByTestId("merge-notice")).toHaveCount(3);
+      await page.locator("#main").getByTestId("merge-notice-faulty-open").click();
+      await expect(page.locator("#main").getByTestId("merge-notice-note")).toBeVisible();
+    },
+  },
+  {
+    name: "merge queue and policy on a small screen",
+    open: async ({ page, me }) => {
+      const project = await mergeQueueProject(me);
+      await seedMergeQueue(project, { admin: me.login });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, mergeQueuePath(project, "/policy"));
+      await expect(page.locator("#main").getByTestId("policy-view")).toBeVisible();
+      await expectNoSeriousViolations(page, "policy at 375 px");
+      await open(page, mergeQueuePath(project));
+      await expect(page.locator("#main").getByTestId("merge-queue-table")).toHaveAttribute("data-layout", "list");
+    },
+  },
+  {
+    name: "the add form of a GitLab token for the hub",
+    open: async ({ page, me }) => {
+      const project = uniqueName("forge");
+      const hub = new HubAdmin();
+      await hub.registerProject(project);
+      await hub.grant(project, me.login, "admin", "internal");
+      await page.goto("/secrets");
+      await page.locator("#main").getByTestId("secrets-empty-add").click();
+      const dialog = page.getByTestId("secret-dialog");
+      await dialog.getByTestId("secret-kind-forge").click();
+      await dialog.getByTestId("secret-save").click();
+      await expect(dialog.getByTestId("secret-expires-error")).toBeVisible();
     },
   },
   {

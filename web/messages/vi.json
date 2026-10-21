@@ -58,7 +58,10 @@
     "curatorGraph": "Sức khoẻ graph",
     "curatorRuntime": "Runtime",
     "curatorCharter": "Charter",
-    "plugins": "Plugin"
+    "plugins": "Plugin",
+    "mergeQueue": "Hàng đợi merge",
+    "mergeQueueFigures": "Số liệu",
+    "mergeQueuePolicy": "Policy"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -2022,7 +2025,8 @@
     },
     "kind": {
       "env": "Biến môi trường",
-      "git": "Credential git"
+      "git": "Credential git",
+      "forge": "Token GitLab của hub"
     },
     "gitTarget": "<code>{prefix}</code>, user <code>{user}</code>",
     "anyWorker": "Mọi worker của bạn",
@@ -2057,7 +2061,9 @@
         "env": "Biến môi trường",
         "envHint": "Môi trường của agent nhận nó, ví dụ CLAUDE_CODE_OAUTH_TOKEN.",
         "git": "Credential git",
-        "gitHint": "Credential helper của git trả nó cho các origin bắt đầu bằng một tiền tố URL, ví dụ access token GitLab."
+        "gitHint": "Credential helper của git trả nó cho các origin bắt đầu bằng một tiền tố URL, ví dụ access token GitLab.",
+        "forge": "Token GitLab của hub",
+        "forgeHint": "Chỉ hub dùng nó để điều khiển merge request cho hàng đợi merge; không run nào nhận nó. Cần vai trò admin ở từng dự án."
       },
       "envVar": "Tên biến",
       "envVarHint": "Chữ hoa, số và dấu gạch dưới. Không được là PATH, HOME, SHELL, USER, TMPDIR hay SSH_AUTH_SOCK, và không bắt đầu bằng EVO_, GIT_, LD_, DYLD_ hay PYTHON.",
@@ -2106,8 +2112,16 @@
         "valueRequired": "Nhập hoặc dán value.",
         "valueTooLong": "Tối đa {max} byte UTF-8.",
         "valueNul": "Value không được chứa ký tự NUL.",
-        "valueLines": "Một dòng: giao thức credential của git không nhận nhiều dòng."
-      }
+        "valueLines": "Một dòng: giao thức credential của git không nhận nhiều dòng.",
+        "urlPrefixGithub": "Ở github.com các tầng của Curator quyết định hub merge gì: token GitLab chỉ dành cho GitLab.",
+        "expiresRequired": "Chọn ngày token GitLab hết hạn."
+      },
+      "urlPrefixForgeHint": "Địa chỉ https của group hay project GitLab mà nó trả lời, không phải github.com.",
+      "projectsForgeHint": "Chỉ liệt kê dự án bạn có vai trò admin: hub dùng nó để merge vào repo của các dự án đó.",
+      "expiresForgeHint": "Bắt buộc: ngày token GitLab hết hạn. Từ 00:00 UTC của ngày đó hub không dùng nó nữa.",
+      "valueForge": "Một dòng: access token GitLab, hub gửi nó trong một header.",
+      "noAdminProjects": "Bạn chưa có vai trò admin ở dự án nào, nên hub không dùng token này ở đâu được. Hãy xin quản trị hub cấp vai trò admin ở dự án.",
+      "warningForge": "Chỉ hub dùng token này để rebase, merge và chạy job trên GitLab: cấp scope api trên các project của hàng đợi, một vai trò được phép merge, và ngày hết hạn."
     },
     "deleteDialog": {
       "title": "Xoá secret {name}?",
@@ -2121,7 +2135,9 @@
       "success": "Đã xoá secret {name}",
       "successText": "Hãy thu hồi token cả ở nơi đã tạo ra nó.",
       "failed": "Không xoá được secret {name}"
-    }
+    },
+    "forgeTarget": "<code>{prefix}</code>, chỉ hub dùng",
+    "hubOnly": "Chỉ hub"
   },
   "agents": {
     "title": "Agent",
@@ -4279,6 +4295,484 @@
       "tickHours": "{hours} giờ"
     }
   },
+  "mergeQueue": {
+    "title": "Hàng đợi merge",
+    "metaQueue": "Hàng đợi merge của {project}",
+    "metaFigures": "Số liệu merge của {project}",
+    "tabs": {
+      "label": "Các trang của hàng đợi merge",
+      "queue": "Hàng đợi",
+      "figures": "Số liệu",
+      "policy": "Policy",
+      "waiting": "{count, plural, other {# việc chờ quản trị}}"
+    },
+    "state": {
+      "gating": "Đang qua gate",
+      "judging": "Judge đang chấm",
+      "ready": "Sẵn sàng",
+      "rebasing": "Đang rebase",
+      "testing": "Đang chạy pipeline",
+      "merging": "Đang merge",
+      "merged": "Đã merge",
+      "verifying": "Đang kiểm UAT",
+      "releasing": "Đang phát hành",
+      "done": "Xong",
+      "rolling_back": "Đang rollback",
+      "reverting": "Đang revert",
+      "reverted": "Đã revert",
+      "blocked": "Bị chặn",
+      "paused": "Tạm dừng",
+      "closed": "Đã đóng"
+    },
+    "breaker": {
+      "state": {
+        "armed": "Đang đóng",
+        "tripped": "Đã nhảy"
+      },
+      "cause": {
+        "uat_check": "một lần kiểm UAT thất bại",
+        "prod_check": "deploy hoặc kiểm PROD thất bại",
+        "rollback": "PROD đã bị rollback",
+        "revert": "không revert tiếp được một lỗi",
+        "target_red": "nhánh đích đỏ quá lâu",
+        "reverts_in_a_row": "các lần merge bị revert liền nhau",
+        "revert_rate": "quá nhiều lần merge bị revert",
+        "judge_misses": "Judge cho qua quá nhiều lần merge sau đó bị phát hiện lỗi",
+        "unknown": "hub không ghi nguyên nhân"
+      },
+      "title": "Cầu dao",
+      "trippedCount": "{count, plural, other {# cầu dao đã nhảy}}",
+      "none": "Chưa repo nào có cầu dao: hub đặt cầu dao khi hàng đợi chạy qua repo lần đầu.",
+      "reset": "Đặt lại",
+      "resetLabel": "Đặt lại cầu dao của {repo}",
+      "confirmTitle": "Đặt lại cầu dao của {repo}?",
+      "confirmResume": "Các merge request đang tạm dừng sẽ chờ lượt lại đúng chỗ cũ, và hub merge, deploy repo này trở lại.",
+      "confirmCount": "Những gì làm cầu dao nhảy được đếm lại từ bây giờ: lần kiểm hỏng, rollback và revert trước khi đặt lại không còn tính.",
+      "confirm": "Đặt lại cầu dao",
+      "pending": "Đang đặt lại…",
+      "cancel": "Huỷ",
+      "forbidden": "Cần vai trò admin của dự án để đặt lại cầu dao.",
+      "notTripped": "Cầu dao này không còn ở trạng thái nhảy: đã có người đặt lại.",
+      "resetDone": "Đã đặt lại cầu dao của {repo}",
+      "resetResumed": "Chờ lượt lại: {iids} ({count, plural, other {# merge request}}).",
+      "resetNone": "Không có merge request nào bị tạm dừng.",
+      "stopped": "Merge của {repo} đã dừng: {cause}",
+      "noReason": "Hub không ghi lý do.",
+      "trippedAt": "Nhảy lúc <when></when>.",
+      "stoppedAdmin": "Đặt lại khi đã sửa nguyên nhân: các merge request tạm dừng sẽ chờ lượt lại.",
+      "stoppedReader": "Admin của dự án đặt lại khi đã sửa nguyên nhân.",
+      "resetBy": "{login} đặt lại lúc <when></when>.",
+      "neverTripped": "Chưa nhảy lần nào.",
+      "trips": "{count, plural, other {Đã nhảy # lần.}}",
+      "redSince": "Nhánh đích đỏ từ <when></when>",
+      "trippedCause": "Đã nhảy: {cause}."
+    },
+    "sample": {
+      "state": {
+        "waiting": "Chờ kiểm",
+        "ok": "Ổn",
+        "faulty": "Có lỗi"
+      },
+      "title": "Mẫu kiểm",
+      "waitingCount": "{count, plural, other {# mẫu chờ trả lời}}",
+      "none": "Chưa lần merge nào được chọn làm mẫu kiểm.",
+      "opensForge": "(mở GitLab trong tab mới)",
+      "drawn": "Được chọn lúc <when></when>.",
+      "answeredBy": "{login} đã trả lời lúc <when></when>.",
+      "noteQuoted": "Ghi chú: {note}",
+      "ok": "Ổn",
+      "okLabel": "{name}: Judge chấm đúng",
+      "faulty": "Có lỗi",
+      "faultyLabel": "{name}: lần merge có lỗi mà Judge bỏ sót",
+      "faultyTitle": "Có lỗi: {name}",
+      "faultyDescription": "Câu trả lời này được tính là một lần Judge cho qua sai, và quá nhiều lần trong 7 ngày sẽ làm cầu dao của repo nhảy. Ghi lại lỗi gì để lưu lịch sử.",
+      "note": "Ghi chú",
+      "noteHint": "Không bắt buộc, tối đa {max} ký tự.",
+      "cancel": "Huỷ",
+      "sending": "Đang gửi…",
+      "faultyConfirm": "Đánh dấu có lỗi",
+      "answered": "Đã có người trả lời mẫu kiểm này.",
+      "forbidden": "Cần vai trò admin của dự án để trả lời mẫu kiểm.",
+      "failed": "Không trả lời được mẫu kiểm của {name}",
+      "okDone": "{name}: đã đánh dấu ổn",
+      "faultyDone": "{name}: đã đánh dấu có lỗi",
+      "faultyDoneText": "Lần này được tính cho Judge trong cầu dao của repo."
+    },
+    "check": {
+      "uat": "UAT",
+      "prod": "PROD",
+      "passed": "{check} qua",
+      "failed": "{check} hỏng",
+      "none": "{check}: không có kết quả"
+    },
+    "source": {
+      "plan": "Plan",
+      "task": "Task",
+      "builder": "Builder",
+      "label": "Nhãn",
+      "revert": "Revert"
+    },
+    "ledger": {
+      "noOutcome": "Không qua cũng không hỏng",
+      "passed": "Qua",
+      "failed": "Hỏng",
+      "empty": "Chưa có dòng nào.",
+      "gate": "Gate {gate}: {name}",
+      "openRun": "Mở run #{id}",
+      "kind": {
+        "opened": "Hub đã mở",
+        "queued": "Vào hàng đợi",
+        "head": "Head mới",
+        "gate": "Gate",
+        "judged": "Judge đã chấm",
+        "rebased": "Đã rebase",
+        "pipeline": "Pipeline",
+        "merged": "Đã merge",
+        "uat_check": "Kiểm UAT",
+        "prod_deploy": "Deploy PROD",
+        "prod_check": "Kiểm PROD",
+        "retried": "Chạy lại job",
+        "rollback": "Rollback",
+        "revert_opened": "Đã mở revert",
+        "reverted": "Đã revert",
+        "sampled": "Được chọn làm mẫu kiểm",
+        "sample_answered": "Mẫu kiểm đã được trả lời",
+        "paused": "Cầu dao tạm dừng",
+        "closed": "Đã đóng"
+      }
+    },
+    "actions": {
+      "release": "Duyệt phát hành",
+      "releasing": "Đang duyệt…",
+      "releaseLabel": "Duyệt phát hành PROD cho {name} của {repo}",
+      "releaseDone": "Đã duyệt phát hành PROD cho {name}",
+      "releaseDoneText": "Lượt chạy tới của hub sẽ chạy job deploy, kèm các lần merge trước nó.",
+      "releaseFailed": "Không duyệt được phát hành của {name}",
+      "releaseConflict": "Lần merge này không còn chờ phát hành PROD.",
+      "forbidden": "Việc này cần vai trò admin của dự án.",
+      "revert": "Revert",
+      "revertLabel": "Revert {name} của {repo}",
+      "revertTitle": "Revert {name} của {repo}?",
+      "revertOpens": "Hub mở merge request revert vào {branch}, đứng đầu hàng đợi, và merge nó khi pipeline qua.",
+      "revertCounts": "Sau đó lần merge này được tính là đã revert trong số liệu và trong cầu dao của repo.",
+      "revertConfirm": "Revert",
+      "reverting": "Đang yêu cầu…",
+      "cancel": "Huỷ",
+      "revertDone": "Đã yêu cầu revert {name}",
+      "revertDoneText": "Hub mở revert ở lượt chạy tới.",
+      "revertConflict": "Hub chỉ revert lần merge mà nó đã theo dõi sau khi merge, không revert một revert."
+    },
+    "request": {
+      "judges": "Judge và mức rủi ro",
+      "riskHigh": "Rủi ro cao: Judge thứ hai đọc lại",
+      "riskNormal": "Rủi ro thường",
+      "firstJudge": "Judge thứ nhất",
+      "secondJudge": "Judge thứ hai",
+      "noVerdict": "chưa có kết luận",
+      "judgePassed": "cho qua",
+      "judgeFailed": "không cho qua",
+      "pass": "qua",
+      "fail": "hỏng",
+      "openForge": "Mở {name} trên GitLab",
+      "opensNewTab": "(mở trong tab mới)",
+      "blockedWhy": "Vì sao bị chặn",
+      "why": "Đang ở đâu",
+      "repo": "Repo",
+      "branches": "Nhánh",
+      "into": "vào",
+      "run": "Run",
+      "openRun": "Mở run #{id}",
+      "plan": "Plan",
+      "steps": "bước {steps}",
+      "agent": "Agent và model",
+      "head": "Head",
+      "rebasedOnto": "Rebase lên",
+      "rebases": "{count, plural, other {# lần rebase liền nhau}}",
+      "mergedAs": "Merge thành",
+      "queuedAt": "Sẵn sàng từ",
+      "mergedAt": "Đã merge",
+      "checks": "Kiểm sau merge",
+      "reverts": "Revert của",
+      "revertsOf": "Merge request #{id} của hàng đợi",
+      "ledger": "Sổ ghi ({count})",
+      "sheetTitle": "{name} của {repo}",
+      "missingTitle": "Merge request #{id}",
+      "close": "Đóng",
+      "missing": "Hàng đợi hiện không có merge request này: có thể nó cũ hơn 200 merge request mới nhất mà trang đọc."
+    },
+    "table": {
+      "request": "Merge request",
+      "repo": "Repo",
+      "source": "Nguồn",
+      "state": "Trạng thái",
+      "updated": "Cập nhật",
+      "into": "{repo} vào {branch}",
+      "caption": "Merge request của hàng đợi",
+      "search": "Lọc merge request của hàng đợi",
+      "count": "{count, plural, other {# merge request}}",
+      "allRepos": "Mọi repo",
+      "none": "Không merge request nào khớp bộ lọc."
+    },
+    "groups": {
+      "label": "Đang ở đâu",
+      "all": "Tất cả",
+      "waiting": "Đang chờ",
+      "turn": "Đang merge",
+      "blocked": "Bị chặn",
+      "after": "Sau merge",
+      "finished": "Đã xong"
+    },
+    "metrics": {
+      "label": "Hàng đợi merge lúc này",
+      "waiting": "Trong hàng đợi",
+      "waitingMeta": "đang qua gate, chờ Judge hoặc chờ lượt",
+      "turn": "Đang merge",
+      "turnNone": "Không có lượt nào đang chạy",
+      "blocked": "Bị chặn",
+      "blockedMeta": "chờ push mới hoặc chờ người",
+      "after": "Sau merge",
+      "afterMeta": "đang theo dõi tới UAT và PROD"
+    },
+    "readOnly": {
+      "title": "Bạn chỉ đọc hàng đợi này",
+      "text": "Admin của dự án đặt lại cầu dao, trả lời mẫu kiểm, duyệt phát hành PROD và yêu cầu revert."
+    },
+    "empty": {
+      "title": "Hàng đợi chưa có merge request nào",
+      "description": "Hub tự merge các merge request trên GitLab của mỗi repo mà policy của dự án đặt auto: qua gate, merge lần lượt từng cái và theo dõi tới PROD.",
+      "policy": "Mở policy"
+    },
+    "duration": {
+      "under": "dưới 1 giây",
+      "seconds": "{seconds} giây",
+      "minutes": "{minutes} phút {seconds} giây",
+      "hours": "{hours} giờ {minutes} phút"
+    },
+    "figures": {
+      "who": "Repo, agent và model",
+      "person": "một người",
+      "merged": "Đã merge",
+      "reverted": "Đã revert",
+      "rolledBack": "Đã rollback",
+      "judgeMisses": "Judge cho qua sai",
+      "wait": "Chờ trong hàng đợi",
+      "waitMax": "lâu nhất {max}",
+      "toUat": "Tới khi UAT qua",
+      "toProd": "Tới khi PROD qua",
+      "caption": "Số lần merge theo repo, agent và model",
+      "totals": "Merge trong {days} ngày qua",
+      "mergedMeta": "trong {days} ngày qua",
+      "revertedMeta": "bị xác định là thủ phạm của một lần kiểm hỏng",
+      "rolledBackMeta": "PROD bị đưa về bản trước vì lần deploy của chúng",
+      "judgeMissesMeta": "Judge cho qua, sau đó bị phát hiện lỗi",
+      "range": "Khoảng thời gian",
+      "days": "{days} ngày",
+      "empty": {
+        "title": "Không có lần merge nào trong {days} ngày qua",
+        "description": "Số liệu đếm các lần merge của hàng đợi trên GitLab: bao nhiêu lần, bao nhiêu lần bị revert hay rollback, và đã chờ bao lâu."
+      }
+    }
+  },
+  "policy": {
+    "metaTitle": "Policy của {project}",
+    "create": "Viết policy",
+    "edit": "Sửa policy",
+    "provenance": "Revision {revision} của {login}, <when></when>.",
+    "noteQuoted": "Ghi chú: {note}",
+    "noPolicySub": "Chưa có policy: mọi repo đang off và hub không tự merge gì.",
+    "oldRevision": "Bạn đang xem revision {revision}, không phải bản mới nhất.",
+    "showNewest": "Xem bản mới nhất",
+    "noPolicyTitle": "Dự án này chưa có policy",
+    "noPolicyAdmin": "Mọi repo đang off: hub không tự merge gì và merge request trên GitLab chờ người. Viết policy để đặt một repo trên GitLab sang auto.",
+    "noPolicyReader": "Mọi repo đang off: hub không tự merge gì. Admin của dự án viết policy.",
+    "readOnlyTitle": "Bạn chỉ đọc policy này",
+    "readOnly": "Admin của dự án viết revision tiếp theo; mọi revision đều được giữ.",
+    "default": "mặc định",
+    "defaultBranch": "(nhánh mặc định)",
+    "defaultIs": "Mặc định: {value}.",
+    "sections": {
+      "merge": "Merge",
+      "judge": "Judge",
+      "breaker": "Cầu dao",
+      "audit": "Mẫu kiểm"
+    },
+    "repos": {
+      "title": "Repo",
+      "autoCount": "{count, plural, other {# repo đang auto}}",
+      "none": "Dự án không có repo nào."
+    },
+    "keys": {
+      "merge_opt_in_label": {
+        "label": "Nhãn đăng ký",
+        "hint": "Nhãn một người gắn lên merge request để xin vào hàng đợi."
+      },
+      "merge_risk_paths": {
+        "label": "Đường dẫn rủi ro",
+        "hint": "Glob thêm vào các đường dẫn rủi ro hub đã biết, mỗi dòng một glob; diff chạm vào một đường dẫn đó là rủi ro cao."
+      },
+      "merge_hold_until": {
+        "label": "Giữ lần merge sau đến khi",
+        "hint": "Lần merge trước phải đi tới đâu thì lần merge sau cùng nhánh đích mới bắt đầu."
+      },
+      "merge_pipeline_minutes": {
+        "label": "Thời gian chờ pipeline",
+        "hint": "Số phút lâu nhất hub chờ một pipeline hay một job."
+      },
+      "judge_worker": {
+        "label": "Worker chạy Judge",
+        "hint": "Worker chạy Judge; để trống thì dùng worker của charter."
+      },
+      "judge_model": {
+        "label": "Model của Judge thứ nhất",
+        "hint": "Model của Judge thứ nhất; để trống thì dùng một model Claude khác model của Builder."
+      },
+      "breaker_target_red_minutes": {
+        "label": "Nhánh đích đỏ trong",
+        "hint": "Số phút nhánh đích đỏ liên tục thì cầu dao nhảy."
+      },
+      "breaker_reverts_in_a_row": {
+        "label": "Số lần revert liền nhau",
+        "hint": "Số lần revert tự động liền nhau làm cầu dao nhảy."
+      },
+      "breaker_revert_rate_factor": {
+        "label": "Hệ số tỉ lệ revert",
+        "hint": "Tỉ lệ revert 14 ngày gấp chừng này lần baseline của repo thì cầu dao nhảy."
+      },
+      "breaker_revert_rate_max": {
+        "label": "Tỉ lệ revert khi chưa có baseline",
+        "hint": "Tỉ lệ lần merge bị revert, từ 0 đến 1, làm cầu dao nhảy khi repo chưa có baseline."
+      },
+      "breaker_baseline_min_merges": {
+        "label": "Số lần merge để có baseline",
+        "hint": "Số lần merge trong 14 ngày đầu repo cần có thì baseline mới được tính."
+      },
+      "breaker_judge_misses_7d": {
+        "label": "Số lần Judge cho qua sai được phép trong 7 ngày",
+        "hint": "Số lần Judge cho qua mà sau đó bị phát hiện lỗi, cầu dao cho phép trong 7 ngày."
+      },
+      "audit_sample_rate": {
+        "label": "Tỉ lệ mẫu kiểm",
+        "hint": "Tỉ lệ merge request đã merge, từ 0 đến 1, mà admin được nhờ kiểm."
+      },
+      "mode": {
+        "label": "Chế độ",
+        "hint": "Auto: hub tự merge các merge request trong phạm vi của repo. Off: người merge."
+      },
+      "target_branch": {
+        "label": "Nhánh đích",
+        "hint": "Nhánh của hàng đợi của repo; để trống thì dùng nhánh mặc định."
+      },
+      "prod_release": {
+        "label": "Phát hành PROD",
+        "hint": "Khi nào hub chạy deploy PROD sau lần kiểm UAT."
+      },
+      "after_uat_hours": {
+        "label": "Số giờ sau UAT",
+        "hint": "Số giờ UAT xanh trước khi deploy PROD, với chế độ Sau UAT."
+      },
+      "jobs_uat_check": {
+        "label": "Job kiểm UAT",
+        "hint": "Job CI kiểm UAT sau khi merge; để trống khi repo không có."
+      },
+      "jobs_prod_deploy": {
+        "label": "Job deploy PROD",
+        "hint": "Job CI deploy lên PROD; để trống khi repo không có."
+      },
+      "jobs_prod_check": {
+        "label": "Job kiểm PROD",
+        "hint": "Job CI kiểm PROD sau khi deploy; để trống khi repo không có."
+      },
+      "jobs_rollback": {
+        "label": "Job rollback",
+        "hint": "Job CI đưa PROD về commit tốt gần nhất; để trống khi repo không có."
+      }
+    },
+    "values": {
+      "merge_hold_until": {
+        "merged": "Đã merge",
+        "uat_check": "Kiểm UAT qua",
+        "prod_check": "Kiểm PROD qua"
+      },
+      "mode": {
+        "off": "Off",
+        "auto": "Auto"
+      },
+      "prod_release": {
+        "immediate": "Ngay",
+        "after_uat": "Sau UAT",
+        "manual": "Bằng tay"
+      }
+    },
+    "none": {
+      "default": "không có",
+      "list": "chưa thêm",
+      "target_branch": "nhánh mặc định của repo",
+      "judge_worker": "worker của charter",
+      "judge_model": "một model Claude khác model của Builder"
+    },
+    "units": {
+      "times": "{value} lần baseline",
+      "minutes": "{value} phút",
+      "hours": "{value} giờ"
+    },
+    "history": {
+      "title": "Revision",
+      "count": "{count, plural, other {# revision}}",
+      "none": "Chưa có revision nào.",
+      "number": "Revision {revision}",
+      "compareBefore": "So với bản trước",
+      "changed": "{count, plural, other {# khoá đã đổi}}",
+      "more": "+{count} khoá nữa",
+      "nothingChanged": "Không giá trị nào đổi."
+    },
+    "compare": {
+      "title": "So sánh revision",
+      "from": "Từ",
+      "to": "Đến",
+      "none": "Chưa có policy (revision 0)",
+      "revision": "Revision {revision}",
+      "loading": "Đang so sánh revision",
+      "failed": "Không so sánh được hai revision này.",
+      "same": "Hai revision giống nhau.",
+      "changes": "{count, plural, other {# khoá khác nhau}}",
+      "before": "Trước:",
+      "after": "Sau:"
+    },
+    "problems": {
+      "oneOf": "Một trong {options}.",
+      "whole": "Một số nguyên từ {min} đến {max}.",
+      "number": "Một số từ {min} đến {max}.",
+      "aboveNumber": "Một số lớn hơn {min} và không quá {max}.",
+      "line": "Văn bản một dòng, từ 1 đến {max} ký tự.",
+      "globs": "Tối đa {max} glob, mỗi dòng một glob, mỗi glob tối đa {chars} ký tự.",
+      "github": "Repo này ở github.com, nơi các tầng của Curator quyết định hub merge gì: auto chỉ dành cho repo trên GitLab."
+    },
+    "form": {
+      "label": "Policy tự chủ",
+      "hints": {
+        "repos": "Auto cho hub tự merge merge request của repo trên GitLab; mỗi repo ghi nhánh đích, cách phát hành PROD và các job CI.",
+        "merge": "Hàng đợi nhận merge request nào và đưa chúng đi thế nào.",
+        "judge": "Ai chấm một merge request trước khi merge.",
+        "breaker": "Khi nào hàng đợi của một repo dừng cho tới khi admin đặt lại.",
+        "audit": "Admin được nhờ kiểm bao nhiêu lần merge.",
+        "github": "Ở github.com các tầng của Curator quyết định hub merge gì: auto chỉ dành cho repo trên GitLab."
+      },
+      "unlisted": "Dự án không còn liệt kê {repo}: lưu sẽ bỏ repo này khỏi policy.",
+      "note": "Ghi chú",
+      "noteHint": "Lý do, để lưu lịch sử; tối đa {max} ký tự.",
+      "problems": "{count, plural, other {# trường cần sửa.}}",
+      "cancel": "Huỷ",
+      "save": "Lưu revision",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu revision {revision}",
+      "savedText": "Hub đọc nó ở lượt chạy tới.",
+      "unchanged": "Không có gì thay đổi",
+      "unchangedText": "Policy đã là revision mới nhất: không revision nào được ghi.",
+      "forbidden": "Cần vai trò admin của dự án để viết policy.",
+      "conflict": "Đã có người lưu một revision trong lúc này. Tải lại trang để sửa bản mới nhất.",
+      "refused": "Hub từ chối policy này."
+    }
+  },
   "inbox": {
     "title": "Inbox",
     "listTitle": "Thông báo",
@@ -4350,7 +4844,8 @@
       "chat_mention": "Có người nhắc bạn trong một chat",
       "chat_added": "Có người thêm bạn vào một chat",
       "plugin_disabled": "Hub đã tắt một plugin",
-      "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt"
+      "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
+      "merge_paused": "Hàng đợi merge của một repo đã dừng"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -4499,6 +4994,42 @@
       "linkedToastText": "Quyết định, đề xuất và thông báo giờ cũng tới cuộc trò chuyện của bạn.",
       "unlinkedToast": "Đã huỷ liên kết Telegram",
       "unlinkedToastText": "Không gì được gửi tới cuộc trò chuyện nữa cho tới khi bạn liên kết lại."
+    },
+    "merge": {
+      "open": "Mở hàng đợi merge",
+      "ok": "Ổn",
+      "faulty": "Có lỗi",
+      "faultyNote": "Lỗi gì (không bắt buộc)",
+      "faultySend": "Đánh dấu có lỗi",
+      "cancel": "Huỷ",
+      "pending": "Đang gửi…",
+      "forbidden": "Việc này cần vai trò admin của dự án.",
+      "sampleAnswered": "{login} đã trả lời: {result}.",
+      "sampleOk": "Đã đánh dấu mẫu kiểm ổn",
+      "sampleFaulty": "Đã đánh dấu mẫu kiểm có lỗi",
+      "sampleFailed": "Không trả lời được mẫu kiểm",
+      "sampleConflict": "Đã có người trả lời mẫu kiểm này.",
+      "release": "Duyệt phát hành",
+      "releaseGone": "Không còn phát hành nào chờ: lần merge đang ở trạng thái {state}.",
+      "released": "Đã duyệt phát hành PROD",
+      "releasedText": "Lượt chạy tới của hub sẽ chạy job deploy.",
+      "releaseFailed": "Không duyệt được phát hành",
+      "releaseConflict": "Lần merge này không còn chờ phát hành PROD.",
+      "revert": "Revert {name}",
+      "revertTitle": "Revert {name}?",
+      "revertText": "Hub mở merge request revert đứng đầu hàng đợi và merge nó khi pipeline qua.",
+      "revertConfirm": "Revert",
+      "revertConflict": "Lúc này hub không revert được lần merge này.",
+      "revertGone": "Không còn nghi phạm nào chờ revert.",
+      "reverted": "Đã yêu cầu revert {name}",
+      "revertedText": "Hub mở revert ở lượt chạy tới.",
+      "resume": "Đặt lại cầu dao",
+      "resumeTitle": "Đặt lại cầu dao của {repo}?",
+      "resumeText": "Các merge request đang tạm dừng sẽ chờ lượt lại, và hub merge, deploy repo này trở lại.",
+      "resumeConfirm": "Đặt lại cầu dao",
+      "resumeConflict": "Cầu dao này không còn ở trạng thái nhảy.",
+      "resumeGone": "{login} đã đặt lại cầu dao.",
+      "resumed": "Đã đặt lại cầu dao của {repo}"
     }
   },
   "toast": {

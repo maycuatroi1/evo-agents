@@ -5708,6 +5708,255 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Policy
+         * @description The project's policy now: what its newest revision sets, and every key as it reads.
+         */
+        get: operations["show_policy_v1_projects__project__policy_get"];
+        /**
+         * Write Policy
+         * @description Write the project's policy whole as its next revision; an admin of the project alone may.
+         */
+        put: operations["write_policy_v1_projects__project__policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/policy/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Policy Revisions
+         * @description Every revision of the project's policy, the newest first, each with the keys whose value it changed.
+         */
+        get: operations["policy_revisions_v1_projects__project__policy_revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/policy/revisions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Policy Revision
+         * @description One revision of the project's policy whole.
+         */
+        get: operations["show_policy_revision_v1_projects__project__policy_revisions__revision__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/policy/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Policy
+         * @description The keys whose value differs between two revisions of the project's policy, each as it reads now.
+         */
+        get: operations["compare_policy_v1_projects__project__policy_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Queue
+         * @description The merge requests of the project's queue (``repo``'s alone when given), newest first, each with its ledger, and
+         *     its audit samples.
+         */
+        get: operations["show_queue_v1_projects__project__merge_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queue Figures
+         * @description For each repo, agent and model, the merges of the last ``days``: how many, reverted, rolled back, passed by
+         *     the Judge and found wrong, and the time in the queue and to the checks.
+         */
+        get: operations["queue_figures_v1_projects__project__merge_queue_figures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue/samples/{sample_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Sample
+         * @description An admin of the project answers an audit sample: ``ok``, or ``faulty``, which counts against the Judge.
+         */
+        post: operations["answer_sample_v1_projects__project__merge_queue_samples__sample_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue/{queue_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Release
+         * @description An admin approves the PROD release of a merge whose repo the policy releases by hand (``prod_release``
+         *     manual): the hub's next pass runs its deploy job, carrying the merges before it.
+         */
+        post: operations["approve_release_v1_projects__project__merge_queue__queue_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue/{queue_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Revert
+         * @description An admin asks the hub to revert a merge it followed after its merge, such as one of the suspects of a failed
+         *     check it could not tell apart: the hub's next pass opens its revert, first in the queue.
+         */
+        post: operations["ask_revert_v1_projects__project__merge_queue__queue_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Repo
+         * @description An admin of the project resets the breaker of a repo that tripped: its paused merge requests wait for their turn
+         *     again, at their place, and what trips it counts from now.
+         */
+        post: operations["resume_repo_v1_projects__project__merge_queue_repos__repo__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/merge-judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Merge Judge Inputs
+         * @description What the judge run of the queue this worker holds reads, with the run's own key.
+         */
+        get: operations["merge_judge_inputs_v1_worker_runs__run_id__merge_judge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/merge-verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Verdict
+         * @description The verdict of the judge run of the queue this worker holds, with the run's own key: the gates it closes.
+         */
+        post: operations["merge_verdict_v1_worker_runs__run_id__merge_verdict_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6628,6 +6877,42 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * AutonomyPolicy
+         * @description One revision of a project's autonomy policy.
+         */
+        AutonomyPolicy: {
+            /** Project */
+            project: string;
+            /**
+             * Revision
+             * @description 0 while the project has none: every repo off, every key at its default
+             */
+            revision: number;
+            /**
+             * Policy
+             * @description the keys the revision sets, as its writer wrote them
+             */
+            policy: {
+                [key: string]: unknown;
+            };
+            /**
+             * Effective
+             * @description every key at the value the revision sets or its default, each repo of the project included
+             */
+            effective: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @description what the writer said of it
+             */
+            note: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Created At */
+            created_at: string | null;
+        };
         /** AvatarUpload */
         AvatarUpload: {
             /**
@@ -6729,6 +7014,56 @@ export interface components {
              * @description 409 unless the branding is at this version now
              */
             if_version?: number | null;
+        };
+        /**
+         * BreakerReset
+         * @description A breaker an admin reset, and the merge requests waiting for their turn again.
+         */
+        BreakerReset: {
+            /** Repo */
+            repo: string;
+            /**
+             * State
+             * @description one of armed, tripped
+             */
+            state: string;
+            /**
+             * Cause
+             * @description what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses
+             */
+            cause: string | null;
+            /**
+             * Reason
+             * @description why it tripped last, each thing that tripped it
+             */
+            reason: string | null;
+            /** Tripped At */
+            tripped_at: string | null;
+            /**
+             * Trips
+             * @description how often it tripped
+             */
+            trips: number;
+            /**
+             * Resumed By
+             * @description the admin who reset it last
+             */
+            resumed_by: string | null;
+            /**
+             * Resumed At
+             * @description what trips it counts from then
+             */
+            resumed_at: string | null;
+            /**
+             * Red Since
+             * @description the hub saw its target branch turn red then, none passing since
+             */
+            red_since: string | null;
+            /**
+             * Resumed
+             * @description the iids of the merge requests it had paused, ready again
+             */
+            resumed: number[];
         };
         /**
          * BriefSummary
@@ -6835,17 +7170,17 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent)
+             * @description layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy
              */
             target: {
                 [key: string]: string;
             };
             /**
              * Change
-             * @description set: field -> value; unset: the fields it clears
+             * @description set: field -> value; unset: the fields it clears; a key of the policy by its dotted path
              */
             change: {
                 [key: string]: unknown;
@@ -8513,6 +8848,19 @@ export interface components {
              * @description its latest push
              */
             updated_at: string;
+        };
+        /** Dimension */
+        Dimension: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "pass" | "fail";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** Dispatch */
         Dispatch: {
@@ -10643,6 +10991,278 @@ export interface components {
              */
             body: string;
         };
+        /**
+         * MergeBreaker
+         * @description The breaker of a repo of the queue: armed, or tripped until an admin resets it.
+         */
+        MergeBreaker: {
+            /** Repo */
+            repo: string;
+            /**
+             * State
+             * @description one of armed, tripped
+             */
+            state: string;
+            /**
+             * Cause
+             * @description what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses
+             */
+            cause: string | null;
+            /**
+             * Reason
+             * @description why it tripped last, each thing that tripped it
+             */
+            reason: string | null;
+            /** Tripped At */
+            tripped_at: string | null;
+            /**
+             * Trips
+             * @description how often it tripped
+             */
+            trips: number;
+            /**
+             * Resumed By
+             * @description the admin who reset it last
+             */
+            resumed_by: string | null;
+            /**
+             * Resumed At
+             * @description what trips it counts from then
+             */
+            resumed_at: string | null;
+            /**
+             * Red Since
+             * @description the hub saw its target branch turn red then, none passing since
+             */
+            red_since: string | null;
+        };
+        /** MergeEvent */
+        MergeEvent: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Gate
+             * @description the gate's number, 0 to 7, for kind gate
+             */
+            gate: number | null;
+            /** Gate Name */
+            gate_name: string | null;
+            /** Passed */
+            passed: boolean | null;
+            /** Reason */
+            reason: string | null;
+            /** Sha */
+            sha: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * MergeFigure
+         * @description The merges of one repo, agent and model in the window.
+         */
+        MergeFigure: {
+            /** Repo */
+            repo: string;
+            /**
+             * Agent
+             * @description the agent profile of the run that made them, or person for a person's
+             */
+            agent: string | null;
+            /** Model */
+            model: string | null;
+            /** Merged */
+            merged: number;
+            /**
+             * Reverted
+             * @description merged, then found the culprit of a failed check
+             */
+            reverted: number;
+            /**
+             * Rolled Back
+             * @description merged, then PROD went back for their deploy
+             */
+            rolled_back: number;
+            /**
+             * Judge Misses
+             * @description passed by the Judge, then reverted, rolled back or sampled faulty
+             */
+            judge_misses: number;
+            /**
+             * Wait Seconds
+             * @description the mean time from ready to merged
+             */
+            wait_seconds: number | null;
+            /** Wait Seconds Max */
+            wait_seconds_max: number | null;
+            /**
+             * Uat Seconds
+             * @description the mean time from merged to the UAT check passed
+             */
+            uat_seconds: number | null;
+            /**
+             * Prod Seconds
+             * @description the mean time from merged to the PROD check passed
+             */
+            prod_seconds: number | null;
+        };
+        /** MergeFigures */
+        MergeFigures: {
+            /** Project */
+            project: string;
+            /** Days */
+            days: number;
+            /** Figures */
+            figures: components["schemas"]["MergeFigure"][];
+        };
+        /**
+         * MergeJudgeInputs
+         * @description What a judge run of the queue reads: the merge request, the verify of its plan's steps in the repo, the
+         *     charter's protected paths, and the project's hidden checks, which no other run reads.
+         */
+        MergeJudgeInputs: {
+            /** Queue Id */
+            queue_id: number;
+            /** Repo */
+            repo: string;
+            /** Iid */
+            iid: number;
+            /** Branch */
+            branch: string;
+            /** Base Branch */
+            base_branch: string;
+            /** Head Sha */
+            head_sha: string | null;
+            /**
+             * Second
+             * @description the second Judge, of a merge request of high risk
+             */
+            second: boolean;
+            /** Verify */
+            verify: string[];
+            /** Protected Paths */
+            protected_paths: string[];
+            /**
+             * Hidden Checks
+             * @description commands run in the worktree; never logged, never shown
+             */
+            hidden_checks: string[];
+        };
+        /** MergeQueueView */
+        MergeQueueView: {
+            /** Project */
+            project: string;
+            /**
+             * Requests
+             * @description newest first
+             */
+            requests: components["schemas"]["QueuedMergeRequest"][];
+            /**
+             * Samples
+             * @description the audit samples, those waiting first, at most 50
+             * @default []
+             */
+            samples: components["schemas"]["MergeSample"][];
+            /**
+             * Breakers
+             * @description the breaker of each repo the queue passed over, by repo
+             * @default []
+             */
+            breakers: components["schemas"]["MergeBreaker"][];
+        };
+        /**
+         * MergeSample
+         * @description A merge request drawn for an audit sample, and an admin's answer.
+         */
+        MergeSample: {
+            /** Id */
+            id: number;
+            /** Queue Id */
+            queue_id: number;
+            /** Repo */
+            repo: string;
+            /** Iid */
+            iid: number | null;
+            /** Title */
+            title: string | null;
+            /** Web Url */
+            web_url: string | null;
+            /**
+             * Result
+             * @description null until an admin answers: one of ok, faulty
+             */
+            result: string | null;
+            /** Note */
+            note: string | null;
+            /** Answered By */
+            answered_by: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** MergeVerdict */
+        MergeVerdict: {
+            /** Queue Id */
+            queue_id: number;
+            /**
+             * Passed
+             * @description this Judge's verdict, its checks and the worker's reading of the diff
+             */
+            passed: boolean;
+            /**
+             * State
+             * @description where the merge request stands now
+             */
+            state: string;
+            /** Reason */
+            reason: string | null;
+        };
+        /** MergeVerdictIn */
+        MergeVerdictIn: {
+            /**
+             * Verdict
+             * @description the Judge agent's; null when it gave none
+             */
+            verdict: ("pass" | "fail") | null;
+            /** Reasons */
+            reasons?: string | null;
+            /**
+             * Head Sha
+             * @description the commit the worktree was at
+             */
+            head_sha: string;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Verify */
+            verify?: components["schemas"]["VerifyResult"][];
+            /** Hidden */
+            hidden?: components["schemas"]["HiddenResult"][];
+            /** Signs */
+            signs?: components["schemas"]["Sign"][];
+            /** Paths */
+            paths?: string[];
+            /**
+             * Dimensions
+             * @description each dimension the Judge judged apart, with its verdict and reason
+             */
+            dimensions?: {
+                [key: string]: components["schemas"]["Dimension"];
+            } | null;
+        };
         /** Message */
         Message: {
             /** Id */
@@ -11010,7 +11630,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "merge_paused") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -12481,6 +13101,112 @@ export interface components {
              */
             published_at: string;
         };
+        /** PolicyChange */
+        PolicyChange: {
+            /**
+             * Key
+             * @description dotted: merge.hold_until, repos.<repo>.mode, repos.<repo>.jobs.uat_check
+             */
+            key: string;
+            /** Before */
+            before: unknown;
+            /** After */
+            after: unknown;
+        };
+        /** PolicyComparison */
+        PolicyComparison: {
+            /** Project */
+            project: string;
+            /** From Revision */
+            from_revision: number;
+            /** To Revision */
+            to_revision: number;
+            /**
+             * Changes
+             * @description each key whose value differs, as the two revisions read now
+             */
+            changes: components["schemas"]["PolicyChange"][];
+        };
+        /** PolicyRevision */
+        PolicyRevision: {
+            /** Revision */
+            revision: number;
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description the dotted keys whose value differs from the revision before
+             */
+            changed: string[];
+        };
+        /**
+         * PolicyWrite
+         * @description The next revision of the policy: the whole of it, as its writer wants it.
+         */
+        PolicyWrite: {
+            /**
+             * Policy
+             * @description sections repos, merge, judge, breaker, audit; a key left out reads as its default
+             */
+            policy: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the policy is at this revision now
+             */
+            if_revision?: number | null;
+        };
+        /** PolicyWritten */
+        PolicyWritten: {
+            /** Project */
+            project: string;
+            /**
+             * Revision
+             * @description 0 while the project has none: every repo off, every key at its default
+             */
+            revision: number;
+            /**
+             * Policy
+             * @description the keys the revision sets, as its writer wrote them
+             */
+            policy: {
+                [key: string]: unknown;
+            };
+            /**
+             * Effective
+             * @description every key at the value the revision sets or its default, each repo of the project included
+             */
+            effective: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @description what the writer said of it
+             */
+            note: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Changed
+             * @description false when the newest revision is this policy already: nothing was written
+             */
+            changed: boolean;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -13029,6 +13755,120 @@ export interface components {
              * @description false when a build of the project was waiting already, which counts as queued
              */
             queued: boolean;
+        };
+        /**
+         * QueuedMergeRequest
+         * @description A merge request of the queue: where it comes from, where it stands and why, and its ledger.
+         */
+        QueuedMergeRequest: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /**
+             * Iid
+             * @description null while the hub could not open it
+             */
+            iid: number | null;
+            /**
+             * Source
+             * @description one of plan, task, builder, label, revert
+             */
+            source: string;
+            /** Target Branch */
+            target_branch: string;
+            /** Source Branch */
+            source_branch: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Plan Id */
+            plan_id: string | null;
+            /** Steps */
+            steps: string[];
+            /** Change Id */
+            change_id: number | null;
+            /** Profile */
+            profile: string | null;
+            /** Model */
+            model: string | null;
+            /** Title */
+            title: string | null;
+            /** Web Url */
+            web_url: string | null;
+            /**
+             * State
+             * @description one of gating, judging, ready, rebasing, testing, merging, merged, verifying, releasing, done, rolling_back, reverting, reverted, blocked, paused, closed
+             */
+            state: string;
+            /**
+             * Reason
+             * @description why it waits or is blocked, the gate first
+             */
+            reason: string | null;
+            /** Head Sha */
+            head_sha: string | null;
+            /** Fingerprint */
+            fingerprint: string | null;
+            /** Risk */
+            risk: {
+                [key: string]: unknown;
+            } | null;
+            /** Verdict */
+            verdict: {
+                [key: string]: unknown;
+            } | null;
+            /** Judge Run Id */
+            judge_run_id: number | null;
+            /** Queued At */
+            queued_at: string | null;
+            /** Merged At */
+            merged_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Events
+             * @description its ledger, the newest 100 first
+             */
+            events: components["schemas"]["MergeEvent"][];
+            /**
+             * Before Sha
+             * @description the head of the target branch its last turn rebased it onto
+             */
+            before_sha?: string | null;
+            /**
+             * Rebases
+             * @description its rebases again in a row since its gates last passed
+             * @default 0
+             */
+            rebases: number;
+            /**
+             * After Sha
+             * @description its commit on the target branch, once merged
+             */
+            after_sha?: string | null;
+            /**
+             * Reverts Id
+             * @description a revert's: the merge request of the queue it undoes
+             */
+            reverts_id?: number | null;
+            /**
+             * Uat Result
+             * @description its own UAT check: one of passed, failed, none
+             */
+            uat_result?: string | null;
+            /**
+             * Prod Result
+             * @description its own PROD check: one of passed, failed, none
+             */
+            prod_result?: string | null;
         };
         /** RateLimitAnswer */
         RateLimitAnswer: {
@@ -14989,6 +15829,17 @@ export interface components {
              */
             runs: number;
         };
+        /** SampleAnswer */
+        SampleAnswer: {
+            /**
+             * Result
+             * @description faulty counts as a pass of the Judge found wrong
+             * @enum {string}
+             */
+            result: "ok" | "faulty";
+            /** Note */
+            note?: string | null;
+        };
         /** Schedule */
         Schedule: {
             /** Id */
@@ -15148,7 +15999,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "env" | "git";
+            kind: "env" | "git" | "forge";
             /**
              * Env Var
              * @description kind env: the variable it sets
@@ -15156,7 +16007,7 @@ export interface components {
             env_var: string | null;
             /**
              * Url Prefix
-             * @description kind git: the https prefix of the origins it answers for
+             * @description kinds git and forge: the https prefix of the origins it answers for
              */
             url_prefix: string | null;
             /**
@@ -15192,10 +16043,10 @@ export interface components {
         SecretWrite: {
             /**
              * Kind
-             * @description env: a variable of the agent's environment; git: what git's credential helper answers
+             * @description env: a variable of the agent's environment; git: what git's credential helper answers; forge: a GitLab token the hub alone uses to drive merge requests, never leased to a run
              * @enum {string}
              */
-            kind: "env" | "git";
+            kind: "env" | "git" | "forge";
             /**
              * Env Var
              * @description kind env only: the variable it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
@@ -15203,7 +16054,7 @@ export interface components {
             env_var?: string | null;
             /**
              * Url Prefix
-             * @description kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash
+             * @description kinds git and forge: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash
              */
             url_prefix?: string | null;
             /**
@@ -15213,17 +16064,17 @@ export interface components {
             username?: string | null;
             /**
              * Projects
-             * @description the projects whose runs get it; the writer role on each
+             * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
              */
             projects: string[];
             /**
              * Workers
-             * @description names of the caller's own workers that are not revoked; left out or empty for any of them
+             * @description names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge
              */
             workers?: string[];
             /**
              * Expires At
-             * @description after this no run gets it; in the future
+             * @description after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge
              */
             expires_at?: string | null;
             /**
@@ -15241,7 +16092,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "env" | "git";
+            kind: "env" | "git" | "forge";
             /**
              * Env Var
              * @description kind env: the variable it sets
@@ -15249,7 +16100,7 @@ export interface components {
             env_var: string | null;
             /**
              * Url Prefix
-             * @description kind git: the https prefix of the origins it answers for
+             * @description kinds git and forge: the https prefix of the origins it answers for
              */
             url_prefix: string | null;
             /**
@@ -40119,6 +40970,857 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_policy_v1_projects__project__policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_policy_v1_projects__project__policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    policy_revisions_v1_projects__project__policy_revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_policy_revision_v1_projects__project__policy_revisions__revision__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_policy_v1_projects__project__policy_compare_get: {
+        parameters: {
+            query: {
+                /** @description the older revision; 0 for no policy */
+                from: number;
+                /** @description the newer revision; the newest when left out */
+                to?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyComparison"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_queue_v1_projects__project__merge_queue_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeQueueView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_figures_v1_projects__project__merge_queue_figures_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                days?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeFigures"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_sample_v1_projects__project__merge_queue_samples__sample_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                sample_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SampleAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeSample"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_release_v1_projects__project__merge_queue__queue_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                queue_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedMergeRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_revert_v1_projects__project__merge_queue__queue_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                queue_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedMergeRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_repo_v1_projects__project__merge_queue_repos__repo__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakerReset"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_judge_inputs_v1_worker_runs__run_id__merge_judge_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeJudgeInputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_verdict_v1_worker_runs__run_id__merge_verdict_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the judge run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Judge-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeVerdictIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeVerdict"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

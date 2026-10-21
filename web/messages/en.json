@@ -58,7 +58,10 @@
     "curatorGraph": "Graph health",
     "curatorRuntime": "Runtime",
     "curatorCharter": "Charter",
-    "plugins": "Plugins"
+    "plugins": "Plugins",
+    "mergeQueue": "Merge queue",
+    "mergeQueueFigures": "Figures",
+    "mergeQueuePolicy": "Policy"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -2022,7 +2025,8 @@
     },
     "kind": {
       "env": "Variable",
-      "git": "Git credential"
+      "git": "Git credential",
+      "forge": "GitLab token for the hub"
     },
     "gitTarget": "<code>{prefix}</code> as <code>{user}</code>",
     "anyWorker": "Any of yours",
@@ -2057,7 +2061,9 @@
         "env": "Environment variable",
         "envHint": "The agent's environment gets it, such as CLAUDE_CODE_OAUTH_TOKEN.",
         "git": "Git credential",
-        "gitHint": "Git's credential helper answers with it for the origins under a URL prefix, such as a GitLab access token."
+        "gitHint": "Git's credential helper answers with it for the origins under a URL prefix, such as a GitLab access token.",
+        "forge": "GitLab token for the hub",
+        "forgeHint": "The hub alone drives merge requests with it, for the merge queue; no run ever gets it. Needs the admin role on each project."
       },
       "envVar": "Variable",
       "envVarHint": "Upper case letters, digits and underscores. Not PATH, HOME, SHELL, USER, TMPDIR or SSH_AUTH_SOCK, and no name starting with EVO_, GIT_, LD_, DYLD_ or PYTHON.",
@@ -2106,8 +2112,16 @@
         "valueRequired": "Type or paste the value.",
         "valueTooLong": "At most {max} bytes of UTF-8.",
         "valueNul": "The value may not hold a NUL character.",
-        "valueLines": "One line: git's credential protocol has no other."
-      }
+        "valueLines": "One line: git's credential protocol has no other.",
+        "urlPrefixGithub": "On github.com the Curator's tiers decide what the hub merges: a GitLab token is for GitLab.",
+        "expiresRequired": "Pick the day the GitLab token ends."
+      },
+      "urlPrefixForgeHint": "The https address of the GitLab group or project it answers for, never github.com.",
+      "projectsForgeHint": "Only projects where you hold the admin role are listed: the hub merges into their repos with it.",
+      "expiresForgeHint": "Required: the day the GitLab token ends. The hub stops using it from 00:00 UTC of that day.",
+      "valueForge": "One line: the GitLab access token, which the hub sends in a header.",
+      "noAdminProjects": "You hold the admin role on no project, so the hub could merge with this token nowhere. Ask a hub admin for the admin role on the project.",
+      "warningForge": "Only the hub uses this token, to rebase, merge and run jobs on GitLab: give it the api scope on the projects of the queue, a role that may merge, and an end date."
     },
     "deleteDialog": {
       "title": "Delete secret {name}?",
@@ -2121,7 +2135,9 @@
       "success": "Secret {name} deleted",
       "successText": "Revoke the token where it was made, too.",
       "failed": "Couldn't delete secret {name}"
-    }
+    },
+    "forgeTarget": "<code>{prefix}</code>, the hub alone",
+    "hubOnly": "The hub alone"
   },
   "agents": {
     "title": "Agents",
@@ -4279,6 +4295,484 @@
       "tickHours": "{hours}h"
     }
   },
+  "mergeQueue": {
+    "title": "Merge queue",
+    "metaQueue": "Merge queue of {project}",
+    "metaFigures": "Merge figures of {project}",
+    "tabs": {
+      "label": "Merge queue pages",
+      "queue": "Queue",
+      "figures": "Figures",
+      "policy": "Policy",
+      "waiting": "{count, plural, one {# waits for an admin} other {# wait for an admin}}"
+    },
+    "state": {
+      "gating": "Gating",
+      "judging": "Judging",
+      "ready": "Ready",
+      "rebasing": "Rebasing",
+      "testing": "Testing",
+      "merging": "Merging",
+      "merged": "Merged",
+      "verifying": "Checking UAT",
+      "releasing": "Releasing",
+      "done": "Done",
+      "rolling_back": "Rolling back",
+      "reverting": "Reverting",
+      "reverted": "Reverted",
+      "blocked": "Blocked",
+      "paused": "Paused",
+      "closed": "Closed"
+    },
+    "breaker": {
+      "state": {
+        "armed": "Armed",
+        "tripped": "Tripped"
+      },
+      "cause": {
+        "uat_check": "a UAT check failed",
+        "prod_check": "a PROD deploy or check failed",
+        "rollback": "PROD was rolled back",
+        "revert": "the revert of a failure cannot go on",
+        "target_red": "its target branch stayed red",
+        "reverts_in_a_row": "merges were reverted one after the other",
+        "revert_rate": "too many of its merges were reverted",
+        "judge_misses": "the Judge passed too many merges found wrong",
+        "unknown": "the hub gave no cause"
+      },
+      "title": "Breakers",
+      "trippedCount": "{count, plural, one {# breaker tripped} other {# breakers tripped}}",
+      "none": "No repo has a breaker yet: the hub sets one when its queue first passes over a repo.",
+      "reset": "Reset",
+      "resetLabel": "Reset the breaker of {repo}",
+      "confirmTitle": "Reset the breaker of {repo}?",
+      "confirmResume": "Its paused merge requests wait for their turn again, at their place, and the hub merges and deploys this repo again.",
+      "confirmCount": "What trips the breaker counts from now: the failed checks, rollbacks and reverts before the reset no longer count.",
+      "confirm": "Reset breaker",
+      "pending": "Resetting…",
+      "cancel": "Cancel",
+      "forbidden": "Resetting a breaker needs the admin role on the project.",
+      "notTripped": "This breaker is not tripped any more: someone reset it meanwhile.",
+      "resetDone": "Breaker of {repo} reset",
+      "resetResumed": "Back in line: {iids} ({count, plural, one {# merge request} other {# merge requests}}).",
+      "resetNone": "No merge request was paused.",
+      "stopped": "Merges of {repo} stopped: {cause}",
+      "noReason": "The hub gave no reason.",
+      "trippedAt": "Tripped <when></when>.",
+      "stoppedAdmin": "Reset it once the cause is fixed: the paused merge requests then wait for their turn again.",
+      "stoppedReader": "An admin of the project resets it once the cause is fixed.",
+      "resetBy": "Reset by {login} <when></when>.",
+      "neverTripped": "Never tripped.",
+      "trips": "{count, plural, one {Tripped # time.} other {Tripped # times.}}",
+      "redSince": "Target branch red since <when></when>",
+      "trippedCause": "Tripped: {cause}."
+    },
+    "sample": {
+      "state": {
+        "waiting": "To check",
+        "ok": "OK",
+        "faulty": "Faulty"
+      },
+      "title": "Audit samples",
+      "waitingCount": "{count, plural, one {# sample waits for an answer} other {# samples wait for an answer}}",
+      "none": "No merge was drawn for an audit sample yet.",
+      "opensForge": "(opens GitLab in a new tab)",
+      "drawn": "Drawn <when></when>.",
+      "answeredBy": "{login} answered <when></when>.",
+      "noteQuoted": "Note: {note}",
+      "ok": "OK",
+      "okLabel": "{name}: the Judge was right",
+      "faulty": "Faulty",
+      "faultyLabel": "{name}: the merge has a fault the Judge missed",
+      "faultyTitle": "Faulty: {name}",
+      "faultyDescription": "It counts as a pass of the Judge found wrong, and too many in 7 days trip the repo's breaker. Say what is wrong, for the history.",
+      "note": "Note",
+      "noteHint": "Optional, at most {max} characters.",
+      "cancel": "Cancel",
+      "sending": "Sending…",
+      "faultyConfirm": "Mark faulty",
+      "answered": "Someone answered this sample already.",
+      "forbidden": "Answering a sample needs the admin role on the project.",
+      "failed": "Could not answer the sample of {name}",
+      "okDone": "{name}: marked OK",
+      "faultyDone": "{name}: marked faulty",
+      "faultyDoneText": "It counts against the Judge in the repo's breaker."
+    },
+    "check": {
+      "uat": "UAT",
+      "prod": "PROD",
+      "passed": "{check} passed",
+      "failed": "{check} failed",
+      "none": "{check}: no result"
+    },
+    "source": {
+      "plan": "Plan",
+      "task": "Task",
+      "builder": "Builder",
+      "label": "Label",
+      "revert": "Revert"
+    },
+    "ledger": {
+      "noOutcome": "Neither passed nor failed",
+      "passed": "Passed",
+      "failed": "Failed",
+      "empty": "No line yet.",
+      "gate": "Gate {gate}: {name}",
+      "openRun": "Open run #{id}",
+      "kind": {
+        "opened": "Opened by the hub",
+        "queued": "Queued",
+        "head": "New head",
+        "gate": "Gate",
+        "judged": "Judged",
+        "rebased": "Rebased",
+        "pipeline": "Pipeline",
+        "merged": "Merged",
+        "uat_check": "UAT check",
+        "prod_deploy": "PROD deploy",
+        "prod_check": "PROD check",
+        "retried": "Job run again",
+        "rollback": "Rollback",
+        "revert_opened": "Revert opened",
+        "reverted": "Reverted",
+        "sampled": "Drawn for an audit sample",
+        "sample_answered": "Audit sample answered",
+        "paused": "Paused by the breaker",
+        "closed": "Closed"
+      }
+    },
+    "actions": {
+      "release": "Approve release",
+      "releasing": "Approving…",
+      "releaseLabel": "Approve the PROD release of {name} of {repo}",
+      "releaseDone": "PROD release of {name} approved",
+      "releaseDoneText": "The hub's next pass runs its deploy job, with the merges before it.",
+      "releaseFailed": "Could not approve the release of {name}",
+      "releaseConflict": "This merge does not wait for its PROD release any more.",
+      "forbidden": "This needs the admin role on the project.",
+      "revert": "Revert",
+      "revertLabel": "Revert {name} of {repo}",
+      "revertTitle": "Revert {name} of {repo}?",
+      "revertOpens": "The hub opens its revert into {branch}, first in the queue, and merges it once its pipeline passes.",
+      "revertCounts": "The merge then counts as reverted in the figures and in the repo's breaker.",
+      "revertConfirm": "Revert",
+      "reverting": "Asking…",
+      "cancel": "Cancel",
+      "revertDone": "Revert of {name} asked",
+      "revertDoneText": "The hub opens it on its next pass.",
+      "revertConflict": "The hub reverts only a merge it followed after its merge, never a revert."
+    },
+    "request": {
+      "judges": "Judges and risk",
+      "riskHigh": "High risk: a second Judge reads it",
+      "riskNormal": "Normal risk",
+      "firstJudge": "First Judge",
+      "secondJudge": "Second Judge",
+      "noVerdict": "no verdict yet",
+      "judgePassed": "passed",
+      "judgeFailed": "failed",
+      "pass": "pass",
+      "fail": "fail",
+      "openForge": "Open {name} on GitLab",
+      "opensNewTab": "(opens in a new tab)",
+      "blockedWhy": "Why it is blocked",
+      "why": "Where it stands",
+      "repo": "Repo",
+      "branches": "Branches",
+      "into": "into",
+      "run": "Run",
+      "openRun": "Open run #{id}",
+      "plan": "Plan",
+      "steps": "steps {steps}",
+      "agent": "Agent and model",
+      "head": "Head",
+      "rebasedOnto": "Rebased onto",
+      "rebases": "{count, plural, one {# rebase in a row} other {# rebases in a row}}",
+      "mergedAs": "Merged as",
+      "queuedAt": "Ready since",
+      "mergedAt": "Merged",
+      "checks": "Checks after merge",
+      "reverts": "Reverts",
+      "revertsOf": "Merge request #{id} of the queue",
+      "ledger": "Ledger ({count})",
+      "sheetTitle": "{name} of {repo}",
+      "missingTitle": "Merge request #{id}",
+      "close": "Close",
+      "missing": "The queue lists no such merge request now: it may be older than the 200 newest the page reads."
+    },
+    "table": {
+      "request": "Merge request",
+      "repo": "Repo",
+      "source": "From",
+      "state": "State",
+      "updated": "Updated",
+      "into": "{repo} into {branch}",
+      "caption": "Merge requests of the queue",
+      "search": "Filter the merge requests of the queue",
+      "count": "{count, plural, one {# merge request} other {# merge requests}}",
+      "allRepos": "All repos",
+      "none": "No merge request matches these filters."
+    },
+    "groups": {
+      "label": "Where it stands",
+      "all": "All",
+      "waiting": "Waiting",
+      "turn": "Merging",
+      "blocked": "Blocked",
+      "after": "After merge",
+      "finished": "Finished"
+    },
+    "metrics": {
+      "label": "The merge queue now",
+      "waiting": "In queue",
+      "waitingMeta": "gated, judged or ready for their turn",
+      "turn": "Merging now",
+      "turnNone": "No turn under way",
+      "blocked": "Blocked",
+      "blockedMeta": "wait for a new push or a person",
+      "after": "After merge",
+      "afterMeta": "followed to UAT and PROD"
+    },
+    "readOnly": {
+      "title": "You read this queue",
+      "text": "An admin of the project resets breakers, answers audit samples, approves PROD releases and asks for reverts."
+    },
+    "empty": {
+      "title": "No merge request in the queue yet",
+      "description": "The hub merges on its own the GitLab merge requests of each repo the project's policy sets to auto: it gates them, merges them one at a time and follows them to PROD.",
+      "policy": "Open the policy"
+    },
+    "duration": {
+      "under": "under 1s",
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m {seconds}s",
+      "hours": "{hours}h {minutes}m"
+    },
+    "figures": {
+      "who": "Repo, agent and model",
+      "person": "a person",
+      "merged": "Merged",
+      "reverted": "Reverted",
+      "rolledBack": "Rolled back",
+      "judgeMisses": "Judge misses",
+      "wait": "Wait in queue",
+      "waitMax": "longest {max}",
+      "toUat": "To UAT passed",
+      "toProd": "To PROD passed",
+      "caption": "Merges by repo, agent and model",
+      "totals": "Merges of the last {days} days",
+      "mergedMeta": "in the last {days} days",
+      "revertedMeta": "found the culprit of a failed check",
+      "rolledBackMeta": "PROD went back for their deploy",
+      "judgeMissesMeta": "passed by the Judge, then found wrong",
+      "range": "Window",
+      "days": "{days} days",
+      "empty": {
+        "title": "No merge in the last {days} days",
+        "description": "The figures count the merges of the queue on GitLab: how many, how many were reverted or rolled back, and how long they waited."
+      }
+    }
+  },
+  "policy": {
+    "metaTitle": "Policy of {project}",
+    "create": "Write the policy",
+    "edit": "Edit policy",
+    "provenance": "Revision {revision} by {login}, <when></when>.",
+    "noteQuoted": "Note: {note}",
+    "noPolicySub": "No policy yet: every repo is off and the hub merges nothing on its own.",
+    "oldRevision": "You are reading revision {revision}, not the newest.",
+    "showNewest": "Show the newest",
+    "noPolicyTitle": "This project has no policy yet",
+    "noPolicyAdmin": "Every repo is off: the hub merges nothing on its own and GitLab merge requests wait for a person. Write the policy to set a repo on GitLab to auto.",
+    "noPolicyReader": "Every repo is off: the hub merges nothing on its own. An admin of the project writes the policy.",
+    "readOnlyTitle": "You read this policy",
+    "readOnly": "An admin of the project writes its next revision; every revision is kept.",
+    "default": "default",
+    "defaultBranch": "(its default branch)",
+    "defaultIs": "Default: {value}.",
+    "sections": {
+      "merge": "Merge",
+      "judge": "Judge",
+      "breaker": "Breaker",
+      "audit": "Audit samples"
+    },
+    "repos": {
+      "title": "Repos",
+      "autoCount": "{count, plural, one {# repo in auto} other {# repos in auto}}",
+      "none": "The project lists no repo."
+    },
+    "keys": {
+      "merge_opt_in_label": {
+        "label": "Opt-in label",
+        "hint": "The label a person puts on a merge request to ask for the queue."
+      },
+      "merge_risk_paths": {
+        "label": "Risk paths",
+        "hint": "Globs added to the risk paths the hub knows, one a line; a diff that reaches one is high risk."
+      },
+      "merge_hold_until": {
+        "label": "Hold the next merge until",
+        "hint": "How far a merge must get before the next one of the same target branch starts."
+      },
+      "merge_pipeline_minutes": {
+        "label": "Pipeline wait",
+        "hint": "The longest the hub waits for a pipeline or a job, in minutes."
+      },
+      "judge_worker": {
+        "label": "Judge worker",
+        "hint": "The worker that runs the Judge; empty for the charter's worker."
+      },
+      "judge_model": {
+        "label": "First Judge model",
+        "hint": "The model of the first Judge; empty for a Claude model other than the Builder's."
+      },
+      "breaker_target_red_minutes": {
+        "label": "Target branch red for",
+        "hint": "Minutes the target branch stays red before the breaker trips."
+      },
+      "breaker_reverts_in_a_row": {
+        "label": "Reverts in a row",
+        "hint": "Automatic reverts one after the other that trip the breaker."
+      },
+      "breaker_revert_rate_factor": {
+        "label": "Revert rate factor",
+        "hint": "A 14-day revert rate this many times the repo's baseline trips the breaker."
+      },
+      "breaker_revert_rate_max": {
+        "label": "Revert rate before a baseline",
+        "hint": "The share of merges reverted, from 0 to 1, that trips the breaker while the repo has no baseline."
+      },
+      "breaker_baseline_min_merges": {
+        "label": "Merges for a baseline",
+        "hint": "Merges of its first 14 days a repo needs before its baseline counts."
+      },
+      "breaker_judge_misses_7d": {
+        "label": "Judge misses allowed in 7 days",
+        "hint": "Passes of the Judge found wrong that the breaker allows in 7 days."
+      },
+      "audit_sample_rate": {
+        "label": "Sample rate",
+        "hint": "The share of merged merge requests, from 0 to 1, an admin is asked to check."
+      },
+      "mode": {
+        "label": "Mode",
+        "hint": "Auto: the hub merges the repo's merge requests in scope. Off: a person does."
+      },
+      "target_branch": {
+        "label": "Target branch",
+        "hint": "The branch of the repo's queue; empty for its default branch."
+      },
+      "prod_release": {
+        "label": "PROD release",
+        "hint": "When the hub runs the PROD deploy after the UAT check."
+      },
+      "after_uat_hours": {
+        "label": "Hours after UAT",
+        "hint": "Hours of a green UAT before the PROD deploy, with After UAT."
+      },
+      "jobs_uat_check": {
+        "label": "UAT check job",
+        "hint": "The CI job that checks UAT after a merge; empty when the repo has none."
+      },
+      "jobs_prod_deploy": {
+        "label": "PROD deploy job",
+        "hint": "The CI job that deploys to PROD; empty when the repo has none."
+      },
+      "jobs_prod_check": {
+        "label": "PROD check job",
+        "hint": "The CI job that checks PROD after a deploy; empty when the repo has none."
+      },
+      "jobs_rollback": {
+        "label": "Rollback job",
+        "hint": "The CI job that puts PROD back at the last good commit; empty when the repo has none."
+      }
+    },
+    "values": {
+      "merge_hold_until": {
+        "merged": "Merged",
+        "uat_check": "UAT check passed",
+        "prod_check": "PROD check passed"
+      },
+      "mode": {
+        "off": "Off",
+        "auto": "Auto"
+      },
+      "prod_release": {
+        "immediate": "Immediate",
+        "after_uat": "After UAT",
+        "manual": "By hand"
+      }
+    },
+    "none": {
+      "default": "none",
+      "list": "none added",
+      "target_branch": "the repo's default branch",
+      "judge_worker": "the charter's worker",
+      "judge_model": "a Claude model other than the Builder's"
+    },
+    "units": {
+      "times": "{value} times the baseline",
+      "minutes": "{value} min",
+      "hours": "{value} h"
+    },
+    "history": {
+      "title": "Revisions",
+      "count": "{count, plural, one {# revision} other {# revisions}}",
+      "none": "No revision yet.",
+      "number": "Revision {revision}",
+      "compareBefore": "Compare with the one before",
+      "changed": "{count, plural, one {# key changed} other {# keys changed}}",
+      "more": "+{count} more",
+      "nothingChanged": "No value changed."
+    },
+    "compare": {
+      "title": "Compare revisions",
+      "from": "From",
+      "to": "To",
+      "none": "No policy (revision 0)",
+      "revision": "Revision {revision}",
+      "loading": "Comparing the revisions",
+      "failed": "Could not compare these revisions.",
+      "same": "The two revisions read the same.",
+      "changes": "{count, plural, one {# key differs} other {# keys differ}}",
+      "before": "Before:",
+      "after": "After:"
+    },
+    "problems": {
+      "oneOf": "One of {options}.",
+      "whole": "A whole number from {min} to {max}.",
+      "number": "A number from {min} to {max}.",
+      "aboveNumber": "A number above {min} and at most {max}.",
+      "line": "Text of 1 to {max} characters on one line.",
+      "globs": "At most {max} globs, one a line, each of at most {chars} characters.",
+      "github": "This repo is on github.com, where the Curator's tiers decide what the hub merges: auto is for a repo on GitLab."
+    },
+    "form": {
+      "label": "Autonomy policy",
+      "hints": {
+        "repos": "Auto lets the hub merge a repo's merge requests on GitLab; each repo names its target branch, its PROD release and its CI jobs.",
+        "merge": "Which merge requests the queue takes and how it moves them.",
+        "judge": "Who judges a merge request before its merge.",
+        "breaker": "When the queue of a repo stops until an admin resets it.",
+        "audit": "How many merges an admin is asked to check.",
+        "github": "On github.com the Curator's tiers decide what the hub merges: auto is for a repo on GitLab."
+      },
+      "unlisted": "The project no longer lists {repo}: saving drops it from the policy.",
+      "note": "Note",
+      "noteHint": "Why, for the history; at most {max} characters.",
+      "problems": "{count, plural, one {# field needs a fix.} other {# fields need a fix.}}",
+      "cancel": "Cancel",
+      "save": "Save revision",
+      "saving": "Saving…",
+      "saved": "Revision {revision} saved",
+      "savedText": "The hub reads it on its next pass.",
+      "unchanged": "Nothing changed",
+      "unchangedText": "The policy is the newest revision already: no revision was written.",
+      "forbidden": "Writing the policy needs the admin role on the project.",
+      "conflict": "Someone saved a revision meanwhile. Reload the page to edit the newest.",
+      "refused": "The hub refused this policy."
+    }
+  },
   "inbox": {
     "title": "Inbox",
     "listTitle": "Notifications",
@@ -4350,7 +4844,8 @@
       "chat_mention": "Someone mentioned you in a chat",
       "chat_added": "Someone added you to a chat",
       "plugin_disabled": "The hub turned off a plugin",
-      "builder_proposal": "@builder proposed a change for you to approve"
+      "builder_proposal": "@builder proposed a change for you to approve",
+      "merge_paused": "The merge queue of a repo stopped"
     },
     "item": {
       "unread": "Unread",
@@ -4499,6 +4994,42 @@
       "linkedToastText": "Decisions, proposals and notices now reach your chat too.",
       "unlinkedToast": "Telegram unlinked",
       "unlinkedToastText": "Nothing more goes to the chat until you link it again."
+    },
+    "merge": {
+      "open": "Open the merge queue",
+      "ok": "OK",
+      "faulty": "Faulty",
+      "faultyNote": "What is wrong (optional)",
+      "faultySend": "Mark faulty",
+      "cancel": "Cancel",
+      "pending": "Sending…",
+      "forbidden": "This needs the admin role on the project.",
+      "sampleAnswered": "Answered {result} by {login}.",
+      "sampleOk": "Audit sample marked OK",
+      "sampleFaulty": "Audit sample marked faulty",
+      "sampleFailed": "Could not answer the audit sample",
+      "sampleConflict": "Someone answered this sample already.",
+      "release": "Approve release",
+      "releaseGone": "No release waits any more: the merge is {state}.",
+      "released": "PROD release approved",
+      "releasedText": "The hub's next pass runs its deploy job.",
+      "releaseFailed": "Could not approve the release",
+      "releaseConflict": "This merge does not wait for its PROD release any more.",
+      "revert": "Revert {name}",
+      "revertTitle": "Revert {name}?",
+      "revertText": "The hub opens its revert first in the queue and merges it once its pipeline passes.",
+      "revertConfirm": "Revert",
+      "revertConflict": "The hub cannot revert this merge now.",
+      "revertGone": "No suspect waits for a revert any more.",
+      "reverted": "Revert of {name} asked",
+      "revertedText": "The hub opens it on its next pass.",
+      "resume": "Reset breaker",
+      "resumeTitle": "Reset the breaker of {repo}?",
+      "resumeText": "Its paused merge requests wait for their turn again, and the hub merges and deploys this repo again.",
+      "resumeConfirm": "Reset breaker",
+      "resumeConflict": "This breaker is not tripped any more.",
+      "resumeGone": "The breaker was reset by {login}.",
+      "resumed": "Breaker of {repo} reset"
     }
   },
   "toast": {

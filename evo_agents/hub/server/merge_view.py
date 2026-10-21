@@ -89,6 +89,8 @@ class QueuedMergeRequest(BaseModel):
     created_at: datetime
     updated_at: datetime
     events: list[MergeEvent] = Field(description=f"its ledger, the newest {MAX_EVENTS} first")
+    before_sha: str | None = Field(None, description="the head of the target branch its last turn rebased it onto")
+    rebases: int = Field(0, description="its rebases again in a row since its gates last passed")
     after_sha: str | None = Field(None, description="its commit on the target branch, once merged")
     reverts_id: int | None = Field(None, description="a revert's: the merge request of the queue it undoes")
     uat_result: str | None = Field(None, description=f"its own UAT check: one of {', '.join(post_merge.RESULTS)}")

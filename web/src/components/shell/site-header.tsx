@@ -36,6 +36,12 @@ const CURATOR_CRUMBS: Record<string, "curatorProposals" | "curatorHistory" | "cu
   charter: "curatorCharter",
 };
 
+/** The merge queue's pages below the queue name themselves (Figures, Policy). */
+const MERGE_QUEUE_CRUMBS: Record<string, "mergeQueueFigures" | "mergeQueuePolicy"> = {
+  figures: "mergeQueueFigures",
+  policy: "mergeQueuePolicy",
+};
+
 /** The last part of a page's path as a crumb: a name as it is, a number as #id. */
 function itemLabel(part: string): string {
   let text = part;
@@ -100,6 +106,8 @@ function useCrumbs(): Crumb[] {
           crumbs[2].label = t(curatorPage);
           if (parts[4]) crumbs.push({ label: itemLabel(parts[4]) });
         }
+        const mergePage = section.segment === "merge-queue" && Object.hasOwn(MERGE_QUEUE_CRUMBS, parts[3]) ? MERGE_QUEUE_CRUMBS[parts[3]] : undefined;
+        if (mergePage) crumbs[2].label = t(mergePage);
       }
     }
     return crumbs;
