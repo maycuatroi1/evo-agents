@@ -139,7 +139,7 @@ class ChatRun:
         usage = run.outcome.usage if run.outcome else None
         try:
             diffstat = await self.work.push_repos()
-        except RunFailed as exc:  # its turns cost what they cost: the chat's budget and the next run count it
+        except RunFailed as exc:  # its turns cost what they cost: the run's usage counts it
             exc.fields.setdefault("usage", usage)
             raise
         await run.reports.end("done", diffstat=diffstat, summary=run.summary, usage=usage)
