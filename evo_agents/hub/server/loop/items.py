@@ -201,9 +201,9 @@ def _item(reading: Reading, row, root: int, labels: Mapping[str, Mapping]) -> Lo
             hidden.append("claim")
     use_case = None
     document, version = _drafted(row)
-    if document is not None:
-        label = row.document_label if row.document_slug else labels.get(document)
-        if label is not None and reading.label(label):
+    label = (row.document_label if row.document_slug else labels.get(document)) if document is not None else None
+    if label is not None:  # a document its detail names but the project no longer has is no ancestor
+        if reading.label(label):
             use_case = LoopUseCaseRef(document=document, code=row.use_case, version=version)
         else:
             hidden.append("use_case")
