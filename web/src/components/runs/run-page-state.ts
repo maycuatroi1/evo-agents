@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useStatusText } from "@/components/status/status-badge";
 
 import type { RunMove } from "./log-model";
-import { CHAT_TAB, RUN_VIEW_PARAM } from "./queries";
+import { CHAT_TAB, decisionAnchor, RUN_VIEW_PARAM } from "./queries";
 import { SESSION_TABS, type SessionTab } from "./run-log";
 
 /** The state of a run's page that is not the run's: the session's tab, the phone's trace screen, and how moves read. */
@@ -29,7 +29,7 @@ export function useDescribeMove() {
 }
 
 /**
- * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=terminal`; the first tab,
+ * The tab the session card shows, held by the page and kept in the URL (`?view=log`, `?view=outputs`, `?view=terminal`; the first tab,
  * the Trace or an author run's Chat, has none): the Terminal tab once offered when the page was opened on it (a
  * decision's Take over from the Inbox), or when a decision's Take over here asks for it. The notice author_waiting
  * links to `?tab=chat`, the Chat, which an author run's page shows first anyway. Changing tabs replaces the URL without a
@@ -39,7 +39,7 @@ export function useSessionTab(terminalOffered: boolean, first: SessionTab) {
   const params = useSearchParams();
   const asked = params.get(RUN_VIEW_PARAM) ?? (params.get("tab") === CHAT_TAB ? CHAT_TAB : null);
   const wanted: SessionTab | null = (SESSION_TABS as readonly string[]).includes(asked ?? "") ? (asked as SessionTab) : null;
-  const [tab, setTab] = useState<SessionTab>(wanted === "log" || wanted === "trace" || (wanted === "chat" && first === "chat") ? wanted : first);
+  const [tab, setTab] = useState<SessionTab>(wanted === "log" || wanted === "trace" || wanted === "outputs" || (wanted === "chat" && first === "chat") ? wanted : first);
   const [applied, setApplied] = useState(false);
   if (wanted === "terminal" && terminalOffered && !applied) {
     setApplied(true);
@@ -91,4 +91,40 @@ export function useTraceScreen(setTab: (tab: SessionTab) => void, first: Session
     }
   };
   return [screen, open, close] as const;
+}
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Shows a tab of the session card: scrolls the card (the element `cardId`) into view and focuses the tab; on a phone,
+ * opens the session's screen on it.
+ */
+export function useShowSession(cardId: string, mobile: boolean, setTab: (tab: SessionTab) => void, openScreen: (tab: SessionTab) => void) {
+  return (tab: SessionTab) => {
+    if (mobile) {
+      openScreen(tab);
+      return;
+    }
+    setTab(tab);
+    const card = document.getElementById(cardId);
+    card?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+    card?.querySelector<HTMLElement>(`[data-testid="run-tab-${tab}"]`)?.focus({ preventScroll: true });
+  };
+}
+
+/** An author run's decisions are cards in its Chat: "Asked you" shows the tab, then the card, once it is drawn. */
+export function useShowDecision(setTab: (tab: SessionTab) => void) {
+  return useCallback(
+    (id: number) => {
+      setTab("chat");
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const card = document.getElementById(decisionAnchor(id));
+          card?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+          card?.focus({ preventScroll: true });
+        }),
+      );
+    },
+    [setTab],
+  );
 }
