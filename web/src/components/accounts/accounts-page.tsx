@@ -1,16 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ChevronRight, Pause, Pencil, Play, RefreshCw, UserRoundCog, UserRoundPlus } from "lucide-react";
+import { CalendarClock, ChevronRight, UserRoundCog, UserRoundPlus } from "lucide-react";
 import type { Route } from "next";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
-import { DataCard } from "@/components/data/data-card";
-import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
-import { RunRef } from "@/components/data/identifier";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -20,199 +16,33 @@ import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { Day, StateCell } from "./account-cells";
+import { type Actions } from "./account-columns";
+import { AccountGroup } from "./account-group";
+import { Day } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
 import { useChangeAccount, useFailure } from "./hooks";
-import { isClaudeAccount, policyRows, renewalDue } from "./model";
+import { LazyLoginDialog, preloadLogin } from "./login-lazy";
+import { groupAccounts, isClaudeAccount, policyRows, renewalDue, serviceEntries, sharedVariables } from "./model";
+import { ModelTable } from "./model-table";
 import { type Account, accountListQuery, policiesQuery } from "./queries";
 import { PolicySection } from "./policy-section";
-import { UsageLimits } from "./usage-limits";
+import { ServiceTable } from "./service-table";
 
 const SECRETS_HREF = "/secrets" as Route;
 
-// The Add Claude account and Renew token dialog loads the first time it opens, so it stays out of the page's first
-// load; the buttons that open it ask for it as soon as the pointer or focus reaches them.
-const loadLogin = () => import("./login-dialog");
-const LazyLoginDialog = dynamic(() => loadLogin().then((module) => module.LoginDialog), { ssr: false });
-const preloadLogin = () => void loadLogin();
-
-const NARROW_HIDDEN = {
-  projects: "hidden lg:table-cell",
-  workers: "hidden xl:table-cell",
-  runs: "hidden lg:table-cell",
-  cost: "hidden lg:table-cell",
-  heldBy: "hidden sm:table-cell",
-};
-
-function AccountsTable({
-  accounts,
-  now,
-  onEdit,
-  onPause,
-  onRenew,
-}: {
-  accounts: Account[];
-  now: number;
-  onEdit: (account: Account) => void;
-  onPause: (account: Account) => void;
-  onRenew: (account: Account) => void;
-}) {
-  const t = useTranslations("accounts");
-  const format = useFormatter();
-  const columns = useMemo(() => {
-    const usd = (value: number) => format.number(value, { style: "currency", currency: "USD" });
-    const helper = dataTableColumns<Account>();
-    return helper.columns([
-      helper.accessor("name", {
-        header: () => t("columns.account"),
-        sortFn: "alphanumeric",
-        meta: { primary: true },
-        cell: (info) => {
-          const account = info.row.original;
-          const rank = t("rank", { weight: account.weight, priority: account.priority });
-          return (
-            <CellMain sub={`${account.env_var} · ${rank}`} subTitle={`${account.env_var} · ${rank}`} subTestId="account-target">
-              <span className="truncate font-mono text-[13px]" title={account.name} data-account-name={account.name}>
-                {account.name}
-              </span>
-            </CellMain>
-          );
-        },
-      }),
-      helper.accessor("state", { header: () => t("columns.state"), sortFn: "text", cell: (info) => <StateCell account={info.row.original} now={now} /> }),
-      helper.display({
-        id: "projects",
-        header: () => t("columns.projects"),
-        cell: (info) => <span className="font-mono text-xs">{info.row.original.projects.join(", ") || "-"}</span>,
-      }),
-      helper.display({
-        id: "workers",
-        header: () => t("columns.workers"),
-        cell: (info) => {
-          const workers = info.row.original.workers;
-          return workers.length ? <span className="font-mono text-xs">{workers.join(", ")}</span> : <span className="text-fg-subtle">{t("anyWorker")}</span>;
-        },
-      }),
-      helper.accessor("runs_7d", {
-        id: "runs",
-        header: () => t("columns.runs"),
-        sortFn: "basic",
-        meta: { numeric: true },
-        cell: (info) => {
-          const { runs_24h: day, runs_7d: week } = info.row.original;
-          return (
-            <span title={t("runsTitle", { day, week })} data-testid="account-runs">
-              {day} / {week}
-            </span>
-          );
-        },
-      }),
-      helper.accessor("cost_7d_usd", {
-        id: "cost",
-        header: () => t("columns.cost"),
-        sortFn: "basic",
-        meta: { numeric: true },
-        cell: (info) => {
-          const day = usd(info.row.original.cost_24h_usd);
-          const week = usd(info.row.original.cost_7d_usd);
-          return (
-            <span title={t("costTitle", { day, week })} data-testid="account-cost">
-              {day} / {week}
-            </span>
-          );
-        },
-      }),
-      helper.display({
-        id: "heldBy",
-        header: () => t("columns.heldBy"),
-        cell: (info) => {
-          const held = info.row.original.held_by;
-          if (held.length === 0) return <span className="text-fg-subtle">{t("notHeld")}</span>;
-          return (
-            <span className="inline-flex flex-wrap gap-x-2" data-testid="account-held-by">
-              {held.map((run) => (
-                <RunRef
-                  key={run.run_id}
-                  id={run.run_id}
-                  href={`/p/${encodeURIComponent(run.project)}/runs/${run.run_id}` as Route}
-                  label={t("heldLabel", { id: run.run_id, project: run.project })}
-                  data-run-id={run.run_id}
-                />
-              ))}
-            </span>
-          );
-        },
-      }),
-      helper.display({
-        id: "actions",
-        header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        meta: { actions: true },
-        cell: (info) => {
-          const account = info.row.original;
-          const paused = account.paused_at !== null;
-          return (
-            <>
-              {isClaudeAccount(account) ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t("renewLabel", { name: account.name })}
-                  onClick={() => onRenew(account)}
-                  onPointerEnter={preloadLogin}
-                  onFocus={preloadLogin}
-                  data-testid="account-renew"
-                >
-                  <RefreshCw aria-hidden="true" />
-                  <span className="hidden sm:inline">{t("renew")}</span>
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={t("editLabel", { name: account.name })}
-                onClick={() => onEdit(account)}
-                data-testid="account-edit"
-              >
-                <Pencil aria-hidden="true" />
-                <span className="hidden sm:inline">{t("edit")}</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={t(paused ? "resumeLabel" : "pauseLabel", { name: account.name })}
-                onClick={() => onPause(account)}
-                data-testid={paused ? "account-resume" : "account-pause"}
-              >
-                {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-                <span className="hidden sm:inline">{t(paused ? "resume" : "pause")}</span>
-              </Button>
-            </>
-          );
-        },
-      }),
-    ]);
-  }, [t, format, now, onEdit, onPause, onRenew]);
-  // A Claude account's usage limits, or any account's a run reported, under its row at every width.
-  const usage = useCallback(
-    (account: Account) => (account.last_usage || isClaudeAccount(account) ? <UsageLimits account={account} pageNow={now} /> : null),
-    [now],
-  );
-
-  return (
-    <DataTable
-      data={accounts}
-      columns={columns}
-      caption={t("caption")}
-      getRowId={(row) => row.name}
-      initialSorting={[{ id: "name", desc: false }]}
-      columnClassNames={NARROW_HIDDEN}
-      detail={usage}
-      testId="accounts-table"
-    />
-  );
+/** The groups of accounts, each with its own table: model accounts, then service credentials. */
+function Groups({ accounts, now, ...actions }: { accounts: Account[]; now: number } & Actions) {
+  const groups = useMemo(() => groupAccounts(accounts), [accounts]);
+  const shared = useMemo(() => sharedVariables(accounts), [accounts]);
+  return groups.map(({ id, accounts: members }) => (
+    <AccountGroup key={id} id={id} count={members.length}>
+      {id === "model" ? (
+        <ModelTable accounts={members} shared={shared} now={now} {...actions} />
+      ) : (
+        <ServiceTable entries={serviceEntries(members)} shared={shared} now={now} {...actions} />
+      )}
+    </AccountGroup>
+  ));
 }
 
 /** The policies under the accounts, from the projects the accounts are bound to and the policies the visitor set. */
@@ -315,6 +145,8 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   );
   const onPause = useCallback((account: Account) => void pause(account), [pause]);
 
+  const actions = { onEdit: edit, onPause, onRenew: renew };
+
   return (
     <>
       <PageHeader
@@ -355,14 +187,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
             <div className="flex flex-col gap-8">
               <div className="flex flex-col gap-4">
                 <RenewNotice accounts={list} now={now} onRenew={renew} />
-                <section aria-labelledby="accounts-list-title">
-                  <h2 id="accounts-list-title" className="sr-only">
-                    {t("caption")}
-                  </h2>
-                  <DataCard>
-                    <AccountsTable accounts={list} now={now} onEdit={edit} onPause={onPause} onRenew={renew} />
-                  </DataCard>
-                </section>
+                <Groups accounts={list} now={now} {...actions} />
               </div>
               <Policies accounts={list} />
             </div>

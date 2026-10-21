@@ -2749,7 +2749,7 @@
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
     "caption": "Tài khoản của bạn",
-    "listSummary": "Các env secret của bạn mà các run lần lượt dùng cho cùng một biến. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
+    "listSummary": "Các env secret của bạn, theo nơi chúng đăng nhập. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
     "secrets": "Secret",
     "add": "Thêm tài khoản Claude",
     "columns": {
@@ -2760,7 +2760,8 @@
       "runs": "Run 24 giờ / 7 ngày",
       "cost": "Chi phí 24 giờ / 7 ngày",
       "heldBy": "Đang dùng bởi",
-      "actions": "Thao tác"
+      "actions": "Thao tác",
+      "lastUsed": "Dùng lần cuối"
     },
     "anyWorker": "Mọi worker của bạn",
     "state": {
@@ -2809,7 +2810,6 @@
     },
     "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
     "costTitle": "Ước tính từ mức dùng của các run: {day} trong 24 giờ, {week} trong 7 ngày",
-    "notHeld": "Không run nào",
     "heldLabel": "Mở run #{id} của {project}",
     "edit": "Sửa",
     "editLabel": "Sửa trọng số và ưu tiên của {name}",
@@ -2992,7 +2992,35 @@
       "saved": "Đã lưu policy cho {project}",
       "savedText": "Các run được giao từ giờ sẽ theo policy này.",
       "failed": "Không lưu được policy cho {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Khác"
+    },
+    "groups": {
+      "model": {
+        "title": "Tài khoản model",
+        "description": "Đăng nhập của model mà run nói chuyện cùng. Các run lần lượt dùng chúng, và chi phí được tính ở đây.",
+        "none": "Chưa có tài khoản model. Thêm tài khoản Claude để run có model."
+      },
+      "service": {
+        "title": "Thông tin đăng nhập dịch vụ",
+        "description": "Token và key mà run dùng cho việc khác: một repository, một workspace, một máy chủ. Chúng không có chi phí.",
+        "none": "Chưa có thông tin đăng nhập dịch vụ. Thêm một secret gắn với dự án."
+      }
+    },
+    "variables": "{provider}, {count, plural, other {# biến}}",
+    "variablesLabel": "Các biến của {provider}",
+    "apiValue": "Giá trị API",
+    "costLabel": "Chi phí",
+    "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run."
   },
   "runs": {
     "title": "Run",
