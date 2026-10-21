@@ -80,8 +80,8 @@ more, so a second try writes nothing.
 ## Tasks of an approved SRS version
 
 When a version of a document of the plugin srs is approved in a project that enables both plugins, srs keeps the
-project's tasks in step with the version's use cases, comparing it with the version approved before
-(`docs/srs-plugin.md`, Tasks when a version is approved):
+project's tasks in step with the version's use cases once the hub delivers it the event `srs.version.approved`,
+comparing the version with the one approved before (`docs/srs-plugin.md`, Tasks when a version is approved):
 
 - a use case new in the version gets a frame task, `UC ORD-1: Place an order`, linked to it, of type `story` when the
   project has it (its first type otherwise), in the first status, made by the approver; its history names the hub
@@ -96,6 +96,26 @@ frame task of the document with no child task yet: it makes the child tasks with
 tasks__create), for the approver. An approval of the same version again, such as an event delivered twice, makes no
 task, comment or run, and a frame task is found by its `external_key`. srs writes these rows through the hub's tables,
 as this plugin reads srs's items: neither imports the other.
+
+## The event tasks.status
+
+Every status a task takes emits the event `tasks.status`, in the transaction that set it
+(`evo_agents/hub/task_status.py`, plan loop-engine):
+
+| Cause | When | Who |
+| --- | --- | --- |
+| `create` | a task made on the web, with the CLI or with `tasks__create` (`from` is null) | the member, or the member an agent works for |
+| `edit` | an edit that changes the status; an edit that leaves it emits nothing | the member |
+| `import` | each task of an import, once the import has set the parents (`from` is null) | the member who imported |
+| `srs_approval` | a frame task srs makes for a new use case (`from` is null), or a task srs cancels because the version dropped its use case | the hub |
+| `steps_done` | `on_steps_done` moving a task once every plan step it links is done | the hub |
+
+Its payload, `v: 1`: the task's id, number and ref (`T-42`), `from` and `to` with their groups (`from_group`,
+`to_group`), `actor` (`person` or `hub`) with the member's id and login, `cause`, `source` (the SRS document and
+version for `srs_approval`, the plan and step for `steps_done`, else null), the parent's id and ref, the SRS items it
+links (id and code each) and the plan steps it links (plan and step each). It carries ids, codes and states, never a
+title, a description or the text of the task's history. Plugins the project granted `tasks:read` get it, at least
+once, and the hub keeps it in `hub_events`, where the Loop reads it (`docs/plugins.md`, section Extension points).
 
 ## Commands
 

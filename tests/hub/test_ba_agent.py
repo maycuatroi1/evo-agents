@@ -33,7 +33,7 @@ from sqlalchemy import select
 
 from evo_agents.core_plugins.srs import BA_INSTRUCTIONS
 from evo_agents.core_plugins.srs import MANIFEST as SRS_MANIFEST
-from evo_agents.hub import plugin_calls, tables
+from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
@@ -164,6 +164,15 @@ def submitted(client, headers, number: int) -> dict:
 
 def review(client, headers, number: int, decision: str = "approve", **body):
     return client.post(f"{DOC}/versions/{number}/reviews", json={"decision": decision, **body}, headers=headers)
+
+
+def delivered(client) -> dict:
+    """One pass of the job hub.deliver_plugin_events, as the hub runs it every minute, none of whose deliveries fails:
+    the event srs.version.approved of an approval reaches the plugin srs, whose handler keeps the tasks in step
+    (``evo_agents.core_plugins.srs.events``)."""
+    report = client.portal.call(lambda: plugin_events.deliver(client.app.state.engine))
+    assert (report["retried"], report["failed"]) == (0, 0), report
+    return report
 
 
 def saved(client, headers, base: int, *changes: dict) -> dict:
@@ -511,7 +520,9 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     assert held.status_code == 409 and f"(run #{review_run}) is running" in held.json()["message"], held.text
     moved(client, studio, review_run, "verifying", "done", summary="One finding.")
     assert review(client, hub["other"], 1).json()["state"] == "approved"
-    # with tasks on, the approval hands @ba the split of its frame tasks too (tests.hub.test_srs_auto_tasks)
+    # with tasks on, the approval hands @ba the split of its frame tasks too, once its event is delivered
+    # (tests.hub.test_srs_auto_tasks)
+    delivered(client)
     split = running(client, studio, "task")
     assert "Split the frame tasks of the SRS document demo-shop" in split["prompt"]
     moved(client, studio, split["id"], "verifying", "done", summary="Nothing split.")
@@ -534,6 +545,7 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     moved(client, studio, again["id"], "verifying", "done", summary="Nothing found.")
     # with the type off, a version goes to review all the same, without a review by @ba
     assert review(client, hub["chi"], 2).json()["state"] == "approved"
+    delivered(client)  # the approval's event, while the type is on
     stock = item(client, hub["chi"], "BR ORD1-2")
     saved(client, hub["other"], 2, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
     assert client.delete(TYPE, headers=hub["owner"]).status_code == 200

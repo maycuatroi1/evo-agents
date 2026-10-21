@@ -63,7 +63,7 @@ def test_plugin_protocol_params_schema_accepts_the_smallest_calls():
 
 def test_plugin_protocol_events_name_the_kinds_of_canvas_and_signals_beside_the_old_ones():
     """plan living-lean-canvas adds three kinds, only adding: the four before keep their names."""
-    assert protocol.EVENT_KINDS == (
+    assert protocol.EVENT_KINDS[:7] == (
         "run.state",
         "chat.message",
         "plan.step",
@@ -76,6 +76,16 @@ def test_plugin_protocol_events_name_the_kinds_of_canvas_and_signals_beside_the_
         params = {"event": "e", "project": "p", "payload": {"v": 1}, "kind": kind, "delivery": 3}
         assert protocol.params_problems("event", params) == []
     unknown = {"event": "e", "project": "p", "payload": {}, "kind": "canvas.deleted"}
+    assert protocol.params_problems("event", unknown)
+
+
+def test_plugin_protocol_events_name_an_approved_srs_version_and_a_tasks_status_last():
+    """plan loop-engine adds two kinds after the seven before, only adding: those keep their names and places."""
+    assert protocol.EVENT_KINDS[7:] == ("srs.version.approved", "tasks.status")
+    for kind in protocol.EVENT_KINDS[7:]:
+        params = {"event": "e", "project": "p", "payload": {"v": 1}, "kind": kind, "delivery": 4}
+        assert protocol.params_problems("event", params) == []
+    unknown = {"event": "e", "project": "p", "payload": {}, "kind": "srs.version.dropped"}
     assert protocol.params_problems("event", unknown)
 
 

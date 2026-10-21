@@ -225,6 +225,8 @@ project is what the project granted that its installed version still asks for, c
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
+| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed | the `srs.version.approved` events |
+| `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -297,11 +299,18 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   task (section Agent types), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
   claim's id and code, the rev, its cell, the kind of change, the status before and after, who wrote it and the run),
   `canvas.baseline` with `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each
-  change of status that took effect with its evidence), and `signal.posted` with `signals:read` (a batch of signals:
+  change of status that took effect with its evidence), `signal.posted` with `signals:read` (a batch of signals:
   its id, each key with how many and when the first and last were measured, the ingest key or the member that sent
-  it). A payload carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks
-  the hub for more. The last three carry `v`, the version of their shape, and the hub also writes each into its own
-  table `hub_events`, in the same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
+  it), `srs.version.approved` with `srs:read` (a version of an SRS document approved: the document's slug and id, the
+  version's number and id, the version approved before it, the approver's login and id, and the codes of the items it
+  added, changed and dropped since that one, by kind), and `tasks.status` with `tasks:read` (a task's status set or
+  changed: the task's id, number and ref, the status and its group before (none for a new task) and after, a member or
+  the hub with the member's login, the cause (`create`, `edit`, `import`, `srs_approval`, `steps_done`) with the ids
+  of what made it, the parent, and the SRS items and plan steps it links). The core plugin srs takes
+  `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
+  and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
+  five carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the
+  same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
@@ -419,11 +428,14 @@ Two more core plugins keep a project's requirements and work in the hub's databa
   `srs__diff`, `srs__propose` and `srs__comment`, a source of the knowledge graph (`kg_sources`, the approved versions),
   and the agent type `ba` with the pack `srs/ba`: @ba drafts and reviews documents for the project's writers. The type
   declares `chat_runs: run_as` (section Agent types), and the plugin hands @ba the review of each version that enters
-  review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission.
+  review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission. An approved version emits
+  `srs.version.approved`, which the plugin takes itself through its events contribution `approvals`: in a project that
+  enables tasks, that handler makes the version's frame tasks, comments and cancellations and hands @ba the split run.
 - **tasks** (`evo_agents/core_plugins/tasks`, `docs/tasks-plugin.md`): a backlog with sprints, people and links to
   coded items of srs, plan steps, runs and pull requests. It contributes routes under `/v1/x/tasks/`, six tables
   `tasks_*` (migration 0047), native pages, the MCP tool `tasks__create`, the event `plan.step` (it asks for
-  `plans:read`) and a source of the knowledge graph (Ticket nodes).
+  `plans:read`) and a source of the knowledge graph (Ticket nodes). Every status a task takes, from tasks or from srs,
+  emits `tasks.status` (`evo_agents.hub.task_status`).
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).

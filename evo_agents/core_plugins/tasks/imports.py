@@ -7,7 +7,8 @@ one of the file's or the project's, its links targets the member sees. What stop
 leaves out is a warning: a person with no GitHub login or no grant, a use case code no SRS item holds (kept in the
 task's ``external_ref``), a plan step that is not there, a parent the file does not have. A task whose source
 (``external``: system and id) an import brought in already is skipped. ``apply`` writes what ``plan`` found, every
-task numbered in the file's order, its done date a row of its history.
+task numbered in the file's order, its done date a row of its history, and each emits ``tasks.status`` (cause
+``import``) once the parents are set.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.tasks import PRIORITIES, links, writes
 from evo_agents.core_plugins.tasks.settings import TasksError
 from evo_agents.core_plugins.tasks.store import SLOTS
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_status
 from evo_agents.hub.tables_tasks import (
     MAX_DESCRIPTION_CHARS,
     MAX_EXTERNAL_KEY_CHARS,
@@ -322,7 +323,7 @@ async def apply(conn: AsyncConnection, writer: writes.Writer, found: Plan) -> li
     numbers = {key: number for key, number in found.skipped}
     made = []
     for item in found.tasks:
-        number = await writes.create(conn, writer, item.task, targets=item.targets)
+        number = await writes.create(conn, writer, item.task, targets=item.targets, cause=None)
         numbers[item.key] = number
         made.append(number)
         if item.done_on is not None:
@@ -336,6 +337,10 @@ async def apply(conn: AsyncConnection, writer: writes.Writer, found: Plan) -> li
             parent_id = await _task_id(conn, writer.access.project_id, numbers[item.parent])
             child = (t.c.project_id == writer.access.project_id) & (t.c.number == numbers[item.key])
             await conn.execute(update(t).where(child).values(parent_id=parent_id))
+    for item in found.tasks:  # with its parent set
+        task_id = await _task_id(conn, writer.access.project_id, numbers[item.key])
+        status = item.task.status or writer.settings.statuses[0].key  # as ``writes.create`` chose it
+        await writes.announce(conn, writer, task_id, None, status, task_status.IMPORT)
     return made
 
 
