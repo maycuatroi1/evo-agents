@@ -632,14 +632,24 @@ and the branch. A chat run that asks nothing ends after its turn.
 
 ### Failure triage
 
-When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
-the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
+When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PROJECT", one chat for the
+failed runs of all the project's plans and its runs with no plan, whose first message names the run's plan and step,
+and mentions the project's default agent, which makes a chat run for the run's owner
 (`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent, and neither does a
 run the hub stopped on a usage limit or a refused login while no account of its owner for that variable is ready: the
 thread says when the first is ready again). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
+
+Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chat_access`). A
+plan whose label is not at or below it (a higher level or location), or that is no longer on the hub, keeps a chat of
+its own, "Triage: PLAN", as every plan had before: a member of the project's chat whose grant stops below the plan's
+label never reads its failures. A run whose owner the project's chat cannot take (an agent of another project invited
+into it brings a label the owner does not clear, or the chat is full) goes to the chat of its plan too; a run with no
+plan then opens no thread, and its owner gets the notice a failure always had. The triage chats plans had before stay
+as they were. All the threads of the project's chat count in its one budget (`chat_runs.DEFAULT_BUDGET_USD` for 24
+hours unless its creator changed it).
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -843,9 +853,10 @@ it holds:
   "agent_version": "0.3.0",
   "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay", "history"],
   "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
-               "chat_decisions", "lazy_chat_repos", "kg_sync"],
+               "chat_decisions", "lazy_chat_repos", "kg_sync", "update_now"],
   "agent_commit": "<40 or 64 hex>",
-  "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "..."},
+  "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "...",
+                  "update_now": {"requested_at": "...", "ended": null}},
   "kg_sync": {"projects": [{"project": "evo-agents", "checked_at": "...", "sources": [
     {"source": "evo-agents", "status": "ok", "ref": "origin/main", "commit": "<40 hex>", "behind": 0,
      "checked_at": "...", "read_at": "...", "pushed_at": "...", "pulled": 0, "pushed": 1}]}]}
@@ -876,7 +887,8 @@ asks decisions and waits for the answers ([Chat runs](#chat-runs)), `lazy_chat_r
 with the project's harness alone and whose agent opens each other repo it needs with `evo-agents worker repo open`
 ([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
 checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
-duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)). This daemon sends every kind of `runs.RUN_KINDS` and
+duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
+heartbeat answer and carries out an owner's Update now ([Update now](#update-now)). This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -884,7 +896,9 @@ what the daemon found of updating itself to the tag nightly ([Updating itself to
 `state` (required, a name of at most 32 lowercase letters, digits and underscores that starts with a letter; this
 daemon sends one of
 `runs.SELF_UPDATE_STATES`), `reason` (1 to 500 characters), `nightly_commit` (where nightly points, as the daemon read
-it last), `checked_at` (when it read it), `error` (1 to 2,000 characters) and `error_at`. A value out of these bounds
+it last), `checked_at` (when it read it), `error` (1 to 2,000 characters), `error_at`, and `update_now`, the owner's
+request it is carrying out, `{"requested_at", "ended"}`: `requested_at` as the answer gave it, `ended` null while it
+works on it, or `failed` or `impossible` when it ended that way (left out when no request is open). A value out of these bounds
 makes the whole heartbeat 422, so the daemon clips the text and leaves a field out rather than send it empty. Each
 heartbeat replaces both with what it carries, and one without them clears them, as `run_kinds` and `features` work; the
 hub notes when a state began (`since`, by its own clock: the first heartbeat of an unbroken line that reported that
@@ -904,6 +918,8 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 {
   "drain": false,
   "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false},
+  "nightly": {"commit": "<40 or 64 hex>", "read_at": "..."},
+  "update_now": {"requested_at": "..."},
   "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
                        "command": ["gemini", "--experimental-acp"], "models": ["gemini-2.5-pro"],
                        "secrets": ["GEMINI_API_KEY"]}],
@@ -920,7 +936,13 @@ whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `l
 /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
 those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon); for a daemon that
 lists `kg_sync`, the projects whose graph it keeps fresh, `[{"project", "received_at"}]`, `received_at` being when the
-hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
+hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon); `nightly`, the
+commit the tag nightly pointed to when the hub last read it (every minute, `hub.read_nightly`) and when, left out until
+the hub read it once and by a hub before schema 0065; and for a daemon that lists `update_now`, the owner's open
+Update now (`update_now`, `{"requested_at"}`), left out when none is open. The hub ends the request on the heartbeat
+that shows it ended: `current` when `agent_commit` is nightly's commit, `failed` or `impossible` as `self_update.update_now`
+says for this `requested_at`, and `impossible` too when the worker is locked, `self_update.state` is `locked` or
+`unsupported`, or `features` no longer lists `update_now`. When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
@@ -1051,6 +1073,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), or `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)), at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
+| `POST /v1/workers/{id}/update-now`, `/update-now/cancel` | owner or hub admin | ask the worker's daemon to update itself to nightly now, or withdraw that ([Update now](#update-now)); 409 with why for a revoked or locked worker, a daemon that does not say `update_now`, or one that runs nightly's commit already |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
 | `GET /v1/projects/{p}/plans/{plan}/ready-steps` | reader | every step, with whether it may be dispatched and why not |
 | `POST /v1/projects/{p}/runs` | writer | dispatch steps, all or none |
@@ -2263,11 +2286,14 @@ machine](#a-chat-run-on-the-machine)). The checks:
   its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
   hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
   the programs of a command line as the shell runs them (`evo_agents.hub.verify_words.programs`): the first word of each
-  simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
-  `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
-  shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
-  command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
-  by its number alone, never its command or its program;
+  simple command, past assignments, keywords such as `if` and `!` and the options of `command`, `exec` and `time`, and
+  wrappers that run another program (`env`, `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c`
+  argument and of a `$(...)` or `<(...)`; a newline ends a command as `;` does. Not read: the shell's builtins, a word
+  the shell expands, a relative path (a file of the worktree, not there yet), what `python -m` and `uv run` run, a name
+  `command -v` looks up, a comment, or the body of a here-document. After a command that may change PATH (`source`,
+  `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named by its number alone, never its command or
+  its program. The hub refuses a plan whose new verify is not a shell command line ([hub.md](hub.md), Plans and their
+  copies in git);
 - for a run whose claim names a plugin's environment, the container provider can run its agent here: an engine that
   answers, the image (pulled by its digest when missing), a step run, headless ([Environments of
   plugins](#environments-of-plugins)).
@@ -2429,8 +2455,10 @@ service uninstall` removes it.
 
 ### Updating itself to nightly
 
-The tag `nightly` of maycuatroi1/evo-agents points to the tip of main, with no CI run on it (CI runs on a v* tag), and
-a workflow moves it every night (`.github/workflows/nightly.yml`). A worker installed from it keeps itself there:
+The tag `nightly` of maycuatroi1/evo-agents points to the tip of main, with no CI run on it (CI runs on a v* tag).
+`.github/workflows/nightly.yml` moves it every night, and `.github/workflows/deploy.yml` moves it to the commit it
+deployed once `/v1/health` confirmed the deployment (`docs/hub.md`, Deploying main); a deployment that failed, or a run
+that stopped because main moved on, leaves it where it is. A worker installed from it keeps itself there:
 
 ```sh
 uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'
@@ -2462,10 +2490,47 @@ decides whether to reinstall its own install, and it does when all of these hold
   locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below).
 - **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
 
-The daemon reads where nightly points with `git ls-remote` of the repository, and with the GitHub API when git fails:
-at its first turn once the hub said it is not locked, then every hour, and 15 minutes after a read that failed. An idle
-daemon thus sees a moved tag within the hour; one that holds runs waits until they end. A run it holds is never
-stopped for an update.
+**Where nightly points.** The hub reads the tag every minute (`hub.read_nightly`) and each heartbeat answer carries
+that read, `nightly` `{commit, read_at}`. The daemon takes it at its next turn when `read_at` is less than 10 minutes old
+by the machine's clock (`HUB_READ_FRESH`) and later than the daemon's start; it then reports the hub's `commit` and
+`read_at` as `nightly_commit` and `checked_at`, and a fresh read clears an error of reading the tag. An idle daemon that
+may update thus starts within a turn (15 seconds) of the answer that brings a new commit, about a minute after the tag
+moved. When the answer has no `nightly` (a hub before schema 0065, or one that has not read the tag yet) or its read
+is older than that, the daemon reads the tag itself with `git ls-remote` of the repository, and with the GitHub API
+when git fails: at its first turn once the hub said it is not locked, then every hour, and 15 minutes after a read that
+failed. That schedule, and the hour it waits after an update that failed, run on a clock that counts the time the
+machine sleeps (`CLOCK_BOOTTIME` on Linux, `CLOCK_MONOTONIC` on macOS), so a Mac that slept through the hour reads at
+its next turn once it wakes. The daemon always installs the tag `nightly` from GitHub and checks the commit it got, never
+a commit the hub names. One that holds runs waits until they end. A run it holds is never stopped for an update.
+
+#### Update now
+
+The owner of a worker, or a hub admin, asks its daemon to update now with Update now on the worker's page (the foot
+of the Version card), or `POST /v1/workers/{id}/update-now`; Cancel, or `POST /v1/workers/{id}/update-now/cancel`,
+withdraws it. Both have the rights of drain (anyone else gets 404, a revoked worker 409), and the audit rows
+`worker.update_now` and `worker.update_now_cancel`. The hub refuses a request with 409 and why when the worker is
+locked, when its daemon does not say `update_now` (an older daemon), or when it runs the commit of nightly the hub read
+already; before the hub's first read it accepts it. Asking while a request is open, or cancelling when none is, changes
+nothing. The page shows where an open request stands: the worker offline, its runs to end first, the install under way,
+the new version starting.
+
+The heartbeat answer carries the open request to the daemon (`update_now`). The daemon then claims no new run, and
+neither do the other daemons of its install, since the update starts them all again: it says `update_now` in its
+state file of the install (Daemons that share an install, below). It reads the tag at once when the hub's read is
+missing or older than 10 minutes, does not wait the hour after an update that failed, lets the runs it holds end (none
+is stopped, though a claim already waiting when the request came may still bring one), updates when every condition
+above holds, and claims again with no undrain. A daemon that starts again in the middle takes the request again from the
+next heartbeat answer. The request ends:
+
+- `current`, when the worker runs the commit of nightly the hub read;
+- `cancelled`, when its owner or a hub admin cancelled it;
+- `failed`, when the install failed (the daemon's `self_update.error` says how); the same request is not tried again,
+  and a new one tries at once;
+- `impossible`, when the daemon cannot update itself: the worker is locked, its install or service cannot be updated,
+  or another daemon of its install is locked or run by hand (`self_update.reason` says why).
+
+The daemon reports the last two in `self_update.update_now` and claims again. `GET /v1/workers/{id}` shows the last
+request as `update_now` (`requested_at`, `ended_at`, `outcome`, `reason`) and the hub's read as `nightly`.
 
 The update, once decided:
 
@@ -2508,7 +2573,7 @@ own `EVO_WORKER_HOME`. An update changes the code of both, so they meet in `~/.e
 
 | Path | What it holds |
 | --- | --- |
-| `daemons/<home>.json` | each daemon's state, written at each of its turns: its worker, pid and home, whether it may update now (`ready`) and why not (`why`); a file whose daemon no longer runs is removed |
+| `daemons/<home>.json` | each daemon's state, written at each of its turns: its worker, pid and home, whether it may update now (`ready`) and why not (`why`), whether that cannot change without its owner (`stuck`: locked, or a reason of its install or service), and whether it carries out an Update now (`update_now`), which keeps every daemon of the install from claiming; a file whose daemon no longer runs is removed |
 | `busy.lock` | held shared by each daemon while it claims or holds runs |
 | `gate.lock` | held exclusive by the daemon that updates, from the moment it waits for the others until it exits; a daemon claims nothing while it is closed |
 | `staging/` | the new version, installed and started there first |

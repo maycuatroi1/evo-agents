@@ -520,9 +520,11 @@ def test_an_idle_session_closes_both_ends(client, hub, hub_db, monkeypatch):
 def test_a_session_closes_after_its_longest_time_even_when_busy(client, hub, hub_db, monkeypatch):
     worker, run_id = held_run(client, hub)
     token = web_session(hub_db, OWNER)
-    monkeypatch.setattr(terminal, "MAX_SECONDS", 0.5)
+    # Long enough for paired() to see terminal_open in a heartbeat on a loaded runner first: at 0.5 s the session had
+    # once ended before that.
+    monkeypatch.setattr(terminal, "MAX_SECONDS", 3.0)
     with paired(client, worker, run_id, token) as (tab, end):
-        assert closed(tab) == (4408, "a terminal stays open at most 0.000138889 hours")
+        assert closed(tab) == (4408, "a terminal stays open at most 0.000833333 hours")
         assert closed(end)[0] == 4408
     assert audit_rows(hub_db, "terminal.close")[0][1].endswith(" end=timeout")
 

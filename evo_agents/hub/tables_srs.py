@@ -1,4 +1,4 @@
-"""The tables of the core plugin srs (0046, 0064, 0066, 0067, 0068), which ``evo_agents.hub.tables`` adds to its
+"""The tables of the core plugin srs (0046, 0064, 0069, 0070, 0071), which ``evo_agents.hub.tables`` adds to its
 metadata as ``tables.srs``: queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
@@ -7,7 +7,7 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_versions: each save of a document, never changed after: its number (1 and up within the document), the number
   it was built on, its state (draft, in_review, approved, superseded, withdrawn), the review round, its author, the run
   that drafted it when an agent did, its summary, the text before the first heading and the SHA-256 of its content,
-  and the task run of @ba's review of its current round, when one was handed (0066).
+  and the task run of @ba's review of its current round, when one was handed (0069).
 - srs_texts: the Markdown bodies, kept once by SHA-256, so a version that leaves an item as it was adds no text.
 - srs_items: an item's identity across versions: its key (the hub's, fixed), its kind, its code (null for a plain
   section), the version it appeared in and the one it was dropped in.
@@ -17,16 +17,16 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_refs: links between the items of a version (uses_screen, refines, relates).
 - srs_reviews: an approval or a request for changes of a version in a review round, with the role it counts for.
 - srs_comments: threads of comments on a document, a version or an item.
-- srs_findings (0066): each conflict @ba found in a document, with the version it was found on, the item it is about
+- srs_findings (0069): each conflict @ba found in a document, with the version it was found on, the item it is about
   (null for the whole document), its kind and level, the sources that show it (at least one), a summary, its status
   (open, resolved, waived) and how it was settled: the resolution, who settled it (null when settled from the graph),
   when, the sources that settled it and the link of the chat message; the run that wrote it, and the document's label.
-  ``commit_authors`` (0067) holds the author emails of the newest commits of the files its sources name, as the run
+  ``commit_authors`` (0070) holds the author emails of the newest commits of the files its sources name, as the run
   that recorded it read the knowledge graph: whom its settle chat invites. No route returns them.
-- srs_settle_chats (0067): the settle chat of a version whose review by @ba ended with findings of level decide still
+- srs_settle_chats (0070): the settle chat of a version whose review by @ba ended with findings of level decide still
   open: one chat a version and one version a chat, its first message, the review run whose end opened it and the chat
   run its first message started.
-- srs_approval_tasks (0068): what the hub did to the project's tasks when a version was approved while the project
+- srs_approval_tasks (0071): what the hub did to the project's tasks when a version was approved while the project
   enabled the plugin tasks: one row a version, the version approved before it that it was compared with, the member
   whose approval made it approved, the task run of @ba that splits the frame tasks (whom ``tasks__create`` of that
   run acts for) and what was done (``outcome``). A second call for the same version finds the row and does nothing.
@@ -351,7 +351,7 @@ def _findings(metadata: MetaData) -> Table:
         Column("run_id", BigInteger),
         Column("label", JSONB, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        Column("commit_authors", JSONB, nullable=False, server_default="[]"),  # 0067
+        Column("commit_authors", JSONB, nullable=False, server_default="[]"),  # 0070
         _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
         _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
         _key(name, "item_id", "srs_items", ondelete="CASCADE"),

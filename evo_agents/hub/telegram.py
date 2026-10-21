@@ -4,7 +4,8 @@
 links to (``web_url``). Pure functions on the standard library.
 
 The rest of the model, the bot's commands, the data of its buttons and the messages it sends, is the core plugin
-telegram's (``evo_agents.core_plugins.telegram.model``), which reaches the hub through the API of core plugins
+telegram's (``evo_core_plugins.telegram.model`` of the distribution evo-agents-core-plugins, which
+deploy/hub/core-plugins.txt pins), which reaches the hub through the API of core plugins
 (``evo_agents.hub.server.core_plugin_api``) alone; ``docs/notifications.md`` has the design.
 
 A link code is LINK_CODE_CHARS characters of ``A-Z``, ``a-z``, ``0-9``, ``_`` and ``-`` (what a Telegram start
@@ -39,6 +40,7 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "curator_paused": "Night shift paused",
     "author_waiting": "An author run waits for your reply",
     "builder_proposal": "A change of @builder waits for your approval",
+    "release": "Daily release",
 }
 
 

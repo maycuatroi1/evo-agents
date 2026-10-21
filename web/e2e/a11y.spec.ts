@@ -54,6 +54,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import {
   documentPath,
@@ -473,6 +474,19 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "a project's Releases with a stopped cycle and the cycles before it, read by a writer",
+    open: async ({ page, me }) => {
+      // The schedule is an admin's: another member is the project's admin and owns it.
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      await seedRelease(owner, project, { stopped: true });
+      await page.goto(`/p/${project}/releases`);
+      await expect(page.locator("#main").getByTestId("release-stopped")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("release-past")).toBeVisible();
+    },
+  },
+  {
     name: "no access (403)",
     open: async ({ page }) => {
       await page.goto("/admin");
@@ -827,8 +841,13 @@ const PAGES: Entry[] = [
       await dialog.getByTestId("dispatch-settled").locator("summary").click();
       await expect(dialog.getByTestId("dispatch-worker-select")).not.toHaveValue("any");
       await expectNoSeriousViolations(page, "dispatch, worker filled in");
-      await dialog.getByTestId("dispatch-runtime-info").click();
-      await expect(dialog.getByTestId("dispatch-runtime-info")).toHaveAttribute("data-state", /open/);
+      // A click moves the pointer and clicks at once, so the timer of the hover could open the tip just before the
+      // click toggles it closed. Once the hover has shown it, a click keeps it shown.
+      const info = dialog.getByTestId("dispatch-runtime-info");
+      await info.hover();
+      await expect(info).toHaveAttribute("data-state", /open/);
+      await info.click();
+      await expect(info).toHaveAttribute("data-state", /open/);
       await expectNoSeriousViolations(page, "dispatch, an info tip shown");
     },
   },
@@ -924,7 +943,8 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "chats list");
       await page.locator("#main").getByTestId("chats-new").click();
       const dialog = page.getByTestId("new-chat-dialog");
-      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("people-search").fill("not a login");
+      await expect(dialog.getByTestId("people-empty")).toBeVisible();
       await dialog.getByTestId("new-chat-submit").click();
       await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
     },

@@ -39,7 +39,10 @@
   (``selfupdate``): a daemon that launchd or systemd runs from a uv tool install of evo-ak, whose worker the hub says
   is not locked, installs the commit nightly points to once no daemon of the install holds a run, and exits
   ``home.EXIT_UPDATED`` for its manager to start the new one. It claims nothing while another daemon of its install
-  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json.
+  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json. The
+  answer's ``nightly`` (the commit the hub read the tag at, once a minute) spares the daemon its own hourly read, and
+  its ``update_now`` (its owner's Update now) stops the claims of every daemon of the install until it updated, while
+  the runs held go on to their end (``runs.UPDATE_NOW``).
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
   ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the worktrees
   of runs that ended more than 7 days ago are removed.
@@ -84,7 +87,7 @@ from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.power import KeepAwake, WakeWatch
-from evo_agents.worker.run import Run, Sender, run_class
+from evo_agents.worker.run import KINDS, Run, Sender, run_class
 from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.selfupdate.updater import SelfUpdate
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
@@ -417,7 +420,8 @@ class Daemon:
             "free_slots": min(self.free_slots, runs.MAX_SLOTS),
             "runs": reported,
             "agent_version": __version__,
-            "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
+            # the kinds of runs.RUN_KINDS this daemon has a class for (run.KINDS): the hub hands it no other
+            "run_kinds": [kind for kind in runs.RUN_KINDS if kind in KINDS],
             # a plan run with a session for each step (runner.sessions), an author run that asks decisions
             "features": [name for name in runs.WORKER_FEATURES if self.kg_on or name != runs.KG_SYNC],
             **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
@@ -428,8 +432,8 @@ class Daemon:
         return body
 
     def _take_worker_state(self, answer: dict) -> None:
-        """What a heartbeat answer says of the worker itself: whether to drain, and its settings when the hub sends
-        them."""
+        """What a heartbeat answer says of the worker itself: whether to drain, its settings when the hub sends them,
+        and for the self-update, the hub's read of nightly and its owner's Update now."""
         drain = bool(answer.get("drain"))
         if drain != self.draining:
             log.info("draining: no new claims" if drain else "drain ended: claiming again")
@@ -439,6 +443,7 @@ class Daemon:
             self._take_settings(answer["settings"])
         else:
             self.updater.hear_lock(None)
+        self.updater.hear_answer(answer.get("nightly"), answer.get("update_now"))
         self._take_plugin_runtimes(answer.get("plugin_runtimes"))
         if self.kg_on:
             self._take_kg_duties(answer.get("kg_sync"))
@@ -851,7 +856,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task", "replay", "history"):
+        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

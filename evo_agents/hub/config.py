@@ -50,7 +50,7 @@ EVO_HUB_CURATOR_APP_PRIVATE_KEY are the second App, evo-agents-curator, read the
 their tokens from it alone (``evo_agents.hub.judge``), and without it they get none, while every other run keeps the
 first App's.
 
-The Telegram channel (the core plugin ``evo_agents.core_plugins.telegram``) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN
+The Telegram channel (the core plugin telegram of evo-agents-core-plugins) is optional too. EVO_HUB_TELEGRAM_BOT_TOKEN
 is the token of the hub's one bot, as BotFather gives it, and EVO_HUB_TELEGRAM_WEBHOOK_SECRET the secret_token the hub
 sets with setWebhook and checks on every update (1 to 256 characters of A-Z, a-z, 0-9, _ and -). Both are registered as
 secrets. Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once,

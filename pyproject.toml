@@ -32,7 +32,8 @@ hub-server = [
     "alembic>=1.16",
     # Queries are SQLAlchemy Core on the pool above; the asyncio extra brings greenlet, which 2.1 no longer installs.
     "sqlalchemy[asyncio]>=2.1.3,<2.2",
-    "pydantic>=2.7",
+    # 2.12: Field(exclude_if=...) leaves an absent key of the heartbeat answer out (nightly, update_now).
+    "pydantic>=2.12",
     "sentry-sdk>=2.20",
     "httpx>=0.27",
     "boto3==1.42.91",
@@ -66,13 +67,12 @@ evo-agents = "evo_agents.cli:main"
 harness = "evo_agents.kg.connectors.harness:run"
 git = "evo_agents.kg.connectors.git:run"
 
-# The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has.
+# The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has. telegram and chats are
+# evo-agents-core-plugins', which deploy/hub/core-plugins.txt pins into the image.
 [project.entry-points."evo_agents.plugins"]
-telegram = "evo_agents.core_plugins.telegram:MANIFEST"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
 srs = "evo_agents.core_plugins.srs:MANIFEST"
 tasks = "evo_agents.core_plugins.tasks:MANIFEST"
-chats = "evo_agents.core_plugins.chats:MANIFEST"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -164,7 +164,7 @@ type = "forbidden"
 source_modules = ["evo_agents.hub.*"]
 forbidden_modules = ["evo_agents.hub.server"]
 ignore_imports = [
-    # `hub serve` and `hub openapi` start or dump the app.
+    # `hub serve` and `hub openapi` start or dump the app; `hub worker` takes Sentry and the release pass from it.
     "evo_agents.hub.cli -> evo_agents.hub.server.app",
     "evo_agents.hub.openapi -> evo_agents.hub.server.app",
     # The audit row of a pruned graph build.
@@ -239,9 +239,7 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.srs"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.chats",
     "evo_agents.core_plugins.tasks",
-    "evo_agents.core_plugins.telegram",
     "evo_agents.cli",
     "evo_agents.worker",
 ]
@@ -258,9 +256,7 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.tasks"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.chats",
     "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.telegram",
     "evo_agents.cli",
     "evo_agents.worker",
 ]
@@ -270,25 +266,6 @@ to, its access rules, its server's dependencies). It imports no other core plugi
 worker or the command line: it reads srs items through evo_agents.hub.tables.srs and finds them by code with \
 evo_agents.hub.tables_srs.code_key. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
 plugins."""
-
-[[tool.importlinter.contracts]]
-id = "chats-plugin-own-package"
-name = "The core plugin chats imports no other core plugin, the worker or the CLI"
-type = "forbidden"
-source_modules = ["evo_agents.core_plugins.chats"]
-forbidden_modules = [
-    "evo_agents.core_plugins.builder",
-    "evo_agents.core_plugins.srs",
-    "evo_agents.core_plugins.tasks",
-    "evo_agents.core_plugins.telegram",
-    "evo_agents.cli",
-    "evo_agents.worker",
-]
-broken_contract_guidance = """\
-The core plugin chats is one package that leans on the hub alone: it reads the messages through \
-evo_agents.hub.tables and the label rule of chats through evo_agents.hub.server.chat_access. It imports no other \
-core plugin, nor the worker or the command line. Move what both need into evo_agents.hub. See docs/plugins.md, \
-section Core plugins."""
 
 [[tool.importlinter.contracts]]
 id = "packages-acyclic"

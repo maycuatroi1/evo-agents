@@ -126,6 +126,15 @@ The agent of a local session asks in two ways, and both end in the same decision
 An answer that comes after the session stopped waiting stays in the run's inbox; the UserPromptSubmit hook gives it to
 the agent as `additionalContext` of the person's next message and acknowledges it with the next one.
 
+### A decision of a release cycle
+
+The hub itself asks decisions of category `release`, never an agent: when a cycle of a project's daily release stops
+(`docs/releases.md`, "When a cycle stops"), the owner of the release schedule gets one on the cycle's last run, with
+the three options `continue` (one more cap of the schedule), `close` and `pause` (the schedule). Only an admin of the
+project answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422,
+and one for a cycle no longer stopped 409. The hub does the option and says so in the cycle's thread of the triage
+chat. No run waits on the answer.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):
@@ -135,17 +144,19 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `push_default_branch` | a plan run pushed to a repo's default branch, which the plan names for that repo | the repo, the branch, the commits |
 | `merge_default_branch` | a plan run merged into such a branch | the repo, the branch, the commits |
 | `plan_finished` | a plan run ended with every step of its plan done | the plan, the steps the run did |
-| `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause); the triage thread of the run when it opened one (a failed step, plan or author run opens a thread in the chat "Triage: PLAN", for the project's default agent to read; `projects.triage_enabled` false opens none) |
+| `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause); the triage thread of the run when it opened one (a failed step, plan or author run opens a thread in the project's chat "Triage: PROJECT", or "Triage: PLAN" for a plan whose label is not at or below the project's default label, for the project's default agent to read; `projects.triage_enabled` false opens none) |
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
+| `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `author_waiting`, `chat_mention` and `chat_added`. A chat's notice is kept in the project of one of
-its agents, a restricted one first, so a member who loses the grant on it stops getting it; a chat without agents keeps
-it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
+`curator_paused`, `release`, `author_waiting`, `chat_mention` and `chat_added`. A release run that fails sends no
+`run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
+kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
+it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
 worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
 
@@ -247,20 +258,24 @@ question`, then `Chosen option: KEY, LABEL.` and the owner's text.
 A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a proposal to
 `/inbox?proposal=ID`, a notice of a run to the run's page (`/p/{p}/runs/{id}`; `author_waiting` to its chat,
 `/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
-`curator_paused` to the project's Curator page (`/p/{p}/curator`), and a chat's notice to the chat (`/chats/{id}`,
+`curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
+(`/p/{p}/releases`), and a chat's notice to the chat (`/chats/{id}`,
 with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 
 ## Telegram
 
-Telegram is a core plugin that evo-ak ships, `telegram` (`docs/plugins.md`, section Core plugins): the hub finds it
-in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the hub
-through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1).
-`evo_agents/core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
-`evo_agents/core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at
-the paths they had before Telegram was a plugin. The hub keeps in `evo_agents/hub/telegram.py` what it says itself: the
-link codes, what may reach a chat (which the group chats share) and the words of a minimal message. The plugin calls
-the Bot API with httpx; no bot library.
+Telegram is a core plugin, `telegram`, of the distribution `evo-agents-core-plugins` (repository
+[maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins)), which
+`deploy/hub/core-plugins.txt` pins into every image of the hub (`docs/plugins.md`, section Core plugins): the hub finds
+it in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the
+hub through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1). Its
+`evo_core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
+`evo_core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at the paths
+they had before Telegram was a plugin; its tests are in that repository. The hub keeps in `evo_agents/hub/telegram.py`
+what it says itself: the link codes, what may reach a chat (which the group chats share) and the words of a minimal
+message, and in evo-agents the Inbox's Telegram dialog, `hub admin telegram`, the variables below and the end-to-end
+test `web/e2e/telegram.spec.ts`. The plugin calls the Bot API with httpx; no bot library.
 
 ### One bot of the hub
 

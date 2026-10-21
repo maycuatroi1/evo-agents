@@ -9,9 +9,10 @@ project, aliases included, stays when the item is renamed or moved, and is never
 Each save is a version, never changed after, in one straight line per document: draft, in review, approved, and
 superseded once a newer version is approved; or withdrawn, for good, when its author or an admin takes it out of
 review. A writer submits a version; a writer who wrote no version since the one approved last approves it or asks for
-changes, as many times per role as the config's ``approval_policy`` asks (one approval when it asks nothing). Two
-versions compare item by item. A Markdown file whose headings follow the template imports as a document or as its
-next version, and a version exports as Markdown with the same structure and codes.
+changes, as many times per role as the config's ``approval_policy`` asks (one approval when it asks nothing). With
+the config's ``self_approval`` on, the author may give one of those reviews too. Two versions compare item by item.
+A Markdown file whose headings follow the template imports as a document or as its next version, and a version
+exports as Markdown with the same structure and codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items (by their codes too: ``retire``), archive documents and
@@ -19,7 +20,7 @@ unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``
 contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
 versions, the comparison of two versions, the review and the comments.
 ``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive`` is
-their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064, 0066, 0067 and 0068),
+their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064, 0069, 0070 and 0071),
 every row of a document carrying its label, the project's by default. The version of each document approved last, of the documents not archived, is a
 source of the project's knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the
 ids a mention of their codes gets.
@@ -29,14 +30,14 @@ its instructions and the skills srs-writing, srs-review, srs-settle and srs-task
 in a group chat. Its
 agent reads, searches and compares documents and proposes and comments with the plugin's tools on the hub's /mcp
 (``agent``): a proposal is the document's next version, in review at once, written as the person who mentioned @ba,
-who therefore never approves it. The type declares ``chat_runs: run_as``: every run of @ba goes to a worker of the
-member the project enabled the type under. Each time a version enters review, in every round, from a member's submit
-or from a proposal, @ba reviews it in a task run on that worker (``auto_review``), while the type is on and within its
-cap; when it is not, the log says why and approval waits for no review. The review compares each use case the version
-changes with every use case of every document, drafts included, and with the project's knowledge graph (kg_search,
-kg_context), records each conflict it can show a source for as a finding, settles from the graph what a plan's
-Decision line, an approved item or a newer document already answers, and resolves the open findings the version
-settles. Its comments on the template are advice and block nothing.
+who therefore never approves it unless the project turned ``self_approval`` on. The type declares ``chat_runs:
+run_as``: every run of @ba goes to a worker of the member the project enabled the type under. Each time a version
+enters review, in every round, from a member's submit or from a proposal, @ba reviews it in a task run on that worker
+(``auto_review``), while the type is on and within its cap; when it is not, the log says why and approval waits for no
+review. The review compares each use case the version changes with every use case of every document, drafts included,
+and with the project's knowledge graph (kg_search, kg_context), records each conflict it can show a source for as a
+finding, settles from the graph what a plan's Decision line, an approved item or a newer document already answers, and
+resolves the open findings the version settles. Its comments on the template are advice and block nothing.
 
 A conflict @ba finds is a finding (``findings``, criteria a4 and a5 of plan srs-conflicts-and-tasks): the agent of a
 run of @ba records it with its sources, which the hub looks up first, and resolves, waives or reopens it with the tool
@@ -104,10 +105,19 @@ CONFIG = {
             "title": "Approval policy",
             "description": "Per kind of document (srs, spec), the roles whose approval a version needs, such as "
             '{"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}. Without one, one approval of a writer who '
-            "wrote none of the versions under review is enough.",
+            "wrote none of the versions under review (any writer, with self_approval on) is enough.",
             "type": "object",
             "additionalProperties": False,
             "properties": {kind: _POLICY for kind in DOCUMENT_KINDS},
+        },
+        "self_approval": {
+            "title": "Self-approval",
+            "description": "Whether the author of a version may approve it or ask for changes, as any writer of the "
+            "project may: on, a writer who wrote a version since the one approved last reviews it too, admins "
+            "included. Every other rule stays: writers only, one review per member per round, roles and the "
+            "approval policy, and the agent of a run never reviews. Off by default.",
+            "type": "boolean",
+            "default": False,
         },
     },
 }

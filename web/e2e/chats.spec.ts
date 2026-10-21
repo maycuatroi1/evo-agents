@@ -255,7 +255,8 @@ test("reactions: a member puts an emoji and takes it off, another's arrives live
   await page.waitForURL(`**/chats/${chat.id}`);
   await expect(row).toHaveAttribute("data-unread", "0");
   await expect(page.getByTestId("nav-chats-count")).toHaveCount(0);
-  expect((await chatsOf(me)).find((item) => item.id === chat.id)?.unread).toBe(0);
+  // The page drops the count before the hub has the read, so the hub is asked until it has it.
+  await expect.poll(async () => (await chatsOf(me)).find((item) => item.id === chat.id)?.unread).toBe(0);
 
   // Add a reaction from the message's actions, then take it off from its chip.
   const message = messageOf(page, "The docs are up for review.");

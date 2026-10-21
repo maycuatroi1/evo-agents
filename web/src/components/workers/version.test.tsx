@@ -53,6 +53,8 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     version_locked: false,
     shared: false,
     self_update: { state: "current", nightly_commit: SHA, checked_at: new Date().toISOString(), since: new Date().toISOString() },
+    update_now: null,
+    nightly: null,
     projects: ["demo"],
     runtimes: {},
     checkouts: {},
@@ -175,10 +177,112 @@ describe("VersionCard", () => {
 
   it("names the commit a waiting daemon will install", () => {
     const waiting = worker({ self_update: { state: "waiting", nightly_commit: NIGHTLY, since: new Date().toISOString() } });
-    renderVi(<VersionCard worker={waiting} isOwner />);
+    renderWithQueries(<VersionCard worker={waiting} isOwner />);
     const updates = screen.getByTestId("worker-updates");
     expect(updates).toHaveAttribute("data-state", "waiting");
     expect(within(updates).getByRole("link", { name: "def5678 trên GitHub (mở trong tab mới)" })).toBeInTheDocument();
+  });
+});
+
+describe("VersionCard's nightly", () => {
+  it("shows the commit the hub read, and says nothing more while that read is fresh", () => {
+    renderVi(<VersionCard worker={worker({ nightly: { commit: NIGHTLY, read_at: new Date().toISOString() } })} isOwner={false} />);
+    const row = screen.getByTestId("worker-hub-nightly");
+    expect(within(row).getByRole("link", { name: "def5678 trên GitHub (mở trong tab mới)" })).toBeInTheDocument();
+    expect(screen.queryByTestId("worker-hub-nightly-stale")).toBeNull();
+  });
+
+  it("says when the hub's read is over 10 minutes old, and when the hub has not read it yet", () => {
+    const old = new Date(Date.now() - 25 * 60 * 1000).toISOString();
+    const { unmount } = renderVi(<VersionCard worker={worker({ nightly: { commit: NIGHTLY, read_at: old } })} isOwner={false} />);
+    expect(screen.getByTestId("worker-hub-nightly-stale")).toHaveTextContent("hub chưa tới được GitHub");
+    unmount();
+    renderVi(<VersionCard worker={worker()} isOwner={false} />);
+    expect(screen.getByTestId("worker-hub-nightly")).toHaveTextContent("Hub chưa đọc lần nào.");
+  });
+});
+
+describe("UpdateNow", () => {
+  const behind = (overrides: Partial<Worker> = {}) =>
+    worker({ nightly: { commit: NIGHTLY, read_at: new Date().toISOString() }, features: ["update_now"], ...overrides });
+  const open = { requested_at: new Date().toISOString(), ended_at: null, outcome: null, reason: null };
+
+  it("shows nothing while the worker runs the commit the hub read", () => {
+    renderWithQueries(<VersionCard worker={behind({ agent_commit: NIGHTLY })} isOwner />);
+    expect(screen.queryByTestId("update-now")).toBeNull();
+  });
+
+  it("asks with a POST that carries the CSRF header, and says so in a toast", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json(behind({ update_now: open }));
+    renderWithQueries(<VersionCard worker={behind()} isOwner />);
+
+    const button = screen.getByRole("button", { name: "Cập nhật ngay" });
+    expect(button).toHaveAccessibleDescription(/chạy commit khác nightly/);
+    await user.click(button);
+
+    expect(await screen.findByText("lab-ws-01 sẽ cập nhật ngay")).toBeInTheDocument();
+    const post = api.seen.find((request) => request.method === "POST");
+    expect(new URL(post?.url ?? "").pathname).toBe("/v1/workers/9/update-now");
+    expect(post?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
+  });
+
+  it("greys the button with why when the daemon is too old, and sends nothing", async () => {
+    const user = userEvent.setup();
+    renderWithQueries(<VersionCard worker={behind({ features: [] })} isOwner />);
+    const button = screen.getByRole("button", { name: "Cập nhật ngay" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(/Daemon quá cũ/);
+    await user.click(button);
+    expect(api.seen).toEqual([]);
+  });
+
+  it("says what an open request waits for, and cancels it", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json(behind({ update_now: { ...open, ended_at: new Date().toISOString(), outcome: "cancelled" } }));
+    renderWithQueries(<VersionCard worker={behind({ update_now: open, held_runs: 2 })} isOwner />);
+
+    const status = screen.getByTestId("update-now-status");
+    expect(status).toHaveAttribute("data-phase", "runs");
+    expect(status).toHaveTextContent("chờ 2 run đang giữ chạy xong");
+    await user.click(screen.getByRole("button", { name: "Huỷ" }));
+
+    expect(await screen.findByText("Đã huỷ Cập nhật ngay của lab-ws-01")).toBeInTheDocument();
+    const post = api.seen.find((request) => request.method === "POST");
+    expect(new URL(post?.url ?? "").pathname).toBe("/v1/workers/9/update-now/cancel");
+  });
+
+  it("lets a hub admin who is not the owner read an open request, and nothing else", () => {
+    const { unmount } = renderVi(<VersionCard worker={behind({ update_now: open })} isOwner={false} />);
+    expect(screen.getByTestId("update-now-status")).toHaveAttribute("data-phase", "asked");
+    expect(screen.queryByRole("button", { name: "Huỷ" })).toBeNull();
+    unmount();
+    renderVi(<VersionCard worker={behind()} isOwner={false} />);
+    expect(screen.queryByTestId("update-now")).toBeNull();
+  });
+
+  it("keeps a 503 under the button, with its message and request id", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json({ error: "service_unavailable", message: "database is read-only" }, 503);
+    renderWithQueries(<VersionCard worker={behind()} isOwner />);
+    const button = screen.getByRole("button", { name: "Cập nhật ngay" });
+    await user.click(button);
+
+    const alert = await screen.findByTestId("update-now-error");
+    expect(alert).toHaveTextContent("Không yêu cầu lab-ws-01 cập nhật ngay được");
+    expect(alert).toHaveTextContent("database is read-only");
+    expect(alert).toHaveTextContent("rid-7");
+    expect(button.getAttribute("aria-describedby")).toContain(alert.parentElement?.id ?? "missing");
+  });
+
+  it("says a 409 in a toast with the hub's reason", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json({ error: "conflict", message: "worker 9 runs def5678a1b2c already, the commit nightly points to" }, 409);
+    renderWithQueries(<VersionCard worker={behind()} isOwner />);
+    await user.click(screen.getByRole("button", { name: "Cập nhật ngay" }));
+    expect(await screen.findByText("Không yêu cầu lab-ws-01 cập nhật ngay được")).toBeInTheDocument();
+    expect(await screen.findByText(/runs def5678a1b2c already/)).toBeInTheDocument();
+    expect(screen.queryByTestId("update-now-error")).toBeNull();
   });
 });
 

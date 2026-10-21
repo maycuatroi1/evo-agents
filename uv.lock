@@ -798,7 +798,7 @@ requires-dist = [
     { name = "procrastinate", marker = "extra == 'hub-server'", specifier = "==3.10.0" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'hub-server'", specifier = ">=3.2" },
     { name = "psycopg-pool", marker = "extra == 'hub-server'", specifier = ">=3.3" },
-    { name = "pydantic", marker = "extra == 'hub-server'", specifier = ">=2.7" },
+    { name = "pydantic", marker = "extra == 'hub-server'", specifier = ">=2.12" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.6" },
     { name = "pyyaml", specifier = ">=6.0" },

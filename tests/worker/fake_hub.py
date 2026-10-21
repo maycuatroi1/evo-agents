@@ -54,7 +54,7 @@ class FakeHub:
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
         # pushes: each with the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats,
-        # chat/pulls, chat/repos, task/pulls)
+        # chat/pulls, chat/repos, task/pulls, release/branch)
         self.chat_calls: list[dict] = []
         # the repos of the project, which a chat run's daemon may open in the run (chat/repos); None: any repo
         self.project_repos: list[str] | None = None
@@ -92,6 +92,10 @@ class FakeHub:
         # the projects whose graph the worker keeps fresh, each {project, received_at}, that each heartbeat answer of a
         # daemon saying kg_sync carries (kg_sync); empty: the key left out
         self.kg_duties: list[dict] = []
+        # the hub's read of nightly ({commit, read_at}) and the owner's open Update now ({requested_at}) each heartbeat
+        # answer carries; None: the key left out, as a hub before 0065, or one that has not read nightly yet
+        self.nightly: dict | None = None
+        self.update_now: dict | None = None
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
         self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
@@ -127,6 +131,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/chats", self._in_chats),
                 post("/v1/worker/runs/{id}/triage/{route}", self._in_triage),
                 post("/v1/worker/runs/{id}/task/pulls", self._task_pulls),
+                post("/v1/worker/runs/{id}/release/branch", self._release_branch),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -505,6 +510,45 @@ class FakeHub:
         spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
         return run_id
 
+    def queue_release_run(
+        self, repo: str, start: str, prompt: str = "Cut the next release.", *, runtime: str = "claude-code"
+    ) -> int:
+        """A release run of cycle 7 in mode cut on ``repo`` from commit ``start``, as the hub hands it when a check
+        of the release schedule opens a cycle."""
+        return self.queue_run(
+            kind="release",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title=f"Release {repo}: cut nightly at {start[:12]} since v0.24.0",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[{"repo": repo, "branch": None}],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            release={
+                "cycle_id": 7,
+                "mode": "cut",
+                "repo": repo,
+                "start_commit": start,
+                "base_tag": "v0.24.0",
+                "tag_prefix": "v",
+                "red_tag": None,
+            },
+        )
+
     def thread_reply(self, run_id: int, text: str) -> None:
         """A message to the agent of chat run ``run_id`` in its thread, as the hub leaves it in the run's inbox."""
         self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
@@ -686,6 +730,10 @@ class FakeHub:
             answer["plugin_runtimes"] = self.plugin_runtimes
         if self.kg_duties and runs.KG_SYNC in (body.get("features") or ()):
             answer["kg_sync"] = self.kg_duties
+        if self.nightly is not None:
+            answer["nightly"] = self.nightly
+        if self.update_now is not None:
+            answer["update_now"] = self.update_now
         return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:
@@ -843,6 +891,21 @@ class FakeHub:
         url = f"https://github.example/demo/{body['repo']}/pull/{number}"
         answer = {"repo": body["repo"], "branch": body["branch"], "url": url, "number": number, "opened": True}
         return web.json_response({**answer, "problem": None}, status=201)
+
+    async def _release_branch(self, request: web.Request) -> web.Response:
+        """The push a release run's daemon tells of: recorded in ``chat_calls`` under release/branch, and answered as
+        the hub would; a branch other than release/<version> is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "release":
+            raise _refusal(404, f"run {run_id} is not a release run this worker holds")
+        body = await request.json()
+        if body.get("branch") != f"release/{body.get('version')}":
+            raise _refusal(422, f"run {run_id} pushes release/{body.get('version')}, not {body.get('branch')}")
+        self.chat_calls.append({"run_id": run_id, "route": "release/branch", **body})
+        answer = {key: body[key] for key in ("repo", "branch", "head", "version")}
+        return web.json_response(
+            {"run_id": run_id, "cycle_id": run["spec"]["release"]["cycle_id"], **answer}, status=201
+        )
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)
