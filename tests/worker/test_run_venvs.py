@@ -105,13 +105,11 @@ def uv_calls(machine: Machine) -> list[dict]:
     return [json.loads(line) for line in machine.uv_log.read_text(encoding="utf-8").splitlines()]
 
 
-def made(worktree: Path) -> list[list[str]]:
-    """The arguments of the uv calls that make alpha's environment in ``worktree``."""
-    python = str(worktree / ".venv" / "bin" / "python")
-    return [
-        ["sync", "--frozen", "--extra", "test"],
-        ["pip", "install", "--python", python, "--no-deps", "-r", "plugins.txt"],
-    ]
+# The arguments of the uv calls that make alpha's environment, each in its worktree.
+MADE = [
+    ["sync", "--frozen", "--extra", "test"],
+    ["pip", "install", "--python", ".venv/bin/python", "--no-deps", "-r", "plugins.txt"],
+]
 
 
 ADDS_PM = ASKS.replace('core = "alpha.core:MANIFEST"\n', 'core = "alpha.core:MANIFEST"\npm = "alpha.pm:MANIFEST"\n')
@@ -166,7 +164,7 @@ def test_a_plan_run_puts_the_venv_of_the_repo_that_asks_first_on_path_and_makes_
     # uv made alpha's environment before the agent, without VIRTUAL_ENV, and worker step made it again, so its verify
     # ran with alpha's python and saw the entry point the step added.
     calls = uv_calls(machine)
-    assert [call["args"] for call in calls] == made(alpha) * 2, calls
+    assert [call["args"] for call in calls] == MADE * 2, calls
     assert {Path(call["cwd"]).resolve() for call in calls} == {alpha.resolve()}
     assert all(call["virtual_env"] is None for call in calls)
     done = commands[1]
@@ -202,7 +200,7 @@ def test_a_run_of_one_step_makes_the_venv_before_its_agent_and_again_before_its_
     run = found["hub"].runs[found["run"]]
     worktree = machine.home.worktree_path("demo", found["run"])
     assert [(item["command"], item["exit_code"]) for item in run["verify"]] == [(IN_THE_VENV, 0)]
-    assert [call["args"] for call in uv_calls(machine)] == made(worktree) * 2
+    assert [call["args"] for call in uv_calls(machine)] == MADE * 2
     assert "pm = " in (worktree / ".venv" / "pyproject.seen").read_text(encoding="utf-8")
 
 
@@ -253,11 +251,11 @@ def test_a_repo_asks_for_a_venv_only_with_venv_true(tmp_path):
         write(tmp_path, ASKS.replace('extras = ["test"]', 'extras = ["test", "test"]\ngroups = ["lint"]'))
     )
     assert want == venvs.Wanted(("test",), ("lint",), ("plugins.txt",))
-    assert want.commands(tmp_path, "/opt/uv") == [
+    assert want.commands("/opt/uv") == [
         ["/opt/uv", "sync", "--frozen", "--extra", "test", "--group", "lint"],
-        ["/opt/uv", "pip", "install", "--python", str(tmp_path / ".venv/bin/python"), "--no-deps", "-r", "plugins.txt"],
+        ["/opt/uv", "pip", "install", "--python", ".venv/bin/python", "--no-deps", "-r", "plugins.txt"],
     ]
-    assert venvs.shown(want.commands(tmp_path, "/opt/uv")[0]) == "uv sync --frozen --extra test --group lint"
+    assert venvs.shown(want.commands("/opt/uv")[0]) == "uv sync --frozen --extra test --group lint"
 
 
 @pytest.mark.parametrize(
