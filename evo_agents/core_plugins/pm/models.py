@@ -25,7 +25,9 @@ class PmDoneUseCase(BaseModel):
     title: str
     task: str = Field(description="the task whose state is the use case's: its frame task, else the task opened last")
     done_at: datetime
-    outcome: str | None = Field(description="the section `## Kết quả` or `## Outcome` that ends its description")
+    outcome: str | None = Field(
+        description="its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description"
+    )
 
 
 class PmSprintUseCase(BaseModel):

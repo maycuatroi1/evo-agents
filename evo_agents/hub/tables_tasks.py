@@ -122,6 +122,7 @@ def _items(metadata: MetaData) -> Table:
         Column("type", Text, nullable=False, server_default="task"),
         Column("title", Text, nullable=False),
         Column("description_md", Text, nullable=False, server_default=""),
+        Column("outcome_md", Text, nullable=False, server_default=""),
         Column("status", Text, nullable=False),
         Column("priority", Text, nullable=False, server_default="medium"),
         Column("due_on", Date),

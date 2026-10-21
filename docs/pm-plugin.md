@@ -40,7 +40,7 @@ an admin fixes the config. Holidays are not known.
 | --- | --- |
 | `project`, `date` | the project and the day of the report |
 | `previous_working_day` | the last working day before `date`: a Monday's is the Friday |
-| `done_use_cases` | use cases whose task moved to done from the start of `previous_working_day` to the start of `date` (so a Monday's holds the weekend), and still is. A use case's task is its frame task, else the task opened last that is not cancelled; `outcome` is the last section `## Kết quả` or `## Outcome` of its description |
+| `done_use_cases` | use cases whose task moved to done from the start of `previous_working_day` to the start of `date` (so a Monday's holds the weekend), and still is. A use case's task is its frame task, else the task opened last that is not cancelled; `outcome` is the task's `outcome_md` when it is not empty (docs/tasks-plugin.md), else the last section `## Kết quả` or `## Outcome` of its description, else null |
 | `done_tasks` | the tasks that moved to done in that window and are done still |
 | `sprint` | the active sprint: `scope` and `done_percent` of the tasks it held **when it opened** (rebuilt from the tasks' history, so tasks added or removed since count in `added` and `removed` only), `working_days` and `working_days_gone`, and the progress of each use case it works on |
 | `late` | tasks past `due_on` and not finished (`overdue`, `days_late`), and tasks still to do due within `at_risk_days` (`at_risk`, `days_left`, today's included) |

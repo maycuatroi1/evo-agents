@@ -208,6 +208,7 @@ export type EventWords =
   | { kind: "created" }
   | { kind: "status"; from: string | null; to: string }
   | { kind: "description" }
+  | { kind: "outcome" }
   | { kind: "set"; field: NamedField; from: string | null; to: string }
   | { kind: "cleared"; field: NamedField; from: string }
   | { kind: "people"; field: PeopleField; to: string | null }
@@ -234,6 +235,7 @@ export function eventWords(event: Pick<TaskEvent, "field" | "from_value" | "to_v
   const { field, from_value: from, to_value: to } = event;
   if (field === "created") return { kind: "created" };
   if (field === "description") return { kind: "description" };
+  if (field === "outcome") return { kind: "outcome" };
   if (field === "status" && to !== null) return { kind: "status", from, to };
   if (field === "plan_step") return { kind: "step", to };
   if (field === "link") {

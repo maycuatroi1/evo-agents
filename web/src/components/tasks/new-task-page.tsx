@@ -91,6 +91,7 @@ function NewTaskForm({ project, settings, sprints, link, sprint }: { project: st
       const made = await createTask(browserApi(), project, {
         title: form.title.trim(),
         description_md: form.description,
+        outcome_md: "",
         type: form.type,
         status: form.status,
         priority: form.priority,

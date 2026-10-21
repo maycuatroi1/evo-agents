@@ -24,6 +24,7 @@ function Editor({ project, task, onDone }: { project: string; task: TaskDetail; 
   const failure = useWriteFailure();
   const [title, setTitle] = useState(task.title);
   const [body, setBody] = useState(task.description_md);
+  const [outcome, setOutcome] = useState(task.outcome_md);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<WriteFailure | null>(null);
   const [missing, setMissing] = useState(false);
@@ -38,6 +39,7 @@ function Editor({ project, task, onDone }: { project: string; task: TaskDetail; 
     const change = {
       ...(title.trim() !== task.title ? { title: title.trim() } : {}),
       ...(body !== task.description_md ? { description_md: body } : {}),
+      ...(outcome !== task.outcome_md ? { outcome_md: outcome } : {}),
     };
     if (Object.keys(change).length === 0) {
       onDone();
@@ -94,6 +96,22 @@ function Editor({ project, task, onDone }: { project: string; task: TaskDetail; 
           {t("bodyHint")}
         </p>
       </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${ids}-outcome`}>{t("outcome")}</Label>
+        <Textarea
+          id={`${ids}-outcome`}
+          value={outcome}
+          onChange={(event) => setOutcome(event.target.value)}
+          rows={4}
+          maxLength={MAX_DESCRIPTION}
+          aria-describedby={`${ids}-outcome-hint`}
+          className="font-mono text-[13px] leading-5"
+          data-testid="task-editor-outcome"
+        />
+        <p id={`${ids}-outcome-hint`} className="text-xs text-fg-subtle">
+          {t("outcomeHint")}
+        </p>
+      </div>
       {refused ? <InlineError text={refused.text} detail={refused.detail} requestId={refused.requestId} /> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onDone} disabled={busy}>
@@ -134,6 +152,16 @@ export function TaskDescription({ project, task, writer }: { project: string; ta
         ) : (
           <p className="text-[13px] text-fg-subtle">{t("none")}</p>
         )}
+        {!editing ? (
+          <section className="mt-4 flex min-w-0 flex-col gap-1.5 border-t border-border pt-3" data-testid="task-outcome">
+            <h3 className="text-[13px] font-medium">{t("outcomeHeading")}</h3>
+            {task.outcome_md.trim() ? (
+              <SafeMarkdown testId="task-outcome-body">{task.outcome_md}</SafeMarkdown>
+            ) : (
+              <p className="text-[13px] text-fg-subtle">{t("outcomeNone")}</p>
+            )}
+          </section>
+        ) : null}
       </CardContent>
     </Card>
   );

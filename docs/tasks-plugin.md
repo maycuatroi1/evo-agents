@@ -29,7 +29,9 @@ status. Turning the plugin off deletes nothing.
 
 ## The model
 
-- **A task** has a number in the project, shown after the prefix (`T-42`), a type, a title, a Markdown description, a
+- **A task** has a number in the project, shown after the prefix (`T-42`), a type, a title, a Markdown description, an
+  outcome (`outcome_md`, Markdown, empty until someone states what the task came to; the pm daily report reads it before
+  the section `## Kết quả` or `## Outcome` of the description, which it falls back to while the field is empty), a
   status, a priority (`urgent`, `high`, `medium` or `low`), a due date, a sprint, a parent task and a label, the
   project's unless an admin gives it another. A parent is another task of the project, never one below it.
 - **Its people**: its assignees, and its BA, QA and Dev, each a list of members with a grant on the project.
@@ -132,6 +134,7 @@ evo-agents hub task create --project evo-agents --title "Place an order with a c
   --use-case "UC ORD-1" --step rollout#2 --assignee alice --role qa=bao
 evo-agents hub task edit T-42 --project evo-agents --status in_review --pull https://github.com/acme/shop/pull/88
 evo-agents hub task edit T-42 --project evo-agents --role qa= --unlink 7
+evo-agents hub task edit T-42 --project evo-agents --outcome -    # the outcome from stdin; --outcome '' clears it
 evo-agents hub task import notion-tasks.json --project evo-agents --dry-run
 evo-agents hub task block T-42 --project evo-agents --waiting-on alice --reason "needs the API key"
 evo-agents hub task unblock T-42 --project evo-agents [--blocker 3]

@@ -7483,6 +7483,10 @@
       "bodyHint": "Markdown. A code such as UC ORD-3 in it is linked in the knowledge graph.",
       "cancel": "Cancel",
       "save": "Save",
+      "outcomeHeading": "Outcome",
+      "outcomeNone": "No outcome stated: the daily report uses a section headed Outcome or Kết quả in the description.",
+      "outcome": "Outcome",
+      "outcomeHint": "Markdown. What the task came to; the daily report reads it before the description.",
       "saved": "Saved {ref}"
     },
     "links": {
@@ -7573,6 +7577,7 @@
       "hub": "Evo Agent Hub",
       "created": "created the task",
       "description": "changed the description",
+      "outcome": "changed the outcome",
       "status": "moved it from {from} to {to}",
       "statusSet": "set its status to {to}",
       "changed": "changed {field} from {from} to {to}",

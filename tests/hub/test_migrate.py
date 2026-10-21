@@ -2103,6 +2103,25 @@ def test_0086_keeps_one_send_a_day_and_the_pm_notices_and_going_back_drops_them(
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0086") :]
 
 
+def test_0088_gives_every_task_an_empty_outcome_and_going_back_drops_the_column(hub_db):
+    move_to(hub_db, "0087")
+    k = hub_tables.tasks
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        values = {"project_id": ids["project"], "title": "Cancel", "status": "todo", "label": {}}
+        conn.execute(insert(k.items).values(number=1, created_by=ids["user"], description_md="## Outcome\nx", **values))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0088")
+    assert "outcome_md" in columns(hub_db, "tasks_items")
+    assert query(hub_db, select(k.items.c.outcome_md)) == [("",)]  # the description is not read
+    with live.connect(hub_db) as conn:
+        conn.execute(update(k.items).values(outcome_md="Done."))
+    move_to(hub_db, "0087", down=True)
+    assert "outcome_md" not in columns(hub_db, "tasks_items")
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0088") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

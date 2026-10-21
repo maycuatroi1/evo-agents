@@ -31,7 +31,7 @@ export function taskPath(project: string, ref: string): string {
 export async function createTaskByApi(account: Account, project: string, body: Partial<TaskIn> & { title: string }): Promise<TaskDetail> {
   const api = await apiOf(account);
   return call(
-    api.POST("/v1/x/tasks/{project}/tasks", { params: { path: { project } }, body: { description_md: "", priority: "medium", ...body } }),
+    api.POST("/v1/x/tasks/{project}/tasks", { params: { path: { project } }, body: { description_md: "", outcome_md: "", priority: "medium", ...body } }),
   );
 }
 
