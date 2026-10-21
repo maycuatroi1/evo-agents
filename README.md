@@ -273,7 +273,9 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-t
   (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
   below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
   replaced on the machine first. A digest the hub did not take waits for a later Stop
-  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
+  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none. Claude Code runs no Stop for a turn
+  you interrupt, so SessionEnd pushes the digest too, and SessionStart finds the sessions of the last 7 days that
+  neither hook reached (Claude Code killed, the machine off) and queues their digests for the next Stop.
 - PostToolUse writes a result of Bash, Grep, WebFetch or an MCP tool longer than 10,000 characters
   (`EVO_SPOOL_THRESHOLD`), and a Read longer than 40,000 (`EVO_SPOOL_READ_THRESHOLD`), to
   `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
