@@ -215,9 +215,8 @@ test.describe("shell", () => {
 
     await open(page, `/p/${project}/runs`);
     const sidebar = page.getByRole("navigation", { name: "Điều hướng chính" });
-    await expect(sidebar.getByRole("link")).toHaveCount(20);
-    const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
-    expect(order).toEqual([
+    // One list gives both the count and the order, so a new nav item cannot leave one of them behind.
+    const expected = [
       "nav-home",
       "nav-inbox",
       "nav-monitor",
@@ -239,7 +238,10 @@ test.describe("shell", () => {
       "nav-accounts",
       "nav-myMemories",
       "nav-globalSkills",
-    ]);
+    ];
+    await expect(sidebar.getByRole("link")).toHaveCount(expected.length);
+    const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
+    expect(order).toEqual(expected);
     await expect(page.getByTestId("brand")).toHaveText("Evo Agent Hub");
 
     // Inbox counts the open decision (attention), Runs the active run (running); both said in words.
