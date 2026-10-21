@@ -924,7 +924,8 @@ no plan and the merge_paused notices, and puts back the checks they widened. Sch
 and their notices and drops both tables. Schema 0086 adds the delivery kinds `srs.version.approved` and `tasks.status`
 and the permissions `srs:read` and `tasks:read` (`docs/plugins.md`, Extension points); `hub_events` takes both kinds as
 it is. Going back to 0085 deletes the deliveries and the rows of `hub_events` of the two kinds and takes the two
-permissions out of every grant.
+permissions out of every grant. Schema 0087 lets `findings.lens` and `proposals.lens` take the Curator's lens `product`
+(`docs/curator.md`, The lens product); going back to 0086 deletes the findings and proposals of that lens.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

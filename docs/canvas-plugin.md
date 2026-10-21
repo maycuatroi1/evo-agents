@@ -106,8 +106,9 @@ the status in effect for the Loop changes only through a baseline (section Basel
 It names the rev it takes back, which must still be the claim's current rev. Undoing a claim's first rev archives the
 claim. An undo restores links without checking them again, since they were checked once.
 
-**A run nobody commanded only proposes.** A task run of @strategist (a brainstorm), the value check and, later, the
-Loop make proposals instead of revs: a new claim, which starts as an assumption, or a change of a claim at the rev it
+**A run nobody commanded only proposes.** A task run of @strategist (a brainstorm), the value check, the Curator's
+review run on a night of the lens `product` (`docs/curator.md`, The lens product) and, later, the Loop make proposals
+instead of revs: a new claim, which starts as an assumption, or a change of a claim at the rev it
 was read at. A writer accepts a proposal, which writes the rev as that writer's own (kind `proposal`), or rejects it
 with a reason. The rules of status hold when a proposal is made and again when it is accepted. Once its claim gets a
 new rev, an open proposal goes stale and can no longer be accepted.
@@ -206,7 +207,7 @@ caps what its task runs (brainstorms and judging runs together) cost in 24 hours
 | `canvas__signals` | the registry of signal keys with the latest value of each, or one key's recent values | anyone with a grant |
 | `canvas__edit` | changes claims at the rev read, applied at once as an agent's rev for the member who asked | the agent of a chat run of @strategist, for a writer |
 | `canvas__undo` | takes back a claim's rev, or without claims the member's last command | the agent of a chat run of @strategist, for a writer |
-| `canvas__propose` | new claims (each an assumption with a test card) or changes at the rev read, for a writer to accept | the agent of a chat or task run of @strategist |
+| `canvas__propose` | new claims (each an assumption with a test card) or changes at the rev read, for a writer to accept | the agent of a chat or task run of @strategist, or of the Curator's review run on a night of the lens `product` |
 | `canvas__evidence` | adds evidence, which counts toward `validated` only once a writer confirms it | the agent of a chat or task run of @strategist |
 | `canvas__judge` | the items of a judging run and a verdict with why on each | the agent of a judging run alone |
 | `srs__read`, `srs__search` | the project's SRS documents, when it enables srs | as the plugin srs says |

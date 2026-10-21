@@ -389,7 +389,10 @@ hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a 
 | `policy` | none | the next revision of the project's autonomy policy, each key by its dotted path (`repos.<repo>.mode`) | an admin of the project |
 | `goal` | `{"goal": "G-<number>"}`, none for a new goal (the hub picks its code) | the next revision of the goal (statement, metric, deadline, canvas, rank, owner, status); rolled back, a new goal is closed | an admin of the project |
 
-The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched.
+The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched, and for
+the agent of the Curator's review run on a night of the lens `product` (`docs/curator.md`, The lens product), which
+proposes a change of kind `policy` alone, for the night shift's owner while that member holds the writer role. Such a
+proposal has no thread: its notice links to the run, and an admin decides it from the Inbox or the routes below.
 It then checks the change as the route that writes the setting would. @builder never sets a secret of a plugin's
 config, never sets a branding image (it may unset one), and never changes the project's default agent. A change that
 passes is kept pending in `builder_proposals` (migration 0043) at the setting's version. The hub shows it in the

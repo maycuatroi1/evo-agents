@@ -79,7 +79,7 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
 MAX_ERROR_CHARS = 2000
 MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the thread
 NOTICE = "builder_proposal"  # evo_agents.hub.runs.NOTICE_KINDS
-AUDIT_PROPOSE = "builder.propose"  # the agent of a chat run of @builder proposed a change, for the run's dispatcher
+AUDIT_PROPOSE = "builder.propose"  # the agent of a run proposed a change, for the run's dispatcher
 AUDIT_DECIDE = "builder.decide"  # an admin approved, rejected or rolled back a proposal
 NOTHING = "nothing changed"
 
@@ -140,15 +140,18 @@ class BuilderProposal(BaseModel):
     base_version: int = Field(description="the setting's version it was proposed on, which approving needs still")
     state: Literal[PROPOSAL_STATES]
     approver: Literal["hub_admin", "project_admin"] = Field(description="who may decide it")
-    proposed_by: str = Field(description="the admin who asked @builder, the run's dispatcher")
+    proposed_by: str = Field(
+        description="the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night "
+        "shift for a proposal of its review run"
+    )
     proposed_at: datetime
     decided_by: str | None
     decided_at: datetime | None
     applied_version: int | None = Field(description="the setting's version approving made")
     rollback_version: int | None = Field(description="the setting's version rolling back made")
     error: str | None = Field(description="why the hub could not apply it, for a failed one")
-    run_id: int | None
-    link: str | None = Field(description="the hub's message that shows it in its thread")
+    run_id: int | None = Field(description="the chat run of @builder, or the Curator's review run, it came from")
+    link: str | None = Field(description="the hub's message that shows it in its thread; none for a review run's")
 
 
 # Reading
@@ -821,7 +824,8 @@ async def approvers(conn: AsyncConnection, access: ProjectAccess, kind: str, adm
 
 
 async def store(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, run) -> int:
-    """Keep ``change`` as a pending proposal of chat run ``run`` (``chat_runs.ChatRun``); its id."""
+    """Keep ``change`` as a pending proposal of chat run ``run`` (``chat_runs.ChatRun``), or of the Curator's review
+    run (``server.ReviewRun``, no chat and no thread); its id."""
     b = tables.builder_proposals
     values = {
         "project_id": access.project_id,

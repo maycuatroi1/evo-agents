@@ -341,14 +341,21 @@ async def adopt_charter_goals(conn: AsyncConnection, project_id: int, project: s
     return len(missing)
 
 
-async def curator_goals(conn: AsyncConnection, project_id: int, project: str) -> list[dict]:
-    """The project's active goals, by rank, as the prompt of the Curator's review run lists them
-    (``goals.curator_line``); the goals of its charter made goals first."""
+async def active_goals(conn: AsyncConnection, project_id: int, project: str) -> list[ProjectGoal]:
+    """The project's active goals at their newest revision, by rank then code; the goals of its charter made goals
+    first."""
     await adopt_charter_goals(conn, project_id, project)
     g, r = tables.goals, tables.goal_revisions
     query = _select().where(g.c.project_id == project_id, r.c.revision == g.c.revision, r.c.status == goals.ACTIVE)
     rows = (await conn.execute(query.order_by(r.c.rank, g.c.number))).all()
-    return [goals.curator_line(view(project, row).model_dump(mode="json")) for row in rows]
+    return [view(project, row) for row in rows]
+
+
+async def curator_goals(conn: AsyncConnection, project_id: int, project: str) -> list[dict]:
+    """The project's active goals, by rank, as the prompt of the Curator's review run lists them
+    (``goals.curator_line``); the goals of its charter made goals first."""
+    shown = await active_goals(conn, project_id, project)
+    return [goals.curator_line(goal.model_dump(mode="json")) for goal in shown]
 
 
 # Writing
