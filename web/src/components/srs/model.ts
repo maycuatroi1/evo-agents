@@ -144,14 +144,19 @@ export function canWrite(viewer: Viewer | null): boolean {
 /** Why `viewer` cannot review `version` now, as the hub would refuse it; null when they can. */
 export type ReviewBlock = "reader" | "not_in_review" | "author" | "reviewed";
 
+/**
+ * `selfApproval` is the config's `self_approval`: on, an author of a version since the one approved last reviews it as
+ * any writer does; every other rule stays.
+ */
 export function reviewBlock(
   viewer: Viewer,
   doc: Pick<SrsDocument, "versions" | "approved_version">,
   version: SrsVersion,
+  selfApproval = false,
 ): ReviewBlock | null {
   if (!canWrite(viewer)) return "reader";
   if (version.state !== "in_review") return "not_in_review";
-  if (authorsSince(doc, version.number).has(viewer.login)) return "author";
+  if (!selfApproval && authorsSince(doc, version.number).has(viewer.login)) return "author";
   if (currentRound(version).some((review) => review.reviewer === viewer.login)) return "reviewed";
   return null;
 }
@@ -171,6 +176,11 @@ export function policyOf(fields: readonly ConfigField[], kind: string): Policy {
   const policy = policies && typeof policies === "object" ? (policies as Record<string, unknown>)[kind] : undefined;
   const held = policy && typeof policy === "object" ? (policy as Record<string, unknown>) : {};
   return { required: roleList(held.required), optional: roleList(held.optional) };
+}
+
+/** Whether the effective config turns `self_approval` on: the author of a version may approve it. Off unless it is `true`. */
+export function selfApprovalOf(fields: readonly ConfigField[]): boolean {
+  return fields.find((field) => field.name === "self_approval")?.value === true;
 }
 
 /** The roles `login` holds in the config's `roles`. */

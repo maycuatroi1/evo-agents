@@ -9,9 +9,10 @@ project, aliases included, stays when the item is renamed or moved, and is never
 Each save is a version, never changed after, in one straight line per document: draft, in review, approved, and
 superseded once a newer version is approved; or withdrawn, for good, when its author or an admin takes it out of
 review. A writer submits a version; a writer who wrote no version since the one approved last approves it or asks for
-changes, as many times per role as the config's ``approval_policy`` asks (one approval when it asks nothing). Two
-versions compare item by item. A Markdown file whose headings follow the template imports as a document or as its
-next version, and a version exports as Markdown with the same structure and codes.
+changes, as many times per role as the config's ``approval_policy`` asks (one approval when it asks nothing). With
+the config's ``self_approval`` on, the author may give one of those reviews too. Two versions compare item by item.
+A Markdown file whose headings follow the template imports as a document or as its next version, and a version
+exports as Markdown with the same structure and codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items (by their codes too: ``retire``), archive documents and
@@ -28,9 +29,10 @@ The plugin contributes the agent type ``ba`` (criterion a7): the profile @ba wit
 its instructions and the skills srs-writing and srs-review), which a project's writers mention in a group chat. Its
 agent reads, searches and compares documents and proposes and comments with the plugin's tools on the hub's /mcp
 (``agent``): a proposal is the document's next version, in review at once, written as the person who mentioned @ba,
-who therefore never approves it. The type declares ``chat_runs: run_as``: every run of @ba goes to a worker of the
-member the project enabled the type under, and each version that enters review for the first time is reviewed by @ba
-in a task run on that worker (``auto_review``), whose comments are advice and block nothing.
+who therefore never approves it unless the project turned ``self_approval`` on. The type declares ``chat_runs:
+run_as``: every run of @ba goes to a worker of the member the project enabled the type under, and each version that
+enters review for the first time is reviewed by @ba in a task run on that worker (``auto_review``), whose comments
+are advice and block nothing.
 
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
@@ -82,10 +84,19 @@ CONFIG = {
             "title": "Approval policy",
             "description": "Per kind of document (srs, spec), the roles whose approval a version needs, such as "
             '{"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}. Without one, one approval of a writer who '
-            "wrote none of the versions under review is enough.",
+            "wrote none of the versions under review (any writer, with self_approval on) is enough.",
             "type": "object",
             "additionalProperties": False,
             "properties": {kind: _POLICY for kind in DOCUMENT_KINDS},
+        },
+        "self_approval": {
+            "title": "Self-approval",
+            "description": "Whether the author of a version may approve it or ask for changes, as any writer of the "
+            "project may: on, a writer who wrote a version since the one approved last reviews it too, admins "
+            "included. Every other rule stays: writers only, one review per member per round, roles and the "
+            "approval policy, and the agent of a run never reviews. Off by default.",
+            "type": "boolean",
+            "default": False,
         },
     },
 }
