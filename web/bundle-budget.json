@@ -234,7 +234,7 @@
       "reason": "The link the pm digest carries (/p/{project}/x/pm): a redirect to the daily page, which loads only the shell. Outside a project the switcher, the sidebar's project group, the account menu and the G keys show the project last opened, else the first (default-project-selection): the shell's useSelectedProject is loaded on every page."
     },
     "/p/[project]/x/pm/daily": {
-      "kB": 297.4,
+      "kB": 297.8,
       "reason": "The native page of the core plugin pm (pm-daily-tracking step 5): the eight sections of one day's report, with a day picker. Outside a project the switcher, the sidebar's project group, the account menu and the G keys show the project last opened, else the first (default-project-selection): the shell's useSelectedProject is loaded on every page."
     },
     "/p/[project]/x/srs/documents": {
