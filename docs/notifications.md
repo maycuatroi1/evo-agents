@@ -361,9 +361,10 @@ The files of a decision and of a `run_outputs` notice reach the channel in what 
 oldest first, each with its id, name, media type, viewer, size, caption and `url`, a presigned GET of its bytes that
 works 5 minutes and is made at each try, and `extra.outputs_count`, how many files there are; both keys are left out
 when there is no file to send. A file of source `tool` is never among them, not even one a question carries. The
-channel sends the images as photos and the other files as documents, gathered, with the run's link, from the release
-of the core plugin telegram that reads `extra.outputs`; evo-agents-core-plugins 1.0.0 does not read it and sends the
-notice's kind, title, body and link as text, and a decision's question and buttons without its files.
+channel sends them from evo-agents-core-plugins 1.1.0 on: one photo album when every file is a photo, otherwise one
+group of documents, with the run's link in the caption; a decision sends its files first and then its question with
+its buttons as a reply to the first file. Files past 10, past 20 MiB in all or past Telegram's own limits stay on the
+hub, and the message says how many. 1.0.0 did not read `extra.outputs` and sent text only.
 
 A message is HTML within Telegram's 4,096 characters. A part that may run long is cut before it is escaped, or between
 the tags and entities of its HTML, never inside one; the question of a decision gives way first, and the link, and the
@@ -418,7 +419,7 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
   any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
   else: no question, title, option, context, diff, file or file name, and no answer button. Its channel's `extra` is
   `{"restricted": true}` alone, so a `run_outputs` notice goes out as the project, the words of its kind (the hub's
-  are `Files from a run`; evo-agents-core-plugins 1.0.0 says `A notice`) and the link. It fails closed: a project with
+  and those of the core plugin telegram from 1.1.0 are `Files from a run`) and the link. It fails closed: a project with
   no hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
   `domestic-only`) and a clearance above its lowest rung, is restricted too;
 - no image taken out of a tool's result (an output of source `tool`), whatever the project, even when a question
