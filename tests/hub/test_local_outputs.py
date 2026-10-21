@@ -330,13 +330,12 @@ def test_a_screenshot_becomes_a_tool_output_and_its_event_holds_a_reference(
     assert fire("local-tool", data, monkeypatch, capsys) == (0, "", "")
     assert time.monotonic() - started < local_sync.BUDGET["tool"]
     update = [e for e in hub.events if e["kind"] == "tool_call_update"][0]["body"]
-    assert update["content"][1]["content"] == {
-        "type": "output",
-        "source": "tool",
-        "sha256": sha(big),
-        "media_type": "image/jpeg",
-        "size": len(big),
+    assert update["content"][1]["content"] == {  # the link a worker's run writes too
+        "type": "resource_link",
+        "uri": f"evo-output:sha256:{sha(big)}",
         "name": shot_name(),
+        "mimeType": "image/jpeg",
+        "size": len(big),
     }
     assert "computer: screenshot taken" in update["content"][0]["content"]["text"]
     encoded = b64(big)[:64]
@@ -431,7 +430,10 @@ def test_tool_images_switched_off_are_never_uploaded_and_no_longer_taken(own_hom
     send_queued()
     assert [o["source"] for o in hub.outputs] == ["sent", "tool"] and queue(own_home)["tool_images"] is True
     update = [e for e in hub.events if e["kind"] == "tool_call_update"][-2]["body"]
-    assert b64(PNG)[:64] not in json.dumps(update) and update["content"][1]["content"]["sha256"] == sha(PNG)
+    assert (
+        b64(PNG)[:64] not in json.dumps(update)
+        and update["content"][1]["content"]["uri"] == f"evo-output:sha256:{sha(PNG)}"
+    )
 
 
 def test_a_hub_or_store_that_does_not_answer_keeps_the_outputs_for_later(own_home, hub, spawned, monkeypatch, capsys):

@@ -1896,8 +1896,9 @@ SendUserFile sends (its input's `files` and `caption`), each page the Artifact t
 caption naming the page's title and claude.ai link), each file of `evo-agents hub send FILE... [--caption TEXT]` (a CLI
 session has no SendUserFile; the command finds the session by `CLAUDE_CODE_SESSION_ID`), all of source `sent`, and
 every image block of a tool's result (an MCP or Playwright screenshot, a Read of an image), of source `tool`. The
-tool's `tool_call_update` keeps, after its text, a content block `{"type": "output", "source": "tool", "sha256",
-"media_type", "size", "name"}` per image in place of its base64, which the run's outputs match by SHA-256. A shape the
+tool's `tool_call_update` keeps, after its text, a content block per image in place of its base64: the ACP
+`resource_link` a worker's run writes (`{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name",
+"mimeType", "size"}`, `evo_agents.hub.outputs.output_link`), which the run's outputs match by SHA-256. A shape the
 hook does not know is passed over. The `local-tool` hook parses its payload whole up to 64 Mi characters (the other
 hooks stop at 1 MiB), and of a longer one still makes the tool's event from its first and last characters. No upload
 runs in a hook: the hook writes an image's bytes and the queue under `~/.evo/hub/local-outputs/<session>/` and starts
