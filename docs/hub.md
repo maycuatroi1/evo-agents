@@ -1888,6 +1888,23 @@ The questions of the session reach the member too (`docs/notifications.md`, A de
 hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
 reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
 it stopped waiting.
+The session's files become outputs of its run (Outputs of runs; `evo_agents/hub/local_outputs.py`): each file
+SendUserFile sends (its input's `files` and `caption`), each page the Artifact tool publishes (its `file_path`, the
+caption naming the page's title and claude.ai link), each file of `evo-agents hub send FILE... [--caption TEXT]` (a CLI
+session has no SendUserFile; the command finds the session by `CLAUDE_CODE_SESSION_ID`), all of source `sent`, and
+every image block of a tool's result (an MCP or Playwright screenshot, a Read of an image), of source `tool`. The
+tool's `tool_call_update` keeps, after its text, a content block `{"type": "output", "source": "tool", "sha256",
+"media_type", "size", "name"}` per image in place of its base64, which the run's outputs match by SHA-256. A shape the
+hook does not know is passed over. The `local-tool` hook parses its payload whole up to 64 Mi characters (the other
+hooks stop at 1 MiB), and of a longer one still makes the tool's event from its first and last characters. No upload
+runs in a hook: the hook writes an image's bytes and the queue under `~/.evo/hub/local-outputs/<session>/` and starts
+`evo-agents hub send --queued` in the background, detached, unless one runs or the hub did not answer in the last 15 s;
+Stop, UserPromptSubmit and SessionEnd start it too while outputs wait. The sender copies each file sent (a text file
+through `redact_data`, as the events, captions too), reads the project's switch (off: the images are deleted unsent and
+no longer taken), then uploads and records in batches of 100; an output the hub refuses is dropped and named in
+`send.log`, and a hub or blob store that does not answer keeps everything for a later run. A question of the dialog
+carries the outputs of source `sent` of the turn (since the person's last message), waiting up to 3 s for those not
+recorded yet. Queues untouched for 7 days are deleted.
 [Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
