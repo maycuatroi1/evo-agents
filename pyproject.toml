@@ -75,6 +75,14 @@ srs = "evo_agents.core_plugins.srs:MANIFEST"
 tasks = "evo_agents.core_plugins.tasks:MANIFEST"
 canvas = "evo_agents.core_plugins.canvas:MANIFEST"
 
+# The Python environment a worker's run makes in a worktree of this repo (evo_agents.worker.venvs, docs/workers.md):
+# the extras CI tests with and the core plugins the hub's image installs, so `python -m pytest` and `python -m
+# evo_agents` see the entry points of the branch and of every core plugin, whatever the machine's own python has.
+[tool.evo-agents.worker]
+venv = true
+extras = ["test", "graphify", "hub-server", "worker"]
+requirements = ["deploy/hub/core-plugins.txt"]
+
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
 
