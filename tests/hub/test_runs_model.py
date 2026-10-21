@@ -360,7 +360,9 @@ def test_decisions_and_notices_the_plan_names():
         "canvas_baseline",
         "merge_paused",
         "release",
+        "run_outputs",
     )
+    assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")
     assert runs.DELIVERY_STATES == ("pending", "delivered", "failed")

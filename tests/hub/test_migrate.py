@@ -111,6 +111,7 @@ TABLES |= pg.MERGE_TABLES  # migration 0081
 TABLES |= pg.SAMPLE_TABLES  # migration 0083
 TABLES |= pg.BREAKER_TABLES  # migration 0084
 TABLES |= pg.OUTPUT_TABLES  # migration 0085
+TABLES |= pg.MUTE_TABLES  # migration 0086
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -185,8 +186,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_thirty_tables(hub_db):
-    assert len(TABLES) == 130  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_one_tables(hub_db):
+    assert len(TABLES) == 131  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2067,6 +2068,34 @@ def test_0085_keeps_one_output_a_file_of_a_run_its_links_and_the_switch_and_goin
     assert query(hub_db, select(func.count()).select_from(e).where(e.c.kind == "message_changed")) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+
+
+def test_0086_takes_the_notice_run_outputs_and_the_notices_members_turned_off_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0085")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0086")
+    n, m = t.notifications, t.notification_mutes
+    notice = {"user_id": ids["user"], "kind": "notice", "project_id": ids["project"], "title": "Run #1 sent a.png"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(n).values({**notice, "notice_kind": "run_outputs", "details": {"outputs": [1]}}))
+        conn.execute(insert(n).values({**notice, "notice_kind": "merge_paused"}))  # 0084's kind holds
+        conn.execute(insert(m).values(user_id=ids["user"], notice_kind="run_outputs"))
+        for bad in (
+            insert(m).values(user_id=ids["user"], notice_kind="run_outputs"),  # one row a member and kind
+            insert(m).values(user_id=ids["user"], notice_kind="plan_finished"),  # not a kind a member turns off
+            insert(n).values({**notice, "notice_kind": "run_files"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    # Going back drops the notices of 0086's kind and the table.
+    move_to(hub_db, "0085", down=True)
+    assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "run_outputs")) == [(0,)]
+    assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(1,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0086") :]
 
 
 def _chat(conn, ids) -> int:

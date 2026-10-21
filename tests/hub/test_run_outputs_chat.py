@@ -17,8 +17,11 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server.app import create_app
+from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.test_chat_runs import OTHER, chat_worker, created, ended, hub, in_chats, reply, started, thread
 from tests.hub.test_run_outputs import PNG, REPORT, VIDEO, item, sent
@@ -70,6 +73,16 @@ def test_a_chat_message_carries_the_outputs_its_agent_attached_and_chat_members_
     assert client.get(url, headers=hub["stranger"]).status_code == 404
     not_carried = f"/v1/chats/{chat['id']}/outputs/{tool['id']}/content"
     assert client.get(not_carried, headers=hub["owner"]).status_code == 404, "the tool image goes to no chat"
+
+
+def test_a_chat_runs_files_go_to_its_thread_and_send_no_notice_of_files(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, spec = started(client, hub, worker, chat)
+    sent(client, f"/v1/worker/runs/{spec['id']}", worker["headers"], [(PNG, item(PNG, "fixed.png", "image/png"))])
+    n = tables.notifications
+    noticed = select(func.count()).select_from(n).where(n.c.notice_kind == runs.OUTPUT_NOTICE)
+    assert live.sql(hub_db, noticed) == [(0,)]
 
 
 def test_a_chat_runs_files_go_under_its_next_message_and_once_it_ended_under_its_last_one(client, hub):

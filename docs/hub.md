@@ -1115,6 +1115,9 @@ project's switch (`projects.output_tool_images`); going back to 0084 drops them,
   lists them. A chat message of a run's agent carries outputs of that run, never a tool image. A chat run's own files
   go under its next message, and once it ended under its last one, which the chat's streams hear of as
   `message_changed`.
+- **Notices.** The files of sources `sent` and `outputs` go to the run's owner as the notice `run_outputs`, gathered a
+  minute a run, in the Inbox with their outputs and on Telegram with the run's link, never an image of source `tool`;
+  a member turns it off (`docs/notifications.md`, "The files of a run").
 - **Deleting.** The run's dispatcher or an admin of the project deletes an output (`DELETE
   .../runs/{id}/outputs/{oid}`, audit `run.output_delete`): it leaves the questions and messages that carried it, and
   its bytes go once nothing refers to them any longer (the blob collection counts `run_outputs.sha256`).

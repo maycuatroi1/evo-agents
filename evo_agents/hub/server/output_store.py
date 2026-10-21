@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, chats, outputs, runs, tables
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import output_views
+from evo_agents.hub.server import output_notices, output_views
 from evo_agents.hub.server.blobs import Mismatch, Sha256, UploadItem, Uploads, commit_uploads, issue_uploads
 from evo_agents.hub.server.chat_store import write_event as write_chat_event
 from evo_agents.hub.server.errors import error_response
@@ -311,6 +311,7 @@ async def record(request: Request, user: Principal, reach: Reach, batch: OutputB
         ids, touched = await _write(conn, target, items)
         if touched:
             await _note(conn, target, items, ids, touched)
+            await output_notices.outputs_recorded(conn, target.run_id, touched)
         if target.kind == "chat" and target.state in runs.TERMINAL_STATES:
             await attach_leftovers(conn, target.run_id)
         added = (await usage(conn, target.run_id))[0] - before[0]
@@ -353,8 +354,11 @@ async def _link(conn: AsyncConnection, column: str, target_id: int, output_ids: 
 
 
 async def link_decision(conn: AsyncConnection, run_id: int, decision_id: int, output_ids: list[int]) -> None:
-    """Have decision ``decision_id`` of run ``run_id`` carry its outputs ``output_ids``; 422 for one of another run."""
-    await _link(conn, "decision_id", decision_id, await _of_run(conn, run_id, output_ids))
+    """Have decision ``decision_id`` of run ``run_id`` carry its outputs ``output_ids``; 422 for one of another run.
+    They go with the question, out of the run's notice of files no channel has tried yet."""
+    wanted = await _of_run(conn, run_id, output_ids)
+    await _link(conn, "decision_id", decision_id, wanted)
+    await output_notices.withdraw(conn, run_id, wanted)
 
 
 def _pending(run_id: int):

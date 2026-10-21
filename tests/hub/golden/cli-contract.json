@@ -25783,6 +25783,88 @@
           }
         }
       },
+      "/v1/me/notification-settings": {
+        "get": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Show Notification Settings",
+          "description": "The kinds of notice the caller may turn off, and whether each is on.",
+          "operationId": "show_notification_settings_v1_me_notification_settings_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Set Notification Settings",
+          "description": "Turn kinds of notice on or off for the caller; decisions and the other notices always come.",
+          "operationId": "set_notification_settings_v1_me_notification_settings_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/me/overview": {
         "get": {
           "tags": [
@@ -68196,6 +68278,27 @@
           ],
           "title": "NoticeIn"
         },
+        "NoticeSetting": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "run_outputs",
+              "title": "Kind",
+              "description": "a kind of notice a member may turn off"
+            },
+            "on": {
+              "type": "boolean",
+              "title": "On",
+              "description": "false: the member gets no notice of this kind, on any channel"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "on"
+          ],
+          "title": "NoticeSetting"
+        },
         "Notification": {
           "properties": {
             "id": {
@@ -68229,7 +68332,8 @@
                     "builder_proposal",
                     "canvas_baseline",
                     "merge_paused",
-                    "release"
+                    "release",
+                    "run_outputs"
                   ]
                 },
                 {
@@ -68377,6 +68481,14 @@
                 }
               ],
               "title": "Read At"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from"
             }
           },
           "type": "object",
@@ -68455,6 +68567,42 @@
             "offset"
           ],
           "title": "NotificationList"
+        },
+        "NotificationSettings": {
+          "properties": {
+            "notices": {
+              "items": {
+                "$ref": "#/components/schemas/NoticeSetting"
+              },
+              "type": "array",
+              "title": "Notices",
+              "description": "each kind of notice a member may turn off, and whether it is on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notices"
+          ],
+          "title": "NotificationSettings"
+        },
+        "NotificationSettingsIn": {
+          "properties": {
+            "notices": {
+              "items": {
+                "$ref": "#/components/schemas/NoticeSetting"
+              },
+              "type": "array",
+              "maxItems": 1,
+              "minItems": 1,
+              "title": "Notices",
+              "description": "the kinds to set; the others stay"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notices"
+          ],
+          "title": "NotificationSettingsIn"
         },
         "OAuthTokens": {
           "properties": {
