@@ -101,11 +101,11 @@ TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
 TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
 TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
 TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
-TABLES |= pg.CANVAS_TABLES  # migration 0072
-TABLES |= pg.SIGNAL_TABLES  # migration 0073
-TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0074
-TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0075
-TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0076
+TABLES |= pg.CANVAS_TABLES  # migration 0073
+TABLES |= pg.SIGNAL_TABLES  # migration 0074
+TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0075
+TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0076
+TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0077
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -546,6 +546,9 @@ def _chat_run(ids, chat_id: int, message_id: int | None, **extra):
     return insert(runs).values(row | extra).returning(runs.c.id)
 
 
+CHATS_0032 = table("chats", column("id"), column("budget_usd"))  # the chat's budget, from 0032 until 0072
+
+
 def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_db):
     move_to(hub_db, "0031")
     t = hub_tables
@@ -582,11 +585,11 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
                 approval="auto",
             ),
             update(runs).values(chat_id=chat_id, chat_message_id=message_id, hop=1).where(runs.c.id == author),
-            update(t.chats).values(budget_usd=0).where(t.chats.c.id == chat_id),
+            update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id),
         ):
             with pytest.raises(errors.CheckViolation):
                 conn.execute(bad)
-    assert query(hub_db, select(t.chats.c.budget_usd)) == [(5.0,)]
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]
 
     # Going back deletes the chat runs, the one going on in another's session and the retry included; the rest stays.
     move_to(hub_db, "0031", down=True)
@@ -1449,8 +1452,27 @@ def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
-def test_0072_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(hub_db):
+def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
+    move_to(hub_db, "0071")
+    before = query(hub_db, SNAPSHOT)
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Ops", created_by=ids["user"]).returning(t.chats.c.id))
+        conn.execute(update(CHATS_0032).values(budget_usd=20).where(CHATS_0032.c.id == chat_id))
     move_to(hub_db, "0072")
+    assert "budget_usd" not in columns(hub_db, "chats")
+    assert query(hub_db, select(t.chats.c.title)) == [("Ops",)]
+    move_to(hub_db, "0071", down=True)
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]  # what the creator set is gone
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
+
+
+def test_0073_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0073")
     k = hub_tables.canvas
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1473,13 +1495,13 @@ def test_0072_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(
         with pytest.raises(errors.CheckViolation):  # a simulation is synthetic
             conn.execute(insert(k.evidence).values(**piece, actor="hub"))
         conn.execute(insert(k.evidence).values(**piece, actor="hub", synthetic=True))
-    move_to(hub_db, "0071", down=True)
+    move_to(hub_db, "0072", down=True)
     assert not pg.CANVAS_TABLES & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
 
 
-def test_0073_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0073")
+def test_0074_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0074")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1512,13 +1534,13 @@ def test_0073_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_the
             conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-2", "text": "slow"}))
         with pytest.raises(errors.CheckViolation):  # pushed by an ingest key names no member
             conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-3", "user_id": ids["user"]}))
-    move_to(hub_db, "0072", down=True)
+    move_to(hub_db, "0073", down=True)
     assert not pg.SIGNAL_TABLES & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
 
 
-def test_0074_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0074")
+def test_0075_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0075")
     k = hub_tables.canvas
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1547,14 +1569,14 @@ def test_0074_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
                 conn.execute(insert(k.proposals).values(**{**made, **bad}))
         accepted = {"status": "accepted", "claim_id": claim_id, "rev": 1, **decided}
         conn.execute(insert(k.proposals).values(kind="create", **made, **agent, **accepted))
-    move_to(hub_db, "0073", down=True)
+    move_to(hub_db, "0074", down=True)
     assert not pg.CANVAS_PROPOSAL_TABLES & tables(hub_db)
     assert pg.CANVAS_TABLES <= tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
 
 
-def test_0075_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0075")
+def test_0076_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0076")
     k, t = hub_tables.canvas, hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1620,15 +1642,15 @@ def test_0075_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_
         ):
             with pytest.raises(errors.CheckViolation):
                 conn.execute(insert(k.judgings).values(**{**item, **bad}))
-    move_to(hub_db, "0074", down=True)
+    move_to(hub_db, "0075", down=True)
     assert not pg.CANVAS_JUDGING_TABLES & tables(hub_db)
     assert not {"basis", "rests_on_run"} & columns(hub_db, "canvas_evidence")
     assert "evidence_id" not in columns(hub_db, "canvas_proposals")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
 
 
-def test_0076_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0076")
+def test_0077_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0077")
     k, t = hub_tables.canvas, hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1698,17 +1720,17 @@ def test_0076_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
             conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
         notice = {"user_id": ids["user"], "kind": "notice", "project_id": ids["project"], "title": "Baseline 1"}
         conn.execute(insert(t.notifications).values({**notice, "notice_kind": "canvas_baseline"}))
-    move_to(hub_db, "0075", down=True)
+    move_to(hub_db, "0076", down=True)
     assert not pg.CANVAS_BASELINE_TABLES & tables(hub_db)
     assert "baseline_id" not in columns(hub_db, "canvas_claim_revs")
     assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
     assert query(hub_db, select(t.notifications.c.id)) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
 
 
-def test_0077_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0077")
+def test_0078_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0078")
     k = hub_tables.canvas
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1726,9 +1748,9 @@ def test_0077_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
                 conn.execute(insert(k.claims).values(number=3, **claim, **bad))
     held = select(k.claims.c.number, k.claims.c.use_cases, k.claims.c.signal_keys).order_by(k.claims.c.number)
     assert query(hub_db, held) == [(1, [], []), (2, ["UC ORD-1"], ["pantry.stock.outs_per_week"])]
-    move_to(hub_db, "0076", down=True)
+    move_to(hub_db, "0077", down=True)
     assert not {"use_cases", "signal_keys"} & columns(hub_db, "canvas_claims")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

@@ -1,4 +1,4 @@
-"""The tables of the core plugin canvas (0072, 0074, 0075, 0076, 0077), which ``evo_agents.hub.tables`` adds to its metadata
+"""The tables of the core plugin canvas (0073, 0075, 0076, 0077, 0078), which ``evo_agents.hub.tables`` adds to its metadata
 as ``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
 ``evo_agents.core_plugins.canvas``; the hub owns the tables because its one chain of migrations creates them
 (``docs/plugins.md``, Core plugins).
@@ -8,7 +8,7 @@ as ``tables.canvas``: queries name them there (``tables.canvas.claims``). The pl
   archived it.
 - canvas_claims: each claim of a canvas as it is now: its number (1 and up within the project, shown ``CL-<n>`` and
   never given again), its cell (one of the nine of a Lean Canvas), its place in the cell, its text, status, confidence
-  and test card, its rev (1 and up, one more on every change) and when it was archived; and what it links (0077): the
+  and test card, its rev (1 and up, one more on every change) and when it was archived; and what it links (0078): the
   codes of the use cases of the plugin srs that realize it and the keys of the project's signals that measure it, each
   sorted, as its rev's content holds them.
 - canvas_claim_revs: every rev of every claim, never changed: the whole content of the claim at that rev, what kind of
@@ -17,33 +17,33 @@ as ``tables.canvas``: queries name them there (``tables.canvas.claims``). The pl
 - canvas_evidence: the evidence of a claim, only ever added: its kind, which way it points, a summary, a link, the day
   it was taken, whether it is synthetic (always, for a simulation), its provenance, the writer who confirmed what an
   agent added, and when and why it was withdrawn. Evidence is no part of a rev: adding some leaves the claim's rev.
-- canvas_proposals (0074): a change of a claim at the rev it was read at, or a new claim, that an agent or the hub
+- canvas_proposals (0075): a change of a claim at the rev it was read at, or a new claim, that an agent or the hub
   proposes instead of writing it (a task run of @strategist, the value check, later the Loop): the fields it sets,
-  why, whether it rests on simulated users, its provenance, the evidence a value check proposed it on (0075), and what
+  why, whether it rests on simulated users, its provenance, the evidence a value check proposed it on (0076), and what
   became of it: open, accepted by a writer (the claim and the rev that wrote it), rejected (by whom and why), or stale
   once the claim changed since its rev.
-- canvas_judgings (0075): each item a judging run of @strategist puts before it for one claim: a piece of feedback of
+- canvas_judgings (0076): each item a judging run of @strategist puts before it for one claim: a piece of feedback of
   the signal key the claim's test card names, or a neutral interview, experiment or market figure of the claim; what
   the run read of it, its label, whether it is synthetic or rests on a signal a run pushed, when it was measured, the
   run (the judging pass), and once judged the verdict (supports, contradicts, irrelevant), why, and the evidence of
   kind feedback the hub wrote from it.
 
-The value check (0075) also writes evidence: ``basis`` says what a piece the hub wrote rests on (the figures of a check
+The value check (0076) also writes evidence: ``basis`` says what a piece the hub wrote rests on (the figures of a check
 of the test card, or the item judged), and ``rests_on_run`` marks one that rests on signals the agent of a run pushed,
 which never validates a claim.
 
-- canvas_baselines (0076): the baselines of a canvas, numbered 1 and up within it: a weekly one the plugin's job
+- canvas_baselines (0077): the baselines of a canvas, numbered 1 and up within it: a weekly one the plugin's job
   proposes (its ISO week, unique in the canvas, the moment it was due and the time zone it was due in) or one a writer
   opens for a claim at once (``push``, by whom); proposed, approved once every item has a decision, or expired when the
   next week's came first; and once approved its snapshot, never changed: each claim not archived with its code, its
   rev, the status in effect and the SHA-256 of its content.
-- canvas_baseline_items (0076): one claim of a baseline and what it asks: a change of status members made since the
+- canvas_baseline_items (0077): one claim of a baseline and what it asks: a change of status members made since the
   status in effect (``status``), a status the value check proposed (``value_check``, its proposal), a test card past
   its deadline without real evidence (``overdue``, extended or retired), or a new claim at assumption, included as it is
   (``new``); the status in effect, the status the claim was at, the one asked, its rev, its evidence, the members who
   changed its status since and so may not decide it, and the decision: who, when, why, a new deadline, the rev it wrote.
 
-canvas_claim_revs.baseline_id (0076) names the baseline whose decision wrote a rev (change ``baseline``).
+canvas_claim_revs.baseline_id (0077) names the baseline whose decision wrote a rev (change ``baseline``).
 """
 
 from __future__ import annotations
@@ -187,8 +187,8 @@ def _claims(metadata: MetaData) -> Table:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("archived_at", DateTime(timezone=True)),
-        Column("use_cases", ARRAY(Text), nullable=False, server_default="{}"),  # 0077
-        Column("signal_keys", ARRAY(Text), nullable=False, server_default="{}"),  # 0077
+        Column("use_cases", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
+        Column("signal_keys", ARRAY(Text), nullable=False, server_default="{}"),  # 0078
         _key(name, "project_id", "projects", ondelete="RESTRICT"),
         _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),

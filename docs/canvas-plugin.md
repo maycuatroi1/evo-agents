@@ -332,7 +332,7 @@ A project ontology that declares the kinds Claim or SignalKey itself fails valid
 ## Tables
 
 The hub's migrations own the plugin's tables: `canvas_canvases`, `canvas_claims`, `canvas_claim_revs` and
-`canvas_evidence` (schema 0072), `canvas_proposals` (0074), `canvas_judgings` with the basis of hub evidence (0075),
-`canvas_baselines` and `canvas_baseline_items` (0076), and the links of a claim (0077). Schema 0073 adds the hub's
-signal tables and 0076 the hub's `hub_events` (`docs/signals.md`). Import-linter keeps the plugin in its own package
+`canvas_evidence` (schema 0073), `canvas_proposals` (0075), `canvas_judgings` with the basis of hub evidence (0076),
+`canvas_baselines` and `canvas_baseline_items` (0077), and the links of a claim (0078). Schema 0074 adds the hub's
+signal tables and 0077 the hub's `hub_events` (`docs/signals.md`). Import-linter keeps the plugin in its own package
 (contract canvas-plugin-own-package): it imports no other core plugin, and reads the SRS through the hub's tables.

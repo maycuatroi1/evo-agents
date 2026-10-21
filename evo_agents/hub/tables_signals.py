@@ -1,5 +1,5 @@
-"""The tables of signals (0073): what services outside the hub, and members, measure about a project's product, and of
-the hub's events (0076), which the Loop reads by cursor. They are the hub's, not a plugin's, since the canvas, the Loop
+"""The tables of signals (0074): what services outside the hub, and members, measure about a project's product, and of
+the hub's events (0077), which the Loop reads by cursor. They are the hub's, not a plugin's, since the canvas, the Loop
 and the Curator all read them; ``evo_agents.hub.tables`` adds them to its metadata as ``tables.signal_keys``,
 ``tables.signals``, ``tables.signal_ingest_keys`` and ``tables.hub_events``.
 
@@ -12,7 +12,7 @@ and the Curator all read them; ``evo_agents.hub.tables`` adds them to its metada
 - signals: each signal: its key, its number or its text, its source, when it was measured, the tenant it is about (a
   free dimension of the data; the hub has no tenants), whether it is synthetic, the id its sender gave it, its label,
   who pushed it (an ingest key, a member, or the agent of a run for a member), the batch it came in and when.
-- hub_events (0076): each event of a project the hub wrote for the Loop, only ever added to
+- hub_events (0077): each event of a project the hub wrote for the Loop, only ever added to
   (``evo_agents.hub.hub_events``): its kind (``canvas.claim``, ``canvas.baseline``, ``signal.posted``; plan loop-engine
   adds its own), its payload of ids and states, and when; its id only grows, in the order the events of one project
   became visible.

@@ -6,8 +6,8 @@ a2: a failed run of kind step, plan or author opens a thread in the triage chat 
 it, the error, the step, the repo and branch, the last verify, the links of the run, and who could run it again; it
 mentions the project's default agent, which makes a chat run for the owner; the notice run_failed links to the thread.
 
-a7: one thread a run however often its failure is handled; a failed chat run of triage opens none; its cost stays in the
-chat's budget; a project's switch turns it off and the notice is the one it always was; review, judge, chat and local
+a7: one thread a run however often its failure is handled; a failed chat run of triage opens none; what the chat's runs
+cost holds no triage run back; a project's switch turns it off and the notice is the one it always was; review, judge, chat and local
 runs open none.
 
 A run the hub stopped on its owner's accounts for a variable, none of which is ready, gets the thread and the time the
@@ -180,17 +180,17 @@ def test_a_failed_plan_run_opens_a_thread_too(client, hub, hub_db):
     assert sql(hub_db, select(n.c.link).where(n.c.run_id == made["id"])) == [(f"/chats/{chat_id}?message={root_id}",)]
 
 
-def test_the_chat_budget_holds_the_triage_run_back_and_the_hub_says_so_in_the_thread(client, hub, hub_db):
+def test_what_the_chat_runs_cost_holds_no_triage_run_back(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
     failed_step(client, hub, worker, 2)
     r = tables.runs
-    sql(hub_db, update(tables.chats).values(budget_usd=0.01))
-    sql(hub_db, update(r).values(usage={"total_cost_usd": 1.0}).where(r.c.kind == "chat"))
+    sql(hub_db, update(r).values(usage={"total_cost_usd": 100.0}).where(r.c.kind == "chat"))
     run_id = failed_step(client, hub, worker, 4)
     ((chat_id, root_id, _, _, agent_run),) = row_of(hub_db, run_id)
-    assert agent_run is None
+    assert agent_run is not None
+    assert sql(hub_db, select(r.c.budget).where(r.c.id == agent_run)) == [({"max_seconds": 1800},)]
     said = thread(client, hub["owner"], chat_id, root_id)
-    assert len(said) == 2 and said[1]["author"]["kind"] == "hub" and "budget" in said[1]["body"]
+    assert [item["author"]["kind"] for item in said] == ["hub"]  # the facts, and no refusal after them
 
 
 def test_a_run_stopped_on_accounts_none_of_which_is_ready_asks_no_agent_and_says_when_one_is(client, hub, hub_db):

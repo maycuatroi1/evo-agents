@@ -14,19 +14,18 @@ import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { browserApi } from "@/lib/api/browser";
-import { addChatAgent, addChatPerson, chatKeys, removeChatAgent, removeChatPerson, setChatBudget } from "@/lib/chat-queries";
+import { addChatAgent, addChatPerson, chatKeys, removeChatAgent, removeChatPerson } from "@/lib/chat-queries";
 import { type Chat, chatsHref, MAX_AGENTS, MAX_PEOPLE } from "@/lib/chats";
 
 import { PersonAvatar } from "./faces";
 import { useChatFailure } from "./hooks";
-import { AddAgentForm, AddPersonForm, BudgetForm } from "./member-forms";
+import { AddAgentForm, AddPersonForm } from "./member-forms";
 
 type Write =
   | { kind: "addAgent"; handle: string }
   | { kind: "removeAgent"; handle: string }
   | { kind: "addPerson"; login: string }
-  | { kind: "removePerson"; login: string }
-  | { kind: "budget"; usd: number };
+  | { kind: "removePerson"; login: string };
 
 const ROW = "flex min-h-11 items-center gap-3 rounded-sm px-2 py-1.5";
 
@@ -44,11 +43,10 @@ function Section({ title, count, children, testId }: { title: string; count: str
 
 /**
  * The chat's members in a sheet (web/DESIGN.md, Chats): its agents (any member adds one of a project they write to,
- * or takes one out), its people (any member adds one; the creator takes others out; each may leave), and the budget of
- * its agents' runs, which only its creator changes. The hub checks every change again: a refusal shows at the top of
- * the sheet with the hub's words, a change made is a toast, and the chat's stream tells the other members. A direct
- * chat's sheet is its Details: its agent and its person, for good (nobody is added, taken out or leaves; a note says to
- * start a group chat for that), and the budget.
+ * or takes one out) and its people (any member adds one; the creator takes others out; each may leave). The hub
+ * checks every change again: a refusal shows at the top of the sheet with the hub's words, a change made is a toast,
+ * and the chat's stream tells the other members. A direct chat's sheet is its Details: its agent and its person, for
+ * good (nobody is added, taken out or leaves; a note says to start a group chat for that).
  */
 export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("chats.members");
@@ -65,7 +63,6 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
       const api = browserApi();
       if (change.kind === "addAgent") return addChatAgent(api, chat.id, change.handle);
       if (change.kind === "addPerson") return addChatPerson(api, chat.id, change.login);
-      if (change.kind === "budget") return setChatBudget(api, chat.id, change.usd);
       if (change.kind === "removeAgent") await removeChatAgent(api, chat.id, change.handle);
       else await removeChatPerson(api, chat.id, change.login);
       return null;
@@ -193,9 +190,6 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
               })}
             </ul>
             {direct ? null : <AddPersonForm chat={chat} pending={pendingOf("addPerson")} onAdd={(login) => write.mutate({ kind: "addPerson", login })} />}
-          </Section>
-          <Section title={t("budget")} count="" testId="chat-members-budget">
-            <BudgetForm key={chat.budget_usd} chat={chat} creator={creator} pending={pendingOf("budget")} onSave={(usd) => write.mutate({ kind: "budget", usd })} />
           </Section>
           {chat.restricted ? (
             <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground" data-testid="chat-restricted">

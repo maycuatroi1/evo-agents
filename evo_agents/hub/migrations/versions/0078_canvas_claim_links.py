@@ -1,8 +1,8 @@
 """What a claim of the core plugin canvas links: the use cases of the plugin srs that realize it and the signal keys
 that measure it.
 
-Revision ID: 0077
-Revises: 0076
+Revision ID: 0078
+Revises: 0077
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas`` and ``evo_agents.core_plugins.canvas.content`` as of
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0077"
-down_revision = "0076"
+revision = "0078"
+down_revision = "0077"
 branch_labels = None
 depends_on = None
 

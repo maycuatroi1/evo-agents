@@ -432,7 +432,7 @@ imports the other, and tasks reads the items of srs through the hub's tables (`e
 **canvas** (`evo_agents/core_plugins/canvas`, `docs/canvas-plugin.md`) keeps a living Lean Canvas for each product of
 a project, and projects enable it. Each of the nine cells holds claims with a status, a test card, evidence and every
 rev; an edit names the rev it read and applies at once, an undo is a new rev, and a claim goes to `validated` only with
-real evidence. It contributes routes under `/v1/x/canvas/`, eight tables `canvas_*` (migrations 0072 and 0074 to 0077),
+real evidence. It contributes routes under `/v1/x/canvas/`, eight tables `canvas_*` (migrations 0073 and 0075 to 0078),
 the native page Lean Canvas, the MCP tools `canvas__read`, `canvas__signals`, `canvas__edit`, `canvas__undo`,
 `canvas__propose`, `canvas__evidence` and `canvas__judge`, a source of the knowledge graph (`kg_sources`, Claim and
 SignalKey nodes), the jobs `value_check` (hourly, and at once on a batch of the project's signals: `docs/signals.md`,

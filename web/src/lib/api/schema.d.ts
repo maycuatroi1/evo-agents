@@ -5281,11 +5281,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Update Chat
-         * @description Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does.
-         */
-        patch: operations["update_chat_v1_chats__chat_id__patch"];
+        patch?: never;
         trace?: never;
     };
     "/v1/chats/{chat_id}/messages": {
@@ -5649,7 +5645,7 @@ export interface paths {
         /**
          * Rerun
          * @description Run the failed run of this triage thread again for its owner, inside the frame; 422 for a cause with no
-         *     automatic rerun, 409 when the chain of reruns, the chat's budget or an earlier rerun forbids it.
+         *     automatic rerun, 409 when the chain of reruns or an earlier rerun forbids it.
          */
         post: operations["rerun_v1_worker_runs__run_id__triage_rerun_post"];
         delete?: never;
@@ -9375,11 +9371,6 @@ export interface components {
              */
             last_read_seq: number;
             /**
-             * Budget Usd
-             * @description what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it
-             */
-            budget_usd: number;
-            /**
              * Kind
              * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
@@ -9955,14 +9946,6 @@ export interface components {
             faces: components["schemas"]["ChatAuthor"][];
             /** @description the latest message of its main line; null for none */
             last_message: components["schemas"]["ChatLastMessage"] | null;
-        };
-        /** ChatUpdate */
-        ChatUpdate: {
-            /**
-             * Budget Usd
-             * @description what the runs of the chat's agents may cost in 24 hours, in USD
-             */
-            budget_usd: number;
         };
         /**
          * CheckoutReport
@@ -41576,77 +41559,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Chat"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_chat_v1_chats__chat_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                chat_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatUpdate"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {

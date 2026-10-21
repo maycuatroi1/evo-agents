@@ -1,7 +1,7 @@
 """The hub's own events of a project, which the Loop reads by cursor (plan living-lean-canvas, criterion a6; plan
 loop-engine adds its kinds to the same table).
 
-The table hub_events (0076) is only ever added to: one row per event, its project, its kind, its payload and when it
+The table hub_events (0077) is only ever added to: one row per event, its project, its kind, its payload and when it
 was written, with an id that only grows. ``record`` writes one in the caller's transaction, the transaction that made
 the event, so an event exists exactly when what it tells of was committed; ``plugin_events.emit`` calls it for the
 kinds of KINDS beside the deliveries to plugins, from the same call. Nothing updates or deletes a row: a project
@@ -33,7 +33,7 @@ CLAIM = "canvas.claim"  # a rev of a claim of a Lean Canvas (core plugin canvas)
 BASELINE = "canvas.baseline"  # a baseline of a canvas, approved
 SIGNALS = "signal.posted"  # a batch of a project's signals the hub took (``evo_agents.hub.signals``)
 KINDS = (CLAIM, BASELINE, SIGNALS)  # what this release writes; plan loop-engine adds its own
-KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0076 holds it
+KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 VERSION = 1  # the ``v`` of every payload this release writes
 LOCK_BASE = 0x6875626576000000  # "hubev" in ASCII, shifted: a project's lock is this plus its id
 MAX_READ = 1000  # rows ``after`` reads at once

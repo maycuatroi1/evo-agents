@@ -1,7 +1,7 @@
 """The tables of the core plugin canvas: Lean Canvases with their claims, every rev of each claim, and evidence.
 
-Revision ID: 0072
-Revises: 0071
+Revision ID: 0073
+Revises: 0072
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas`` as of this revision, never imports, so a later change
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0072"
-down_revision = "0071"
+revision = "0073"
+down_revision = "0072"
 branch_labels = None
 depends_on = None
 

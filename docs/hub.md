@@ -562,7 +562,7 @@ there is opens without them, so one whose agent was deleted since still reads. A
 agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
 leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
-hop 1 for the person, within the chat's budget, and a reply in the thread of the agent's answer goes on in that session
+hop 1 for the person, and a reply in the thread of the agent's answer goes on in that session
 (`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
 reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
@@ -573,7 +573,7 @@ with one agent: today the conflicts @ba found in a version of a BA document of t
 findings of level decide open (`docs/srs-plugin.md`, `evo_agents/core_plugins/srs/settle.py`). It is a group chat in
 all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
 whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
-message's thread, within the chat's budget and hops: an `@` of it makes the same one run, and a mention of another
+message's thread, within the chat's hops: an `@` of it makes the same one run, and a mention of another
 agent hands that one work as in any chat and wakes the chat's agent too. And a person with any grant on the agent's
 project wakes the chat's agent, a reader too; any other agent of the chat still works for the writers of its project
 alone. Its members change as a group chat's do, and it may have an image. The hub opens it with no model asked: the
@@ -603,11 +603,9 @@ thread, of a direct chat the latest of all, since its answers show under the mes
 and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
 gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
 
-**Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
-rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
-and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
-what is left as its cost cap and 30 minutes of agent time. Only the creator changes it (`PATCH /v1/chats/{id}`, audited
-as `chat.budget`).
+**Caps.** A chat run has no cost cap: each gets 30 minutes of agent time (`chat_runs.TIME_CAP_SECONDS`), where its
+worker stops it. Schema 0072 dropped the chat's budget, which refused a mention once the chat's runs of a rolling 24
+hours had cost it.
 
 **Agents in chats.** The agent of a run (a chat run, or a step, plan or author run) talks in chats with
 `evo-agents worker chat post|react|create|mention` (`docs/workers.md`): a message in its thread or in a chat it is in,
@@ -667,10 +665,9 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
-| `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
-Creating a chat, adding and removing a member, sending a message, changing the budget and the image are audited
-(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.budget`, `chat.image`; an agent's in its project; an
+Creating a chat, adding and removing a member, sending a message and changing the image are audited
+(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.image`; an agent's in its project; an
 agent's message and chat as the run's dispatcher, naming the run), naming `chat:<id>` and the person, agent, message
 or image (`image:<the first 16 of its SHA-256>`, or `image:none`), never a title, a text or an image's bytes. For
 example:
@@ -690,9 +687,9 @@ happened in a chat in order. It adds the notices `chat_mention` and `chat_added`
 notices and drops the six tables: every chat is lost. Schema 0032 adds the chat run: the run kind `chat`, on no plan,
 that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
 (the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
-`chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
-columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or `direct`), and for a direct
-chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
+`chats.budget_usd` (more than 0, at most 1000, 5 unless changed), which 0072 drops. Going back to 0031 deletes the chat
+runs and drops the columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or
+`direct`), and for a direct chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
 for a group), one direct chat per pair (`chats_direct_key`), and the `via` direct of a mention. Going back to 0049 makes
 every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread. Schema
 0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
@@ -708,14 +705,14 @@ its row, reads a mention `via` settle as `via` thread, and drops the table.
 The agent of a failed run's triage thread acts for the run's owner through three worker routes,
 `POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan` and `.../triage/invite` (`evo_agents/hub/server/triage_actions.py`,
 `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
-of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, within the chat's budget, and an
-edit of a plan only as a new revision that differs from the held one in the `verify` or `what` of pending steps of the
-run's repos, with no command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step
-that is done, `acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run
-dispatched by hand. When the error names another project, `.../triage/invite` puts the agent of that project in the
-chat by the rule of Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread),
-and the agent hands it work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row (`run.triage_rerun`,
-`run.triage_plan_edit`) in the same transaction.
+of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, and an edit of a plan only as a
+new revision that differs from the held one in the `verify` or `what` of pending steps of the run's repos, with no
+command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step that is done,
+`acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run dispatched by hand.
+When the error names another project, `.../triage/invite` puts the agent of that project in the chat by the rule of
+Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread), and the agent hands it
+work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row
+(`run.triage_rerun`, `run.triage_plan_edit`) in the same transaction.
 
 ## Plans and their copies in git
 
@@ -901,14 +898,15 @@ notices, and drops the five tables. Schema 0068 adds `user_emails`, the emails o
 adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0070 the settle chats
 (Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
 of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
-approved). Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
-Schemas 0072 to 0077 add the core plugin canvas and the hub's signals: 0072 `canvas_canvases`, `canvas_claims`,
-`canvas_claim_revs` and `canvas_evidence`; 0073 the hub's `signal_keys`, `signal_ingest_keys` and `signals`
-(`docs/signals.md`); 0074 `canvas_proposals`; 0075 `canvas_judgings`, `canvas_evidence.basis` and `rests_on_run`, and
-`canvas_proposals.evidence_id`; 0076 `canvas_baselines`, `canvas_baseline_items`, `canvas_claim_revs.baseline_id`
+approved). Schema 0072 drops `chats.budget_usd` and its check (Group chats, Caps); going back to 0071 puts it back at
+5 on every chat. Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
+Schemas 0073 to 0078 add the core plugin canvas and the hub's signals: 0073 `canvas_canvases`, `canvas_claims`,
+`canvas_claim_revs` and `canvas_evidence`; 0074 the hub's `signal_keys`, `signal_ingest_keys` and `signals`
+(`docs/signals.md`); 0075 `canvas_proposals`; 0076 `canvas_judgings`, `canvas_evidence.basis` and `rests_on_run`, and
+`canvas_proposals.evidence_id`; 0077 `canvas_baselines`, `canvas_baseline_items`, `canvas_claim_revs.baseline_id`
 and the hub's `hub_events`, with the delivery kinds `canvas.claim`, `canvas.baseline` and `signal.posted`, the
-permissions `canvas:read` and `signals:read` and the notice `canvas_baseline`; 0077 `canvas_claims.use_cases` and
-`signal_keys` (`docs/canvas-plugin.md`, Tables). Going back past 0076 deletes the deliveries of the three events and the
+permissions `canvas:read` and `signals:read` and the notice `canvas_baseline`; 0078 `canvas_claims.use_cases` and
+`signal_keys` (`docs/canvas-plugin.md`, Tables). Going back past 0077 deletes the deliveries of the three events and the
 `canvas_baseline` notices and takes the two permissions out of every grant; going back past each drops what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra

@@ -2651,15 +2651,13 @@
       "leave": "Rời chat",
       "leaving": "Đang rời",
       "removePerson": "Đưa {login} ra khỏi chat",
-      "budget": "Ngân sách",
       "restricted": "Một dự án có agent trong chat này bị hạn chế, nên thông báo của chat chỉ ghi tên chat và đường dẫn tới chat.",
       "left": "Bạn đã rời {title}",
       "done": {
         "addAgent": "Đã thêm {name} vào chat",
         "removeAgent": "Đã đưa {name} ra khỏi chat",
         "addPerson": "Đã thêm {name} vào chat",
-        "removePerson": "Đã đưa {name} ra khỏi chat",
-        "budget": "Đã đổi ngân sách"
+        "removePerson": "Đã đưa {name} ra khỏi chat"
       },
       "leaveTitle": "Rời {title}?",
       "leaveBody": "Bạn sẽ không còn đọc hay viết trong chat này, và không nhận thông báo của chat nữa. Một thành viên có thể thêm bạn lại.",
@@ -2678,12 +2676,6 @@
       "addPerson": "Thêm người",
       "peopleFull": "Một chat có tối đa {max} người.",
       "personHint": "Người chung dự án hay chung chat với bạn; gõ login để thêm người khác đã đăng nhập hub. Mỗi người cần grant đủ cho các dự án của agent trong chat này.",
-      "budgetRead": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ. {creator}, người tạo chat, đổi được mức này.",
-      "budgetLabel": "Hạn mức chi trong 24 giờ, tính bằng USD",
-      "saving": "Đang lưu",
-      "save": "Lưu",
-      "badBudget": "Một số lớn hơn 0, tối đa {max}.",
-      "budgetHint": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ, theo usage của run; vượt mức thì hub không giao việc nữa.",
       "detailsTitle": "Chi tiết",
       "directDescription": "Chat riêng của bạn với {name}.",
       "directNote": "Chat riêng chỉ có bạn và một agent, không đổi được. Muốn có thêm người hay agent khác, hãy bấm Chat mới để tạo group chat."

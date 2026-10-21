@@ -42,7 +42,7 @@ turned off. runs.agent_type_id names the agent type of a task run, and runs.pull
 of its branch.
 
 ``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),
-tasks (0047, ``tables_tasks``) and canvas (0072, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
+tasks (0047, ``tables_tasks``) and canvas (0073, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
 (``tables.srs``, ``tables.tasks``, ``tables.canvas``).
 """
 
