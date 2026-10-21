@@ -104,6 +104,12 @@ MEMBER_SCHEMA = {
     },
 }
 
+# The native page of the hub's web (web/src/app/(app)/p/[project]/x/pm, web/src/components/pm): the daily report, in the
+# project's menu. The link the digest carries, /p/{project}/x/pm, redirects to it.
+PAGES = {
+    "daily": {"title": "PM daily", "icon": "gauge", "description": "What was done, what is late, blocked and loaded"},
+}
+
 MANIFEST = {
     "id": "pm",
     "version": "1.0.0",
@@ -147,6 +153,7 @@ MANIFEST = {
                 "cron": DAILY_CRON,
             }
         ],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
         "tables": [{"name": "pm_sends", "title": "What pm sent a project on a day: its digest and escalations"}],
     },
 }
