@@ -19,7 +19,9 @@ of an agent someone mentioned in a group chat, which answers in the thread, may 
 and ends done with its turn; a reply in the thread starts the next turn as a new run in the same session
 (``evo_agents.hub.chat_runs``). A ``task`` run is the work a plugin hands an agent type of its own that a project
 enabled (``evo_agents.hub.task_runs``): one headless turn on a branch ``task/<run>``, whose pull request the hub opens
-as a draft, never merged, with its result told back to that plugin. A ``local`` run is a Claude Code session on a
+as a draft, never merged, with its result told back to that plugin. A ``release`` run is a cut or a fix of a cycle
+of a project's daily release, which its release schedule queues (``evo_agents.hub.releases``), dispatched as the
+schedule's owner and pinned to no worker. A ``local`` run is a Claude Code session on a
 member's own machine, which no worker runs and the hub only watches and asks decisions for (LOCAL_STATES;
 ``evo_agents.hub.server.local_runs``). A worker takes a kind of run only once its heartbeat says its daemon runs that
 kind (``run_kinds``): a daemon older than the review run reads every run as a step or plan run. Likewise it takes a plan
@@ -126,10 +128,11 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
 # plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
 # branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
-# sessions and runs with a cheap model (``evo_agents.hub.history``); a Claude Code session on a member's own
-# machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of
-# run a daemon announces and a claim hands out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history")
+# sessions and runs with a cheap model (``evo_agents.hub.history``); a cut or a fix of a project's release cycle
+# (``evo_agents.hub.releases``); a Claude Code session on a member's own machine, which no worker runs (LOCAL_KIND,
+# besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a claim hands
+# out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
@@ -159,6 +162,10 @@ KG_SYNC = "kg_sync"
 # (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
 # every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
 LAZY_CHAT_REPOS = "lazy_chat_repos"
+# a daemon that acts on its owner's Update now (update_now of the heartbeat answer): it claims no new run, lets the
+# ones it holds end, updates itself to the tag nightly and claims again, and reports in self_update.update_now how a
+# request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
+UPDATE_NOW = "update_now"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -170,6 +177,7 @@ WORKER_FEATURES = (
     CHAT_DECISIONS,
     KG_SYNC,
     LAZY_CHAT_REPOS,
+    UPDATE_NOW,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -267,7 +275,9 @@ LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that 
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
 ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a decision may be shown as
+# what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
+RELEASE_DECISION_CATEGORY = "release"
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, RELEASE_DECISION_CATEGORY)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -283,7 +293,8 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
 # chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``);
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
-# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder)
+# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
+# release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -293,6 +304,7 @@ NOTICE_KINDS = (
     "chat_added",
     "plugin_disabled",
     "builder_proposal",
+    "release",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
@@ -315,6 +327,16 @@ KG_SYNC_STATES = ("ok", "failed", "skipped")
 KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
 MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
 MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
+# The repository and the tag the daemons update themselves to, and whose commit the hub reads once a minute and hands
+# every daemon in its heartbeat answer (nightly; evo_agents.hub.nightly).
+NIGHTLY_REPO_URL = "https://github.com/maycuatroi1/evo-agents"
+NIGHTLY_TAG = "nightly"
+# How an owner's Update now of a worker ended (workers.update_outcome): current, its daemon runs the commit of nightly
+# the hub read; cancelled, the owner or a hub admin cancelled it; failed, the install failed (self_update.error says
+# how); impossible, the daemon cannot update itself (locked, an install it cannot update, a daemon of its install
+# locked or run by hand; self_update.reason says why). A daemon reports the last two in self_update.update_now.
+UPDATE_NOW_OUTCOMES = ("current", "cancelled", "failed", "impossible")
+UPDATE_NOW_DAEMON_ENDS = ("failed", "impossible")  # the outcomes a daemon reports
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",

@@ -1,4 +1,4 @@
-"""Which member an email belongs to: an address a member listed on the hub (the table user_emails, schema 0065), or
+"""Which member an email belongs to: an address a member listed on the hub (the table user_emails, schema 0068), or
 GitHub's noreply address of a login, which needs no row.
 
 GitHub gives every account a noreply address, ``ID+LOGIN@users.noreply.github.com`` (older accounts
@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-MAX_EMAIL_CHARS = 254  # the longest address SMTP carries (RFC 5321); user_emails_email_check (0065)
+MAX_EMAIL_CHARS = 254  # the longest address SMTP carries (RFC 5321); user_emails_email_check (0068)
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")  # one @, no space, a dot in the domain; user_emails_email_check
 MAX_EMAILS = 20  # a member's rows: an address is taken unchecked, so one member cannot hold the hub's addresses
 NOREPLY_DOMAIN = "users.noreply.github.com"

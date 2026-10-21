@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
-import psycopg
 import pytest
 
 from tests.hub import pg
@@ -22,6 +21,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+import psycopg
 from sqlalchemy import func, insert, literal, select
 
 from evo_agents.hub import facets, tables

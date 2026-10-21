@@ -1,7 +1,9 @@
 """notes, a core plugin of the tests (criterion a22 of hub-agent-plugins): a table of its own, notes_entries, which a
 revision appended to the hub's chain of migrations creates (``core_notes_migrations``); routes under
 /v1/x/notes/<project>/ that read and write it; an MCP tool that counts its rows; a subscription to the steps of plans;
-a native page, entries, which the web's end-to-end build carries (web/src/components/plugin-notes).
+a native page, entries, which the web's end-to-end build carries (web/src/components/plugin-notes). Beside it,
+``HUB_WIDE`` (beacon) is a core plugin with nothing per project, as Telegram: a channel of members and a route of its
+own at the path it names (the empty prefix), which checks its caller itself.
 
 The tests install it as an entry point of group evo_agents.plugins (``installed``) and append its revision to the
 hub's migrations (``migrations``), so the hub they start migrates the table and records the plugin in its store.
@@ -15,6 +17,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import BigInteger, Column, DateTime, Identity, MetaData, Table, Text, func, insert, select
 
+from evo_agents.hub.server.notifications import Channel, Outgoing
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -61,7 +64,21 @@ MISSING_TABLE = {
     "id": "ghost",
     "contributes": {**MANIFEST["contributes"], "tables": [{"name": "ghost_entries"}], "routes": []},
 }
-# A core plugin with nothing per project, as Telegram, whose table no migration creates.
+# A core plugin with nothing per project, as Telegram: a channel of members and a route of its own.
+HUB_WIDE = {
+    "id": "beacon",
+    "version": "1.0.0",
+    "publisher": "evo-agents",
+    "tier": "core",
+    "name": "Beacon",
+    "engines": {"evo-agents": ">=0.16"},
+    "plugin_api": 1,
+    "contributes": {
+        "channels": [{"name": "beacon", "python": f"{HERE}:BeaconChannel"}],
+        "routes": [{"name": "status", "python": f"{HERE}:beacon_router", "prefix": ""}],
+    },
+}
+# The same, owning a table no migration creates.
 HUB_WIDE_MISSING_TABLE = {
     "id": "phantom",
     "version": "1.0.0",
@@ -108,3 +125,17 @@ async def count(params: dict, context) -> dict:
 async def on_step(params: dict, context) -> dict:
     STEPS.append(params)
     return {}
+
+
+beacon_router = APIRouter(include_in_schema=False)
+
+
+@beacon_router.get("/v1/me/beacon")
+async def beacon_status(user: CurrentUser) -> dict:
+    """The caller's beacon, for any member signed in: the route checks its caller, no project enables it."""
+    return {"login": user.login}
+
+
+class BeaconChannel(Channel):
+    async def send(self, notification: Outgoing, config: dict) -> str | None:
+        return None

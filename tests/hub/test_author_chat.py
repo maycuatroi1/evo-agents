@@ -7,8 +7,9 @@ message of the run's chat, in order, the agent's between the owner's; a turn tha
 decision of its own, the wait does not count toward its timeout, and the reaper parks it after a day as a run waiting
 for a decision; the owner's reply goes to the agent's session, and to a parked run through the run that resumes it on
 the same worker; the owner's end of the chat ends the run done; the run's start of a wait sends its owner the notice
-author_waiting, on the web and on Telegram, a restricted project's with its name, the kind and the link alone; and a
-message to a run of another kind keeps the rule it had."""
+author_waiting, on the web and on a channel of theirs (the sample core plugin northwind-chat,
+``tests.hub.northwind_channel``), a restricted project's without the agent's message; and a message to a run of another
+kind keeps the rule it had."""
 
 from datetime import timedelta
 
@@ -22,11 +23,18 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import author, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
+from tests.hub.northwind_channel import (
+    cleared,
+    deliver,
+    hub_config,
+    linked,
+    northwind,  # noqa: F401 (a fixture)
+    set_up,
+)
 from tests.hub.test_author_runs import CHECKOUTS, KINDS, author_worker, dispatched_author, publish_skill
 from tests.hub.test_decisions import NOTHING_RECOVERED, inbox, last_reason, park, run_view, set_run
 from tests.hub.test_runs import (
@@ -44,14 +52,6 @@ from tests.hub.test_runs import (
     report,
     state_of,
 )
-from tests.hub.test_telegram import (
-    bot,  # noqa: F401 (a fixture)
-    deliver,
-    linked,
-    telegram_config,
-    unrestricted,
-    web,
-)
 
 SESSION = "0199a3c1-0000-7000-8000-0000000000aa"
 QUESTION = "Should the wait helper poll, or subscribe to the run's events?"
@@ -60,19 +60,18 @@ PUT_SAID = "Put plan wait-helper at revision 1. I chose the order of the steps m
 
 
 @pytest.fixture
-def client(hub_db, tmp_path, github, s3, bot):  # noqa: F811
-    config = telegram_config(hub_db, tmp_path, github, **s3.config())
+def client(hub_db, tmp_path, github, s3, northwind):  # noqa: F811
+    config = hub_config(hub_db, tmp_path, github, **s3.config())
     with TestClient(create_app(config), base_url="https://hub.test") as client:
-        client.app.state.telegram_inbound = server_telegram.InboundLimit(updates=1000)
         yield client
 
 
 @pytest.fixture
 def hub(client, github, hub_db) -> dict:
-    """test_runs' members, the project's hub sink not restricted, and a web session of the owner's."""
+    """test_runs' members, the project's hub sink not restricted, and northwind-chat set up by the hub's admin."""
     headers = members(client, github)
-    unrestricted(hub_db)
-    headers["owner_web"] = web(client, hub_db, OWNER)
+    cleared(hub_db)
+    set_up(client, headers["admin"])
     return headers
 
 
@@ -381,8 +380,14 @@ def test_a_message_or_an_end_of_chat_to_a_run_of_another_kind_keeps_the_rule_it_
 # The notice
 
 
-def test_an_author_run_that_waits_notifies_its_owner_on_the_web_and_on_telegram(client, hub, hub_db, tmp_path, bot):  # noqa: F811
-    linked(client, hub["owner_web"])
+def test_an_author_run_that_waits_notifies_its_owner_on_the_web_and_on_their_channel(
+    client,
+    hub,
+    hub_db,
+    tmp_path,
+    northwind,  # noqa: F811
+):
+    linked(hub_db, OWNER)
     worker, run_id = running(client, hub, tmp_path)
     asked(client, worker, run_id)
     (notice,) = notices(client, hub["owner"])
@@ -396,9 +401,16 @@ def test_an_author_run_that_waits_notifies_its_owner_on_the_web_and_on_telegram(
     )
     assert notices(client, hub["other"]) == []
     assert deliver(client)["failed"] == 0
-    message = bot.fake.sent()[-1]
-    assert message["text"].startswith(f"<b>An author run waits for your reply</b> in {PROJECT}")
-    assert "Should the wait helper poll" in message["text"] and f"https://hub.test{link}" in message["text"]
+    (sent,) = northwind.outgoing
+    assert (sent.login, sent.notice_kind, sent.project, sent.body, sent.link) == (
+        OWNER,
+        "author_waiting",
+        PROJECT,
+        QUESTION,
+        link,
+    )
+    assert sent.extra == {"restricted": False}  # the channel may send it whole
+    assert northwind.chat.last()["text"] == f"Author run #{run_id} waits for your reply: https://hub.test{link}"
 
     # the next wait reads the one before: one notice of the run waits at a time
     moved(client, worker, run_id, "running")
@@ -407,16 +419,16 @@ def test_an_author_run_that_waits_notifies_its_owner_on_the_web_and_on_telegram(
     assert [(item["body"], item["read_at"] is None) for item in listed] == [(PUT_SAID, True), (QUESTION, False)]
 
 
-def test_a_restricted_projects_author_notice_on_telegram_holds_its_name_the_kind_and_the_link_alone(
+def test_a_restricted_projects_author_notice_on_a_channel_holds_its_name_and_the_link_alone(
     client,
     hub,
     hub_db,
     tmp_path,
-    bot,  # noqa: F811
+    northwind,  # noqa: F811
 ):
-    linked(client, hub["owner_web"])
+    linked(hub_db, OWNER)
     for clearance in ({"level": "customer", "location": "any"}, {"level": "internal", "location": "domestic-only"}):
-        unrestricted(hub_db, clearance)
+        cleared(hub_db, clearance)
         worker = author_worker(client, hub["owner"], f"mac-{clearance['level']}")
         if not sql(hub_db, select(tables.skills.c.id).limit(1)):
             publish_skill(client, hub, tmp_path, "The author mode.")
@@ -425,11 +437,11 @@ def test_a_restricted_projects_author_notice_on_telegram_holds_its_name_the_kind
         moved(client, worker, run_id, "running")
         asked(client, worker, run_id)
         assert deliver(client)["failed"] == 0
-        message = bot.fake.sent()[-1]
+        assert northwind.outgoing[-1].extra == {"restricted": True}, clearance  # nothing of it but what waits
         url = f"https://hub.test/p/{PROJECT}/runs/{run_id}?tab=chat"
-        assert message["text"] == f"<b>{PROJECT}</b>: An author run waits for your reply.\n\n{url}", clearance
-        assert QUESTION not in message["text"] and "Author run #" not in message["text"]
-        assert message["reply_markup"] == {"inline_keyboard": [[{"text": "Open on the hub", "url": url}]]}
+        message = northwind.chat.last()
+        assert message["text"] == f"Something of {PROJECT} waits for you: {url}", clearance
+        assert QUESTION not in message["text"] and message["buttons"] == []
         # the web, on the hub itself, shows the agent's message
         assert notices(client, hub["owner"])[0]["body"] == QUESTION
 

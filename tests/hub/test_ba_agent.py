@@ -388,6 +388,35 @@ def test_ba_agent_proposes_a_version_in_review_written_as_the_writer_who_asked_w
     assert "BR ORD2-2" in {entry["code"] for entry in version(client, hub["reader"], 2)["items"]}
 
 
+def test_ba_agent_proposal_with_self_approval_on_is_approved_by_the_writer_who_asked(client, hub):
+    imported(client, hub["chi"])
+    enable_ba(client, hub)
+    studio = owners_worker(client, hub)
+    on = {"values": {"self_approval": True}}
+    written = client.post(f"/v1/projects/{PROJECT}/plugins/srs/config", json=on, headers=hub["owner"])
+    assert written.status_code == 200, written.text
+    chat = created(client, hub["other"], "SRS", people=[OWNER, CHI], agents=("ba",))
+    mention(client, hub["other"], chat["id"], "@ba rename UC ORD-1")
+    spec = running(client, studio, "chat")
+    agent = agent_of(studio, spec["id"])
+    order = item(client, hub["chi"], "UC ORD-1")
+    change = {"key": order["key"], "title": "Place an order now"}
+    text, error = tool(
+        client, agent, "srs__propose", document="demo-shop", base_version=1, summary="Rename", changes=[change]
+    )
+    assert not error, text
+    assert text.startswith(
+        f"Version 2 of demo-shop is in review, drafted by run #{spec['id']} and written as {OTHER}. Self-approval is "
+        f"on in project {PROJECT}, so {OTHER} may approve it as any writer may."
+    ), text
+    assert review(client, agent, 2).status_code in (401, 403), "the agent of a run never approves, switch or not"
+    held = review(client, hub["other"], 2)  # the author may review it, once @ba's review of the round ends
+    assert held.status_code == 409 and "is queued" in held.json()["message"], held.text
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
+    approved = review(client, hub["other"], 2)
+    assert approved.status_code == 200 and approved.json()["state"] == "approved", approved.text
+
+
 def test_ba_agent_proposes_only_in_a_chat_run_of_ba(client, hub):
     imported(client, hub["chi"])
     enable_ba(client, hub)

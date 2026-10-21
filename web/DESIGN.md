@@ -233,6 +233,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A worker's update that failed; a daemon that cannot update itself; a long wait to update | `CircleX`; `RefreshCwOff`; `ClockAlert` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
+| Releases, a project's daily release; a decision of a stopped cycle, a notice of the release | `Tags` |
+| A release cycle: published, closed, stopped; a check that found nothing, waits for a cycle, the owner without the admin role | `PackageCheck`, `CircleMinus`, `OctagonPause`; `CircleMinus`, `Hourglass`, `UserX` |
 | The Curator's History, its search; Graph health; Runtime and harness | `TextSearch`; `Network`; `Layers` |
 | A change's replays; replays that won | `FlaskConical`; `Trophy` |
 | A skill release: published, published again, nothing published | `PackageCheck`, `Undo2`, `PackageX` |
@@ -1382,6 +1384,29 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
+- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's project group after the
+  Curator; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
+  (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it
+  cancels the release runs still queued and closes a cycle left idle) or Resume (the primary button while paused) for an
+  admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the daily time and zone, the
+  member its runs run as and the next check as a relative time, or who paused it. Under it, only when something is
+  wrong, a `danger` banner (an alert) while the App's installation grants no Actions (`actions_permission`) and an
+  `attention` banner while the cycle is stopped: its cause and reason, that it waits for its owner, and Answer the
+  decision (the Inbox's sheet) and Open the triage thread. The cycle open now is a card (`cycle-card.tsx`): its title
+  with a pill only when stopped, where it started (a cut of the target ref, or the fix of a red tag), the range from the
+  newest tag to the target's commit as `Identifier`s on GitHub, the changed paths as chips, its cost against its cap as
+  the kit's meter (`attention-solid` from 75 %, `danger-solid` from 90 %) with the figure beside it, then the tags it
+  follows (`cycle-tables.tsx`: the tag, its CI as a pill, the workflow run as a link out, who tagged it, when the hub
+  last read it; under the row the failed test ids in `danger` mono, five at most, a fault of the infrastructure and the
+  problem that kept the hub from reading the CI) and its runs (`#N` to the run's page, Cut or Fix of the tag as a
+  `Tag`, the run's pill, how the hub landed it with the pull request, a refusal in `danger`, the cost); without a cycle,
+  one quiet line with the next check. Then the Schedule and Last check cards side by side from lg (`schedule-card.tsx`:
+  the outcome as its icon and words, `attention` for paused or an owner without the admin role, `danger` for an error,
+  with the reason), the recent checks once there are two, and the cycles that ended in a `DataCard` with Newer and
+  Older (`past-cycles.tsx`: `#N` and the day over how it ended, the cycle's pill, its tags each with its CI icon, runs,
+  cost, ended). The CI, cycle and check looks live in `badges.tsx` on the shared `StatusPill`. Under 768 px every table
+  is a list of rows. The page reads the release every 10 seconds while the cycle has a run queued or under way or a tag
+  whose CI the hub still reads, every minute otherwise.
 - `components/plugins`, plugins (docs/plugins.md; docs/hub.md, Plugins). Administration gains a Plugins tab
   (`/admin/plugins`, hub admins): the store in one `DataCard` table, a plugin's name over its id and description, its
   publisher in mono (a `ShieldAlert` in `attention` once the operator no longer trusts it; a core plugin of the hub's image

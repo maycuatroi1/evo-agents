@@ -182,6 +182,19 @@ one, read its files and CI, write the Judge's check run, merge) use tokens of th
 with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
 it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
 
+A **release run** ([releases.md](releases.md), "The run on the worker") is guarded as a run of the Curator is
+(`RunCredentials.guarded`): its agent gets no credential helper and no lease that pushes, and only the daemon's own git
+uses the token, with a ticket of one command, to push `release/<version>`. Its preflight checks that push against the
+lease alone, never the machine's own credentials, and fails the run when no lease covers it. Of the owner's secrets it
+is leased only the `env` secrets of its runtime's login, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`
+(`RELEASE_ENV_VARS`), and no `git` secret: its repo must be on GitHub, where it gets a token of the workers' App with
+`GITHUB_PERMISSIONS` (contents write, metadata read) and never `workflows: write` (`NO_WORKFLOW_KINDS`), so its push
+cannot change the workflows that test and publish the release. The hub, not the run, merges and tags, with tokens
+of the workers' App made for each use: contents and pull requests write for the landing, actions read to follow the
+tag's CI, actions write to run its failed jobs again. The App needs the Actions permission (read and write) for those
+two, accepted on the installation; until then the hub reports `actions_permission` ([releases.md](releases.md), "The
+GitHub App").
+
 A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
 of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of
 the hub's GitHub App only when it holds `github-app`; a repo on GitHub it would have covered is missing, with the
@@ -279,8 +292,10 @@ An account whose token the API refused (the agent's turn ended with "Failed to a
 access token is invalid." or the like) is reported with status `unauthorized`: the hub keeps no usage, cools the
 account down for the policy's `cooldown_seconds` with the reason "authentication failed, reported by run N: log in again
 with evo-agents hub account login", and moves the run or stops it by the same rules; a run it stops fails with cause
-`account_auth`. There is no account state for a token that needs a new login: the account shows as cooling, with that
-reason, and a token renewed with `evo-agents hub account login` is taken once the cooldown ends.
+`account_auth`. For a setup-token account there is no state for a token that needs a new login: the account shows as
+cooling, with that reason, and a token renewed with `evo-agents hub account login` is taken once the cooldown ends.
+An OAuth account whose refresh token the endpoint refuses has the state `needs-relogin` (see "Adding and renewing an
+OAuth account").
 
 `run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
 `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
@@ -403,6 +418,54 @@ pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OA
   --expires 2027-10-13
 ```
 
+### Adding and renewing an OAuth account
+
+`evo-agents hub account oauth-login NAME [--project P ...] [--worker W ...] [--no-browser] [--paste] [--json]` signs a
+Claude account in with Claude's own OAuth flow (authorization code with PKCE, `evo_agents/hub/claude_oauth.py`), as
+Claude Code and CLIProxyAPIPlus's `--claude-login` do, on the member's machine. The command prints the address on
+claude.ai and opens it; once the member approves, the browser goes back to `http://localhost:54545/callback`, which the
+command answers. Without a terminal, with `--paste`, or when the port is taken, the member gives the code claude.ai
+shows (a bare code, `code#state`, or the address the browser went to) on stdin or at a prompt without echo. The command
+trades the code at the token endpoint for an access token, a refresh token and the access token's lifetime, in memory
+alone, and writes them with `PUT /v1/secrets/NAME`: the access token as the value, the rest as the field `oauth`
+(`refresh_token`, `access_expires_at`, and the account's and organization's ids and address when the endpoint gave
+them), which only an env secret for `CLAUDE_CODE_OAUTH_TOKEN` may carry. `EVO_CLAUDE_OAUTH_TOKEN_URL` and
+`EVO_CLAUDE_OAUTH_AUTHORIZE_URL` name other endpoints, for a test.
+
+The hub seals the whole set (access token, refresh token, end of the access token, identity) as one JSON object under
+the associated data `account-oauth:{secret id}` and keeps it in the `oauth_sealed`, `oauth_nonce` and `oauth_key_id`
+columns of the account's `accounts` row (schema 0066); no column holds a token in the clear, and no response shows one.
+`expires_at` of the secret is the end of the access token. An account shows `auth: oauth` in `account list|show`
+(`token` for any other); a write of the secret without `oauth`, or its deletion, drops the sealed set. Running the
+command again for an existing NAME replaces the tokens alone, as `account login` does: same secret id, so weight,
+priority, pause, cooldown and runs stay.
+
+#### Refresh at lease time
+
+An access token lives about eight hours. When a run asks for its credentials (`POST /v1/worker/runs/{id}/credentials`),
+the hub first looks at each OAuth account the run may be leased (`evo_agents/hub/server/account_refresh.py`). One whose
+access token ends in under five minutes, or has ended, is traded at the token endpoint for a new one with its refresh
+token. Anthropic rotates the refresh token at every use, so the new access token, the new refresh token and the new end
+are stored together in one transaction: the sealed set and the secret's value (the lease hands out the value as
+`CLAUDE_CODE_OAUTH_TOKEN`, as for any account, and the worker's path is unchanged: an environment variable, no
+credential file, the daemon's `ANTHROPIC_API_KEY` dropped). A token with more than five minutes left is leased as it is,
+with no call out. The secret's row is locked during a refresh, so runs of one account that lease together refresh once:
+the others wait, read the set the first stored and find it good. A refresh that fails (the refresh token revoked, the
+endpoint down) changes nothing and logs the reason without a token; a token that has not ended is still leased, one that
+has ended is not. The endpoint and client id are in `evo_agents/hub/claude_oauth.py` (`EVO_CLAUDE_OAUTH_TOKEN_URL`
+names another endpoint, for a test).
+
+#### needs-relogin
+
+A refresh the endpoint answers by refusing the refresh token (revoked, ended) marks the account `needs-relogin`: a
+cooldown that only a new sign-in ends, with the reason "needs-relogin: the OAuth refresh token was refused; run
+evo-agents hub account oauth-login again". `account list|show` and the Accounts page show the state, the account is
+left out of the choice for dispatch, candidates and triage, and the runs that held it fail over to another account as
+for a spent limit (a run with none left fails with cause `account_auth`). An account whose access token has lapsed but
+whose refresh token is still good is not in this state: it is usable, and the next lease refreshes it. Running
+`oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays. A transient
+failure of the endpoint (down, 5xx) does not mark the account.
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
@@ -419,26 +482,24 @@ weighted, fill-first, cooldown, failover, a page that shows each account) and ap
   long as it runs, on a path every request of every agent goes through, and would see each prompt;
 - nothing sits between the CLI and Anthropic: no process to keep up on each worker or on the hub, no request rewritten,
   no identity changed, and the CLI's own `rate_limit_event` says when an account is spent;
-- an account is the token `claude setup-token` makes, which the hub already leases; there is no OAuth login with a
-  refresh token to keep alive.
+- an account is either the token `claude setup-token` makes, which the hub leases as it is, or an OAuth account
+  (`account oauth-login`), whose tokens the hub keeps sealed and refreshes when a run asks for its credentials, never
+  per request.
 
 What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
 itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
 Code reports a limit; the usage an account shows is what the CLI said last.
 
-The proxy's `--claude-login` is the other thing the hub leaves out: a PKCE login on claude.ai with Claude Code's
-client id, whose access and refresh tokens the proxy keeps and refreshes. Anthropic's
+The proxy's `--claude-login` is a PKCE login on claude.ai with Claude Code's client id, whose access and refresh
+tokens the proxy keeps and refreshes. `hub account oauth-login` does the same flow on the member's machine, and the hub
+keeps the sealed tokens and refreshes them at lease time (above); `hub account login`, with the token `claude
+setup-token` prints, is unchanged and needs no refresh token. Anthropic's
 [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page, section "Authentication and
 credential use" (read 2026-10-14), does not permit third-party developers to offer Claude.ai login in their own
-applications. It also says developers may not collect, store or intermediate Claude.ai credentials or session tokens,
-and that sign-in to a Claude account must complete through Anthropic's own flow. The same page does not prevent an end
-user from signing in to the unmodified Claude Code binary with their own subscription. So neither the hub nor the CLI
-runs an OAuth flow of its own: no client id, no call to an authorize or token endpoint of claude.ai, platform.claude.com
-or console.anthropic.com, no refresh token kept and nothing refreshed. `hub account login` runs the unmodified
-`claude setup-token` on the member's own machine, the member signs in through Anthropic's own flow, and the hub gets
-the one-year token that command prints, as it would get it from a paste, and leases it to that member's runs alone.
-A token that ends is renewed the same way, by its owner. Whether a given use of an account fits Anthropic's terms is for
-its owner to check against that page; the hub only keeps the sign-in itself out of its code.
+applications, and says developers may not collect, store or intermediate Claude.ai credentials or session tokens.
+[Unverified] Whether `oauth-login` fits those terms is not settled by this document; its owner checks a use of an
+account against that page, and `account login` with a setup-token is the route that keeps the sign-in inside
+Anthropic's own binary.
 
 ## Plugins
 

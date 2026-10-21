@@ -18,6 +18,8 @@ evo-agents hub plugin enable srs --project evo-agents
 evo-agents hub plugin config srs --project evo-agents --set 'roles={"ba": ["alice"], "qa": ["bao"], "dev": ["chi"]}'
 evo-agents hub plugin config srs --project evo-agents \
   --set 'approval_policy={"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}'
+evo-agents hub plugin config srs --project evo-agents --set self_approval=true   # authors may approve their versions
+evo-agents hub plugin config srs --project evo-agents --effective                # each field, the layer that set it
 ```
 
 It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Plugins in a project):
@@ -28,8 +30,11 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `code_patterns` | per kind of coded item (`use_case`, `business_rule`, `screen`, `nfr`, `cbr`), a regular expression that replaces the template's | the template's patterns (section Markdown) |
 | `roles` | per role of a review (`ba`, `qa`, `dev`), the members who hold it, by login | nobody holds a role |
 | `approval_policy` | per kind of document (`srs`, `spec`), the roles whose approval a version needs (`required`) and those that may approve too (`optional`) | one approval is enough (section Approval) |
+| `self_approval` | `true` lets the author of a version review it, approve it or ask for changes, as any writer of the project (section Approval) | `false`: another member reviews it |
 
-The headings a template reads stay the template's; a client changes only the patterns of its codes. Turning the
+The headings a template reads stay the template's; a client changes only the patterns of its codes. Only an admin of the
+project writes the config, with the commands above or on the plugin's page of the project on the web
+(`/p/{project}/plugins/srs`); `--unset self_approval` turns self-approval off again, back to its default. Turning the
 plugin off deletes nothing: its tables and rows stay for when it is on again.
 
 ## The model
@@ -64,9 +69,9 @@ Migration 0046 adds the nine tables, each with the plugin's prefix: `srs_documen
 Markdown body once, by SHA-256), `srs_items`, `srs_codes`, `srs_item_versions`, `srs_refs`, `srs_reviews` and
 `srs_comments`. Going back to 0045 drops them. Migration 0064 lets `srs_versions.state` be `withdrawn`, which carries
 `decided_at`, the moment of the withdrawal; going back to 0063 makes every withdrawn version a draft again, without
-`decided_at`. Migration 0066 adds `srs_findings` and `srs_versions.review_run_id`, the task run of @ba's review of the
-version's current round; 0067 adds `srs_settle_chats`, the settle chat of a version, and `srs_findings.commit_authors`;
-0068 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. Going back past each drops
+`decided_at`. Migration 0069 adds `srs_findings` and `srs_versions.review_run_id`, the task run of @ba's review of the
+version's current round; 0070 adds `srs_settle_chats`, the settle chat of a version, and `srs_findings.commit_authors`;
+0071 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. Going back past each drops
 what it added.
 
 ## Who does what
@@ -76,7 +81,7 @@ The routes answer a member with a grant on a project that enabled the plugin, an
 | Who | May |
 | --- | --- |
 | a reader | read the documents, their versions, items, comparisons, exports, comments and findings (`srs findings`), archived documents included; settle a finding in its settle chat |
-| a writer | import Markdown, save a version, submit a draft, review a version (section Approval), withdraw a version of their own in review, comment and close a thread |
+| a writer | import Markdown, save a version, submit a draft, review a version (section Approval: one they wrote only with `self_approval` on), withdraw a version of their own in review, comment and close a thread |
 | an admin | what a writer may, plus drop a coded item, retire items by their codes (`retire`), withdraw any version in review (`withdraw`), waive an open finding (`srs waive`), archive a document (`archive`) and open it again (`unarchive`), and give a new document a label of its own |
 | the agent of a run | what the tools of @ba allow (section @ba): record, resolve, waive and reopen findings with `srs__finding`; never approve, return or withdraw a version, waive a finding through the route, retire items, archive or unarchive a document |
 
@@ -125,7 +130,9 @@ A writer submits a draft that has no error; it goes to `in_review` and its round
 approves it or asks for changes, with these rules:
 
 - Nobody who wrote a version since the one approved last, the version under review included, reviews it. Admins are
-  no exception.
+  no exception. With the config's `self_approval` on, this rule alone goes: the author reviews their version as any
+  writer does, so a project without an `approval_policy` approves it with the author's own approval. The review page
+  says self-approval is on for the project. Every rule below holds either way.
 - The agent of a run never approves or returns a version: the route refuses any token scoped to a run.
 - One review per member per round.
 - An approval counts for a role the reviewer holds in `roles`: the one they name (`--role`), else the first role the
@@ -419,8 +426,9 @@ agent runs on.
 
 **A proposal is a version members approve.** `srs__propose` checks its changes as a save is checked, writes them as
 the next version under the name of the person who mentioned @ba, with `drafted_by_run` set, and submits it at once.
-That person is its author, so they never approve it: another writer does. Its schema takes no drop and never changes a
-code.
+That person is its author, so they never approve it: another writer does, unless the project turned `self_approval`
+on, when they may approve it as any writer may, and the tool's answer says so. The agent of the run never approves it
+either way. Its schema takes no drop and never changes a code.
 
 **@ba reviews each version that enters review.** Every time a version goes to review, in every round, from a
 member's submit or from a proposal, the plugin hands @ba its review as a task run on a worker of `run_as`, with no

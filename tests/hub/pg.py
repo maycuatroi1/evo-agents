@@ -89,7 +89,7 @@ PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
 AGENT_TYPE_TABLES = frozenset({"project_agent_types"})
 # migration 0043: the proposals of @builder, which an admin approves before the hub applies them
 BUILDER_TABLES = frozenset({"builder_proposals"})
-# migration 0044: the chat of a plan's failures and the triage thread of each failed run
+# migration 0044: the triage chats of failed runs and the triage thread of each failed run
 TRIAGE_TABLES = frozenset({"triage_chats", "run_triage"})
 # migration 0046: the BA documents of the core plugin srs, their versions, items, codes, reviews and comments
 SRS_TABLES = frozenset(
@@ -121,13 +121,17 @@ REPLAY_TABLES = frozenset({"replay_tasks", "curator_replays"})
 HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
 # migration 0060: the words of the history for search, and the playbook of the Curator with its deltas
 SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
-# migration 0065: the emails members listed, one member an address
+# migration 0065: the commit of the tag nightly the hub last read
+NIGHTLY_TABLES = frozenset({"hub_nightly"})
+# migration 0067: the release schedules of projects, their cycles, the runs of each cycle and every check
+RELEASE_TABLES = frozenset({"release_schedules", "release_cycles", "release_runs", "release_tags", "release_checks"})
+# migration 0068: the emails members listed, one member an address
 USER_EMAIL_TABLES = frozenset({"user_emails"})
-# migration 0066: the conflicts @ba found in the BA documents of the core plugin srs
+# migration 0069: the conflicts @ba found in the BA documents of the core plugin srs
 SRS_FINDING_TABLES = frozenset({"srs_findings"})
-# migration 0067: the settle chat of each version of a BA document whose review left conflicts to settle
+# migration 0070: the settle chat of each version of a BA document whose review left conflicts to settle
 SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
-# migration 0068: what the approval of a version did to the project's tasks, and @ba's run that splits them
+# migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
 SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

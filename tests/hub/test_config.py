@@ -239,7 +239,9 @@ def test_the_github_app_needs_both_variables_and_no_error_shows_a_secret():
 
 
 def test_the_telegram_variables_turn_the_channel_on_are_secrets_and_either_missing_turns_it_off():
-    from tests.hub.fake_telegram import SECRET, TOKEN
+    # A fake bot token (<bot id>:<secret>) and webhook secret, built from pieces so no scanner reads them as real ones.
+    TOKEN = "".join(("1234567", "89:", "AAfake", "-test-", "token", "-for-the-hub"))
+    SECRET = "".join(("webhook", "-secret-", "for-tests"))
 
     base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
     config = load_config({**base, "EVO_HUB_TELEGRAM_BOT_TOKEN": TOKEN, "EVO_HUB_TELEGRAM_WEBHOOK_SECRET": SECRET})

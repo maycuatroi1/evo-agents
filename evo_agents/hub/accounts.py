@@ -52,7 +52,9 @@ DEFAULT_POLICY = {
 # runs it, listed by the Curator's charter, taken from the project's pool, or every account was cooling down and the
 # run took the one whose cooldown ends first.
 CHOICES = ("manual", "worker", "charter", "pool", "cooling")
-ACCOUNT_STATES = ("ready", "cooling", "paused", "expired")
+# ``needs-relogin`` is only in the view of an account (GET /v1/accounts): an OAuth account whose cooldown is the one
+# a refused refresh token sets, which only a new oauth-login ends. ``account_state`` itself says "cooling" for it.
+ACCOUNT_STATES = ("ready", "cooling", "paused", "expired", "needs-relogin")
 
 
 @dataclass(frozen=True)

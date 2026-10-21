@@ -1381,6 +1381,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/update-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Update Now
+         * @description Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
+         *     and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already.
+         */
+        post: operations["ask_update_now_v1_workers__worker_id__update_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/update-now/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Update Now
+         * @description Withdraw the worker's open Update now; the daemon claims runs again.
+         */
+        post: operations["cancel_update_now_v1_workers__worker_id__update_now_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/dispatch-from": {
         parameters: {
             query?: never;
@@ -2788,6 +2829,147 @@ export interface paths {
          *     computes its tier and drops it when it repeats a proposal rejected lately.
          */
         post: operations["record_proposal_v1_worker_runs__run_id__proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status
+         * @description Where the project's daily release stands: its schedule, its latest checks and the cycle open now.
+         */
+        get: operations["status_v1_projects__project__releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ended Cycles
+         * @description The project's release cycles that ended, published or closed, newest first, each with its runs and tags.
+         */
+        get: operations["ended_cycles_v1_projects__project__releases_cycles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Schedule
+         * @description Set the project's release schedule; the caller becomes its owner.
+         */
+        put: operations["set_schedule_v1_projects__project__releases_schedule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause
+         * @description Pause the release schedule, cancel the release runs still queued and close an open cycle left idle.
+         */
+        post: operations["pause_v1_projects__project__releases_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume
+         * @description Let the release schedule check again.
+         */
+        post: operations["resume_v1_projects__project__releases_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/releases/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Now
+         * @description Check now, through the gates of the daily check, and answer the check.
+         */
+        post: operations["run_now_v1_projects__project__releases_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/release/branch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pushed
+         * @description The worker pushed release/<version> of the release run's repo: kept on the run, for the hub to land once the
+         *     run is done.
+         */
+        post: operations["pushed_v1_worker_runs__run_id__release_branch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5786,6 +5968,12 @@ export interface components {
              */
             workers: string[];
             /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
+            /**
              * Weight
              * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
              */
@@ -5819,10 +6007,10 @@ export interface components {
             expires_at: string | null;
             /**
              * State
-             * @description ready, cooling, paused or expired, now
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
              * @enum {string}
              */
-            state: "ready" | "cooling" | "paused" | "expired";
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
             /** @description what a run's CLI last said of its usage; null before any */
             last_usage: components["schemas"]["AccountUsage"] | null;
             /**
@@ -8344,7 +8532,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
             /** Question */
             question: string;
             /**
@@ -9431,6 +9619,10 @@ export interface components {
              * @description for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise
              */
             kg_sync?: components["schemas"]["KgDuty"][];
+            /** @description the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065 */
+            nightly?: components["schemas"]["NightlyRead"] | null;
+            /** @description the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now */
+            update_now?: components["schemas"]["UpdateNowRequest"] | null;
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -10972,6 +11164,20 @@ export interface components {
              */
             figures: boolean;
         };
+        /**
+         * NightlyRead
+         * @description Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly).
+         */
+        NightlyRead: {
+            /** Commit */
+            commit: string;
+            /**
+             * Read At
+             * Format: date-time
+             * @description when the hub read it; the hub reads it once a minute
+             */
+            read_at: string;
+        };
         /** NodeDetail */
         NodeDetail: {
             graph: components["schemas"]["GraphRef"];
@@ -11051,7 +11257,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "release") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -11132,6 +11338,40 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * OAuthTokens
+         * @description The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an
+         *     account of OAuth; never shown again.
+         */
+        OAuthTokens: {
+            /**
+             * Refresh Token
+             * Format: password
+             * @description the refresh token; sealed, never shown again
+             */
+            refresh_token: string;
+            /**
+             * Access Expires At
+             * Format: date-time
+             * @description when the access token (the value) ends
+             */
+            access_expires_at: string;
+            /**
+             * Account Uuid
+             * @description the Claude account's id
+             */
+            account_uuid?: string | null;
+            /**
+             * Organization Uuid
+             * @description its organization's id
+             */
+            organization_uuid?: string | null;
+            /**
+             * Email
+             * @description the Claude account's address
+             */
+            email?: string | null;
         };
         /** OptionIn */
         OptionIn: {
@@ -11317,7 +11557,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
             /** Question */
             question: string;
             /**
@@ -11381,7 +11621,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -13313,6 +13553,476 @@ export interface components {
             /** Conf */
             conf: number | null;
         };
+        /** ReleaseBranch */
+        ReleaseBranch: {
+            /** Run Id */
+            run_id: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /** Head */
+            head: string;
+            /** Version */
+            version: string;
+        };
+        /** ReleaseCheck */
+        ReleaseCheck: {
+            /** Id */
+            id: number;
+            /**
+             * Trigger
+             * @description schedule, the daily job; manual, an admin's run
+             * @enum {string}
+             */
+            trigger: "schedule" | "manual";
+            /**
+             * Local Day
+             * Format: date
+             * @description the day of the check in the schedule's time zone
+             */
+            local_day: string;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Requested By
+             * @description the admin of a manual check
+             */
+            requested_by: string | null;
+            /**
+             * Outcome
+             * @description opened: a cycle opened and its cut run queued; unchanged: no packaging path changed since the newest tag; busy: a cycle is open or stopped; paused: the schedule is paused; owner: its owner holds no admin role on the project; error: the check could not read GitHub, the reason says why
+             * @enum {string}
+             */
+            outcome: "opened" | "unchanged" | "busy" | "paused" | "owner" | "error";
+            /** Reason */
+            reason: string | null;
+            /**
+             * Base Tag
+             * @description the newest tag the pattern matched
+             */
+            base_tag: string | null;
+            /** Base Commit */
+            base_commit: string | null;
+            /**
+             * Target Commit
+             * @description the commit of the target ref
+             */
+            target_commit: string | null;
+            /**
+             * Changed Paths
+             * @description the packaging paths that changed since the newest tag
+             */
+            changed_paths: string[] | null;
+            /** Cycle Id */
+            cycle_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /** ReleaseCycle */
+        ReleaseCycle: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "stopped" | "published" | "closed";
+            /**
+             * Start
+             * @description the mode of its first run
+             * @enum {string}
+             */
+            start: "cut" | "fix";
+            /** Owner */
+            owner: string;
+            /**
+             * Local Day
+             * Format: date
+             */
+            local_day: string;
+            /** Base Tag */
+            base_tag: string | null;
+            /** Base Commit */
+            base_commit: string | null;
+            /** Target Ref */
+            target_ref: string;
+            /** Target Commit */
+            target_commit: string | null;
+            /** Changed Paths */
+            changed_paths: string[];
+            /**
+             * Budget Usd
+             * @description what the cycle's runs may cost
+             */
+            budget_usd: number;
+            /**
+             * Cost Usd
+             * @description what they cost so far, each agent session once
+             */
+            cost_usd: number;
+            /** Stop Reason */
+            stop_reason: string | null;
+            /**
+             * Stop Cause
+             * @description why it stopped last
+             */
+            stop_cause: ("run_failed" | "run_cancelled" | "refused" | "github" | "hacking" | "budget" | "same_test" | "timeout" | "ci") | null;
+            /**
+             * Decision Id
+             * @description the decision its last stop asked the owner
+             */
+            decision_id: number | null;
+            /**
+             * Thread
+             * @description the thread its last stop opened in the project's triage chat
+             */
+            thread: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Runs */
+            runs: components["schemas"]["ReleaseCycleRun"][];
+            /**
+             * Tags
+             * @description the tags it follows, in the order it began to
+             */
+            tags: components["schemas"]["ReleaseTag"][];
+        };
+        /** ReleaseCycleList */
+        ReleaseCycleList: {
+            /** Project */
+            project: string;
+            /**
+             * Cycles
+             * @description the cycles that ended, published or closed, newest first
+             */
+            cycles: components["schemas"]["ReleaseCycle"][];
+            /**
+             * Total
+             * @description the cycles that ended, on every page
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** ReleaseCycleRun */
+        ReleaseCycleRun: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "cut" | "fix";
+            /**
+             * Tag
+             * @description the red tag a fix run fixes forward
+             */
+            tag: string | null;
+            /** State */
+            state: string;
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Version
+             * @description the version the run pushed; null before it pushed
+             */
+            version?: string | null;
+            /**
+             * Branch
+             * @description release/<version>, the branch it pushed
+             */
+            branch?: string | null;
+            /**
+             * Decision
+             * @description the agent's Decision line on the version
+             */
+            decision?: string | null;
+            /**
+             * Pull Url
+             * @description the pull request the hub opened of the branch
+             */
+            pull_url?: string | null;
+            /**
+             * Merge Commit
+             * @description the commit the hub merged it as
+             */
+            merge_commit?: string | null;
+            /**
+             * Tagged
+             * @description the tag the hub made on the merge commit
+             */
+            tagged?: string | null;
+            /** Tagged At */
+            tagged_at?: string | null;
+            /**
+             * Land State
+             * @description tagged; refused, with the reason; failed, GitHub failing; null while it waits to land
+             */
+            land_state?: ("tagged" | "refused" | "failed") | null;
+            /** Land Reason */
+            land_reason?: string | null;
+        };
+        /** ReleasePushed */
+        ReleasePushed: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description release/<version>
+             */
+            branch: string;
+            /**
+             * Head
+             * @description the commit the branch has now
+             */
+            head: string;
+            /**
+             * Version
+             * @description the version the agent picked, X.Y.Z
+             */
+            version: string;
+            /**
+             * Decision
+             * @description the agent's Decision line
+             */
+            decision?: string | null;
+        };
+        /** ReleaseSchedule */
+        ReleaseSchedule: {
+            /** Repo */
+            repo: string;
+            /**
+             * Github Repo
+             * @description owner/name of the repo on GitHub; null once its origin is not there
+             */
+            github_repo: string | null;
+            /**
+             * At
+             * @description the local time of the daily check, HH:MM
+             */
+            at: string;
+            /** Timezone */
+            timezone: string;
+            /**
+             * Target Ref
+             * @description the ref whose commit a release ships: a tag, else a branch of that name
+             */
+            target_ref: string;
+            /**
+             * Tag Pattern
+             * @description the release tags: a literal prefix, then *, before a version X.Y.Z
+             */
+            tag_pattern: string;
+            /**
+             * Workflow
+             * @description the workflow that publishes a tag
+             */
+            workflow: string;
+            /**
+             * Paths
+             * @description the packaging paths: a check opens a cycle when one of them changed
+             */
+            paths: string[];
+            /**
+             * Cycle Budget Usd
+             * @description what one cycle's runs may cost
+             */
+            cycle_budget_usd: number;
+            /**
+             * Owner
+             * @description the admin who set the schedule last, whom its runs are dispatched as
+             */
+            owner: string;
+            /** Updated By */
+            updated_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Paused At */
+            paused_at: string | null;
+            /** Paused By */
+            paused_by: string | null;
+        };
+        /**
+         * ReleaseScheduleWrite
+         * @description What PUT .../releases/schedule sets; a key left out keeps what the schedule holds, or its default.
+         */
+        ReleaseScheduleWrite: {
+            /**
+             * Repo
+             * @description a repo of the project, on GitHub
+             */
+            repo?: string | null;
+            /**
+             * At
+             * @description the local time of the daily check, HH:MM
+             */
+            at?: string | null;
+            /**
+             * Timezone
+             * @description an IANA name
+             */
+            timezone?: string | null;
+            /**
+             * Target Ref
+             * @description the ref a release ships
+             */
+            target_ref?: string | null;
+            /**
+             * Tag Pattern
+             * @description a prefix, then *
+             */
+            tag_pattern?: string | null;
+            /**
+             * Workflow
+             * @description the workflow that publishes
+             */
+            workflow?: string | null;
+            /**
+             * Paths
+             * @description packaging paths
+             */
+            paths?: string[] | null;
+            /** Cycle Budget Usd */
+            cycle_budget_usd?: number | null;
+        };
+        /**
+         * ReleaseSpec
+         * @description What the worker of a release run is told (``evo_agents.hub.server.release_claims``): its cycle and mode, the
+         *     repo and the commit its worktree starts at, and the release tags' prefix; it pushes release/<version> alone.
+         */
+        ReleaseSpec: {
+            /** Cycle Id */
+            cycle_id: number;
+            /**
+             * Mode
+             * @description cut: a new version of the target; fix: the next patch of a red tag
+             * @enum {string}
+             */
+            mode: "cut" | "fix";
+            /**
+             * Repo
+             * @description the repo of the release schedule
+             */
+            repo: string;
+            /**
+             * Start Commit
+             * @description the commit the worktree starts at: a cut's target, a fix's red tag's
+             */
+            start_commit: string;
+            /**
+             * Base Tag
+             * @description the newest release tag when the cycle opened
+             */
+            base_tag: string | null;
+            /**
+             * Tag Prefix
+             * @description what a release tag starts with before its version: v of v*
+             */
+            tag_prefix: string;
+            /**
+             * Red Tag
+             * @description the tag a fix run fixes forward; null for a cut
+             */
+            red_tag?: string | null;
+        };
+        /** ReleaseStatus */
+        ReleaseStatus: {
+            /** Project */
+            project: string;
+            /** @description null before an admin sets one */
+            schedule: components["schemas"]["ReleaseSchedule"] | null;
+            /** Paused */
+            paused: boolean;
+            /**
+             * Next Check At
+             * @description the next moment of the daily check, in UTC
+             */
+            next_check_at: string | null;
+            last_check: components["schemas"]["ReleaseCheck"] | null;
+            /**
+             * Checks
+             * @description the latest 10 checks, newest first
+             */
+            checks: components["schemas"]["ReleaseCheck"][];
+            /** @description the cycle that is open or stopped, if any */
+            cycle: components["schemas"]["ReleaseCycle"] | null;
+        };
+        /** ReleaseTag */
+        ReleaseTag: {
+            /** Tag */
+            tag: string;
+            /** Commit */
+            commit: string;
+            /**
+             * Run Id
+             * @description the run whose merge commit the hub tagged; null for a tag a person made
+             */
+            run_id: number | null;
+            /**
+             * Ci State
+             * @description the CI of the schedule's workflow for the tag
+             * @enum {string}
+             */
+            ci_state: "pending" | "running" | "passed" | "failed" | "timeout";
+            /**
+             * Workflow Url
+             * @description the run of the workflow for the tag
+             */
+            workflow_url: string | null;
+            /** Run Attempt */
+            run_attempt: number | null;
+            /**
+             * Reruns
+             * @description times the hub ran its failed jobs again, for a fault of the infrastructure
+             */
+            reruns: number;
+            /**
+             * Failed Tests
+             * @description the test ids that failed, else each failed job and its step
+             */
+            failed_tests: string[];
+            /** Failed Jobs */
+            failed_jobs: string[];
+            /**
+             * Infra
+             * @description whether the infrastructure alone failed it
+             */
+            infra: boolean;
+            /**
+             * Problem
+             * @description what kept the hub from reading its CI: actions_permission, GitHub failing
+             */
+            problem: string | null;
+            /**
+             * Watched Since
+             * Format: date-time
+             * @description what its deadlines count from
+             */
+            watched_since: string;
+            /** Checked At */
+            checked_at: string | null;
+        };
         /** Replay */
         Replay: {
             /** Id */
@@ -13747,10 +14457,10 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
             /** Project */
             project: string;
             /**
@@ -13780,9 +14490,9 @@ export interface components {
             dispatched_by: string;
             /**
              * Dispatched Via
-             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; null for a run dispatched before 0.5.0
+             * @description the credential it was dispatched with: web, a web session; machine, a token (the command line, an agent); schedule, the night shift of the project's charter, for its owner; release, the project's release schedule, for its owner; null for a run dispatched before 0.5.0
              */
-            dispatched_via: ("machine" | "web" | "schedule") | null;
+            dispatched_via: ("machine" | "web" | "schedule" | "release") | null;
             /**
              * Worker Id
              * @description the worker that claimed it
@@ -14778,7 +15488,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release";
             /** Project */
             project: string;
             /**
@@ -14888,6 +15598,8 @@ export interface components {
              * @description the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none
              */
             packs?: components["schemas"]["RunPack"][];
+            /** @description a release run's cycle, mode and start commit; null for any other run */
+            release?: components["schemas"]["ReleaseSpec"] | null;
         };
         /** RunState */
         RunState: {
@@ -15267,6 +15979,8 @@ export interface components {
              * @description after this no run gets it; in the future
              */
             expires_at?: string | null;
+            /** @description kind env, env_var CLAUDE_CODE_OAUTH_TOKEN only: the account signed in with OAuth. The value is its access token; this holds the refresh token and when the access token ends, and the hub keeps all of them sealed. expires_at, when given, is that end */
+            oauth?: components["schemas"]["OAuthTokens"] | null;
             /**
              * Value
              * Format: password
@@ -15362,6 +16076,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
         };
         /**
          * SessionDigest
@@ -18351,6 +19067,35 @@ export interface components {
              */
             link: string;
         };
+        /**
+         * UpdateNowReport
+         * @description Where the daemon stands with its owner's Update now (update_now of the heartbeat answer).
+         */
+        UpdateNowReport: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description the request it is about: requested_at of the answer's update_now
+             */
+            requested_at: string;
+            /**
+             * Ended
+             * @description null while the daemon carries it out; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with either, and with a value it does not know ends nothing
+             */
+            ended?: string | null;
+        };
+        /**
+         * UpdateNowRequest
+         * @description An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends.
+         */
+        UpdateNowRequest: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when it was asked for; it names the request in self_update.update_now
+             */
+            requested_at: string;
+        };
         /** UploadItem */
         UploadItem: {
             /**
@@ -18646,6 +19391,10 @@ export interface components {
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
+            update_now: components["schemas"]["WorkerUpdateNow"] | null;
+            /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
+            nightly: components["schemas"]["NightlyRead"] | null;
             /** Projects */
             projects: string[];
             /**
@@ -18860,6 +19609,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
             /**
              * Since
              * @description when the hub first got this state, in an unbroken line of heartbeats that said it: how long the daemon has been waiting, for one
@@ -18920,6 +19671,33 @@ export interface components {
              * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
              */
             shared?: boolean | null;
+        };
+        /**
+         * WorkerUpdateNow
+         * @description The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now).
+         */
+        WorkerUpdateNow: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when its owner or a hub admin asked for it
+             */
+            requested_at: string;
+            /**
+             * Ended At
+             * @description when it ended; null while the daemon carries it out
+             */
+            ended_at: string | null;
+            /**
+             * Outcome
+             * @description how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open
+             */
+            outcome: ("current" | "cancelled" | "failed" | "impossible") | null;
+            /**
+             * Reason
+             * @description why it failed or was impossible, as the daemon or the hub said
+             */
+            reason: string | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -23929,6 +24707,140 @@ export interface operations {
             };
         };
     };
+    ask_update_now_v1_workers__worker_id__update_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_update_now_v1_workers__worker_id__update_now_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_dispatch_from_v1_workers__worker_id__dispatch_from_post: {
         parameters: {
             query?: never;
@@ -24277,7 +25189,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -28831,6 +29743,470 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Proposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    status_v1_projects__project__releases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ended_cycles_v1_projects__project__releases_cycles_get: {
+        parameters: {
+            query?: {
+                /** @description the cycles of one page */
+                limit?: number;
+                /** @description the cycles before the page */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseCycleList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_schedule_v1_projects__project__releases_schedule_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseScheduleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_v1_projects__project__releases_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_v1_projects__project__releases_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_now_v1_projects__project__releases_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseCheck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pushed_v1_worker_runs__run_id__release_branch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleasePushed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseBranch"];
                 };
             };
             /** @description Unauthorized */

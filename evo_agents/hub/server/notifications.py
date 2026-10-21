@@ -21,7 +21,7 @@ in CHANNELS, or a channel turned off since, fails its delivery at once with that
 does not try it forever. So does a kind whose class a core plugin contributes but does not load, or does not make (its
 import or its ``__init__`` raises): ``last_error`` says why, and the deliveries of every other kind, the web's
 included, go on. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
-under the kind's name (``evo_agents.core_plugins.telegram``), or an entry in CHANNELS; the tables, the outbox and the
+under the kind's name (as the core plugin telegram does), or an entry in CHANNELS; the tables, the outbox and the
 job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
 transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
 

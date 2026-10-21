@@ -1,6 +1,7 @@
 """A stand-in for Northwind Chat, the chat service of the sample core plugin northwind-chat
 (``tests/fixtures/core_plugins/northwind_chat``): its API takes the messages the plugin sends, in memory, and the
-tests build the updates the service would send the plugin's webhook. Modelled on ``tests/hub/fake_telegram.py``.
+tests build the updates the service would send the plugin's webhook. Modelled on the fake Bot API of Telegram's tests
+(``web/e2e/fake_telegram.py`` keeps a copy for the Playwright stack).
 
 ``transport()`` goes into ``northwind_chat.server.TRANSPORT``. ``refuse`` makes the next sends answer that status
 (429 with a retry_after, 403 for a chat that blocked the bot).

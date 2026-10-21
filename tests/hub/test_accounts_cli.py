@@ -70,6 +70,39 @@ def test_a_number_out_of_bounds_is_refused_before_the_hub_is_asked(monkeypatch, 
     assert result.err == f"error: {problem}\n"
 
 
+def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_renews_it(capsys):
+    from evo_agents.hub.cli_secrets import _print_account
+
+    account = {
+        "name": "oauth-a",
+        "env_var": VAR,
+        "auth": "oauth",
+        "state": "needs-relogin",
+        "projects": ["evo-agents"],
+        "workers": [],
+        "weight": 1,
+        "priority": 0,
+        "cooldown_until": "2036-10-21T00:00:00Z",
+        "cooldown_reason": "needs-relogin: the OAuth refresh token was refused",
+        "paused_at": None,
+        "expires_at": "2026-10-21T09:00:00Z",
+        "last_leased_at": None,
+        "last_usage": None,
+        "last_usage_at": None,
+        "runs_24h": 0,
+        "runs_7d": 0,
+        "cost_24h_usd": 0,
+        "cost_7d_usd": 0,
+        "held_by": [],
+    }
+    _print_account(account)
+    out = capsys.readouterr().out
+    assert out.startswith(
+        f"Account oauth-a ({VAR}): needs a new sign-in: run `evo-agents hub account oauth-login oauth-a`.\n"
+    )
+    assert "  Signed in with OAuth:" in out and "  Expires: access token until 2026-10-21 09:00 UTC.\n" in out
+
+
 # Against a hub
 
 if pg.DSN:

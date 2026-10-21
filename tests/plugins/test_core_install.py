@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import subprocess
 import sys
 from importlib.metadata import distributions
@@ -48,7 +49,8 @@ def pinned(tmp_path):
 def test_core_install_pinned_file_of_the_repository_is_valid():
     code, out, err = run("pinned", str(PINNED))
     assert code == 0, err
-    assert out == "", "this release pins no core plugin yet; a pinned line changes this test"
+    (line,) = out.splitlines()  # telegram and chats, of the repository evo-agents-core-plugins
+    assert re.fullmatch(r"evo-agents-core-plugins==\d+\.\d+\.\d+ --hash=sha256:[0-9a-f]{64}", line), line
 
 
 def test_core_install_pinned_prints_each_requirement_once_as_pip_reads_it(pinned):
@@ -154,10 +156,12 @@ def test_core_install_extra_leaves_out_what_the_image_has_and_refuses_another_ve
     assert f"pyyaml==0.1.0, but the image has pyyaml {have}" in err and "may not change a library of the hub" in err
 
 
-def test_core_install_extra_takes_at_most_the_requirements_a_backend_takes(monkeypatch, pinned):
+def test_core_install_extra_takes_at_most_the_requirements_a_backend_takes(pinned):
+    # Straight to extra(), not through the variable: Windows takes no variable over 32767 characters, and so many
+    # requirements are longer.
     value = " ".join(f"p{n}==1.0 --hash=sha256:{DIGEST}" for n in range(core_install.MAX_REQUIREMENTS + 1))
-    code, _, err = extra(monkeypatch, value, pinned(""))
-    assert code == 1 and f"over the {core_install.MAX_REQUIREMENTS}" in err
+    with pytest.raises(core_install.InstallError, match=f"over the {core_install.MAX_REQUIREMENTS} it takes"):
+        core_install.extra(pinned(""), value, core_install.installed_versions())
 
 
 # index
@@ -165,18 +169,25 @@ def test_core_install_extra_takes_at_most_the_requirements_a_backend_takes(monke
 CREDENTIAL = "lumen-deploy-token-0123456789"
 
 
+def write_secret(path: Path, text: str) -> None:
+    """The secret as compose writes it on the hub's host: UTF-8 with its line breaks as they are, where write_text
+    on Windows would write CRLF in the locale's encoding."""
+    path.write_bytes(text.encode("utf-8"))
+
+
 def test_core_install_index_takes_https_urls_and_http_to_localhost_or_none(tmp_path):
     code, out, err = run("index", str(tmp_path / "no-secret"))
     assert (code, out) == (0, "") and "from PyPI" in err
     secret = tmp_path / "secret"
-    secret.write_text(
+    write_secret(
+        secret,
         f"https://deploy:{CREDENTIAL}@registry.lumen.example/pypi/simple\thttps://pypi.org/simple\n"
-        f"http://ci:{CREDENTIAL}@127.0.0.1:8765/simple http://localhost/simple http://[::1]:9000/simple\n"
+        f"http://ci:{CREDENTIAL}@127.0.0.1:8765/simple http://localhost/simple http://[::1]:9000/simple\n",
     )
     code, out, err = run("index", str(secret))
     assert (code, out) == (0, "") and "the 5 URL(s) of the build secret core_plugin_index" in err
     assert CREDENTIAL not in err
-    secret.write_text("\n")
+    write_secret(secret, "\n")
     assert run("index", str(secret))[0] == 0
 
 
@@ -195,7 +206,7 @@ def test_core_install_index_takes_https_urls_and_http_to_localhost_or_none(tmp_p
 )
 def test_core_install_index_refuses_a_wrong_url_without_showing_it(tmp_path, url):
     secret = tmp_path / "secret"
-    secret.write_text(f"https://pypi.org/simple {url}\n")
+    write_secret(secret, f"https://pypi.org/simple {url}\n")
     code, out, err = run("index", str(secret))
     assert (code, out) == (1, "")
     assert "URL 2 of 2 in the build secret core_plugin_index (EVO_HUB_CORE_PLUGIN_INDEX_URL)" in err
@@ -253,6 +264,8 @@ def test_core_install_check_lists_the_core_plugins_that_load(installed):
 
 
 def test_core_install_check_fails_on_a_plugin_that_requires_another_api_naming_it(installed):
+    # The core plugin API is part of the hub's server, which the hub-server extra installs (fastapi with it).
+    pytest.importorskip("fastapi")
     installed("lumen-relay", core_fakes.GOOD)
     module = installed("lumen-bridge", core_fakes.WRONG_API, version="2.0.1")
     code, out, err = run("check")

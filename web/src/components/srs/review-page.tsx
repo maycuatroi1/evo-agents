@@ -22,7 +22,7 @@ import { FindingsCard } from "./findings-card";
 import { approveLock, REVIEW_REFRESH_MS, reviewHolds } from "./findings-model";
 import { useSrsViewer } from "./hooks";
 import { compareHref, documentHref, itemHref } from "./links";
-import { policyOf, reviewBlock, rolesOf, slots, versionOf } from "./model";
+import { policyOf, reviewBlock, rolesOf, selfApprovalOf, slots, versionOf } from "./model";
 import { ApprovalsCard, ReviewHistory } from "./review-parts";
 import { ReviewForm } from "./review-form";
 import { DraftBanner } from "./submit-banner";
@@ -90,7 +90,10 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
   const lock = version.state === "in_review" ? approveLock(findings.data, version.review_run) : null;
   const fields = config.data?.fields ?? [];
   const policy = policyOf(fields, latest.kind);
-  const block = viewer ? reviewBlock(viewer, latest, version) : "reader";
+  const selfApproval = selfApprovalOf(fields);
+  const block = viewer ? reviewBlock(viewer, latest, version, selfApproval) : "reader";
+  // An author waits for the config before being told they cannot review: self_approval may let them.
+  const awaitingConfig = block === "author" && config.isPending;
   const approved = latest.approved_version;
   const written = viewer
     ? latest.versions
@@ -153,7 +156,7 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
       ) : null}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          <ApprovalsCard policy={policy} slots={slots(policy, version)} version={version} approved={approved} />
+          <ApprovalsCard project={project} policy={policy} slots={slots(policy, version)} version={version} approved={approved} selfApproval={selfApproval} />
           <FindingsCard
             project={project}
             slug={latest.slug}
@@ -163,7 +166,9 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
             findings={findings}
           />
           {version.state === "in_review" ? (
-            block === null && viewer ? (
+            awaitingConfig ? (
+              <ListSkeleton rows={1} />
+            ) : block === null && viewer ? (
               <div className="rounded-md border bg-card p-4">
                 <ReviewForm project={project} slug={latest.slug} version={version} roles={rolesOf(fields, viewer.login)} lock={lock} />
               </div>
@@ -196,8 +201,9 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
  * A version's review (/p/{project}/x/srs/documents/{slug}/versions/{number}): the approvals the policy asks for and who
  * gave them this round, the conflicts @ba found in the document (the Findings card, which readers see too), the
  * reviewer's form for a writer who may review it (nobody who wrote a version since the one approved last, admins
- * included), why another may not, what approving it approves, its checks and its history. While @ba's review of the
- * version's round is queued or running, the document is read again every few seconds, so the page sees it end.
+ * included, unless the project turned `self_approval` on), why another may not, what approving it approves, its
+ * checks and its history. While @ba's review of the version's round is queued or running, the document is read again
+ * every few seconds, so the page sees it end.
  */
 export function ReviewPage({ project, slug, number, initialError }: { project: string; slug: string; number: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("srs.review");

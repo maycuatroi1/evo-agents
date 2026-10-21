@@ -9,6 +9,11 @@ name: deploy
 # Dokploy deploys whatever main is when it clones, so a run whose commit is no longer the tip of main stops before
 # anything: the run of the newer push deploys it. workflow_dispatch from main deploys main by hand.
 #
+# A deployment that ends with /v1/health at status ok and this commit's schema moves the tag nightly to this commit
+# (the job nightly calls nightly.yml); the hub reads the tag every minute and idle workers update to it. A run that stopped at "Still the tip of main", or failed, leaves nightly
+# where it is. The job deploy holds the Dokploy secret and only reads the repository; the job nightly writes the tag,
+# is not in the environment production and gets no secret.
+#
 # The environment production, open to main only, holds the secret DOKPLOY_API_KEY and the variables DOKPLOY_URL,
 # DOKPLOY_COMPOSE_ID, DOKPLOY_BACKUP_ID (the daily backup of the hub's Postgres) and EVO_HUB_URL.
 
@@ -30,6 +35,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      # The commit Dokploy deployed and /v1/health confirmed; empty when the run stopped before deploying.
+      deployed: ${{ steps.health.outputs.deployed }}
     defaults:
       run:
         shell: bash  # with pipefail, so a failed curl fails the pipe into jq
@@ -126,6 +134,7 @@ jobs:
           exit 1
 
       - name: Health
+        id: health
         if: steps.tip.outputs.deploy == 'true'
         env:
           HEAD: ${{ steps.schema.outputs.head }}
@@ -135,9 +144,21 @@ jobs:
             if [ "$(jq -r '.status // empty' <<<"$health" 2>/dev/null)" = ok ] &&
               [ "$(jq -r '.schema // empty' <<<"$health" 2>/dev/null)" = "$HEAD" ]; then
               jq -c . <<<"$health"
+              echo "deployed=$SHA" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 10
           done
           echo "::error::/v1/health did not report status ok and schema $HEAD within 10 minutes: $health"
           exit 1
+
+  nightly:
+    # Only after a deployment /v1/health confirmed: needs fails or skips this job when deploy failed, and the output
+    # is empty when the run stopped at "Still the tip of main".
+    needs: deploy
+    if: needs.deploy.outputs.deployed != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      sha: ${{ needs.deploy.outputs.deployed }}

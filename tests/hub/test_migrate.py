@@ -95,10 +95,12 @@ TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
 TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
-TABLES |= pg.USER_EMAIL_TABLES  # migration 0065
-TABLES |= pg.SRS_FINDING_TABLES  # migration 0066
-TABLES |= pg.SRS_SETTLE_TABLES  # migration 0067
-TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0068
+TABLES |= pg.NIGHTLY_TABLES  # migration 0065
+TABLES |= pg.RELEASE_TABLES  # migration 0067
+TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
+TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
+TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
+TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -173,18 +175,20 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_five_tables(hub_db):
-    assert len(TABLES) == 105  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eleven_tables(hub_db):
+    assert len(TABLES) == 111  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces
+    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
+        ("accounts", "oauth_nonce"),
+        ("accounts", "oauth_sealed"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("secrets", "nonce"),
@@ -1215,10 +1219,84 @@ def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_dr
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
 
 
-def test_0065_keeps_user_emails_one_member_an_address_whatever_its_case_and_going_back_drops_them(hub_db):
+def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
     move_to(hub_db, "0064")
-    before = query(hub_db, SNAPSHOT)
+    workers, nightly = hub_tables.workers, hub_tables.hub_nightly
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
     move_to(hub_db, "0065")
+    added = {"update_requested_at", "update_ended_at", "update_outcome", "update_reason"}
+    assert added <= columns(hub_db, "workers")
+    assert columns(hub_db, "hub_nightly") == {"id", "commit_sha", "read_at"}
+    shown = select(*(workers.c[name] for name in sorted(added))).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None, None, None, None)]
+    asked, ended = {"update_requested_at": func.now()}, {"update_ended_at": func.now()}
+    bad_requests = (
+        ended | {"update_outcome": "current"},  # an end without a request
+        asked | ended,  # an end without an outcome
+        asked | {"update_outcome": "current"},  # an outcome without an end
+        asked | ended | {"update_outcome": "stuck"},
+        asked | {"update_reason": "why"},  # a reason without an outcome
+    )
+    with live.connect(hub_db) as conn:
+        for bad in bad_requests:
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        conn.execute(update(workers).values(**asked).where(workers.c.id == worker))
+        done = ended | {"update_outcome": "failed", "update_reason": "pip exited 1"}
+        conn.execute(update(workers).values(**done).where(workers.c.id == worker))
+        for bad in ({"id": 2, "commit_sha": "a" * 40}, {"commit_sha": "ca3e9af"}, {"commit_sha": "A" * 40}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(nightly).values(read_at=func.now(), **bad))
+        conn.execute(insert(nightly).values(commit_sha="b" * 40, read_at=func.now()))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(nightly).values(commit_sha="c" * 64, read_at=func.now()))
+    assert query(hub_db, select(workers.c.update_outcome, workers.c.update_reason)) == [("failed", "pip exited 1")]
+    assert query(hub_db, select(nightly.c.id, nightly.c.commit_sha)) == [(1, "b" * 40)]
+    move_to(hub_db, "0064", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert not columns(hub_db, "hub_nightly")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+
+
+def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0065")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0066")
+    accounts = hub_tables.accounts
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        secret = insert(hub_tables.secrets).values(
+            owner_id=ids["user"],
+            name="claude-o",
+            kind="env",
+            env_var="CLAUDE_CODE_OAUTH_TOKEN",
+            sealed=b"s" * 20,
+            nonce=b"n" * 12,
+            key_id="0123abcd",
+        )
+        secret_id = conn.execute(secret.returning(hub_tables.secrets.c.id)).scalar_one()
+        conn.execute(insert(accounts).values(secret_id=secret_id))  # no tokens: every account that exists
+        conn.execute(
+            update(accounts)
+            .values(oauth_sealed=b"x", oauth_nonce=b"n", oauth_key_id="k")
+            .where(accounts.c.secret_id == secret_id)
+        )
+        with pytest.raises(errors.CheckViolation):  # a set is whole or absent
+            conn.execute(update(accounts).values(oauth_sealed=None).where(accounts.c.secret_id == secret_id))
+    move_to(hub_db, "0065", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+
+
+def test_0068_keeps_user_emails_one_member_an_address_whatever_its_case_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0067")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0068")
     emails, users = hub_tables.user_emails, hub_tables.users
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1238,16 +1316,16 @@ def test_0065_keeps_user_emails_one_member_an_address_whatever_its_case_and_goin
         conn.execute(insert(emails).values(user_id=other, email="dev@lumen.example"))
         conn.execute(delete(users).where(users.c.id == other))  # a member's emails go with the member
     assert query(hub_db, select(emails.c.email)) == [("Octo@Northwind.example",)]
-    move_to(hub_db, "0064", down=True)
+    move_to(hub_db, "0067", down=True)
     assert "user_emails" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
 
 
-def test_0066_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_and_the_review_run(hub_db):
-    move_to(hub_db, "0065")
+def test_0069_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_and_the_review_run(hub_db):
+    move_to(hub_db, "0068")
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0066")
+    move_to(hub_db, "0069")
     s = hub_tables.srs
     f = s.findings
     with live.connect(hub_db) as conn:
@@ -1278,15 +1356,15 @@ def test_0066_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_an
         ("waived", []),
     ]
     assert "review_run_id" in columns(hub_db, "srs_versions")
-    move_to(hub_db, "0065", down=True)
+    move_to(hub_db, "0068", down=True)
     assert "srs_findings" not in tables(hub_db)
     assert "review_run_id" not in columns(hub_db, "srs_versions")
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
 
 
-def test_0067_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_group_chats(hub_db):
-    move_to(hub_db, "0066")
+def test_0070_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_group_chats(hub_db):
+    move_to(hub_db, "0069")
     before = query(hub_db, SNAPSHOT)
     t, s = hub_tables, hub_tables.srs
     with live.connect(hub_db) as conn:
@@ -1297,7 +1375,7 @@ def test_0067_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_gr
         settle = {"title": "Conflicts of demo-shop v1", "created_by": ids["user"], "kind": "settle"}
         with pytest.raises(errors.CheckViolation):  # 0050 knows group and direct chats alone
             conn.execute(insert(t.chats).values(**settle, direct_profile_id=profile_id))
-    move_to(hub_db, "0067")
+    move_to(hub_db, "0070")
     with live.connect(hub_db) as conn:
         pairs = ({"direct_profile_id": None}, {"direct_profile_id": profile_id, "direct_user_id": ids["user"]})
         for wrong in pairs:  # a settle chat names its agent, and no person
@@ -1323,7 +1401,7 @@ def test_0067_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_gr
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(s.findings).values(**found, commit_authors={"a": "b"}))
     assert query(hub_db, select(s.findings.c.commit_authors)) == [([],)]
-    move_to(hub_db, "0066", down=True)
+    move_to(hub_db, "0069", down=True)
     c, m = t.chats, t.chat_mentions
     kinds = query(hub_db, select(c.c.kind, c.c.direct_profile_id).where(c.c.id.in_([chat, twin])))
     assert kinds == [("group", None), ("group", None)]
@@ -1331,13 +1409,13 @@ def test_0067_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_gr
     assert "srs_settle_chats" not in tables(hub_db)
     assert "commit_authors" not in columns(hub_db, "srs_findings")
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
 
 
-def test_0068_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0067")
+def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0070")
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0068")
+    move_to(hub_db, "0071")
     s = hub_tables.srs
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1360,10 +1438,10 @@ def test_0068_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it
             conn.execute(insert(s.approval_tasks).values(version_id=versions[1], approved_by=ids["user"], outcome=[]))
     a = s.approval_tasks
     assert query(hub_db, select(a.c.previous_version, a.c.split_run_id, a.c.outcome)) == [(None, None, {})]
-    move_to(hub_db, "0067", down=True)
+    move_to(hub_db, "0070", down=True)
     assert "srs_approval_tasks" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

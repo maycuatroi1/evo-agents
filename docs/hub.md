@@ -96,6 +96,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -692,9 +693,9 @@ every direct chat a group chat of the same person and agent, and a mention `via`
 0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
 chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
 event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
-whose objects stay in the bucket with nothing referring to them. Schema 0067 adds the kind `settle` (its agent in
+whose objects stay in the bucket with nothing referring to them. Schema 0070 adds the kind `settle` (its agent in
 `chats.direct_profile_id`, no person) and the `via` settle of a mention, with the table `srs_settle_chats` of the core
-plugin srs. Going back to 0066 makes every settle chat a group chat of the same members, its agent no longer named on
+plugin srs. Going back to 0069 makes every settle chat a group chat of the same members, its agent no longer named on
 its row, reads a mention `via` settle as `via` thread, and drops the table.
 
 ### What a triage agent may do on its own
@@ -742,6 +743,19 @@ evo-agents hub plan export . --commit                 # write the copies, commit
 read. When someone else wrote in between, the hub answers 409 with the current plan, and `plan step` and `plan patch`
 read it again and retry; pass `--if-revision N` to fail instead. `plan put FILE --if-revision N` replaces a whole
 plan from a file.
+
+A step's `verify` is one shell command line: a worker runs it, and its preflight looks up the programs it calls. The
+hub cannot see a worker's PATH, so it checks the shape (`evo_agents.hub.verify_words.shell_problem`). It answers 422 to
+a write that brings a new or changed verify to a step not done when that line does not parse as shell (a quote left
+open, as an apostrophe in prose leaves one) or runs a word that is not a command name. A command name has ASCII
+letters, digits and `_ . + -` only, starts with a letter, a digit or `_`, and ends with one of them or `+`; the hub
+reads an absolute path by its last part. `Từ`, `Manual:`, `1.` and `-` fail; `g++`, `python3.12` and `/usr/bin/env`
+pass. The message names each step and the word read as a program. Put a manual check in the step's `note`, and give
+the step a verify that checks something machine-readable, such as an answered hub decision (`evo-agents hub decision
+show N --json | jq -e '.state == "answered"'`) or a line in a report file. PUT, PATCH, an author run's plan, a triage
+agent's edit and the Curator's plans all go through this check. The hub does not check a verify the replaced revision
+already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
+harness validate` warns of each verify of a step not done that the hub would refuse as new.
 
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
@@ -868,12 +882,21 @@ takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's
 codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
 is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
 name. Schema 0064 lets a version of a BA document be `withdrawn` (`docs/srs-plugin.md`, Approval); going back to 0063
-makes every withdrawn version a draft again. Schema 0065 adds `user_emails`, the emails of each member (Signing in).
-Schema 0066 adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0067 the settle
-chats (Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0068 `srs_approval_tasks`, what the
-approval of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version
-is approved). Going back past each drops what it added; going back past 0067 makes every settle chat a group chat
-first.
+makes every withdrawn version a draft again. Schema 0065 adds `hub_nightly`, one row: the commit the tag `nightly`
+pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); and `workers.update_requested_at`,
+`update_ended_at`, `update_outcome` (`current`, `cancelled`, `failed` or `impossible`) and `update_reason`, an owner's
+last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
+the four columns, and the hub then reads no nightly and takes no Update now. Schema 0066 adds `oauth_sealed`, `oauth_nonce` and
+`oauth_key_id` to `accounts`, the sealed tokens of an OAuth account (`docs/credentials.md`, Accounts), all null for every
+account there is; going back to 0065 drops them and the tokens with them. Schema 0067 adds the daily release
+(`docs/releases.md`): `release_schedules`, `release_cycles`, `release_runs`, `release_tags` and `release_checks`, the
+run kind `release` with `dispatched_via` `release` and one active release run per project, the decision category
+`release` and the notice `release`; going back to 0066 deletes the release runs, their decisions and the release
+notices, and drops the five tables. Schema 0068 adds `user_emails`, the emails of each member (Signing in). Schema 0069
+adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0070 the settle chats
+(Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
+of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
+approved). Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1001,8 +1024,10 @@ day, as GitLab ends an access token on its expiry date. `secret list` reads `GET
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
 list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
-as the web's Accounts page does, and `hub account login` adds or renews a Claude account with the token
-`claude setup-token` prints (`docs/credentials.md`, section "Accounts").
+as the web's Accounts page does, `hub account login` adds or renews a Claude account with the token
+`claude setup-token` prints, and `hub account oauth-login` signs one in with Claude's OAuth flow: the hub keeps its
+refresh token sealed, refreshes the access token when a run is leased and ends within five minutes, and shows the state
+`needs-relogin` when the refresh token is refused (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:
@@ -1540,6 +1565,26 @@ evo-agents hub curator resume
 proposal, with when the hub counts its figures again (`outcome_due_at`). The web shows the ledger on the proposal's
 page (`/p/{project}/curator/proposals/{id}`), and a revert proposal names the proposal it undoes.
 
+## The daily release
+
+A project can release itself once a day, apart from the Curator (`docs/releases.md`). At the release schedule's local
+time (06:00 Asia/Ho_Chi_Minh by default) the job `hub.release_schedules` checks, without any model, whether a packaging
+path changed between the newest release tag and the commit of the tag `nightly`, and when it did opens a cycle and
+queues a run of kind `release`. Its agent cuts the version on `release/<version>` on a worker of the schedule's owner
+or one shared with them; the hub merges the branch and tags the merge commit with the workers' GitHub App, follows the
+tag's `release.yml` through the Actions API, fixes a red tag forward with the next patch, and stops the cycle with a
+decision for its owner and a thread in the project's triage chat on the causes `docs/releases.md` lists. That page
+also gives the version rule, the cost cap, the App's permissions and the commands:
+
+```sh
+evo-agents hub release set --project evo-agents            # an admin, who becomes the schedule's owner
+evo-agents hub release status --project evo-agents
+evo-agents hub release run --project evo-agents            # check now, through the same gates
+evo-agents hub release pause --project evo-agents
+```
+
+The web shows it on the project's Releases page (`/p/{project}/releases`).
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -2053,7 +2098,7 @@ evo-agents hub srs import order-srs.md --project evo-agents --slug orders
 evo-agents hub srs list --project evo-agents
 evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
-evo-agents hub srs approve orders 1 --project evo-agents                # by a writer who wrote no version since
+evo-agents hub srs approve orders 1 --project evo-agents                # by another writer, or the author with self_approval
 evo-agents hub srs export orders --project evo-agents --output orders.md
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin
 evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # an admin; the items it would drop
@@ -2237,6 +2282,14 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   (Session facets, above).
 - `hub.index_history`, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
   that ended, for search (The project's history, above).
+- `hub.read_nightly`, every minute: reads where the tag `nightly` of evo-agents points, with one `ls-refs` of git's
+  smart HTTP (protocol v2) to GitHub, no git and no GitHub API, and keeps the commit and the time in `hub_nightly`, which
+  every heartbeat answer hands the daemons (`docs/workers.md`, Updating itself to nightly). A read that fails keeps the
+  last one and logs one warning, `nightly not read, the last read kept`.
+- `hub.release_schedules`, every minute, one pass at a time: the daily check of each release schedule whose local
+  time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
+  CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
+  server's release pass to the job runner (`HubContext.release_pass`).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -2423,6 +2476,9 @@ images there with `docker compose up -d --build`; no image of main goes through 
    when the hub does not answer, since api and worker migrate as they start;
 3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
    and this commit's schema.
+4. moves the tag `nightly` to this commit once `/v1/health` confirmed it: its job `nightly` calls
+   `.github/workflows/nightly.yml` with the commit, writes the tag with the repository's token, and holds no secret of
+   `production`. The hub reads the tag every minute, so idle workers follow the deployment. A run that stopped at step 1, or failed, leaves `nightly` where it is.
 
 The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
 variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand

@@ -1,4 +1,4 @@
-"""A member's emails on the hub (schema 0065, ``evo_agents.hub.server.user_emails``) and ``evo-agents hub email
+"""A member's emails on the hub (schema 0068, ``evo_agents.hub.server.user_emails``) and ``evo-agents hub email
 list|add|remove``.
 
 An address belongs to one member, whatever its case: another member adding it gets 409, the same member adding it

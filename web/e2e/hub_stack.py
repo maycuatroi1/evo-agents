@@ -18,9 +18,9 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
 (``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
-self_update_hours} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it reports,
-the commit its install was built from and what it says of updating itself, which the hub has kept for
-``self_update_hours``), without the worker's token the heartbeat route needs.
+self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
+reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
+``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
 
 The terminal specs need the worker's end of a run's terminal: POST /terminal/worker {run_id, token} connects it the way
 the daemon does (``FakeTerminal``: the worker's token and protocol header, retried until a browser waits on the run)
@@ -47,15 +47,21 @@ them from POST /srs/findings {project, slug, findings}, which writes them as @ba
 document's latest version, with its label), each {kind, level, summary, sources, item (a code), status, resolution,
 resolution_sources, settled_by (a login), chat_link}, and answers their ids.
 
+The Releases specs need cycles without a GitHub App to read tags or CI: POST /releases/seed {project, worker_id,
+stopped} plays the release job for that project's schedule (``release_seed.py``): two cycles that ended, and one open
+whose tag is red and whose fix run is queued, or with ``stopped`` one stopped on its red test with a decision for its
+owner and a thread in the project's triage chat.
+
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
 
-The Telegram specs need the hub's bot without Telegram: the stack serves the fake Bot API of the Python tests
-(``tests.hub.fake_telegram``) on a free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and
-webhook secret, so the channel is on. POST /telegram/start {code, chat_id, username} plays the member pressing Start in
-Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the secret header, and
-answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
+The Telegram specs need the hub's bot without Telegram: the stack serves a fake Bot API (``fake_telegram.py``) on a
+free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and webhook secret, so the channel is on.
+The bot is the core plugin telegram of evo-agents-core-plugins: the stack's Python has deploy/hub/core-plugins.txt
+installed after evo-ak, as CI's web-e2e job has. POST /telegram/start {code, chat_id, username} plays the member
+pressing Start in Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the
+secret header, and answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
 
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
@@ -95,14 +101,15 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
 
+from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
+from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
+from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
+from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
+from release_seed import seed_release  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
-from tests.hub.fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
-from tests.hub.fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
-from tests.hub.fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
-from tests.hub.fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from tests.hub.s3 import fake_s3  # noqa: E402
 from tests.plugins.samples import ed25519_publishers  # noqa: E402
 
@@ -230,9 +237,9 @@ def plugin_bundle(body: dict) -> dict:
 
 def stamp_heartbeat(dsn: str, body: dict) -> dict:
     """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
-    checkouts it reports. ``agent_commit`` and ``self_update`` are set when the body names them, as the heartbeat
-    route sets them from each heartbeat; ``self_update_hours`` backdates when the hub first got that state, so a
-    long wait need not take hours. 404 for a worker the stack does not have."""
+    checkouts it reports. ``agent_commit``, ``self_update`` and ``features`` are set when the body names them, as
+    the heartbeat route sets them from each heartbeat; ``self_update_hours`` backdates when the hub first got that
+    state, so a long wait need not take hours. 404 for a worker the stack does not have."""
     import psycopg
     from psycopg.types.json import Jsonb
 
@@ -242,6 +249,9 @@ def stamp_heartbeat(dsn: str, body: dict) -> dict:
     if "agent_commit" in body:
         sets.append("agent_commit = %s")
         params.append(body["agent_commit"])
+    if "features" in body:
+        sets.append("features = %s")
+        params.append(list(body["features"]) if isinstance(body["features"], list) else None)
     if "self_update" in body:
         report = body["self_update"] if isinstance(body["self_update"], dict) else None
         sets.append("self_update = %s, self_update_since = CASE WHEN %s THEN now() - make_interval(secs => %s) END")
@@ -715,6 +725,13 @@ def control_server(
             elif self.path == "/srs/findings":
                 try:
                     self._reply(200, seed_findings(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/releases/seed":
+                try:
+                    self._reply(200, seed_release(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):
