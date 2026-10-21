@@ -92,6 +92,7 @@ class Run:
         self.finish_asked = asyncio.Event()  # the owner ended the chat of an author run: end it done after the turn
         self.open_decisions = 0  # the run's decisions still open, as the last heartbeat counted them
         self.worktree: Path | None = None  # the agent's directory
+        self.venvs: dict[str, Path] = {}  # repo -> its worktree, whose .venv the worker made (runner.venv)
         self.verify: list[dict] = []
         self.summary: str | None = None
         self.outcome: Outcome | None = None
