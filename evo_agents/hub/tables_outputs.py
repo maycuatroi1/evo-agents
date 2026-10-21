@@ -8,6 +8,9 @@ recorded it. A run holds one output per SHA-256. run_output_links ties an output
 or to a chat message its run's agent wrote, one of the two per row, so the question and the message carry it.
 ``projects.output_tool_images`` is a project's switch of the images its machines take out of tools' results: off, the
 hub refuses outputs of source tool and the machines send none.
+
+notification_mutes (0086) holds the notices each member turned off, one row a member and kind: the notice of a run's
+files (``runs.OUTPUT_NOTICE``) is the one kind a member may turn off today (``runs.MUTABLE_NOTICE_KINDS``).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -25,9 +29,12 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     func,
     true,
 )
+
+from evo_agents.hub import runs
 
 
 def _fk(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
@@ -87,3 +94,17 @@ def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
         postgresql_where=links.c.chat_message_id.is_not(None),
     )
     return outputs, links
+
+
+def mute_table(metadata: MetaData) -> Table:
+    """notification_mutes, added to ``metadata``: the notices each member turned off."""
+    return Table(
+        "notification_mutes",
+        metadata,
+        Column("user_id", BigInteger, nullable=False),
+        Column("notice_kind", Text, nullable=False),
+        _stamp("created_at"),
+        _fk("notification_mutes", "user_id", "users.id", ondelete="CASCADE"),
+        PrimaryKeyConstraint("user_id", "notice_kind", name="notification_mutes_pkey"),
+        CheckConstraint(column("notice_kind").in_(runs.MUTABLE_NOTICE_KINDS), name="notification_mutes_check"),
+    )
