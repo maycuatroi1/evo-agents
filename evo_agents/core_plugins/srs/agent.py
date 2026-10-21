@@ -13,12 +13,13 @@ does too: what a tool answers reaches the machine the agent runs on.
   each document, a draft or a version in review included. ``read`` of a version lists the open findings of its
   document, which @ba's review goes over (``auto_review``). An archived document is out of ``read``'s list of
   documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
-- ``propose`` answers the agent of a chat run of @ba alone (the profile of the project's agent type ``ba``, while it
-  is on). Its changes, checked as a save is, become the document's next version, written as the person and drafted by
-  the run, and go to review at once; the person, its author, never approves it unless the project turned the
-  config's ``self_approval`` on, and the answer says which. In the settle chat of a version of the document
-  (``settle``) the version is written as the author of that version instead, who must hold writer, whoever woke @ba
-  there: a member who settled a conflict keeps the right to approve what follows from it. Its schema takes no drop,
+- ``propose`` answers the agent of a chat run of @ba (the profile of the project's agent type ``ba``, while it is on),
+  and of a task run of @ba the Loop handed out for a use case (plan loop-engine), whose version is written as the
+  owner of the work item's goal. Its changes, checked as a save is, become the document's next version, written as
+  the person and drafted by the run, and go to review at once; the person, its author, never approves it unless the
+  project turned the config's ``self_approval`` on, and the answer says which. In the settle chat of a version of the
+  document (``settle``) the version is written as the author of that version instead, who must hold writer, whoever
+  woke @ba there: a member who settled a conflict keeps the right to approve what follows from it. Its schema takes no drop,
   and a code an item holds never changes (``writes.store_problems``). A version it sends to review is reviewed by @ba
   in turn (``auto_review``), as every version is each time it enters review.
 - ``comment`` answers the agent of a run of @ba: a chat run, or the review run of ``auto_review``. The comment is the
@@ -61,6 +62,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import MACHINE, Principal
 
@@ -326,10 +328,26 @@ def _ba_run(who: Acting, tool: str, kinds: tuple[str, ...]) -> None:
         raise SrsError(403, f"only the agent of {runs} of @{BA} in project {who.access.name} calls srs__{tool}")
 
 
+async def _loop_author(conn: AsyncConnection, who: Acting) -> int | None:
+    """The goal's owner, for a task run of @ba the Loop handed out for a use case (``loop.runs_of``); 403 for any
+    other task run, which proposes nothing."""
+    if who.run_kind != "task":
+        return None
+    author_id = await use_case_author(conn, who.run_id)
+    if author_id is None:
+        raise SrsError(
+            403,
+            f"only the agent of a chat run of @{BA}, or of a task run of @{BA} the Loop of project {who.access.name} "
+            "handed out for a use case, calls srs__propose",
+        )
+    return author_id
+
+
 async def _author(conn: AsyncConnection, who: Acting, doc: store.DocumentRow) -> tuple[Principal, ProjectAccess]:
     """(who a version @ba proposes of ``doc`` is written as, their access): the author of the version whose settle
-    chat the run is in (``settle.proposer``), else the person the run acts for."""
-    author_id = await proposer(conn, who.run_id, doc.id)
+    chat the run is in (``settle.proposer``); for the Loop's use case, the goal's owner; else the person the run acts
+    for."""
+    author_id = await _loop_author(conn, who) or await proposer(conn, who.run_id, doc.id)
     if author_id is None or author_id == who.person.user_id:
         return who.person, who.access
     author = await _principal(conn, author_id, None)
@@ -337,7 +355,10 @@ async def _author(conn: AsyncConnection, who: Acting, doc: store.DocumentRow) ->
 
 
 async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
-    _ba_run(who, "propose", ("chat",))
+    if who.ba and who.run_kind == "task":
+        await _loop_author(conn, who)  # a task run of @ba proposes only for the Loop
+    else:
+        _ba_run(who, "propose", ("chat",))
     try:
         changes = edit_changes(CHANGES.validate_python(args["changes"]))
     except ValidationError as exc:

@@ -108,6 +108,8 @@ function useCrumbs(): Crumb[] {
         }
         const mergePage = section.segment === "merge-queue" && Object.hasOwn(MERGE_QUEUE_CRUMBS, parts[3]) ? MERGE_QUEUE_CRUMBS[parts[3]] : undefined;
         if (mergePage) crumbs[2].label = t(mergePage);
+        // A work item of the Loop goes by its number under the Loop: /loop/items/12 is #12.
+        if (section.segment === "loop" && parts[3] === "items" && parts[4]) crumbs[2] = { label: itemLabel(parts[4]) };
       }
     }
     return crumbs;

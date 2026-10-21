@@ -130,3 +130,13 @@ def test_web_url_needs_the_public_url_and_a_path_of_the_hub():
     assert hub_telegram.web_url(None, "/inbox") is None
     assert hub_telegram.web_url("https://hub.test", "//evil.example") is None
     assert hub_telegram.web_url("https://hub.test", "https://evil.example") is None
+
+
+def test_telegram_minimal_message_names_the_loops_notices_and_takes_its_decision_as_any_decision():
+    """A restricted project's message names what waits: the notices of the Loop (plan loop-engine) by their kind, and
+    the decision of category loop as every decision, whose buttons the core plugin telegram builds from its options."""
+    assert hub_telegram.what_waits("notice", "goal_review") == "The goals of a project wait for their monthly review"
+    assert hub_telegram.what_waits("notice", "loop_brief") == "The Loop's morning brief"
+    assert hub_telegram.what_waits("notice", "loop_paused") == "The Loop of a project stopped"
+    assert hub_telegram.what_waits("decision", None) == "A decision waits for your answer"
+    assert hub_telegram.what_waits("notice", "a_kind_to_come") == "A notice"

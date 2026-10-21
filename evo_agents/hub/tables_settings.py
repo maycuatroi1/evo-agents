@@ -37,7 +37,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 KINDS = ("branding", "features")  # hub_settings.kind (0037)
-PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy")  # builder_proposals.kind (0043, 0079)
+# builder_proposals.kind (0043, 0079, 0091)
+PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy", "goal")
 PROPOSAL_STATES = ("pending", "applied", "rejected", "failed", "rolled_back")  # builder_proposals.state (0043)
 
 

@@ -274,6 +274,10 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Merge queue, a merge request merging or merged; its Policy; its Figures | `GitMerge`; `SlidersHorizontal`; `ChartNoAxesColumn` |
 | A repo's breaker armed, tripped, Reset; an audit sample, Faulty; approve a PROD release; revert a merge; rolling back | `Power`, `PowerOff`, `Power`; `SearchCheck`, `Bug`; `Rocket`; `Undo2`; `Rewind` |
+| Goals, a goal; the Loop of a project, its work items; Decisions, a project's decision board | `Goal`; `IterationCw`; `Signpost` |
+| A work item: brainstorm, use case, build, deliver; queued, watching, waiting for a person (running is the live dot, done and cancelled as a run's) | `Telescope`, `Route`, `FilePen`, `Truck`; `Clock`, `Binoculars`, `MessageSquare` |
+| A chain's stages: goal, claim, use case, task, plan, merge requests, release; a stage reached, not yet, not visible to the reader | `Goal`, `Table`, `Route`, `Kanban`, `ListChecks`, `GitMerge`, `PackageCheck`; `CircleCheck`, `CircleDashed`, `Lock` |
+| On the Decisions page: the month's goal review, a goal past its deadline, a breaker tripped, an author's question, a merge held, an SRS settle chat | `CalendarCheck`, `CalendarX`, `PowerOff`, `MessageCircle`, `Lock`, `MessagesSquare` |
 | Lean Canvas, a project's canvases (its menu item); a claim's status: assumption, testing, validated, invalidated, retired | `Table`; `CircleDashed`, `FlaskConical`, `CircleCheck`, `CircleX`, `Archive` |
 | A baseline: waiting for review (and Ask for review now), approved, expired; its frozen snapshot; a proposal waiting | `ClipboardCheck`, `CircleCheck`, `TimerOff`; `Lock`; `Lightbulb` |
 | Evidence: signal, feedback, interview, experiment, market, document, simulation; real; synthetic; supports, contradicts, neutral | `RadioTower`, `MessageSquareQuote`, `Mic`, `FlaskConical`, `Store`, `FileText`, `Bot`; `ShieldCheck`; `Sparkles`; `ThumbsUp`, `ThumbsDown`, `Minus` |

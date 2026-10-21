@@ -1,6 +1,6 @@
 ---
 name: hub-settings
-description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile or the autonomy policy of the project with the tool builder__propose, which an admin approves before the hub applies it.
+description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile, the autonomy policy or a goal of the project with the tool builder__propose, which an admin approves before the hub applies it.
 ---
 
 # Proposing a change of a setting
@@ -9,7 +9,7 @@ The tool `builder__propose` takes one change:
 
 ```json
 {
-  "kind": "branding | features | plugin_config | agent | policy",
+  "kind": "branding | features | plugin_config | agent | policy | goal",
   "summary": "what it changes and why, 1 to 500 characters",
   "target": {},
   "set": {"field": "new value"},
@@ -30,6 +30,7 @@ the thread with its number and tells the admins who may approve it. It applies n
 | `plugin_config` | `{"plugin": "<id>"}`, or with `"agent": "<handle>"` for that agent's layer | the plugin's config fields | an admin of the project |
 | `agent` | `{"agent": "<handle>"}` | `name`, `description`, `instructions`, `packs` | an admin of the project |
 | `policy` | `{}` | a key of the autonomy policy by its dotted path | an admin of the project |
+| `goal` | `{"goal": "G-<number>"}`, or `{}` for a new goal | `statement`, `metric`, `deadline`, `canvas`, `rank`, `owner`, `status`, `close_reason` | an admin of the project |
 
 - **branding.** `colors` is `{"light": {...}, "dark": {...}}`, each mapping the tokens `brand`, `brand-hover`,
   `brand-soft` and `on-brand` to `#rrggbb`. The hub refuses colours whose contrast falls under WCAG 2.2 AA. The logo and
@@ -49,6 +50,15 @@ the thread with its number and tells the admins who may approve it. It applies n
   `merge.pipeline_minutes`, `judge.worker`, `judge.model`, the `breaker.*` thresholds and `audit.sample_rate`. A key
   you unset goes back to its default. `evo-agents hub policy show --project <project>` prints every key with its
   value now. The repo must be one of the project's.
+- **goal.** A goal of the project: what it is for, and how to tell it is reached. `statement` is one sentence (at most
+  2000 characters). `metric` is `{"key": "<signal key>", "aggregate": "last | mean | sum | count | p50 | p90",
+  "comparator": ">= | > | <= | <", "target": <number>}`, with `window_days` (1 to 90, 90 when left out) and `tenant`
+  optional; the key must be a key of kind number of the project's registry of signals. `deadline` is a date
+  (`2026-12-31`), `canvas` the slug of one of the project's canvases, `rank` its place among the goals (1 first),
+  `owner` a member with the writer role or above. `status` is `active`, `paused` or `closed`; a closed goal names its
+  `close_reason` (`achieved`, `dropped` or `expired`). A new goal needs a statement; the hub gives it the next code and
+  says it in the thread. You may unset `metric`, `deadline`, `canvas` and `close_reason`. A goal has no budget.
+  `evo-agents hub goal list --project <project>` prints the goals now.
 
 ## What happens next
 

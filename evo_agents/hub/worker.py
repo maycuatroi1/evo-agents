@@ -55,6 +55,14 @@ Jobs (names in ``evo_agents.hub.jobs``):
   same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
   down (``HubContext.release_pass``), since this module imports no server module beyond its job list
   (docs/structure.md, section Package boundaries).
+- ``hub.loop_ticks``, every 5 minutes: a ``hub.loop_tick`` of each project whose Loop is on, queued under the
+  project's Loop lock (``evo_agents.hub.loop_jobs``); ``hub.loop_tick`` runs one tick of a project's Loop, one at a
+  time per project and at most one waiting, also queued by each event of the project. The tick is the server's
+  (``evo_agents.hub.server.loop.tick``): the ``hub worker`` command hands it down (``HubContext.loop_tick``), as it
+  does the release pass.
+- ``hub.loop_notices``, every 5 minutes: for each project whose Loop is on, the notice goal_review on the first day of
+  a month, and the Loop's part of the morning brief (loop_brief) at 07:00 for a project whose Curator sends none, in
+  the Loop's zone, each once (``evo_agents.hub.server.loop.notices``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -149,6 +157,9 @@ class HubContext:
     # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
     # None checks and lands no release
     release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
+    # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way; None ticks
+    # no Loop
+    loop_tick: Callable[[AsyncEngine, int], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -354,6 +365,32 @@ async def release_schedules(context: JobContext, timestamp: int | None = None) -
     return await release_pass(found.engine, found.github_app)
 
 
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.LOOP_TICKS, pass_context=True, queueing_lock=jobs.LOOP_TICKS)
+async def loop_ticks(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.loop_jobs import queue_ticks
+
+    return await queue_ticks(hub(context).engine, context.app.job_manager)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.LOOP_NOTICES, pass_context=True, queueing_lock=jobs.LOOP_NOTICES)
+async def loop_notices(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_loop_notices
+
+    return await send_loop_notices(hub(context).engine)
+
+
+@queue.task(name=jobs.LOOP_TICK, pass_context=True)
+async def loop_tick(context: JobContext, project_id: int) -> dict:
+    found = hub(context)
+    tick = getattr(found, "loop_tick", None)
+    if tick is None:
+        log.warning("no loop tick was handed to this worker: no Loop ticks", extra={"project_id": project_id})
+        return {"no_loop_tick": 1}
+    return await tick(found.engine, project_id)
+
+
 @queue.periodic(cron="13 4 * * *")
 @queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
 async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
@@ -473,9 +510,10 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
+async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself. ``release_pass`` is the server's (``HubContext.release_pass``)."""
+    it could not start or stopped by itself. ``release_pass`` and ``loop_tick`` are the server's
+    (``HubContext.release_pass``, ``HubContext.loop_tick``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -530,6 +568,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> 
                     engine,
                     curator_app,
                     release_pass,
+                    loop_tick,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -554,7 +593,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> 
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
+def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
-    return asyncio.run(run(config, concurrency, release_pass=release_pass))
+    return asyncio.run(run(config, concurrency, release_pass=release_pass, loop_tick=loop_tick))

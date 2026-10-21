@@ -2,7 +2,8 @@
 
 The agent of a chat run acts for the person who mentioned @strategist, the origin of the chain
 (``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of the type's run_as; the agent of any
-other run, a task run included, for the member who dispatched it (a task run the hub handed the type: its run_as);
+other run, a task run included, for the member who dispatched it (a task run the hub handed the type: its run_as; the
+Curator's review run: the night shift's owner);
 anyone else, a member's own session, for themselves. A canvas is read when that person sees it through the session's
 sink and, when the run's worker is another member's, when that member does too: what a tool answers reaches the
 machine the agent runs on. What the agent of a run writes carries the provenance of an agent: the person, the run,
@@ -21,13 +22,16 @@ from evo_agents.core_plugins.canvas import store, writes
 from evo_agents.core_plugins.canvas.content import CanvasError
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
+from evo_agents.hub.review import PRODUCT
 from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import MACHINE, Principal
 
 PLUGIN = "canvas"
 STRATEGIST = "strategist"  # the plugin's agent type, and the handle of its profile
+REVIEW = "review"  # the kind of the Curator's review run, which proposes claims on a night of the lens product
 
 
 @dataclass(frozen=True)
@@ -138,6 +142,21 @@ def strategist_run(who: Acting, tool: str, kinds: tuple[str, ...]) -> None:
         )
 
 
+async def proposing_run(conn: AsyncConnection, who: Acting) -> None:
+    """Refuse a caller of canvas__propose other than the agent of a chat or task run of @strategist, or of the
+    Curator's review run on a night of the lens product (plan loop-engine, criterion a9), which proposes for the night
+    shift's owner and changes nothing else."""
+    if who.run_id is not None and who.run_kind == REVIEW:
+        if await looks_through(conn, who.run_id, who.access.project_id, PRODUCT):
+            return
+        raise CanvasError(
+            403,
+            f"the Curator's review run #{who.run_id} does not look through the lens {PRODUCT} tonight: a review run "
+            "calls canvas__propose on a night of that lens alone",
+        )
+    strategist_run(who, "propose", ("chat", "task"))
+
+
 async def canvas(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool = False) -> store.CanvasRow:
     """Canvas ``slug`` as ``who`` sees it; the 404 of one that does not exist when they cannot."""
     row = await store.canvas(conn, who.access, slug, who.sink, lock=lock)
@@ -146,4 +165,15 @@ async def canvas(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool = 
     return row
 
 
-__all__ = ["PLUGIN", "STRATEGIST", "Acting", "acting", "canvas", "is_strategist", "member_access", "strategist_run"]
+__all__ = [
+    "PLUGIN",
+    "REVIEW",
+    "STRATEGIST",
+    "Acting",
+    "acting",
+    "canvas",
+    "is_strategist",
+    "member_access",
+    "proposing_run",
+    "strategist_run",
+]

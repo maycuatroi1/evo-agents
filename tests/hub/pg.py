@@ -159,6 +159,10 @@ PM_TABLES = frozenset({"pm_sends"})
 OUTPUT_TABLES = frozenset({"run_outputs", "run_output_links"})
 # migration 0090: the notices members turned off
 MUTE_TABLES = frozenset({"notification_mutes"})
+# migration 0091: the goals of a project and their revisions (plan loop-engine)
+GOAL_TABLES = frozenset({"goals", "goal_revisions"})
+# migration 0093: the Loop of a project, its work items and their ledger (plan loop-engine)
+LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

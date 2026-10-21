@@ -114,6 +114,8 @@ TABLES |= pg.TASKS_BLOCKER_TABLES  # migration 0085
 TABLES |= pg.PM_TABLES  # migration 0086
 TABLES |= pg.OUTPUT_TABLES  # migration 0089
 TABLES |= pg.MUTE_TABLES  # migration 0090
+TABLES |= pg.GOAL_TABLES  # migration 0091
+TABLES |= pg.LOOP_TABLES  # migration 0093
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -188,8 +190,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_thirty_three_tables(hub_db):
-    assert len(TABLES) == 133  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_eight_tables(hub_db):
+    assert len(TABLES) == 138  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2196,6 +2198,169 @@ def _chat(conn, ids) -> int:
     """A group chat the seeded user created; its id."""
     chats = hub_tables.chats
     return one(conn, insert(chats).values(title="Release talk", created_by=ids["user"]).returning(chats.c.id))
+
+
+def test_0091_keeps_the_revisions_of_goals_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0090")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0079 knows no goal proposal
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "goal"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0091")
+    assert columns(hub_db, "goals") == {"id", "project_id", "number", "alias", "revision", "created_at"}
+    assert columns(hub_db, "goal_revisions") == {
+        "goal_id",
+        "revision",
+        "statement",
+        "metric",
+        "deadline",
+        "canvas_id",
+        "rank",
+        "owner_id",
+        "status",
+        "close_reason",
+        "note",
+        "created_by",
+        "created_at",
+    }
+    g, r, p, n = t.goals, t.goal_revisions, t.builder_proposals, t.notifications
+    goal = {"project_id": ids["project"], "number": 1, "alias": "night-shift", "revision": 1}
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Goal"}
+    with live.connect(hub_db) as conn:
+        goal_id = one(conn, insert(g).values(goal).returning(g.c.id))
+        row = {"goal_id": goal_id, "revision": 1, "statement": "Run the approved plans at night", "rank": 1}
+        row |= {"owner_id": ids["user"], "status": "active", "created_by": ids["user"]}
+        conn.execute(insert(r).values(row))
+        metric = {"key": "night.plans_done", "aggregate": "sum", "comparator": ">=", "target": 3}
+        closed = {"status": "closed", "close_reason": "achieved", "metric": metric, "note": "three a night"}
+        conn.execute(insert(r).values({**row, "revision": 2, **closed}))
+        for bad in (
+            insert(g).values({**goal, "alias": None}),  # one number a project
+            insert(g).values({**goal, "number": 2}),  # one alias a project
+            insert(g).values({**goal, "number": 0, "alias": None}),
+            insert(g).values({**goal, "number": 3, "alias": "Night Shift"}),
+            insert(r).values(row),  # one row per revision of a goal
+            insert(r).values({**row, "revision": 0}),
+            insert(r).values({**row, "revision": 3, "statement": "  "}),
+            insert(r).values({**row, "revision": 3, "statement": "x" * 2001}),
+            insert(r).values({**row, "revision": 3, "metric": ["night.plans_done"]}),
+            insert(r).values({**row, "revision": 3, "rank": 0}),
+            insert(r).values({**row, "revision": 3, "status": "done"}),
+            insert(r).values({**row, "revision": 3, "status": "closed"}),  # a closed goal names its reason
+            insert(r).values({**row, "revision": 3, "close_reason": "achieved"}),  # and only a closed one does
+            insert(r).values({**row, "revision": 3, "status": "closed", "close_reason": "weather"}),
+            insert(r).values({**row, "revision": 3, "note": ""}),
+            insert(p).values({**proposal, "kind": "secrets"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(insert(p).values({**proposal, "kind": "goal", "target": {"goal": "G-2"}}))
+        conn.execute(insert(p).values({**proposal, "kind": "policy"}))
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 1, "kind": "goal"}}))
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 2, "kind": "policy"}}))
+    assert query(hub_db, select(r.c.revision, r.c.status).order_by(r.c.revision)) == [(1, "active"), (2, "closed")]
+    # Going back drops the goals, and the proposals of a goal with their notices.
+    move_to(hub_db, "0090", down=True)
+    assert not {"goals", "goal_revisions"} & tables(hub_db)
+    assert query(hub_db, select(p.c.kind)) == [("policy",)]
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("policy",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0091") :]
+
+
+def test_0092_takes_deliveries_and_grants_of_srs_and_tasks_events_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0091")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "enabled_by": ids["user"]}
+        granted |= {"granted_by": ids["user"], "permissions": ["runs:read"]}
+        conn.execute(insert(t.project_plugins).values(granted))
+        with pytest.raises(errors.CheckViolation):  # 0091 takes neither permission
+            conn.execute(update(t.project_plugins).values(permissions=["runs:read", "tasks:read"]))
+    delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # nor either kind
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "tasks.status"}))
+    move_to(hub_db, "0092")
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.project_plugins).values(permissions=["runs:read", "srs:read", "tasks:read"]))
+        for kind in ("srs.version.approved", "tasks.status", "run.state"):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+            conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind=kind, payload={"v": 1}))
+        for bad in (
+            update(t.project_plugins).values(permissions=["tasks:write"]),
+            insert(t.plugin_deliveries).values({**delivery, "kind": "tasks.deleted"}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    # Going back deletes the deliveries and the hub's events of the two kinds and takes the two permissions back.
+    move_to(hub_db, "0091", down=True)
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.hub_events.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0092") :]
+
+
+def test_0093_keeps_the_loop_of_a_project_its_work_items_and_their_ledger_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0092")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0093")
+    assert columns(hub_db, "loop_states") == {
+        "project_id",
+        "enabled",
+        "enabled_at",
+        "cursor",
+        "breaker",
+        "breaker_reason",
+        "tripped_at",
+        "resumed_by",
+        "resumed_at",
+        "ticked_at",
+        "updated_at",
+    }
+    s, i, e = hub_tables.loop_states, hub_tables.loop_items, hub_tables.loop_item_events
+    item = {"project_id": ids["project"], "kind": "brainstorm", "cycle": "business", "key": "brainstorm:G-1:r1"}
+    item |= {"engine": "rules/1", "owner": "@strategist"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(project_id=ids["project"], enabled=True, enabled_at=func.now(), cursor=7))
+        item_id = one(conn, insert(i).values(item).returning(i.c.id))
+        conn.execute(insert(e).values(item_id=item_id, kind="created", state="queued"))
+        done = {**item, "key": "deliver:p", "kind": "deliver", "cycle": "development", "state": "done"}
+        conn.execute(insert(i).values({**done, "finished_at": func.now()}))
+        for bad in (
+            insert(s).values(project_id=ids["project"]),  # one row a project
+            insert(i).values(item),  # one work item a key
+            insert(i).values({**item, "key": "x", "kind": "plan"}),
+            insert(i).values({**item, "key": "x", "cycle": "development"}),  # a brainstorm is of the business cycle
+            insert(i).values({**item, "key": ""}),
+            insert(i).values({**item, "key": "k" * 501}),
+            insert(i).values({**item, "key": "x", "state": "waiting"}),
+            insert(i).values({**item, "key": "x", "reason": "budget"}),  # no budget in loop/1
+            insert(i).values({**item, "key": "x", "detail": []}),
+            insert(i).values({**item, "key": "x", "attempts": -1}),
+            insert(i).values({**item, "key": "x", "state": "done"}),  # a finished one says when
+            insert(i).values({**item, "key": "x", "finished_at": func.now()}),  # and only a finished one
+            insert(e).values(item_id=item_id, kind="charged", state="queued"),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    assert query(hub_db, select(i.c.key).order_by(i.c.id)) == [("brainstorm:G-1:r1",), ("deliver:p",)]
+    # Going back drops the three tables.
+    move_to(hub_db, "0092", down=True)
+    assert not pg.LOOP_TABLES & tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0093") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

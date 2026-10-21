@@ -31,7 +31,9 @@ source lags its default branch and the files it lacks or holds stale, at the lat
 covered, and what agents got from the graph; and the ``runtime`` and the ``harness`` of the sessions and runs
 (``evo_agents.hub.server.runtime_figures``): their tokens, the prompt cache, the context, the compactions, the cost of
 each session, run and merged pull request, the time of each hook and tool, and what the harness puts into every
-context, by source, with the always-loaded files of each repo. The sessions are their facets
+context, by source, with the always-loaded files of each repo; and the ``product`` the lens product reads
+(``evo_agents.hub.server.product_figures``): the active goals with their metrics, the signals of the span and the
+canvases of a project that enables the plugin canvas. The sessions are their facets
 (``evo_agents.hub.server.facet_figures``):
 each session's whose transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as
 its facet would be, and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``,
@@ -49,7 +51,9 @@ The review run is a run of kind review, dispatched as the owner of the schedule 
 worker on duty, which must say it runs review runs, over the repos of the project the worker has a checkout of, with the
 Reviewer's runtime and model of the charter and the night's caps, the review's own (``review.budget_usd``) below them.
 A project has at most one review run a night, and one active at a time. Its prompt is ``review.build_review_prompt``
-over the night's figures and the lenses of the night, which the run's first event names.
+over the night's figures and the lenses of the night, which the run's first event names, and on a night of the lens
+product the plugins it may propose through (PRODUCT_PLUGINS the project enables); ``looks_through`` tells those
+plugins whether a run is such a review run.
 """
 
 from __future__ import annotations
@@ -67,7 +71,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
 from evo_agents.hub.friction import SKILL_FIELDS
-from evo_agents.hub.server import audit, facet_figures, kg_health, runtime_figures
+from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.server import audit, facet_figures, kg_health, product_figures, runtime_figures
+from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
@@ -85,6 +91,7 @@ SAMPLES = facet_figures.SAMPLES  # runs, sessions and evidence an entry names
 OPEN_ITEMS = 50
 CLOSED = frozenset({"done", "fixed", "resolved", "answered", "closed", "wontfix", "dropped", "merged", "cancelled"})
 DEBT_SECTIONS = ("tech_debt", "debt", "open_questions")
+PRODUCT_PLUGINS = ("canvas", "builder")  # the plugins the lens product proposes through, where the project enables them
 SHELL_TOOLS = frozenset({"Bash", "shell"})  # Claude Code's and Codex's tool of the commands a digest's bash counts
 KIND_KEYS = ("usage_errors", "env_errors")  # the kinds of a program's failures the figures name
 COMPOUND_KEYS = ("calls", "errors", "usage_errors", "env_errors", "other_errors")  # a digest's bash_compound
@@ -434,6 +441,7 @@ async def _counted(
         "kg_health": await kg_health.figures(conn, access, plans, since, until, held),
         "runtime": spent,
         "harness": harness,
+        "product": await product_figures.figures(conn, access, since, until),
     }
     return figures, held, plans
 
@@ -635,8 +643,9 @@ async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, len
 
 
 async def review_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the charter's goals, what
-    earlier nights found through the lenses and the playbook of the Curator."""
+    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
+    (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses and
+    the playbook of the Curator."""
     r, c = tables.runs, tables.charters
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
@@ -653,10 +662,33 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     )
     repos = [repo.model_dump() for repo in view.repos or []]
     earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
-    goals = charter.get("goals")
+    goals = await project_goals.curator_goals(conn, row.project_id, view.project)
+    plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
     return review.build_review_prompt(
-        view.project, row.schedule_night, lenses, repos, held, goals, earlier=earlier, playbook=playbook
+        view.project,
+        row.schedule_night,
+        lenses,
+        repos,
+        held,
+        goals,
+        earlier=earlier,
+        playbook=playbook,
+        plugins=plugins,
     )
+
+
+async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, lens: str) -> bool:
+    """Whether run ``run_id`` is a review run of project ``project_id``, not ended, whose night looks through
+    ``lens``: the lenses its figures name (``queue_review``). The plugins canvas and builder ask it before they take
+    a proposal of the lens product from the run."""
+    r, cf = tables.runs, tables.curator_figures
+    query = (
+        select(cf.c.figures["lenses"])
+        .join_from(r, cf, cf.c.run_id == r.c.id)
+        .where(r.c.id == run_id, r.c.kind == "review", r.c.project_id == project_id, r.c.state.in_(runs.ACTIVE_STATES))
+    )
+    lenses = (await conn.execute(query)).scalar_one_or_none()
+    return isinstance(lenses, list) and lens in lenses
 
 
 # The job

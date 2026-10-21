@@ -10,7 +10,8 @@
   changes is never held, and sends the version back to draft. An approval counts for a role the reviewer holds in the
   config's ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires
   approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
-  but a withdrawn one.
+  but a withdrawn one, and emits ``srs.version.approved`` in the same transaction (``events.version_approved``), from
+  which the plugin keeps the project's tasks in step (``auto_tasks``).
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
@@ -31,7 +32,7 @@ from datetime import datetime
 from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import ROLES, checks, findings, store
+from evo_agents.core_plugins.srs import ROLES, checks, events, findings, store
 from evo_agents.core_plugins.srs.doc import SrsError
 from evo_agents.core_plugins.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
 from evo_agents.hub import tables
@@ -163,6 +164,7 @@ async def review(
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
         if approved_by(settings.policy.get(doc.kind), [*approvals, mine]):
             await _approve(conn, doc, held)
+            await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
     return await store.version(conn, doc, number)
 
 

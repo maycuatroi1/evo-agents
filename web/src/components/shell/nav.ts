@@ -7,7 +7,9 @@ import {
   ChartColumn,
   FolderKanban,
   GitMerge,
+  Goal,
   Inbox,
+  IterationCw,
   LayoutDashboard,
   ListChecks,
   LockKeyhole,
@@ -20,6 +22,7 @@ import {
   RadioTower,
   Server,
   Shield,
+  Signpost,
   Sparkles,
   Tags,
   UserRoundCog,
@@ -42,11 +45,14 @@ export type NavLabel =
   | "inbox"
   | "monitor"
   | "overview"
+  | "decide"
   | "plans"
   | "runs"
   | "mergeQueue"
   | "insights"
   | "signals"
+  | "goals"
+  | "loop"
   | "curator"
   | "releases"
   | "agents"
@@ -98,11 +104,14 @@ export const HOME_NAV: readonly HubNavItem[] = [
 
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: FolderKanban, segment: "" },
+  { label: "decide", icon: Signpost, segment: "decide" },
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "mergeQueue", icon: GitMerge, segment: "merge-queue" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
   { label: "signals", icon: RadioTower, segment: "signals" },
+  { label: "goals", icon: Goal, segment: "goals" },
+  { label: "loop", icon: IterationCw, segment: "loop" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },
   { label: "releases", icon: Tags, segment: "releases" },
   { label: "agents", icon: Bot, segment: "agents" },

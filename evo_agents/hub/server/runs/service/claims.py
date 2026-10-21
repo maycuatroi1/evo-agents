@@ -32,6 +32,7 @@ from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
+from evo_agents.hub.server.loop.runs_of import item_of_run
 from evo_agents.hub.server.plugin_configs import record_run_plugins
 from evo_agents.hub.server.run_state import RUNS_CHANNEL, move_run
 from evo_agents.hub.server.runs.models import (
@@ -625,6 +626,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
             version,
             plan=target,
             decisions=runs.AUTHOR_DECISIONS in features,
+            loop=await item_of_run(conn, view.id) is not None,
         )
         title = view.title
     elif view.kind == "plan":
