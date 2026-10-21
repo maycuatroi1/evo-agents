@@ -782,6 +782,15 @@ agent's edit and the Curator's plans all go through this check. The hub does not
 already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
 harness validate` warns of each verify of a step not done that the hub would refuse as new.
 
+`evo-agents harness validate`, and the warnings a PUT answers with, also check the shape the create-exec-plan skill
+asks of a plan (`plan_semantics` in `evo_agents/harness/__init__.py`): a step id that an earlier step has too, a step
+that depends on itself, a cycle of steps that depend on each other (once, with its ids), a step title over 60
+characters (counted as characters, not bytes; a step without a title passes, since older plans have none), an id
+`a<number>` in a step's `acceptance` that no criterion of the plan's `acceptance` has, and a criterion with an id
+that no step's `acceptance` names, unless it is `invariant: true`. A step's `acceptance` may be a list or a string
+such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
+plans hold there pass. Each is a warning: the hub stores the plan anyway.
+
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
 with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
