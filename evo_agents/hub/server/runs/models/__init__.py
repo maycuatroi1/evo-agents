@@ -228,19 +228,21 @@ class Run(BaseModel):
     id: int
     kind: Literal[runs.SHOWN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
-        "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
-        "written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in "
-        "a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a "
-        "Claude Code session on a member's own machine, which no worker runs and the hub only watches"
+        "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge "
+        "request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it "
+        "writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of "
+        "the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no "
+        "worker runs and the hub only watches"
     )
     project: str
     plan_id: str = Field(
-        description="the plan it works on; empty for a review run, which works on none, and an author run of a new plan"
+        description="the plan it works on; empty for a run on none: a review run, an author run of a new plan, a "
+        "judge run of the merge queue"
     )
     step_key: str | None = Field(description="null for a plan run")
     title: str | None = Field(description="the step's title when the run was dispatched; the plan's for a plan run")
     plan_revision: int | None = Field(
-        description="the plan revision the run was dispatched from; null for a review run"
+        description="the plan revision the run was dispatched from; null for a run on no plan"
     )
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     dispatched_via: Literal[DISPATCHED_VIA] | None = Field(

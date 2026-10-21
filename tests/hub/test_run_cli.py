@@ -545,6 +545,37 @@ def test_show_of_a_chat_run_names_its_chat_and_the_message_that_started_it(monke
     assert "plan" not in said and "step" not in said and "repo" not in said
 
 
+@pytest.mark.parametrize("plan_id", ["", "curator-lumen-report"])
+def test_show_of_a_judge_run_says_whose_judge_it_is_and_names_a_plan_only_when_it_has_one(
+    monkeypatch, capsys, tmp_path, plan_id
+):
+    repos = [{"repo": "lumen-app", "branch": "fix/one"}]
+    run = queued_attempt(
+        id=383,
+        kind="judge",
+        plan_id=plan_id,
+        step_key=None,
+        plan_revision=4 if plan_id else None,
+        title="Judge of !2 of lumen-app: Fix one" if not plan_id else "Judge of the lumen report",
+        repo="lumen-app",
+        branch="fix/one",
+        repos=repos,
+        state="done",
+        parent_run_id=None,
+        steady_wait=None,
+    )
+    said = {
+        line.split(None, 1)[0]: line.split(None, 1)[1]
+        for line in show_offline(monkeypatch, capsys, tmp_path, run)[1:-1]
+    }
+    if plan_id:
+        assert said["kind"].startswith("judge run: the Curator's Judge reads a change of its plan")
+        assert said["plan"] == "curator-lumen-report of project demo, revision 4"
+    else:
+        assert said["kind"].startswith("judge run: a Judge of the merge queue reads a merge request")
+        assert "plan" not in said and "Curator" not in said["kind"]
+
+
 # Against a hub
 
 if pg.DSN:

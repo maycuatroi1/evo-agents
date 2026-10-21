@@ -245,6 +245,7 @@ def test_post_merge_a_uat_check_that_fails_again_reverts_its_merge_first_in_the_
     assert gate_pass(world) == {"merged": 1, "ready": 1}  # no Judge: its diff undoes !1's; first in line, never held
     entries = by_iid(world)
     assert entries[3]["state"] == "merged" and entries[1]["state"] == "reverted"
+    assert 3 not in world.project.rebased  # opened on dev's head: a rebase would only start its pipeline again
     assert lines(entries[1], "reverted")[0]["reason"].startswith("its revert !3 merged into dev")
     gates = [(line["gate"], line["passed"]) for line in lines(entries[3], "gate")]
     assert gates[:4] == [(0, True), (1, True), (2, True), (3, True)] and "judged" not in kinds(entries[3])
