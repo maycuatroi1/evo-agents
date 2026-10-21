@@ -15,7 +15,9 @@ Two routes for a change:
   ``builder__propose`` of the hub's /mcp, which checks the change, keeps it pending in builder_proposals, shows it in
   the thread and tells the admins who may approve it. An admin approves or rejects it in the thread (``approve 12``, ``reject 12``), from
   the Inbox, or with the routes under /v1/x/builder/<project>/proposals; approved, the hub applies it as the setting's
-  next version, which ``rollback 12`` makes a copy of the one before (``proposals``).
+  next version, which ``rollback 12`` makes a copy of the one before (``proposals``). The Curator's review run on a
+  night of the lens product proposes a change of the autonomy policy through the same tool, with no thread: an admin
+  decides it from the Inbox or the routes (plan loop-engine, criterion a9).
 - A change of code is the chat run itself: the agent works on the client's plugin repo the chat run checks out, pushes
   its branch and the hub opens the draft pull request; the repo's CI (the skill's ``ci.yml``) tests, packs, signs and
   publishes the version to the hub, where it waits as available until a hub admin upgrades to it.
@@ -118,7 +120,8 @@ MANIFEST = {
                 "title": "Propose a change of a setting",
                 "description": "Propose a change of the hub's branding, a layer of features, a layer of a plugin's "
                 "config, an agent profile, the autonomy policy or a goal of the project, which an admin approves "
-                "before the hub applies it. Only the agent of a chat run of @builder may call it; it applies nothing.",
+                "before the hub applies it. Only the agent of a chat run of @builder may call it, and the Curator's "
+                "review run on a night of the lens product for a change of the autonomy policy; it applies nothing.",
                 "python": f"{SERVER}:propose",
                 "input_schema": PROPOSE_SCHEMA,
             }

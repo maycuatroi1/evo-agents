@@ -2659,6 +2659,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -2790,6 +2791,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -3290,6 +3292,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -3524,6 +3527,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -11891,6 +11895,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -12062,6 +12067,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         }
@@ -12174,6 +12180,7 @@
             "cost",
             "security",
             "product_goals",
+            "product",
             "kg_health"
           ]
         },
@@ -26702,6 +26709,7 @@
                       "cost",
                       "security",
                       "product_goals",
+                      "product",
                       "kg_health"
                     ],
                     "type": "string"
@@ -26987,6 +26995,7 @@
                       "cost",
                       "security",
                       "product_goals",
+                      "product",
                       "kg_health"
                     ],
                     "type": "string"
@@ -31609,6 +31618,7 @@
                       "cost",
                       "security",
                       "product_goals",
+                      "product",
                       "kg_health"
                     ],
                     "type": "string"
@@ -31767,6 +31777,7 @@
                       "cost",
                       "security",
                       "product_goals",
+                      "product",
                       "kg_health"
                     ],
                     "type": "string"
@@ -53904,7 +53915,7 @@
             "proposed_by": {
               "type": "string",
               "title": "Proposed By",
-              "description": "the admin who asked @builder, the run's dispatcher"
+              "description": "the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night shift for a proposal of its review run"
             },
             "proposed_at": {
               "type": "string",
@@ -53979,7 +53990,8 @@
                   "type": "null"
                 }
               ],
-              "title": "Run Id"
+              "title": "Run Id",
+              "description": "the chat run of @builder, or the Curator's review run, it came from"
             },
             "link": {
               "anyOf": [
@@ -53991,7 +54003,7 @@
                 }
               ],
               "title": "Link",
-              "description": "the hub's message that shows it in its thread"
+              "description": "the hub's message that shows it in its thread; none for a review run's"
             }
           },
           "type": "object",
@@ -61894,6 +61906,7 @@
                 "cost",
                 "security",
                 "product_goals",
+                "product",
                 "kg_health"
               ],
               "title": "Lens"
@@ -69590,6 +69603,7 @@
                     "cost",
                     "security",
                     "product_goals",
+                    "product",
                     "kg_health"
                   ]
                 },
@@ -72167,6 +72181,7 @@
                 "cost",
                 "security",
                 "product_goals",
+                "product",
                 "kg_health"
               ],
               "title": "Lens"
@@ -75455,7 +75470,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 14.0,
+              "maximum": 15.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",

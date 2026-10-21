@@ -242,7 +242,7 @@ TOOLS = (  # name, title, description, input schema
         "Propose claims",
         "Propose new claims (each starts as an assumption, with a test card) or changes of claims at the rev you read "
         "them, for members to accept or reject; nothing changes until one does. Only the agent of a run of "
-        "@strategist; never to validated.",
+        "@strategist, or of the Curator's review run on a night of the lens product; never to validated.",
         PROPOSE_SCHEMA,
     ),
     (
