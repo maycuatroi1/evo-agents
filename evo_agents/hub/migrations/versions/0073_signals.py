@@ -1,7 +1,7 @@
 """Signals: the registry of a project's keys, the ingest keys services write with, and the signals themselves.
 
-Revision ID: 0068
-Revises: 0067
+Revision ID: 0073
+Revises: 0072
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_signals`` as of this revision, never imports, so a later change
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0068"
-down_revision = "0067"
+revision = "0073"
+down_revision = "0072"
 branch_labels = None
 depends_on = None
 

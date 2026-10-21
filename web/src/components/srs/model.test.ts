@@ -30,6 +30,7 @@ import {
   returnedBy,
   reviewBlock,
   rolesOf,
+  selfApprovalOf,
   shownNumber,
   slots,
   threadsOf,
@@ -101,6 +102,20 @@ describe("versions", () => {
     const reviewed = { ...inReview, reviews: [review({ reviewer: "bao", round: 1 })] };
     expect(reviewBlock({ login: "bao", role: "writer" }, doc, reviewed)).toBe("reviewed");
     expect(reviewBlock({ login: "bao", role: "writer" }, doc, inReview)).toBeNull();
+  });
+
+  it("lets the author review once the config turns self-approval on, and keeps every other refusal", () => {
+    const inReview = doc.versions[0];
+    expect(reviewBlock({ login: "alice", role: "admin" }, doc, inReview, true)).toBeNull();
+    expect(reviewBlock({ login: "alice", role: "writer" }, doc, inReview, true)).toBeNull();
+    expect(reviewBlock({ login: "alice", role: "reader" }, doc, inReview, true)).toBe("reader");
+    expect(reviewBlock({ login: "alice", role: "writer" }, doc, doc.versions[1], true)).toBe("not_in_review");
+    const reviewed = { ...inReview, reviews: [review({ reviewer: "alice", round: 1 })] };
+    expect(reviewBlock({ login: "alice", role: "writer" }, doc, reviewed, true)).toBe("reviewed");
+    expect(selfApprovalOf([{ name: "self_approval", value: true }])).toBe(true);
+    for (const off of [[], [{ name: "self_approval", value: false }], [{ name: "self_approval", value: "true" }], [{ name: "self_approval" }]]) {
+      expect(selfApprovalOf(off)).toBe(false);
+    }
   });
 
   it("reads the policy and the roles from the effective config, and fills each role with this round's approval", () => {

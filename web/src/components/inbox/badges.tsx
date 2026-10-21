@@ -16,6 +16,7 @@ import {
   Rocket,
   Send,
   Sunrise,
+  Tags,
   Target,
   Trash2,
   Unplug,
@@ -42,6 +43,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   question: MessageCircleQuestionMark,
   // What the agent of a chat run asks while it triages a failed run.
   triage: MessageSquare,
+  // What a stopped release cycle asks its owner: go on with one more cap, close it, or pause the schedule.
+  release: Tags,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {
@@ -68,6 +71,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   plugin_disabled: { icon: Unplug },
   builder_proposal: { icon: Hammer },
   canvas_baseline: { icon: ClipboardCheck },
+  release: { icon: Tags },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

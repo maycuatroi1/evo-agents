@@ -495,6 +495,10 @@ def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | No
         from evo_agents.hub.judge import is_curator_branch
 
         return "a run of the Curator", "the Curator", "curator/...", is_curator_branch
+    if kind == "release":
+        from evo_agents.hub.release_runs import is_release_branch
+
+        return "a release run", "a release", "release/<version>", is_release_branch
     return None
 
 
@@ -503,8 +507,9 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
     a judge run, an author run, a replay run and a history run push nothing at all, a Builder of the Curator (``kind`` curator) only a
-    branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, and a
-    task run (``kind`` task) only its branch ``task/<run>``."""
+    branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
+    task run (``kind`` task) only its branch ``task/<run>``, and a release run (``kind`` release) only a branch
+    ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
     if kind in ("review", "judge", "author", "replay", "history"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
     own = _own_branches(kind)

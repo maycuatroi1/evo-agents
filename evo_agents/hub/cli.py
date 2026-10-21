@@ -10,9 +10,9 @@ The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``, ``signal`` by
-``cli_signals`` and ``sessions`` by ``cli_sessions``; they need nothing beyond the core package, so they work on a
-core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
-document; ``hub contract check`` does not.
+``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails`` and ``release`` by ``release_cli``; they
+need nothing beyond the core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract
+print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -107,11 +107,11 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry
+        from evo_agents.hub.server.app import init_sentry, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency)
+    return worker.main(config, args.concurrency, release_pass=release_pass)
 
 
 @_server_command
@@ -249,6 +249,14 @@ def register(sub) -> None:
     from evo_agents.hub.cli_sessions import register_sessions
 
     register_sessions(hsub)
+
+    from evo_agents.hub.cli_emails import register_emails
+
+    register_emails(hsub)
+
+    from evo_agents.hub.release_cli import register_release
+
+    register_release(hsub)
 
     from evo_agents.hub.openapi import register as register_openapi
 

@@ -374,7 +374,7 @@ def test_the_signal_pruning_runs_daily_once_and_its_days_are_configured():
 
 
 def test_signal_rows_carry_who_pushed_them_and_refuse_both_or_neither(hub_db, client, hub):
-    """The CHECK of 0068 holds what the routes promise, for a row written around them."""
+    """The CHECK of 0073 holds what the routes promise, for a row written around them."""
     import psycopg
 
     push(client, hub["alice"], {"key": ZERO_RESULTS, "value": 0.5})

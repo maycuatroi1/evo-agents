@@ -182,6 +182,19 @@ one, read its files and CI, write the Judge's check run, merge) use tokens of th
 with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
 it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
 
+A **release run** ([releases.md](releases.md), "The run on the worker") is guarded as a run of the Curator is
+(`RunCredentials.guarded`): its agent gets no credential helper and no lease that pushes, and only the daemon's own git
+uses the token, with a ticket of one command, to push `release/<version>`. Its preflight checks that push against the
+lease alone, never the machine's own credentials, and fails the run when no lease covers it. Of the owner's secrets it
+is leased only the `env` secrets of its runtime's login, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`
+(`RELEASE_ENV_VARS`), and no `git` secret: its repo must be on GitHub, where it gets a token of the workers' App with
+`GITHUB_PERMISSIONS` (contents write, metadata read) and never `workflows: write` (`NO_WORKFLOW_KINDS`), so its push
+cannot change the workflows that test and publish the release. The hub, not the run, merges and tags, with tokens
+of the workers' App made for each use: contents and pull requests write for the landing, actions read to follow the
+tag's CI, actions write to run its failed jobs again. The App needs the Actions permission (read and write) for those
+two, accepted on the installation; until then the hub reports `actions_permission` ([releases.md](releases.md), "The
+GitHub App").
+
 A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
 of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of
 the hub's GitHub App only when it holds `github-app`; a repo on GitHub it would have covered is missing, with the

@@ -22,6 +22,10 @@ from evo_agents.hub import tables
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
+# A member's emails belong to no project; a target names the row and the member, "email:<id> user=<login>", never the
+# address (evo_agents.hub.server.user_emails).
+EMAIL_ADD = "user_email.add"
+EMAIL_REMOVE = "user_email.remove"
 GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"

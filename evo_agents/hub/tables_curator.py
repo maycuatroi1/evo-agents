@@ -1,6 +1,6 @@
 """The tables of the Curator's changes, which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
 attributes (``tables.curator_changes``, ``tables.curator_repo_checks``, ``tables.curator_ledger``,
-``tables.replay_tasks``, ``tables.curator_replays``): queries name them there.
+``tables.replay_tasks``, ``tables.curator_replays``, ``tables.curator_briefs``): queries name them there.
 
 curator_changes (0017, 0019, 0057) holds what each accepted proposal became, curator_repo_checks (0017) the last
 check of each repo's ruleset, and curator_ledger (0018) what happened to each proposal, never changed or deleted
@@ -9,7 +9,8 @@ of replay tasks, made from its own history and only ever added to, and curator_r
 for one change, with what its two arms found (``evo_agents.hub.replay``, ``evo_agents.hub.server.replays``).
 curator_playbook (0060) holds the entries of each project's playbook of the Curator, and curator_playbook_deltas (0060)
 every delta that added one, counted it helpful or harmful, or retired it, never changed or deleted
-(``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``).
+(``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``). curator_briefs (0015) holds the morning brief of
+each project's night, one a day (``evo_agents.hub.server.brief``).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKeyConstraint,
     Identity,
@@ -243,6 +245,31 @@ def tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> tuple[Ta
     )
     changes = _changes(metadata)
     return changes, _repo_checks(metadata), _ledger(metadata), _replay_tasks(metadata), _replays(metadata)
+
+
+def briefs_table(metadata: MetaData) -> Table:
+    """curator_briefs (0015), the Curator's morning briefs, added to ``metadata``."""
+    return Table(
+        "curator_briefs",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("day", Date, nullable=False),
+        Column("night", Date, nullable=False),
+        Column("user_id", BigInteger, nullable=False),
+        Column("body", JSONB, nullable=False),
+        Column("notification_id", BigInteger),
+        _stamp("created_at"),
+        ForeignKeyConstraint(
+            ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
+        PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
+        UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
+    )
 
 
 def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:

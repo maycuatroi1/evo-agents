@@ -12,9 +12,24 @@ import { currentRound, type Policy, type Slot } from "./model";
 
 /**
  * The approvals a version needs and who gave them in its current round: one row per role the policy names, required
- * first, or, without a policy, one approval of a writer who wrote none of the versions under review.
+ * first, or, without a policy, one approval of a writer who wrote none of the versions under review (of any writer,
+ * its author too, when the project turned `self_approval` on, which a line under the policy then says).
  */
-export function ApprovalsCard({ policy, slots, version, approved }: { policy: Policy; slots: Slot[]; version: SrsVersion; approved: number | null }) {
+export function ApprovalsCard({
+  project,
+  policy,
+  slots,
+  version,
+  approved,
+  selfApproval,
+}: {
+  project: string;
+  policy: Policy;
+  slots: Slot[];
+  version: SrsVersion;
+  approved: number | null;
+  selfApproval: boolean;
+}) {
   const t = useTranslations("srs.review");
   const tRole = useTranslations("srs.role");
   const approvals = currentRound(version).filter((review) => review.decision === "approve");
@@ -27,12 +42,19 @@ export function ApprovalsCard({ policy, slots, version, approved }: { policy: Po
         </CardTitle>
         <p className="text-xs text-fg-subtle">
           {none
-            ? t("policyNone", { since: approved ? `v${approved}` : t("firstVersion") })
+            ? selfApproval
+              ? t("policyNoneSelf")
+              : t("policyNone", { since: approved ? `v${approved}` : t("firstVersion") })
             : t("policy", {
                 required: policy.required.map((role) => tRole(role)).join(", ") || t("nobody"),
                 optional: policy.optional.map((role) => tRole(role)).join(", ") || t("nobody"),
               })}
         </p>
+        {selfApproval ? (
+          <p className="text-xs text-fg-subtle" data-testid="srs-self-approval">
+            {t("selfApproval", { project })}
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent>
         {none ? (

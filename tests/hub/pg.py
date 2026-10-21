@@ -123,15 +123,25 @@ HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
 SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
 # migration 0065: the commit of the tag nightly the hub last read
 NIGHTLY_TABLES = frozenset({"hub_nightly"})
-# migration 0067: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
+# migration 0067: the release schedules of projects, their cycles, the runs of each cycle and every check
+RELEASE_TABLES = frozenset({"release_schedules", "release_cycles", "release_runs", "release_tags", "release_checks"})
+# migration 0068: the emails members listed, one member an address
+USER_EMAIL_TABLES = frozenset({"user_emails"})
+# migration 0069: the conflicts @ba found in the BA documents of the core plugin srs
+SRS_FINDING_TABLES = frozenset({"srs_findings"})
+# migration 0070: the settle chat of each version of a BA document whose review left conflicts to settle
+SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
+# migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
+SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
+# migration 0072: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
 CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
-# migration 0068: the registry of a project's signal keys, its signals, and the ingest keys services write them with
+# migration 0073: the registry of a project's signal keys, its signals, and the ingest keys services write them with
 SIGNAL_TABLES = frozenset({"signal_keys", "signals", "signal_ingest_keys"})
-# migration 0069: what an agent or the hub proposes on a canvas, for a writer to accept or reject
+# migration 0074: what an agent or the hub proposes on a canvas, for a writer to accept or reject
 CANVAS_PROPOSAL_TABLES = frozenset({"canvas_proposals"})
-# migration 0070: the items judging runs of @strategist judged for the value check of canvas, with their verdicts
+# migration 0075: the items judging runs of @strategist judged for the value check of canvas, with their verdicts
 CANVAS_JUDGING_TABLES = frozenset({"canvas_judgings"})
-# migration 0071: the baselines of canvas with what each asks of a claim, and the hub's events the Loop reads by cursor
+# migration 0076: the baselines of canvas with what each asks of a claim, and the hub's events the Loop reads by cursor
 CANVAS_BASELINE_TABLES = frozenset({"canvas_baselines", "canvas_baseline_items", "hub_events"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

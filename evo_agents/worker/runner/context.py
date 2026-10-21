@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from evo_agents.hub import curator
+from evo_agents.hub import curator, releases
 from evo_agents.worker import credentials
 from evo_agents.worker.adapter import Outcome
 from evo_agents.worker.credentials import RunCredentials
@@ -112,7 +112,15 @@ class Run:
         self.spool = Spool(home.spool_dir, self.id, daemon.budget)
         self.sender = Sender(daemon, self.spool)
         self.watchdog = Watchdog(self, curator.budget_of(spec) or {})
-        self.credentials = RunCredentials(self.id, home, daemon.env, self.note, guarded=self.curator is not None)
+        # A run of the Curator, and a release run, whose agent never holds a push credential: only the daemon's own git
+        # gets the run's leases (credentials.RunCredentials.guarded).
+        self.credentials = RunCredentials(
+            self.id,
+            home,
+            daemon.env,
+            self.note,
+            guarded=self.curator is not None or spec.get("kind") == releases.RELEASE_KIND,
+        )
         self.agent = Agent(self)
         self.inbox = Inbox(self)
         self.reports = Reports(self)

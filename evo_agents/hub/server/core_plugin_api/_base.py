@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables, telegram
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.plugin_calls import CoreContext, core_registry, effective_grant, enabled_in
+from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in
 from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
@@ -126,12 +126,12 @@ def web_url(config: HubConfig, link: str | None) -> str | None:
     return telegram.web_url(getattr(config, "public_url", None), link)
 
 
-Context = CoreContext
+Context = ApiContext  # the hub hands plugins a CoreContext, a subclass whose fields past these are not the API's
 
 
 def transaction(context: Context) -> AbstractAsyncContextManager[AsyncConnection]:
     """A transaction on the engine of the context the hub gave a job, an event, a tool or a source of the graph."""
-    if not isinstance(context, CoreContext) or context.engine is None:
+    if not isinstance(context, ApiContext) or context.engine is None:
         raise ValueError("this context holds no engine of the hub")
     return context.engine.begin()
 

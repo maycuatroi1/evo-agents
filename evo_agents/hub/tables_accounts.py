@@ -1,5 +1,6 @@
-"""The tables of accounts (0027), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
-attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accounts``): queries name them there.
+"""The tables of accounts (0027) and of members' emails (0068), which ``evo_agents.hub.tables`` adds to its metadata
+and exposes as its own attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accounts``,
+``tables.user_emails``): queries name them there.
 
 accounts holds what a member set on one of their env secrets as an account, and where it stands: its weight and
 priority, when its owner paused it, until when it cools down and why, when a run last took it, its place in the
@@ -7,6 +8,10 @@ rotation (``evo_agents.hub.accounts.pick``), and the last usage a run reported f
 tokens (0066: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other account). A secret without a row
 has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
+
+user_emails holds each email a member listed, or a hub admin listed for them, as it was written: one member an
+address, whatever its case (user_emails_email_key, on lower(email)). ``evo_agents.hub.user_emails`` names the login of
+an address from these rows, or from GitHub's noreply address, which needs none.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from sqlalchemy import (
     DateTime,
     Double,
     ForeignKeyConstraint,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -40,8 +46,25 @@ def _when(name: str) -> Column:
     return Column(name, DateTime(timezone=True))
 
 
-def account_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """(accounts, account_policies, run_accounts), added to ``metadata``."""
+def email_table(metadata: MetaData) -> Table:
+    """user_emails, added to ``metadata``."""
+    user_emails = Table(
+        "user_emails",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("user_id", BigInteger, nullable=False),
+        Column("email", Text, nullable=False),  # as it was written; compared in lower case
+        _stamp("created_at"),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="user_emails_user_id_fkey"),
+        PrimaryKeyConstraint("id", name="user_emails_pkey"),
+        Index("user_emails_user_idx", "user_id"),
+    )
+    Index("user_emails_email_key", func.lower(user_emails.c.email), unique=True)
+    return user_emails
+
+
+def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """(accounts, account_policies, run_accounts, user_emails), added to ``metadata``."""
     accounts = Table(
         "accounts",
         metadata,
@@ -92,4 +115,4 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         PrimaryKeyConstraint("run_id", "env_var", name="run_accounts_pkey"),
         Index("run_accounts_secret_idx", "secret_id"),
     )
-    return accounts, account_policies, run_accounts
+    return accounts, account_policies, run_accounts, email_table(metadata)

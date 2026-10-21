@@ -5,8 +5,9 @@ An admin of a project that enabled srs enables the type under a member (``run_as
 srs/ba. The plugin's tools are on the hub's /mcp only where the project enables it. Every chat run of @ba goes to a
 worker of run_as, also when the writer who mentioned it has none, and acts for that writer: a proposal is the
 document's next version, in review at once, written as the writer, who therefore never approves it; the agent of a
-run approves nothing. Each version that enters review for the first time is handed to @ba as a task run on run_as's
-worker, whose comments are advice that blocks no approval. A task of a use case is made for the writer who asked,
+run approves nothing. Each time a version enters review, in every round, it is handed to @ba as a task run on
+run_as's worker, whose comments are advice that blocks no approval (``tests.hub.test_srs_auto_review`` has the rest of
+that review). A task of a use case is made for the writer who asked,
 only while they hold writer. A type that does not route its chat runs to run_as, or @ba while its type is off, routes
 as before: to the worker of the person who mentioned it. An archived document is out of @ba's list and search, still
 read by its slug, and takes no proposal or comment (criterion a1 of plan srs-document-lifecycle). The agent on the
@@ -59,7 +60,7 @@ SAMPLE = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 SRS = f"/v1/x/srs/{PROJECT}"
 DOC = f"{SRS}/documents/demo-shop"
 TYPE = f"/v1/projects/{PROJECT}/agent-types/srs/ba"
-SRS_TOOLS = ["srs__comment", "srs__diff", "srs__propose", "srs__read", "srs__search"]
+SRS_TOOLS = ["srs__comment", "srs__diff", "srs__finding", "srs__propose", "srs__read", "srs__search"]
 
 
 @pytest.fixture
@@ -243,6 +244,7 @@ def test_ba_agent_type_makes_ba_with_the_pack_srs_ba_and_its_tools_show_only_whe
     for name, arguments in (
         ("srs__propose", {"document": "demo-shop", "base_version": 1, "summary": "x", "changes": [{"key": "k"}]}),
         ("srs__comment", {"document": "demo-shop", "body": "Suggestion: shorter"}),
+        ("srs__finding", {"action": "reopen", "document": "demo-shop", "finding": 1}),
     ):
         text, error = tool(client, members["other"], name, PROJECT, **arguments)
         assert error and f"calls {name}" in text and "only the agent of" in text, text
@@ -378,9 +380,41 @@ def test_ba_agent_proposes_a_version_in_review_written_as_the_writer_who_asked_w
     assert client.post(f"{DOC}/versions/2/withdraw", headers=agent).status_code in (401, 403)
     author = review(client, hub["other"], 2)
     assert author.status_code == 403, author.text
+    held = review(client, hub["chi"], 2)  # @ba's review of the round is still queued
+    assert held.status_code == 409 and f"(run #{review_run}) is queued" in held.json()["message"], held.text
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
     approved = review(client, hub["chi"], 2)
     assert approved.status_code == 200 and approved.json()["state"] == "approved", approved.text
     assert "BR ORD2-2" in {entry["code"] for entry in version(client, hub["reader"], 2)["items"]}
+
+
+def test_ba_agent_proposal_with_self_approval_on_is_approved_by_the_writer_who_asked(client, hub):
+    imported(client, hub["chi"])
+    enable_ba(client, hub)
+    studio = owners_worker(client, hub)
+    on = {"values": {"self_approval": True}}
+    written = client.post(f"/v1/projects/{PROJECT}/plugins/srs/config", json=on, headers=hub["owner"])
+    assert written.status_code == 200, written.text
+    chat = created(client, hub["other"], "SRS", people=[OWNER, CHI], agents=("ba",))
+    mention(client, hub["other"], chat["id"], "@ba rename UC ORD-1")
+    spec = running(client, studio, "chat")
+    agent = agent_of(studio, spec["id"])
+    order = item(client, hub["chi"], "UC ORD-1")
+    change = {"key": order["key"], "title": "Place an order now"}
+    text, error = tool(
+        client, agent, "srs__propose", document="demo-shop", base_version=1, summary="Rename", changes=[change]
+    )
+    assert not error, text
+    assert text.startswith(
+        f"Version 2 of demo-shop is in review, drafted by run #{spec['id']} and written as {OTHER}. Self-approval is "
+        f"on in project {PROJECT}, so {OTHER} may approve it as any writer may."
+    ), text
+    assert review(client, agent, 2).status_code in (401, 403), "the agent of a run never approves, switch or not"
+    held = review(client, hub["other"], 2)  # the author may review it, once @ba's review of the round ends
+    assert held.status_code == 409 and "is queued" in held.json()["message"], held.text
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
+    approved = review(client, hub["other"], 2)
+    assert approved.status_code == 200 and approved.json()["state"] == "approved", approved.text
 
 
 def test_ba_agent_proposes_only_in_a_chat_run_of_ba(client, hub):
@@ -437,7 +471,7 @@ def test_ba_agent_leaves_out_an_archived_document_reads_it_by_its_slug_and_write
 # Its review of each version
 
 
-def test_ba_agent_reviews_each_version_once_as_it_enters_review_and_its_comments_block_nothing(client, hub, hub_db):
+def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_block_nothing(client, hub, hub_db):
     enable_ba(client, hub)
     studio = owners_worker(client, hub)
     imported(client, hub["chi"])
@@ -448,8 +482,14 @@ def test_ba_agent_reviews_each_version_once_as_it_enters_review_and_its_comments
     assert (spec["id"], spec["mode"], [pack["pack"] for pack in spec["packs"]]) == (review_run, "headless", ["srs/ba"])
     assert "Review version 1 of the SRS document demo-shop" in spec["prompt"]
     assert "Follow the skill srs-review of your pack" in spec["prompt"]
-    for said in ("between use cases", "and the glossary", "and the non-functional requirements", "block no approval"):
+    for said in (
+        "every use case of every document",
+        "with the glossary",
+        "non-functional requirements",
+        "srs__finding",
+    ):
         assert said in spec["prompt"], said
+    assert "Comments are advice: they block no approval." in spec["prompt"]
     agent = agent_of(studio, review_run)
     finding = "Blocking: BR ORD2-1 lets 3 retries run past the 15 minute hold of BR ORD1-2."
     text, error = tool(client, agent, "srs__comment", document="demo-shop", version=1, item="BR ORD2-1", body=finding)
@@ -467,22 +507,38 @@ def test_ba_agent_reviews_each_version_once_as_it_enters_review_and_its_comments
     enable(client, hub["owner"], "tasks", ["plans:read"])
     text, error = tool(client, agent, "tasks__create", title="Build Place an order", links=["UC ORD-1"])
     assert error and "the agent of a task run creates no task" in text, text
+    held = review(client, hub["other"], 1)  # approval waits for the review run, never for its comments
+    assert held.status_code == 409 and f"(run #{review_run}) is running" in held.json()["message"], held.text
+    moved(client, studio, review_run, "verifying", "done", summary="One finding.")
     assert review(client, hub["other"], 1).json()["state"] == "approved"
-    # a version sent back and submitted again is reviewed once
+    # with tasks on, the approval hands @ba the split of its frame tasks too (tests.hub.test_srs_auto_tasks)
+    split = running(client, studio, "task")
+    assert "Split the frame tasks of the SRS document demo-shop" in split["prompt"]
+    moved(client, studio, split["id"], "verifying", "done", summary="Nothing split.")
+    # a version sent back and submitted again is reviewed again, in its new round
     cart = item(client, hub["chi"], "BR ORD1-1")
     saved(client, hub["other"], 1, {"key": cart["key"], "body": "- A cart holds at most 40 lines."})
     submitted(client, hub["other"], 2)
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
     returned = review(client, hub["chi"], 2, "request_changes", body="Say why 40")
     assert returned.json()["state"] == "draft", returned.text
     assert submitted(client, hub["other"], 2)["round"] == 2
-    assert [row[4] for row in runs_of(hub_db, "task")] == ["@ba reviews demo-shop v1", "@ba reviews demo-shop v2"]
+    assert [row[4] for row in runs_of(hub_db, "task")] == [
+        "@ba reviews demo-shop v1",
+        "@ba splits the tasks of demo-shop v1",
+        "@ba reviews demo-shop v2",
+        "@ba reviews demo-shop v2, round 2",
+    ]
+    again = running(client, studio, "task")
+    assert "submitted once more" in again["prompt"] and "(round 2)" in again["prompt"], again["prompt"]
+    moved(client, studio, again["id"], "verifying", "done", summary="Nothing found.")
     # with the type off, a version goes to review all the same, without a review by @ba
     assert review(client, hub["chi"], 2).json()["state"] == "approved"
     stock = item(client, hub["chi"], "BR ORD1-2")
     saved(client, hub["other"], 2, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
     assert client.delete(TYPE, headers=hub["owner"]).status_code == 200
     assert submitted(client, hub["other"], 3)["state"] == "in_review"
-    assert len(runs_of(hub_db, "task")) == 2
+    assert len(runs_of(hub_db, "task")) == 5  # the approval of version 2 handed the split of the frames still waiting
 
 
 # Tasks of its use cases

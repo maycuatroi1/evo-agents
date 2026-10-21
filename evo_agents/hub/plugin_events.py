@@ -7,13 +7,15 @@ whose installed version takes it and whose grant there lets it read it: a run's 
 ``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result`` stores for
 the plugin of the run's agent type alone (``evo_agents.hub.task_runs``), a rev of a claim of a Lean Canvas and an
 approved baseline of one (``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits
-them), and a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``). An events
-contribution takes the kinds its ``on`` names, or every kind when it names none. The same call writes an event of the
-last three kinds into the hub's own table hub_events too, which the Loop reads by cursor
-(``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table plugin_deliveries is the outbox: nothing
-goes out while the transaction is open, and nothing is lost when the hub stops after the commit. ``emit_notification``
-does the same for a notification of a project, to each isolated plugin's channel there, with ``notifications:send``: a
-core plugin's channel is a kind of members' channel instead, which ``evo_agents.hub.server.notifications`` sends as it
+them), and a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``). A core plugin
+takes the end of its own task runs without that grant, as it hands them without one (``task_dispatch.hand_own_task``):
+the image trusts it. An events contribution takes the kinds its ``on`` names, or every kind when it names none. The
+same call writes an event of the last three kinds into the hub's own table hub_events too, which the Loop reads by
+cursor (``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table plugin_deliveries is the outbox:
+nothing goes out while the transaction is open, and nothing is lost when the hub stops after the commit.
+``emit_notification`` does the same for a notification of a project, to each isolated plugin's channel there, with
+``notifications:send``: a core plugin's channel is a kind of members' channel instead, which
+``evo_agents.hub.server.notifications`` sends as it
 sends Telegram's.
 
 A payload carries ids and states, never a text the project's labels may keep from a plugin: a run's id, kind and
@@ -85,7 +87,11 @@ def subscriptions(manifest: dict, tier: str, kind: str) -> list[str]:
     return [item["name"] for item in contributes.get("events") or [] if kind in item.get("on", EVENT_KINDS)]
 
 
-def _granted(manifest: dict, permissions, kind: str) -> bool:
+def _granted(manifest: dict, permissions, kind: str, tier: str | None) -> bool:
+    """Whether a plugin of ``tier`` whose project grants it ``permissions`` reads events of ``kind``: a core plugin
+    reads the end of its own task runs (``task.result`` goes to the plugin of the run's agent type alone) ungranted."""
+    if kind == "task.result" and tier == "core":
+        return True
     needed = PERMISSION[kind]
     return needed in (permissions or []) and needed in asked_for(manifest)
 
@@ -93,7 +99,7 @@ def _granted(manifest: dict, permissions, kind: str) -> bool:
 async def _subscribers(conn: AsyncConnection, kind: str, project_id: int) -> list[tuple[int, str]]:
     found = []
     for row in await enabled_plugins(conn, project_id):
-        if _granted(row.manifest, row.permissions, kind):
+        if _granted(row.manifest, row.permissions, kind, row.tier):
             found += [(row.id, name) for name in subscriptions(row.manifest, row.tier, kind)]
     return found
 
@@ -242,7 +248,7 @@ def _refusal(row) -> str | None:
         return f"plugin {row.name} is turned off: {row.disabled_reason}"
     if row.enabled is None:
         return f"project {row.project} does not enable plugin {row.name} any more"
-    if not _granted(row.manifest, row.permissions, row.kind):
+    if not _granted(row.manifest, row.permissions, row.kind, row.tier):
         return f"plugin {row.name} is not granted {PERMISSION[row.kind]} in project {row.project}"
     if row.contribution not in subscriptions(row.manifest, row.tier, row.kind):
         return f"plugin {row.name} {row.installed_version} no longer takes {row.kind} in {row.contribution}"

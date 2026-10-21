@@ -67,6 +67,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import {
   documentPath,
@@ -78,6 +79,7 @@ import {
   RULE,
   SAMPLE_SLUG,
   SAMPLE_SRS,
+  seedFindings,
   srsPath,
   submitVersion,
   USE_CASE,
@@ -482,6 +484,19 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("ledger-figures")).toBeVisible();
       await page.locator("#main").getByTestId("evidence-digest-toggle").first().click();
       await expect(page.locator("#main").getByTestId("evidence-digest")).toBeVisible();
+    },
+  },
+  {
+    name: "a project's Releases with a stopped cycle and the cycles before it, read by a writer",
+    open: async ({ page, me }) => {
+      // The schedule is an admin's: another member is the project's admin and owns it.
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      await seedRelease(owner, project, { stopped: true });
+      await page.goto(`/p/${project}/releases`);
+      await expect(page.locator("#main").getByTestId("release-stopped")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("release-past")).toBeVisible();
     },
   },
   {
@@ -1533,6 +1548,23 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "SRS comparison");
       await open(page, documentPath(project, `/versions/${v2}`));
       await expect(page.locator("#main").getByTestId("srs-review-form")).toBeVisible();
+    },
+  },
+  {
+    name: "an SRS version's review with @ba's findings and Approve locked by the one to decide",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const author = newAccount("srs-author");
+      const hub = new HubAdmin();
+      await hub.grant(project, me.login, "admin", "customer");
+      await hub.grant(project, author.login, "writer", "customer");
+      await enableSrs(me, project);
+      const seeded = await seedFindings(author, project, me);
+      await open(page, documentPath(project, `/versions/${seeded.version}`));
+      const card = page.locator("#main").getByTestId("srs-findings");
+      await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(seeded.decide));
+      await expect(card.getByTestId("srs-findings-settled").getByTestId("srs-finding-settled")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
     },
   },
   {

@@ -1,7 +1,7 @@
 """Baselines of the core plugin canvas, the hub's events for the Loop, and three events plugins may take.
 
-Revision ID: 0071
-Revises: 0070
+Revision ID: 0076
+Revises: 0075
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas``, ``evo_agents.hub.tables_signals``,
@@ -21,15 +21,15 @@ plugin_deliveries.kind takes canvas.claim, canvas.baseline and signal.posted; pr
 canvas:read and signals:read; notifications.notice_kind takes canvas_baseline.
 
 Going back deletes the deliveries of the three events and the canvas_baseline notices, takes the two permissions out
-of every grant, puts the checks of 0070 back, and drops the column and the three tables.
+of every grant, puts the checks of 0075 back, and drops the column and the three tables.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0071"
-down_revision = "0070"
+revision = "0076"
+down_revision = "0075"
 branch_labels = None
 depends_on = None
 
@@ -59,7 +59,7 @@ PERMISSIONS_0035 = (
 )
 NEW_PERMISSIONS = ("canvas:read", "signals:read")
 PERMISSIONS = (*PERMISSIONS_0035, *NEW_PERMISSIONS)
-NOTICE_KINDS_0043 = (
+NOTICE_KINDS_0071 = (  # notifications_notice_kind_check as 0067 set it
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -71,9 +71,10 @@ NOTICE_KINDS_0043 = (
     "chat_added",
     "plugin_disabled",
     "builder_proposal",
+    "release",
 )
 CANVAS_NOTICES = ("canvas_baseline",)
-NOTICE_KINDS = (*NOTICE_KINDS_0043, *CANVAS_NOTICES)
+NOTICE_KINDS = (*NOTICE_KINDS_0071, *CANVAS_NOTICES)
 
 col = sa.column
 REV_KEY = "canvas_claim_revs_baseline_id_fkey"
@@ -278,7 +279,7 @@ def downgrade() -> None:
     for permission in NEW_PERMISSIONS:
         kept = sa.func.array_remove(kept, permission)
     op.execute(granted.update().values(permissions=kept))
-    _checks(DELIVERY_KINDS_0042, PERMISSIONS_0035, NOTICE_KINDS_0043)
+    _checks(DELIVERY_KINDS_0042, PERMISSIONS_0035, NOTICE_KINDS_0071)
     op.drop_constraint(REV_CHECK, "canvas_claim_revs", type_="check")
     op.drop_constraint(REV_KEY, "canvas_claim_revs", type_="foreignkey")
     op.drop_column("canvas_claim_revs", "baseline_id")

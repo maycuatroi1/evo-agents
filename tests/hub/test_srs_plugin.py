@@ -2,7 +2,8 @@
 it: a project that enabled it keeps BA documents. A writer imports the sample SRS (tests/hub/fixtures/srs, no client's
 content) after a preview; every save is a version in one straight line; codes are unique in the project, aliases
 included, stay when an item is renamed, and are never given again; a version goes from draft to review to approved,
-approved by a writer who wrote none of the versions since the one approved last, as the config's policy asks; its
+approved by a writer who wrote none of the versions since the one approved last, as the config's policy asks, or by
+its author too once an admin turns the config's self_approval on (never by the agent of a run); its
 author or an admin withdraws a version in review for good (criterion a2 of plan srs-document-lifecycle); two versions
 compare item by item; a version exports as the Markdown it came from. Readers read, writers write, admins
 drop coded items, by their codes too, after a dry run if they like, as the next draft (criterion a3 of that plan); a
@@ -31,6 +32,8 @@ from sqlalchemy import select, update
 
 from evo_agents.core_plugins.srs import markdown, reviews
 from evo_agents.core_plugins.srs.doc import SrsError
+from evo_agents.core_plugins.srs.store import Settings
+from evo_agents.core_plugins.srs.template import template_of
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import Principal, RunScope
@@ -355,6 +358,72 @@ def test_srs_the_approval_policy_asks_each_required_role(client, hub):
     done = review(client, hub["chi"], 1).json()
     assert done["state"] == "approved"
     assert [(r["reviewer"], r["role"]) for r in done["reviews"]] == [("owner", "dev"), ("bao", "ba"), ("chi", "qa")]
+
+
+def configured(client, headers, values: dict, status: int = 200):
+    written = client.post(f"/v1/projects/{PROJECT}/plugins/srs/config", json={"values": values}, headers=headers)
+    assert written.status_code == status, written.text
+    return written.json()
+
+
+def effective_value(client, headers, name: str):
+    found = client.get(f"/v1/projects/{PROJECT}/plugins/srs/config/effective", headers=headers)
+    assert found.status_code == 200, found.text
+    (field,) = [field for field in found.json()["fields"] if field["name"] == name]
+    return field["value"], field["layer"]
+
+
+def test_srs_self_approval_is_off_by_default_and_only_an_admin_turns_it_on(client, hub):
+    assert effective_value(client, hub["eve"], "self_approval") == (False, "default")
+    imported(client, hub["alice"], slug="demo-shop")
+    submitted(client, hub["alice"], 1)
+    author = review(client, hub["alice"], 1)
+    assert author.status_code == 403 and "another member reviews it" in author.json()["message"]
+    configured(client, hub["alice"], {"self_approval": True}, 403)  # a writer changes no config
+    assert "self_approval" in configured(client, hub["owner"], {"self_approval": "yes"}, 422)["message"]
+    configured(client, hub["owner"], {"self_approval": True})
+    assert effective_value(client, hub["eve"], "self_approval") == (True, "project")
+    configured(client, hub["owner"], {"self_approval": False})
+    assert review(client, hub["alice"], 1).status_code == 403  # off again, the author rule is back
+
+
+def test_srs_with_self_approval_on_the_author_reviews_and_every_other_rule_stays(client, hub):
+    roles = {"ba": ["alice"], "qa": ["bao"]}
+    configured(client, hub["owner"], {"self_approval": True, "roles": roles})
+    imported(client, hub["alice"], slug="demo-shop")
+    submitted(client, hub["alice"], 1)
+    assert review(client, hub["eve"], 1).status_code == 403  # a reader still reviews nothing
+    returned = review(client, hub["alice"], 1, "request_changes", body="Name the gateway")
+    assert returned.status_code == 200 and returned.json()["state"] == "draft", returned.text
+    submitted(client, hub["alice"], 1)
+    own = review(client, hub["alice"], 1)
+    assert own.status_code == 200 and own.json()["state"] == "approved", own.text  # no policy: one approval
+    assert [(r["reviewer"], r["role"], r["round"]) for r in own.json()["reviews"]] == [
+        ("alice", "ba", 1),
+        ("alice", "ba", 2),
+    ]
+
+    policy = {"srs": {"required": ["ba", "qa"]}}
+    configured(client, hub["owner"], {"approval_policy": policy})
+    cart = item(client, hub["alice"], "BR ORD1-1")
+    saved(client, hub["owner"], 1, edit(cart["key"], body="- A cart holds at most 40 lines."))
+    submitted(client, hub["owner"], 2)
+    no_role = review(client, hub["owner"], 2)  # the admin wrote it and may review it, as a role it holds
+    assert no_role.status_code == 200 and no_role.json()["state"] == "in_review", no_role.text
+    assert review(client, hub["alice"], 2).json()["state"] == "in_review"  # ba, still no qa
+    again = review(client, hub["alice"], 2, role="ba")
+    assert again.status_code == 409 and "in this round already" in again.json()["message"]
+    assert review(client, hub["bao"], 2).json()["state"] == "approved"
+
+
+def test_srs_the_agent_of_a_run_never_reviews_a_version_even_with_self_approval_on():
+    """Whatever the config says, the run's scope refuses a review before anything else is read."""
+    scope = RunScope(run_id=7, project=PROJECT, role="writer", max_level="internal")
+    agent = Principal(602, "alice", False, 9, "worker", "a" * 64, scope=scope)
+    settings = Settings(template_of("srs-basic", None), self_approval=True)
+    with pytest.raises(SrsError) as refused:
+        asyncio.run(reviews._checked_reviewer(None, None, agent, None, None, settings))
+    assert refused.value.status == 403 and "the agent of a run never approves" in refused.value.message
 
 
 def test_srs_the_author_withdraws_a_version_in_review_for_good_with_the_reason_as_a_comment(client, hub):
