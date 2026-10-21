@@ -25,6 +25,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 import asyncio
+import re
 
 import psycopg
 from fastapi.testclient import TestClient
@@ -674,6 +675,23 @@ def test_srs_a_version_with_an_error_is_not_submitted(client, hub):
     assert refused.status_code == 422 and refused.json()["detail"][0]["check"] == "uc_no_actor"
     shown = client.get(f"{DOC}/versions/1", headers=hub["eve"]).json()
     assert [(p["level"], p["check"]) for p in shown["problems"]] == [("error", "uc_no_actor")]
+
+
+def test_srs_the_config_names_the_fields_a_use_case_fills_before_it_is_submitted(client, hub):
+    assert effective_value(client, hub["eve"], "required_use_case_fields") == ([], "default")
+    assert (
+        "required_use_case_fields"
+        in configured(client, hub["owner"], {"required_use_case_fields": ["priority"]}, 422)["message"]
+    )
+    configured(client, hub["owner"], {"required_use_case_fields": ["intent", "expectation"]})
+    imported(client, hub["alice"], slug="demo-shop")
+    refused = client.post(f"{DOC}/versions/1/submit", headers=hub["alice"])
+    assert refused.status_code == 422 and {p["check"] for p in refused.json()["detail"]} == {"uc_field_missing"}
+    shown = client.get(f"{DOC}/versions/1", headers=hub["eve"]).json()
+    assert "use case UC ORD-1 has no Intent" in {p["message"] for p in shown["problems"]}
+    text = re.sub(r"\| Objective \| ([^\n]*)\|", r"| Intent | \1|\n| Expectation | Done |", sample())
+    imported(client, hub["alice"], text, document="demo-shop")
+    assert submitted(client, hub["alice"], 2)["state"] == "in_review"
 
 
 # Comparing, commenting, reading

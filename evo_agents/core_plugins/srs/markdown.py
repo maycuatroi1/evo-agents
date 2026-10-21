@@ -39,8 +39,11 @@ ITEM_FIELDS = {  # the first cell of a row of a use case's table of items, lower
     "status": "status",
     "objective": "objective",
     "goal": "objective",
+    "intent": "intent",
     "actor": "actor",
     "actors": "actor",
+    "context": "context",
+    "background": "context",
     "trigger": "trigger",
     "pre-condition": "pre_condition",
     "pre-conditions": "pre_condition",
@@ -50,7 +53,14 @@ ITEM_FIELDS = {  # the first cell of a row of a use case's table of items, lower
     "post-conditions": "post_condition",
     "postcondition": "post_condition",
     "postconditions": "post_condition",
+    "expectation": "expectation",
+    "expectations": "expectation",
+    "expected result": "expectation",
+    "expected results": "expectation",
+    "expected outcome": "expectation",
+    "acceptance criteria": "expectation",
 }
+HELD_FIELDS = frozenset({"steps"})  # what a row of the table of items never takes, its Activity Flow's
 
 
 # Lines and tables
@@ -117,8 +127,17 @@ def _slug(text: str, index: int) -> str:
 # Fields of items
 
 
+def _field_key(label: str) -> str:
+    """The key of a row of a use case's table of items the template does not name: its label, lowercase, each run of
+    other characters than letters and digits one underscore (``Claim`` -> ``claim``)."""
+    return re.sub(r"[\W_]+", "_", _plain(label).lower()).strip("_")
+
+
 def use_case_fields(body: str) -> dict:
-    """The fields a use case's body holds: those of its table of items, and its steps from its Activity Flow table."""
+    """The fields a use case's body holds: those of its table of items, and its steps from its Activity Flow table.
+
+    The table of items is a table one of whose rows the template names (``ITEM_FIELDS``); its other rows are kept
+    under their own key (``_field_key``), its head only when the template names it."""
     fields: dict = {}
     for table in tables(body):
         if not table:
@@ -128,9 +147,14 @@ def use_case_fields(body: str) -> dict:
             keys = [_slug(cell, index) for index, cell in enumerate(table[0])]
             fields["steps"] = [dict(zip(keys, row, strict=False)) for row in table[1:]]
             continue
-        for row in table:
-            name = ITEM_FIELDS.get(_plain(row[0]).lower()) if len(row) >= 2 else None
-            if name and name not in fields:
+        rows = [row for row in table if len(row) >= 2]
+        if not any(_plain(row[0]).lower() in ITEM_FIELDS for row in rows):
+            continue
+        for row in rows:
+            name = ITEM_FIELDS.get(_plain(row[0]).lower())
+            if name is None and row is not table[0]:
+                name = _field_key(row[0])
+            if name and name not in HELD_FIELDS and name not in fields:
                 fields[name] = row[1]
     return fields
 

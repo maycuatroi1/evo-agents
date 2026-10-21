@@ -87,7 +87,8 @@ def review_task(project: str, doc: DocumentRow, version: VersionRow, open_ids: S
             f"1. Read the version with srs__read (document {slug}, version {number}); it lists the document's open "
             "findings too.",
             "2. Check it against the template: the headings and codes it asks for, each use case's actor, "
-            "preconditions, steps and business rules, the screens a use case names. Write what is missing or wrong "
+            "preconditions, steps, expectation or post-conditions and business rules, the screens a use case names. "
+            "Write what is missing or wrong "
             f"as comments with srs__comment (document {slug}, version {number}, item: the code or key of the item it "
             f'is about), each starting with "Blocking:" or "Suggestion:", at most {MAX_COMMENTS}; one about the whole '
             f"document goes on version {number} without an item. Comments are advice: they block no approval.",
