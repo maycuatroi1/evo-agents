@@ -23,7 +23,8 @@ from urllib.parse import quote
 import aiohttp
 
 from evo_agents import __version__
-from evo_agents.hub.client import check_url
+from evo_agents.hub.client import HubError, check_url
+from evo_agents.hub.client import Unreachable as HubUnreachable
 from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VERSION
 
 TIMEOUT = 30.0  # seconds for one call
@@ -41,6 +42,14 @@ class HubProblem(Exception):
         self.code = code
         self.payload = payload
         self.retry_after: float | None = None
+
+    def hub_error(self, message: str | None = None) -> HubError:
+        """This problem as the HubError of a command, whose exit status (``client.exit_status``) says what went wrong:
+        a call no answer came to is ``client.Unreachable``; a 5xx or 429 keeps its status."""
+        text = message or str(self)
+        if isinstance(self, Unreachable) and self.status is None:
+            return HubUnreachable(text)
+        return HubError(text, self.status, self.code)
 
     @property
     def from_hub(self) -> bool:
