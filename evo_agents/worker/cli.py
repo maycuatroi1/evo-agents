@@ -50,6 +50,7 @@ import logging
 import os
 import platform
 import re
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -574,8 +575,40 @@ def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
     return next(iter(workspaces)) if len(workspaces) == 1 else None
 
 
-async def _verify(path: Path, commands: list[str]) -> list[dict]:
-    """Run each command with /bin/sh in ``path``, every one even after a failure; each one's exit code."""
+async def _verify_env(agent: _AgentRun, name: str, path: Path) -> dict[str, str] | None:
+    """The environment of the verify of a done step in repo ``name``, whose worktree is ``path``: when the daemon made
+    the repo's Python environment (``evo_agents.worker.venvs``), it is made again, so what the step changed in
+    pyproject.toml is in it, and its bin directory goes first on PATH; else None, the agent's own environment."""
+    from evo_agents.worker import venvs
+
+    made = agent.record.get("venvs")
+    bin_dir = made.get(name) if isinstance(made, dict) else None
+    if not isinstance(bin_dir, str) or not bin_dir:
+        return None
+    env = venvs.uv_env(os.environ)
+    try:
+        want = venvs.wanted(path)
+    except ValueError as exc:
+        raise WorkerStateError(f"{name}: {exc}") from None
+    uv = shutil.which("uv", path=env.get("PATH"))
+    if want is not None and uv is None:
+        print(f"warning: uv is not on PATH: the Python environment of {name} is not made again", file=sys.stderr)
+    elif want is not None:
+        command, code, output = await venvs.make(path, want, uv, env)
+        if code != 0:
+            tail = output.rstrip()[-OUTPUT_TAIL:]
+            raise WorkerStateError(
+                f"`{venvs.shown(command)}` in {name} exited {code}, so the verify did not run:\n{tail}"
+            )
+        said = ", ".join(f"`{venvs.shown(command)}`" for command in want.commands())
+        print(f"Made the Python environment of {name} again: {said}.")
+    env["PATH"] = venvs.front(env.get("PATH"), [bin_dir])
+    return env
+
+
+async def _verify(path: Path, commands: list[str], env: dict[str, str] | None = None) -> list[dict]:
+    """Run each command with /bin/sh in ``path``, in ``env`` (this process's when None), every one even after a
+    failure; each one's exit code."""
     results = []
     for command in commands:
         started = time.monotonic()
@@ -585,6 +618,7 @@ async def _verify(path: Path, commands: list[str]) -> list[dict]:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=env,
         )
         output, _ = await proc.communicate()
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -662,7 +696,7 @@ def cmd_step(args) -> int:
             if name is None:
                 raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
             workspace = workspaces[name]
-            results = await _verify(workspace.worktree, verify)
+            results = await _verify(workspace.worktree, verify, await _verify_env(agent, name, workspace.worktree))
             failed = [item for item in results if item["exit_code"] != 0]
             if failed:
                 print(
@@ -712,7 +746,11 @@ def cmd_step(args) -> int:
                         f"{workspace.branch} of {name} moved on at origin: the run's commits were put on top of it, "
                         f"and the verify of step {args.key} runs again at {head[:12]}."
                     )
-                    again[:] = await _verify(path, verify)
+                    try:
+                        env = await _verify_env(agent, name, path)
+                    except WorkerStateError as exc:
+                        return str(exc)
+                    again[:] = await _verify(path, verify, env)
                     failed = [item for item in again if item["exit_code"] != 0]
                     return "; ".join(f"`{item['command']}` exited {item['exit_code']}" for item in failed) or None
 
