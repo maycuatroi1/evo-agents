@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import re
+import unicodedata
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
@@ -461,6 +463,188 @@ def plan_semantics(data: dict, path: Path, harness: Harness | None = None) -> li
         issues += _repo_issues(step.get("repo"), f"steps[{i}].repo", repos)
         if isinstance(step.get("evidence"), str):
             issues += _evidence_issues(step["evidence"], f"steps[{i}].evidence", repos)
+    return issues + _structure_issues(data)
+
+
+# The shape create-exec-plan asks of a plan, which a draft written by hand often misses: step ids unique and
+# acyclic, titles short enough for a step list, and acceptance criteria and steps that name each other by id.
+TITLE_LIMIT = 60  # characters, not bytes: titles are often Vietnamese
+_CRITERION_ID = re.compile(r"a\d+")
+
+
+def _structure_issues(data: dict) -> list[Issue]:
+    given = data.get("steps") if isinstance(data.get("steps"), list) else []
+    steps = [(i, s) for i, s in enumerate(given) if isinstance(s, dict)]
+    return _duplicate_ids(steps) + _dependency_issues(steps) + _title_issues(steps) + _criteria_issues(data, steps)
+
+
+def _step_key(value) -> str | int | None:
+    """``value`` when it can be a step's id (a string or an integer), else None."""
+    return value if isinstance(value, str | int) and not isinstance(value, bool) else None
+
+
+def _duplicate_ids(steps: list[tuple[int, dict]]) -> list[Issue]:
+    """Each id two steps share, once, at the second step that has it."""
+    seen: set = set()
+    reported: set = set()
+    issues: list[Issue] = []
+    for i, step in steps:
+        key = _step_key(step.get("id"))
+        if key in seen and key not in reported:
+            reported.add(key)
+            message = (
+                f"duplicate step id {key!r}: an earlier step has it too, and depends_on and a step mark by id "
+                "reach only one of them; give this step an id of its own"
+            )
+            issues.append(Issue(f"steps[{i}].id", message, "warning"))
+        if key is not None:
+            seen.add(key)
+    return issues
+
+
+def _dependency_issues(steps: list[tuple[int, dict]]) -> list[Issue]:
+    """A step that depends on itself, and each cycle of steps that depend on each other, once."""
+    first: dict = {}
+    for i, step in steps:
+        key = _step_key(step.get("id"))
+        if key is not None:
+            first.setdefault(key, i)
+    graph: dict = {key: [] for key in first}
+    issues: list[Issue] = []
+    for i, step in steps:
+        key, deps = _step_key(step.get("id")), step.get("depends_on")
+        if key is None or not isinstance(deps, list):
+            continue
+        deps = [d for d in map(_step_key, deps) if d is not None]
+        if key in deps:
+            message = f"step {key!r} depends on itself: remove {key!r} from its depends_on"
+            issues.append(Issue(f"steps[{i}].depends_on", message, "warning"))
+        graph[key] += [d for d in deps if d in first and d != key and d not in graph[key]]
+    for members in _cycles(graph):
+        start = min(members, key=first.__getitem__)
+        path = " -> ".join(str(k) for k in _cycle_path(graph, members, start))
+        listed = ", ".join(str(k) for k in sorted(members, key=first.__getitem__))
+        message = (
+            f"steps {listed} depend on each other in a cycle ({path}), so none of them can start first: "
+            "remove the depends_on that points back"
+        )
+        issues.append(Issue(f"steps[{first[start]}].depends_on", message, "warning"))
+    return issues
+
+
+def _cycles(graph: dict) -> list[set]:
+    """The strongly connected components of ``graph`` with more than one node: Tarjan's algorithm without
+    recursion, so the hub, which checks every plan pushed to it, cannot run out of stack on a long chain."""
+    index: dict = {}
+    low: dict = {}
+    stack: list = []
+    on_stack: set = set()
+    found: list[set] = []
+
+    def enter(node) -> tuple:
+        index[node] = low[node] = len(index)
+        stack.append(node)
+        on_stack.add(node)
+        return node, iter(graph[node])
+
+    for root in graph:
+        work = [] if root in index else [enter(root)]
+        while work:
+            node, edges = work[-1]
+            nxt = next(edges, None)  # None is never a step id
+            if nxt is not None and nxt not in index:
+                work.append(enter(nxt))
+            elif nxt is not None and nxt in on_stack:
+                low[node] = min(low[node], index[nxt])
+            elif nxt is None:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                if low[node] == index[node]:
+                    members = set()
+                    while node not in members:
+                        members.add(stack.pop())
+                    on_stack -= members
+                    if len(members) > 1:
+                        found.append(members)
+    return found
+
+
+def _cycle_path(graph: dict, members: set, start) -> list:
+    """The shortest way from ``start`` back to itself inside ``members``, both ends included."""
+    came: dict = {start: None}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        for nxt in graph[node]:
+            if nxt == start:
+                back = [node]
+                while came[back[-1]] is not None:
+                    back.append(came[back[-1]])
+                return [*reversed(back), start]
+            if nxt in members and nxt not in came:
+                came[nxt] = node
+                queue.append(nxt)
+    return [start, start]
+
+
+def _title_issues(steps: list[tuple[int, dict]]) -> list[Issue]:
+    """A title longer than a step list shows. A missing one is not reported: older plans have none."""
+    issues: list[Issue] = []
+    for i, step in steps:
+        title = step.get("title")
+        length = len(unicodedata.normalize("NFC", title)) if isinstance(title, str) else 0
+        if length > TITLE_LIMIT:
+            message = (
+                f"title is {length} characters, over {TITLE_LIMIT}: shorten it to the outcome the step names; "
+                "what keeps the full description"
+            )
+            issues.append(Issue(f"steps[{i}].title", message, "warning"))
+    return issues
+
+
+def _named(acceptance) -> list[str]:
+    """The words of a step's acceptance, in order: a list of criterion ids or sentences, or a string such as
+    ``a1; a9``. Each whole item counts as a word too, so an id such as ``AC-1`` is found."""
+    words: list[str] = []
+    for item in acceptance if isinstance(acceptance, list) else [acceptance]:
+        if isinstance(item, str):
+            words += [item.strip(), *re.findall(r"\w+", item)]
+        elif _step_key(item) is not None:
+            words.append(str(item))
+    return words
+
+
+def _criteria_issues(data: dict, steps: list[tuple[int, dict]]) -> list[Issue]:
+    """A criterion id a step names that the plan's acceptance lacks, and a criterion with an id no step names
+    (an invariant, which every step that could break it checks, needs none). Only ``a<number>`` words of a step's
+    acceptance read as ids: older plans hold sentences there."""
+    criteria = data.get("acceptance") if isinstance(data.get("acceptance"), list) else []
+    ids = {str(c["id"]) for c in criteria if isinstance(c, dict) and _step_key(c.get("id")) is not None}
+    issues: list[Issue] = []
+    named: set[str] = set()
+    for i, step in steps:
+        if "acceptance" not in step:
+            continue
+        words = _named(step["acceptance"])
+        named.update(words)
+        unknown = [w for w in dict.fromkeys(words) if _CRITERION_ID.fullmatch(w) and w not in ids]
+        for word in unknown:
+            message = (
+                f"acceptance names {word!r}, which no criterion of the plan's acceptance has as its id: "
+                "add that criterion, or name an existing one"
+            )
+            issues.append(Issue(f"steps[{i}].acceptance", message, "warning"))
+    for j, criterion in enumerate(criteria):
+        if not isinstance(criterion, dict) or criterion.get("invariant") is True:
+            continue
+        key = _step_key(criterion.get("id"))
+        if key is not None and str(key) not in named:
+            message = (
+                f"no step's acceptance names criterion {key!r}: add {key} to the acceptance of the step whose "
+                "verify proves it, or mark it invariant: true if it must hold after every step"
+            )
+            issues.append(Issue(f"acceptance[{j}]", message, "warning"))
     return issues
 
 

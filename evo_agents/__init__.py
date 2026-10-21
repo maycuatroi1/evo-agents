@@ -1,3 +1,3 @@
 """Shared tooling for agent harnesses."""
 
-__version__ = "0.29.4"
+__version__ = "0.30.0"
