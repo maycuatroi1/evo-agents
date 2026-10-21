@@ -86,6 +86,8 @@ PERMISSIONS = (
     "plans:read",
     "memories:read",
     "notifications:send",
+    "canvas:read",
+    "signals:read",
 )
 # What each permission lets a plugin do on a project that enables it, as an admin of the project reads it before
 # granting it.
@@ -97,6 +99,8 @@ PERMISSION_TEXT = {
     "plans:read": "read the project's plans",
     "memories:read": "read the project's memories",
     "notifications:send": "send notifications to the project's members",
+    "canvas:read": "read the project's Lean Canvases: each claim's revs and each approved baseline",
+    "signals:read": "read the project's signals: each batch the hub takes",
 }
 
 

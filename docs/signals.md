@@ -97,6 +97,11 @@ in the project. The command prints what the hub stored and each item it refused,
 reader may not push. A project whose knowledge.yaml declares no sink of kind `hub` takes no signal (422), as it takes
 no memory.
 
+A batch that stored any signal emits the event `signal.posted` in its transaction: the batch's id, each key with how
+many signals it stored and when the first and the last were measured, and the ingest key's name or the member's login
+(and the run, for the agent of one); never a value or a text. Plugins the project granted `signals:read` get it
+(`docs/plugins.md`, Extension points), and the hub keeps it in `hub_events` for the Loop.
+
 ## Limits
 
 So that a service gone wrong cannot fill the database:

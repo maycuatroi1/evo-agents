@@ -32841,6 +32841,553 @@
           }
         }
       },
+      "/v1/x/canvas/{project}/canvases/{slug}/baselines": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Baselines",
+          "description": "The baselines of a canvas, newest first: weekly ones and those a writer opened at once, each proposed, approved\nor expired, with how many items wait for a member.",
+          "operationId": "list_baselines_v1_x_canvas__project__canvases__slug__baselines_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CanvasBaselineSummary"
+                    },
+                    "title": "Response List Baselines V1 X Canvas  Project  Canvases  Slug  Baselines Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Open Baseline",
+          "description": "Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's\nproposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the\nclaim asks nothing of a baseline, or a baseline still proposed holds it.",
+          "operationId": "open_baseline_v1_x_canvas__project__canvases__slug__baselines_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasBaselineOpenIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasBaseline"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/baselines/{number}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Baseline",
+          "description": "A baseline whole: what it asks of each claim with the claim's evidence and the decision on it, what the caller\nmay decide, and once approved its snapshot (each claim's rev, the status in effect and the SHA-256 of its\ncontent), which never changes.",
+          "operationId": "show_baseline_v1_x_canvas__project__canvases__slug__baselines__number__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the baseline's number in the canvas",
+                "title": "Number"
+              },
+              "description": "the baseline's number in the canvas"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasBaseline"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/baselines/{number}/items/{ref}/decide": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Decide Item",
+          "description": "Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend\n(with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller\nchanged or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind\nbaseline. Once no item waits, the baseline is approved and its snapshot taken.",
+          "operationId": "decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "the baseline's number in the canvas",
+                "title": "Number"
+              },
+              "description": "the baseline's number in the canvas"
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the claim's code, as CL-3 or 3",
+                "title": "Ref"
+              },
+              "description": "the claim's code, as CL-3 or 3"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasBaselineDecisionIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasBaseline"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/srs/{project}/documents": {
         "get": {
           "tags": [
@@ -49368,6 +49915,578 @@
           ],
           "title": "BundleTicket"
         },
+        "CanvasBaseline": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "weekly",
+                "push"
+              ],
+              "title": "Kind",
+              "description": "weekly: the plugin's job; push: a writer opened it at once"
+            },
+            "week": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week",
+              "description": "the ISO week of a weekly baseline, as 2026-W43"
+            },
+            "due_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due At"
+            },
+            "time_zone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Time Zone"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "approved",
+                "expired"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By",
+              "description": "the writer who opened it at once"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "approved_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Approved At"
+            },
+            "expired_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expired At"
+            },
+            "item_count": {
+              "type": "integer",
+              "title": "Item Count"
+            },
+            "waiting": {
+              "type": "integer",
+              "title": "Waiting",
+              "description": "its items no member has decided yet"
+            },
+            "canvas": {
+              "type": "string",
+              "title": "Canvas"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/CanvasBaselineItem"
+              },
+              "type": "array",
+              "title": "Items"
+            },
+            "approved_by": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Approved By"
+            },
+            "snapshot": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasSnapshotClaim"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "week",
+            "due_at",
+            "time_zone",
+            "status",
+            "created_by",
+            "created_at",
+            "approved_at",
+            "expired_at",
+            "item_count",
+            "waiting",
+            "canvas",
+            "items",
+            "approved_by",
+            "snapshot"
+          ],
+          "title": "CanvasBaseline",
+          "description": "A baseline whole: its items, and once approved who decided and its snapshot, which never changes."
+        },
+        "CanvasBaselineDecisionIn": {
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "accepted",
+                "deferred",
+                "extended",
+                "rejected",
+                "retired"
+              ],
+              "title": "Decision",
+              "description": "accepted, rejected or deferred for a change of status; extended, retired or deferred for an overdue test card"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline",
+              "description": "the new deadline an extension takes, after today"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Reason",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "decision"
+          ],
+          "title": "CanvasBaselineDecisionIn",
+          "description": "A decision on the item of one claim."
+        },
+        "CanvasBaselineItem": {
+          "properties": {
+            "claim": {
+              "type": "string",
+              "title": "Claim",
+              "description": "the claim's code"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "status",
+                "value_check",
+                "overdue",
+                "new"
+              ],
+              "title": "Kind",
+              "description": "status: members changed its status; value_check: the value check proposes a status; overdue: its test card's deadline passed without real evidence; new: a claim at assumption, included as it is"
+            },
+            "from_status": {
+              "type": "string",
+              "enum": [
+                "assumption",
+                "testing",
+                "validated",
+                "invalidated",
+                "retired"
+              ],
+              "title": "From Status",
+              "description": "the status in effect when the baseline was proposed"
+            },
+            "at_status": {
+              "type": "string",
+              "enum": [
+                "assumption",
+                "testing",
+                "validated",
+                "invalidated",
+                "retired"
+              ],
+              "title": "At Status",
+              "description": "the status the claim was at"
+            },
+            "to_status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "assumption",
+                    "testing",
+                    "validated",
+                    "invalidated",
+                    "retired"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Status",
+              "description": "the status it asks; none for an overdue test card"
+            },
+            "claim_rev": {
+              "type": "integer",
+              "title": "Claim Rev",
+              "description": "the claim's rev when the baseline was proposed"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id",
+              "description": "the value check's proposal"
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deadline",
+              "description": "the deadline an overdue test card passed"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/CanvasEvidence"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "the claim's evidence the caller may read, as it is now"
+            },
+            "hidden_evidence": {
+              "type": "integer",
+              "title": "Hidden Evidence",
+              "description": "pieces of its evidence above what the caller may read"
+            },
+            "proposers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Proposers",
+              "description": "the members who may not decide it: they changed the status, or opened it"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "rejected",
+                    "deferred",
+                    "extended",
+                    "retired",
+                    "included"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision"
+            },
+            "decided_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided By"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "new_deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Deadline",
+              "description": "the deadline an extension gave"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "the rev the decision wrote"
+            },
+            "decisions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Decisions",
+              "description": "what the caller may decide of it now; none when they may not"
+            }
+          },
+          "type": "object",
+          "required": [
+            "claim",
+            "kind",
+            "from_status",
+            "at_status",
+            "to_status",
+            "claim_rev",
+            "proposal_id",
+            "deadline",
+            "evidence",
+            "hidden_evidence",
+            "proposers",
+            "decision",
+            "decided_by",
+            "decided_at",
+            "new_deadline",
+            "reason",
+            "rev",
+            "decisions"
+          ],
+          "title": "CanvasBaselineItem",
+          "description": "What a baseline asks of one claim, and the decision on it."
+        },
+        "CanvasBaselineOpenIn": {
+          "properties": {
+            "claim": {
+              "type": "string",
+              "pattern": "^(?:[Cc][Ll]-)?[1-9][0-9]{0,8}$",
+              "title": "Claim",
+              "description": "the claim's code, as CL-3"
+            }
+          },
+          "type": "object",
+          "required": [
+            "claim"
+          ],
+          "title": "CanvasBaselineOpenIn",
+          "description": "Open a baseline of one claim at once, for another writer to approve."
+        },
+        "CanvasBaselineSummary": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "weekly",
+                "push"
+              ],
+              "title": "Kind",
+              "description": "weekly: the plugin's job; push: a writer opened it at once"
+            },
+            "week": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week",
+              "description": "the ISO week of a weekly baseline, as 2026-W43"
+            },
+            "due_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due At"
+            },
+            "time_zone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Time Zone"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "proposed",
+                "approved",
+                "expired"
+              ],
+              "title": "Status"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By",
+              "description": "the writer who opened it at once"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "approved_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Approved At"
+            },
+            "expired_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expired At"
+            },
+            "item_count": {
+              "type": "integer",
+              "title": "Item Count"
+            },
+            "waiting": {
+              "type": "integer",
+              "title": "Waiting",
+              "description": "its items no member has decided yet"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "kind",
+            "week",
+            "due_at",
+            "time_zone",
+            "status",
+            "created_by",
+            "created_at",
+            "approved_at",
+            "expired_at",
+            "item_count",
+            "waiting"
+          ],
+          "title": "CanvasBaselineSummary",
+          "description": "A baseline of a canvas."
+        },
         "CanvasBrainstorm": {
           "properties": {
             "run_id": {
@@ -51258,6 +52377,18 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "baseline_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline Id",
+              "description": "the baseline whose decision wrote it (change baseline)"
             }
           },
           "type": "object",
@@ -51269,9 +52400,53 @@
             "changes",
             "provenance",
             "reason",
-            "created_at"
+            "created_at",
+            "baseline_id"
           ],
           "title": "CanvasRev"
+        },
+        "CanvasSnapshotClaim": {
+          "properties": {
+            "claim": {
+              "type": "string",
+              "title": "Claim"
+            },
+            "claim_id": {
+              "type": "integer",
+              "title": "Claim Id"
+            },
+            "rev": {
+              "type": "integer",
+              "title": "Rev"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "assumption",
+                "testing",
+                "validated",
+                "invalidated",
+                "retired"
+              ],
+              "title": "Status",
+              "description": "the status in effect"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256",
+              "description": "the SHA-256 of the claim's content at that rev, as canonical JSON"
+            }
+          },
+          "type": "object",
+          "required": [
+            "claim",
+            "claim_id",
+            "rev",
+            "status",
+            "sha256"
+          ],
+          "title": "CanvasSnapshotClaim",
+          "description": "One claim of an approved baseline's snapshot."
         },
         "CanvasSummary": {
           "properties": {
@@ -60890,7 +62065,8 @@
                     "chat_mention",
                     "chat_added",
                     "plugin_disabled",
-                    "builder_proposal"
+                    "builder_proposal",
+                    "canvas_baseline"
                   ]
                 },
                 {
@@ -63889,7 +65065,7 @@
                 "minLength": 1
               },
               "type": "array",
-              "maxItems": 7,
+              "maxItems": 9,
               "title": "Permissions",
               "description": "the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it"
             }

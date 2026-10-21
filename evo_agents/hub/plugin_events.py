@@ -3,13 +3,17 @@ points).
 
 ``emit`` stores, in the caller's transaction, one delivery of an event for each plugin enabled in the event's project
 whose installed version takes it and whose grant there lets it read it: a run's state (``run.state``, with
-``runs:read``), a message of a group chat (``chat.message``, with ``chats:read``), a step of a plan (``plan.step``,
-with ``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result``
-stores for the plugin of the run's agent type alone (``evo_agents.hub.task_runs``). An events contribution takes the
-kinds its ``on`` names, or every kind when it names none. The table plugin_deliveries is the outbox: nothing goes out
-while the transaction is open, and nothing is lost when the hub stops after the commit. ``emit_notification`` does
-the same for a notification of a project, to each isolated plugin's channel there, with ``notifications:send``: a core
-plugin's channel is a kind of members' channel instead, which ``evo_agents.hub.server.notifications`` sends as it
+``runs:read``), a message of a group chat (``chat.message``, with ``chats:read``), a step of a plan (``plan.step``, with
+``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result`` stores for
+the plugin of the run's agent type alone (``evo_agents.hub.task_runs``), a rev of a claim of a Lean Canvas and an
+approved baseline of one (``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits
+them), and a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``). An events
+contribution takes the kinds its ``on`` names, or every kind when it names none. The same call writes an event of the
+last three kinds into the hub's own table hub_events too, which the Loop reads by cursor
+(``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table plugin_deliveries is the outbox: nothing
+goes out while the transaction is open, and nothing is lost when the hub stops after the commit. ``emit_notification``
+does the same for a notification of a project, to each isolated plugin's channel there, with ``notifications:send``: a
+core plugin's channel is a kind of members' channel instead, which ``evo_agents.hub.server.notifications`` sends as it
 sends Telegram's.
 
 A payload carries ids and states, never a text the project's labels may keep from a plugin: a run's id, kind and
@@ -35,7 +39,7 @@ from datetime import timedelta
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
+from evo_agents.hub import hub_events, tables
 from evo_agents.hub.plugin_calls import (
     CoreContext,
     PluginCallError,
@@ -58,6 +62,9 @@ PERMISSION = {
     "chat.message": "chats:read",
     "plan.step": "plans:read",
     "task.result": "runs:dispatch",
+    hub_events.CLAIM: "canvas:read",
+    hub_events.BASELINE: "canvas:read",
+    hub_events.SIGNALS: "signals:read",
     NOTIFICATION: "notifications:send",
 }
 MAX_ATTEMPTS = 8
@@ -95,9 +102,12 @@ async def emit(
     conn: AsyncConnection, kind: str, project_id: int | None, payload: dict, *, plugin_id: int | None = None
 ) -> int:
     """Store a delivery of the event ``kind`` of project ``project_id`` for each plugin that takes it (plugin
-    ``plugin_id`` alone when given), in the caller's transaction; how many."""
+    ``plugin_id`` alone when given), in the caller's transaction; how many. An event of ``hub_events.KINDS`` is also
+    written to hub_events, in the same transaction."""
     if project_id is None:
         return 0
+    if kind in hub_events.KINDS:
+        await hub_events.record(conn, kind, project_id, payload)
     found = [item for item in await _subscribers(conn, kind, project_id) if plugin_id in (None, item[0])]
     if found:
         values = [

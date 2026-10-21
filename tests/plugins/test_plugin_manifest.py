@@ -180,6 +180,20 @@ def test_plugin_points_each_have_a_version_and_the_schema_names_the_kinds_of_eve
     assert "version 2 of that extension point" in compat.problem(later["engines"], 1, contributes=later["contributes"])
 
 
+def test_plugin_events_of_canvas_and_signals_are_taken_with_their_permissions():
+    from evo_agents.plugins.manifest import PERMISSION_TEXT
+
+    assert PERMISSIONS[-2:] == ("canvas:read", "signals:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
+    data = manifest(
+        permissions=["canvas:read", "signals:read"],
+        contributes={"events": [{"name": "loop", "on": ["canvas.claim", "canvas.baseline", "signal.posted"]}]},
+    )
+    read = read_manifest(data)
+    assert read.permissions == ("canvas:read", "signals:read")
+    with pytest.raises(ManifestError):
+        read_manifest(manifest(contributes={"events": [{"name": "loop", "on": ["canvas.deleted"]}]}))
+
+
 def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_only_in_core():
     from evo_agents.plugins.manifest import is_per_project, table_prefix
 

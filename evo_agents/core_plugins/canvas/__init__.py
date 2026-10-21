@@ -38,10 +38,22 @@ evidence the hub writes and proposals of a change of status, never the change it
 evidence that is no number go before @strategist in a judging run, a task run whose one tool, ``canvas__judge``,
 records a verdict with why on each item (``judging``).
 
+Baselines (criterion a6) make a claim's status take effect: the plugin's job ``baseline`` (``schedule``), every 15
+minutes, proposes each canvas's baseline once a week at the time of its config's ``baseline`` (16:00 on Friday by
+default, in ``baseline.timezone``, else the time zone of the project's Curator charter, else UTC): every change of
+status since the status in effect, every status the value check proposes, every test card past its deadline without
+real evidence (to extend or retire), and the new claims (``baselines``). The project's writers get the notice
+canvas_baseline in their Inbox, which Telegram forwards, and decide each item on the web (``decisions``), never the one
+who changed the status, nor a run; once every item has a decision, the baseline is approved with a snapshot that never
+changes. A writer may also open a baseline of one claim at once, for another to approve. Every rev emits the event
+``canvas.claim``, every approval ``canvas.baseline``, for plugins granted canvas:read and for the hub's events
+(``events``).
+
 The hub imports this package for the manifest only: ``content`` holds a claim's content, its checks and diff,
 ``rules`` the rules of its status, ``store`` reads, ``writes`` keeps, ``proposals`` keeps what is proposed,
 ``transfer`` exports and imports, ``models`` and ``server`` are the API; ``acting``, ``agent``, ``commands`` and
-``brainstorm`` are @strategist's; ``value_check``, ``checks`` and ``judging`` are the value check's.
+``brainstorm`` are @strategist's; ``value_check``, ``checks`` and ``judging`` are the value check's; ``baselines``,
+``decisions``, ``schedule``, ``notices``, ``baseline_models`` and ``events`` are the baselines'.
 """
 
 from evo_agents.core_plugins.canvas.tools import STRATEGIST_INSTRUCTIONS, TOOLS
@@ -51,7 +63,39 @@ AGENT = "evo_agents.core_plugins.canvas.agent"
 VALUE_CHECK = "evo_agents.core_plugins.canvas.value_check"
 VALUE_CHECK_JOB = "value_check"  # also the job the hub runs on a batch of signals (plugin_jobs.SIGNAL_JOB)
 VALUE_CHECK_CRON = "11 * * * *"  # hourly, besides each batch
+BASELINE = "evo_agents.core_plugins.canvas.schedule"
+BASELINE_JOB = "baseline"
+BASELINE_CRON = "*/15 * * * *"  # proposes each canvas's weekly baseline once its time in its zone has come
 STRATEGIST = "strategist"  # acting.STRATEGIST
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+BASELINE_DEFAULT = {"weekday": "friday", "time": "16:00"}
+TIME_OF_DAY = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"  # evo_agents.hub.curator.TIME_OF_DAY
+TIME_ZONE = r"^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$"  # evo_agents.hub.curator.TIME_ZONE
+CONFIG = {
+    "type": "object",
+    "properties": {
+        "baseline": {
+            "title": "Weekly baseline",
+            "description": "When the hub proposes the baseline of each canvas for the project's writers to approve: a "
+            "day of the week and a time of day (16:00 on Friday when left out) in a time zone (the project's Curator "
+            "charter's when left out, else UTC).",
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "weekday": {"enum": list(WEEKDAYS)},
+                "time": {"type": "string", "pattern": TIME_OF_DAY, "description": "HH:MM, 24 hours"},
+                "timezone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": TIME_ZONE,
+                    "description": "an IANA time zone, such as Asia/Ho_Chi_Minh",
+                },
+            },
+            "default": BASELINE_DEFAULT,
+        }
+    },
+}
 HANDLERS = {"signals": "find_signals"}  # a tool whose function is named otherwise, beside the module signals
 
 TABLES = (
@@ -61,6 +105,8 @@ TABLES = (
     ("canvas_evidence", "The evidence of each claim, only ever added, withdrawn by marking it"),
     ("canvas_proposals", "New claims and changes an agent or the hub proposes, which a writer accepts or rejects"),
     ("canvas_judgings", "The items a judging run of @strategist judged for a claim, each verdict and why"),
+    ("canvas_baselines", "The baselines of each canvas: proposed, approved with a snapshot never changed, or expired"),
+    ("canvas_baseline_items", "What a baseline asks of each claim, and the decision a writer made of it"),
 )
 
 MANIFEST = {
@@ -72,6 +118,7 @@ MANIFEST = {
     "description": "A living Lean Canvas per product: claims with status, test cards, evidence, revs and undo.",
     "engines": {"evo-agents": ">=0.24"},
     "plugin_api": 1,
+    "config": CONFIG,
     "contributes": {
         "agent_packs": [
             {
@@ -117,7 +164,16 @@ MANIFEST = {
                 "change of status; feedback goes before @strategist to judge. Also at once on a batch of signals.",
                 "python": f"{VALUE_CHECK}:run",
                 "cron": VALUE_CHECK_CRON,
-            }
+            },
+            {
+                "name": BASELINE_JOB,
+                "title": "Weekly baseline",
+                "description": "Proposes each canvas's baseline once a week at the time of the config's baseline, for "
+                "the project's writers to approve on the web: changes of status, the value check's proposals, test "
+                "cards past their deadline.",
+                "python": f"{BASELINE}:run",
+                "cron": BASELINE_CRON,
+            },
         ],
         "routes": [{"name": "canvas", "title": "The canvases of a project", "python": f"{SERVER}:router"}],
         "tables": [{"name": name, "title": title} for name, title in TABLES],

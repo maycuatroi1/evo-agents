@@ -182,6 +182,7 @@ class CanvasRev(BaseModel):
     provenance: CanvasProvenance
     reason: str
     created_at: datetime
+    baseline_id: int | None = Field(description="the baseline whose decision wrote it (change baseline)")
 
 
 class CanvasEvidence(BaseModel):
@@ -475,6 +476,7 @@ def rev_models(revs: list[RevRow]) -> list[CanvasRev]:
                 provenance=provenance_model(rev.provenance),
                 reason=rev.reason,
                 created_at=rev.created_at,
+                baseline_id=rev.baseline_id,
             )
         )
         before = rev.content

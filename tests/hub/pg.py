@@ -131,6 +131,8 @@ SIGNAL_TABLES = frozenset({"signal_keys", "signals", "signal_ingest_keys"})
 CANVAS_PROPOSAL_TABLES = frozenset({"canvas_proposals"})
 # migration 0070: the items judging runs of @strategist judged for the value check of canvas, with their verdicts
 CANVAS_JUDGING_TABLES = frozenset({"canvas_judgings"})
+# migration 0071: the baselines of canvas with what each asks of a claim, and the hub's events the Loop reads by cursor
+CANVAS_BASELINE_TABLES = frozenset({"canvas_baselines", "canvas_baseline_items", "hub_events"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

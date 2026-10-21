@@ -73,12 +73,12 @@ def test_strategist_agent_type_of_canvas_is_mentioned_by_writers_and_runs_on_the
     assert "canvas_judgings" in [item["name"] for item in manifest.contributions("tables")]
     verdict = schemas["judge"]["properties"]["verdicts"]["items"]["properties"]["verdict"]
     assert verdict["enum"] == ["supports", "contradicts", "irrelevant"]
-    (job,) = manifest.contributions("jobs")
-    assert (job["name"], job["cron"], job["python"]) == (
-        "value_check",
-        "11 * * * *",
-        "evo_agents.core_plugins.canvas.value_check:run",
-    )
+    jobs = [(job["name"], job["cron"], job["python"]) for job in manifest.contributions("jobs")]
+    assert jobs == [
+        ("value_check", "11 * * * *", "evo_agents.core_plugins.canvas.value_check:run"),
+        ("baseline", "*/15 * * * *", "evo_agents.core_plugins.canvas.schedule:run"),
+    ]
+    assert "canvas_baselines" in [item["name"] for item in manifest.contributions("tables")]
 
 
 def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_three_skills(plugin, tmp_path):

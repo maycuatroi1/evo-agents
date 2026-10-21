@@ -99,6 +99,7 @@ class RevRow:
     provenance: Provenance
     reason: str
     created_at: datetime
+    baseline_id: int | None = None  # the baseline whose decision wrote it
 
 
 @dataclass(frozen=True)
@@ -347,7 +348,16 @@ async def revs(conn: AsyncConnection, claim_id: int, *, upto: int | None = None,
     """The revs of a claim from ``since`` to ``upto`` (its last when None), oldest first."""
     r, users = tables.canvas.revs, tables.users
     query = (
-        select(r.c.rev, r.c.content, r.c.change, r.c.undo_of, *_provenance(r, users), r.c.reason, r.c.created_at)
+        select(
+            r.c.rev,
+            r.c.content,
+            r.c.change,
+            r.c.undo_of,
+            *_provenance(r, users),
+            r.c.reason,
+            r.c.created_at,
+            r.c.baseline_id,
+        )
         .select_from(r.outerjoin(users, users.c.id == r.c.user_id))
         .where(r.c.claim_id == claim_id, r.c.rev >= since)
         .order_by(r.c.rev)
@@ -363,6 +373,7 @@ async def revs(conn: AsyncConnection, claim_id: int, *, upto: int | None = None,
             provenance=provenance_of(row),
             reason=row.reason,
             created_at=row.created_at,
+            baseline_id=row.baseline_id,
         )
         for row in await conn.execute(query)
     ]

@@ -6,9 +6,10 @@ each claim it changes with the rev it was read at (``base_rev``): the claim's re
 while the rev is still that one, in the transaction that writes the rev, and a claim changed since makes the whole
 edit a 409 whose detail holds, per claim, the rev asked for, the rev it is at, who changed it, both contents and what
 differs. An undo takes back the claim's current rev by writing the content of the rev before it; undoing a first rev
-archives the claim. The rules of ``rules`` hold on every path. Evidence is no part of a rev: it is only added, and
-withdrawn by marking it. The caller holds the transaction and the lock of the canvas (``store.canvas(lock=True)``) and
-has checked the role; a refusal raises CanvasError, and the transaction writes nothing.
+archives the claim. The rules of ``rules`` hold on every path. Every rev emits the event ``canvas.claim``
+(``events``) in its transaction. Evidence is no part of a rev: it is only added, and withdrawn by marking it. The
+caller holds the transaction and the lock of the canvas (``store.canvas(lock=True)``) and has checked the role; a
+refusal raises CanvasError, and the transaction writes nothing.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from datetime import date
 from sqlalchemy import func, insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import rules, store
+from evo_agents.core_plugins.canvas import events, rules, store
 from evo_agents.core_plugins.canvas.content import CanvasError, Content, changed, code, diff, number_of
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow
 from evo_agents.hub import tables
@@ -141,9 +142,11 @@ async def write_rev(
     kind: str,
     *,
     undo_of: int | None = None,
+    baseline_id: int | None = None,
 ) -> int:
     """Move claim ``row`` to ``after`` as its next rev, while it is still at ``row.rev``; the new rev. The open
-    proposals of the claim go stale: they were made at a rev it no longer is at."""
+    proposals of the claim go stale: they were made at a rev it no longer is at. ``baseline_id`` names the baseline
+    whose decision writes it (kind ``baseline``)."""
     k, r = tables.canvas.claims, tables.canvas.revs
     archived_at = (row.archived_at or func.now()) if after.archived else None
     values = {
@@ -163,16 +166,28 @@ async def write_rev(
         raise CanvasError(409, f"{row.code} changed since rev {row.rev}: read it again")
     p = tables.canvas.proposals  # a proposal made at an older rev can no longer be accepted
     await conn.execute(update(p).where(p.c.claim_id == row.id, p.c.status == "open").values(status="stale"))
+    change = _kind(row.content(), after, kind)
     await conn.execute(
         insert(r).values(
             claim_id=row.id,
             rev=rev,
             content=after.as_json(),
-            change=_kind(row.content(), after, kind),
+            change=change,
             undo_of=undo_of,
             reason=reason,
+            baseline_id=baseline_id,
             **writer.author.columns(),
         )
+    )
+    moved = {"rev": rev, "cell": after.cell, "change": change, "before": row.status, "after": after.status}
+    await events.claim_rev(
+        conn,
+        writer.access.project_id,
+        writer.author,
+        canvas_id=row.canvas_id,
+        claim_id=row.id,
+        number=row.number,
+        **moved,
     )
     return rev
 
@@ -244,6 +259,10 @@ async def insert_claim(
     claim_id = await conn.scalar(insert(k).values(**values).returning(k.c.id))
     revision = {"claim_id": claim_id, "rev": 1, "content": content.as_json(), "change": kind, "reason": reason}
     await conn.execute(insert(r).values(**revision, **writer.author.columns()))
+    made = {"rev": 1, "cell": content.cell, "change": kind, "before": None, "after": content.status}
+    await events.claim_rev(
+        conn, writer.access.project_id, writer.author, canvas_id=canvas.id, claim_id=claim_id, number=number, **made
+    )
     return claim_id, number
 
 

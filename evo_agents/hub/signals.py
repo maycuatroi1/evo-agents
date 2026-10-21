@@ -28,7 +28,10 @@ two of them cannot both pass the count.
 
 A batch that stored any signal defers hub.value_check for its project in the batch's transaction, when a plugin the
 project enables checks values (the core plugin canvas's job value_check; ``evo_agents.hub.plugin_jobs``): the job
-exists only if the batch commits, and the batches that come while one waits join it.
+exists only if the batch commits, and the batches that come while one waits join it. It also emits the event
+``signal.posted`` in that transaction (``posted``): the batch's id, each key with how many signals it stored and when
+the first and the last were measured, and who sent it (the ingest key's name, or the member's login and the run);
+never a value or a text. Plugins granted ``signals:read`` get it, and the hub's events (``hub_events``) keep it.
 
 ``prune_signals`` (the job hub.prune_signals, daily) deletes the signals measured more than EVO_HUB_SIGNAL_DAYS days
 ago, 400 by default (``evo_agents.hub.config``), key by key along the index of each key's signals.
@@ -52,7 +55,7 @@ from sqlalchemy import BigInteger, case, delete, func, literal, or_, select, tup
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import plugin_jobs, tables
+from evo_agents.hub import hub_events, plugin_events, plugin_jobs, tables
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.tables_signals import MAX_TEXT_BYTES
 
@@ -318,17 +321,50 @@ async def push(conn: AsyncConnection, pusher: Pusher, items: list, days: int) ->
             rows.append({**_row(pusher, keys, item, now, days), "batch_id": done.batch_id})
         except _Rejected as exc:
             done.rejected.append({"index": index, "key": item.key, "external_id": item.external_id, "reason": str(exc)})
+    stored = []
     if rows:
         await _within_the_day(conn, pusher, len(rows))
         s = tables.signals
-        stored = await conn.execute(insert(s).values(rows).on_conflict_do_nothing().returning(s.c.id))
-        done.accepted = len(stored.all())
+        returned = s.c.key_id, s.c.measured_at
+        stored = (await conn.execute(insert(s).values(rows).on_conflict_do_nothing().returning(*returned))).all()
+        done.accepted = len(stored)
         done.duplicates = len(rows) - done.accepted
     if done.accepted:
         await plugin_jobs.defer_on_signals(conn, pusher.project_id)
+        await posted(conn, pusher, done, stored, {key.id: key.name for key in keys.values()})
     figures = {"project": pusher.project, "via": pusher.via, "accepted": done.accepted, "rejected": len(done.rejected)}
     log.info("signals pushed", extra={**figures, "duplicates": done.duplicates, "batch_id": str(done.batch_id)})
     return done
+
+
+async def posted(conn: AsyncConnection, pusher: Pusher, done: Pushed, stored: list, names: dict[int, str]) -> None:
+    """Emit ``signal.posted`` of a batch that stored the signals ``stored`` ((key id, measured_at) each)."""
+    by_key: dict[int, list[datetime]] = {}
+    for key_id, measured_at in stored:
+        by_key.setdefault(key_id, []).append(measured_at)
+    keys = [
+        {
+            "key": names[key_id],
+            "count": len(moments),
+            "first_measured_at": min(moments).isoformat(),
+            "last_measured_at": max(moments).isoformat(),
+        }
+        for key_id, moments in sorted(by_key.items(), key=lambda item: names[item[0]])
+    ]
+    login = None
+    if pusher.user_id is not None:
+        login = await conn.scalar(select(tables.users.c.login).where(tables.users.c.id == pusher.user_id))
+    payload = {
+        "v": hub_events.VERSION,
+        "batch_id": str(done.batch_id),
+        "via": pusher.via,
+        "ingest_key": pusher.ingest_key,
+        "login": login,
+        "run_id": pusher.run_id,
+        "accepted": done.accepted,
+        "keys": keys,
+    }
+    await plugin_events.emit(conn, hub_events.SIGNALS, pusher.project_id, payload)
 
 
 # Reading

@@ -223,6 +223,8 @@ project is what the project granted that its installed version still asks for, c
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
+| `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
+| `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -290,9 +292,16 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
-  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision), and
-  `task.result` with `runs:dispatch`, only to the plugin whose agent type ran the task (section Agent types). A payload
-  carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
+  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
+  `task.result` with `runs:dispatch`, only to the plugin whose agent type ran the task (section Agent types),
+  `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the claim's id and code, the rev,
+  its cell, the kind of change, the status before and after, who wrote it and the run), `canvas.baseline` with
+  `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each change of status that took
+  effect with its evidence), and `signal.posted` with `signals:read` (a batch of signals: its id, each key with how many
+  and when the first and last were measured, the ingest key or the member that sent it). A payload carries ids and
+  states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last three
+  carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the same
+  transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
