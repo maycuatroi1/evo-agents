@@ -127,14 +127,24 @@ def describe(read: dict) -> str:
 
 
 def brief(found: list[dict]) -> str | None:
-    """The reads on one line, names and numbers only: ``commits read: app 1550c7a (3 behind origin/main)``."""
+    """The reads on one line for the SessionStart note, names and numbers only. It counts the sources and names
+    only those not known to be current, since the note reaches every session: ``commits read: 16 sources, 13
+    current; behind: app 1550c7a (3 behind origin/main)``, and ``commits read: 16 sources, all current`` when none
+    is behind. A source whose clone had no branch to count against is listed under ``behind unknown``."""
     if not found:
         return None
-    parts = []
-    for read in found:
-        behind = _behind(read)
-        parts.append(f"{read['source']} {read['commit'][:SHORT]}" + (f" ({behind})" if behind else ""))
-    return "commits read: " + ", ".join(parts)
+    behind = [r for r in found if _behind(r) and r["behind"] > 0]
+    unknown = [r for r in found if not _behind(r)]
+    current = len(found) - len(behind) - len(unknown)
+    parts = [
+        f"commits read: {len(found)} source{'' if len(found) == 1 else 's'}, "
+        + ("all current" if current == len(found) else f"{current} current")
+    ]
+    if behind:
+        parts.append("behind: " + ", ".join(f"{r['source']} {r['commit'][:SHORT]} ({_behind(r)})" for r in behind))
+    if unknown:
+        parts.append("behind unknown: " + ", ".join(f"{r['source']} {r['commit'][:SHORT]}" for r in unknown))
+    return "; ".join(parts)
 
 
 class Links:
