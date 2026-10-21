@@ -1,6 +1,6 @@
-"""The tools of the plugin canvas on the hub's /mcp, which @strategist's agent reads, edits, proposes and adds
-evidence with (criterion a5 of plan living-lean-canvas): ``canvas__read``, ``canvas__signals``, ``canvas__edit``,
-``canvas__undo``, ``canvas__propose`` and ``canvas__evidence``.
+"""The tools of the plugin canvas on the hub's /mcp, which @strategist's agent reads, edits, proposes, adds evidence
+and judges with (criteria a5 and a4 of plan living-lean-canvas): ``canvas__read``, ``canvas__signals``,
+``canvas__edit``, ``canvas__undo``, ``canvas__propose``, ``canvas__evidence`` and ``canvas__judge``.
 
 The hub lists them in a session whose project enabled the plugin, and checks their arguments against the manifest's
 schemas first (``tools``). Each acts for a person (``acting``); a refusal is the tool's error text, and nothing is
@@ -15,6 +15,9 @@ written.
   a writer accepts it, so a task run (a brainstorm) changes no claim; a new claim proposed carries a test card with a
   hypothesis and a test. Evidence an agent adds counts toward validated only once a writer confirms it; a simulation
   is always synthetic.
+- ``judge`` answers the agent of a judging run alone, the task run the value check hands @strategist (``judging``):
+  the items of its run, and a verdict with why on each. A judging run calls no other tool of the plugin: each refuses
+  it, so it reads nothing but its items and changes, proposes and adds nothing.
 
 Nothing here moves a claim to validated (``rules.check`` refuses an agent that, whoever asked), confirms evidence,
 decides a proposal or a baseline: those routes refuse the token of a run.
@@ -28,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import proposals, rules, store, writes
+from evo_agents.core_plugins.canvas import judging, proposals, rules, store, writes
 from evo_agents.core_plugins.canvas.acting import STRATEGIST, Acting, acting, canvas, strategist_run
 from evo_agents.core_plugins.canvas.commands import undo_command, undone_text
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
@@ -66,11 +69,22 @@ def _conflict_lines(detail) -> list[str]:
     return lines
 
 
+async def _not_judging(conn: AsyncConnection, who: Acting, tool: str | None) -> None:
+    """Refuse every tool but ``judge`` to the agent of a judging run: it sees its items alone, and changes nothing."""
+    if who.run_id is not None and tool != "judge" and await judging.judging_run(conn, who.run_id):
+        raise CanvasError(
+            403,
+            f"a judging run of @{STRATEGIST} calls canvas__judge alone: it reads, changes and proposes nothing else",
+        )
+
+
 async def _answer(params: dict, context: CoreContext, work) -> dict:
     """``work(conn, acting, arguments)`` in one transaction, its text the tool's answer; a refusal as its error."""
     try:
         async with context.engine.begin() as conn:
-            return _text(await work(conn, await acting(conn, params, context), params.get("arguments") or {}))
+            who = await acting(conn, params, context)
+            await _not_judging(conn, who, params.get("tool"))
+            return _text(await work(conn, who, params.get("arguments") or {}))
     except CanvasError as exc:
         return _text("\n".join([f"error: {exc.message}", *_conflict_lines(exc.detail)]), error=True)
     except IntegrityError:
@@ -357,4 +371,16 @@ async def evidence(params: dict, context: CoreContext) -> dict:
     return await _answer(params, context, _evidence)
 
 
-__all__ = ["edit", "evidence", "find_signals", "propose", "read", "undo"]
+# Judging
+
+
+async def judge(params: dict, context: CoreContext) -> dict:
+    """The tool ``canvas__judge``: the items of the caller's judging run, and a verdict with why on some of them."""
+
+    async def work(conn: AsyncConnection, who: Acting, args: dict) -> str:
+        return await judging.judge(conn, who, args, context.config)
+
+    return await _answer(params, context, work)
+
+
+__all__ = ["edit", "evidence", "find_signals", "judge", "propose", "read", "undo"]

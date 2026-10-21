@@ -2,7 +2,8 @@
 it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read the canvases, a canvas whole with its nine cells, a claim whole with every rev, its provenance and diff
-and its evidence, the diff of two revs, the proposals, and the export. Writers make a canvas, edit its claims (each
+and its evidence, the diff of two revs, what judging runs of @strategist had for a claim with each verdict and why,
+the proposals, and the export. Writers make a canvas, edit its claims (each
 named with the rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and
 withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, and import
 ``evo-canvas/1``. The agent of a run gets none of these routes: it works through the plugin's tools (``agent``). Admins give a new canvas a label of its own, and
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import proposals, store, transfer, writes
+from evo_agents.core_plugins.canvas import judging, proposals, store, transfer, writes
 from evo_agents.core_plugins.canvas.brainstorm import hand_brainstorm
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.models import (
@@ -36,6 +37,7 @@ from evo_agents.core_plugins.canvas.models import (
     CanvasImportIn,
     CanvasImportResult,
     CanvasIn,
+    CanvasJudging,
     CanvasProposal,
     CanvasRejectIn,
     CanvasSummary,
@@ -47,6 +49,7 @@ from evo_agents.core_plugins.canvas.models import (
     detail_model,
     evidence_model,
     import_model,
+    judging_model,
     proposal_model,
     rev_models,
     summary_values,
@@ -183,6 +186,23 @@ async def show_claim(
         canvas = await store.canvas(conn, access, slug, sink)
         row = await store.claim(conn, access, canvas, number_of(ref))
         return await _claim_detail(conn, access, canvas, row, sink)
+
+    return await _answer(request, work)
+
+
+@router.get("/{project}/canvases/{slug}/claims/{ref}/judgings", response_model=list[CanvasJudging])
+async def list_judgings(
+    request: Request, project: ProjectName, slug: Slug, ref: Ref, user: CurrentUser, sink: Sink = None
+):
+    """What judging runs of @strategist had for a claim, newest first: each piece of feedback or evidence, and once
+    judged its verdict and why. Items above what the caller may read are left out."""
+
+    async def work(conn):
+        access = await _opened(conn, user, project)
+        canvas = await store.canvas(conn, access, slug, sink)
+        row = await store.claim(conn, access, canvas, number_of(ref))
+        found = await judging.judgings(conn, row.id)
+        return [judging_model(item) for item in found if store.visible(access, item.label, sink)]
 
     return await _answer(request, work)
 

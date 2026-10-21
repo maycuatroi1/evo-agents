@@ -75,6 +75,12 @@ async def _access(conn: AsyncConnection, person: Principal, project: str) -> Pro
         raise CanvasError(403, f"{person.login} holds no grant on project {project} now") from None
 
 
+async def member_access(conn: AsyncConnection, user_id: int, project: str, config=None) -> ProjectAccess:
+    """Member ``user_id``'s access to ``project``, as their own session has it (a type's run_as, whom the hub hands
+    a task run); 403 when they hold no grant on it now."""
+    return await _access(conn, await _principal(conn, user_id, config), project)
+
+
 async def is_strategist(conn: AsyncConnection, context: CoreContext, profile_id: int | None) -> bool:
     """Whether ``profile_id`` is the profile of the project's agent type strategist, enabled and on."""
     plugin = await enabled_in(conn, context.plugin, context.project_id)
@@ -140,4 +146,4 @@ async def canvas(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool = 
     return row
 
 
-__all__ = ["PLUGIN", "STRATEGIST", "Acting", "acting", "canvas", "is_strategist", "strategist_run"]
+__all__ = ["PLUGIN", "STRATEGIST", "Acting", "acting", "canvas", "is_strategist", "member_access", "strategist_run"]

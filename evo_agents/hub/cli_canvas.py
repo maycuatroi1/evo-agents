@@ -96,6 +96,8 @@ EVIDENCE_KEYS = (
     "withdrawn_reason",
     "real",
     "not_real_because",
+    "basis",
+    "rests_on_run",
 )
 PROPOSAL_STATUSES = ("open", "accepted", "rejected", "stale")
 PROPOSAL_KEYS = (
@@ -114,6 +116,7 @@ PROPOSAL_KEYS = (
     "decided_by",
     "decided_at",
     "decided_reason",
+    "evidence_id",
 )
 BRAINSTORM_KEYS = ("run_id", "title")
 IMPORT_KEYS = ("dry_run", "canvas", "canvas_created", "created", "edited", "unchanged", "evidence", "problems")

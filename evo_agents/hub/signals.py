@@ -26,6 +26,10 @@ hours, whoever sends them; a batch that would go past it is refused whole with 4
 signal of the day leaves the window. Batches of one project go one at a time under a transaction-level advisory lock, so
 two of them cannot both pass the count.
 
+A batch that stored any signal defers hub.value_check for its project in the batch's transaction, when a plugin the
+project enables checks values (the core plugin canvas's job value_check; ``evo_agents.hub.plugin_jobs``): the job
+exists only if the batch commits, and the batches that come while one waits join it.
+
 ``prune_signals`` (the job hub.prune_signals, daily) deletes the signals measured more than EVO_HUB_SIGNAL_DAYS days
 ago, 400 by default (``evo_agents.hub.config``), key by key along the index of each key's signals.
 
@@ -48,7 +52,7 @@ from sqlalchemy import BigInteger, case, delete, func, literal, or_, select, tup
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
+from evo_agents.hub import plugin_jobs, tables
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.tables_signals import MAX_TEXT_BYTES
 
@@ -302,7 +306,8 @@ async def _within_the_day(conn: AsyncConnection, pusher: Pusher, adding: int) ->
 
 async def push(conn: AsyncConnection, pusher: Pusher, items: list, days: int) -> Pushed:
     """Store the items of one batch that pass, in the transaction of ``conn``; the others answered with why. ``days``
-    is the retention, which an item measured earlier falls out of."""
+    is the retention, which an item measured earlier falls out of. A batch that stored any queues the project's value
+    check in the same transaction."""
     await conn.execute(select(func.pg_advisory_xact_lock(literal(LOCK_BASE, BigInteger) + pusher.project_id)))
     now = (await conn.execute(select(func.now()))).scalar_one()
     keys = await _keys(conn, pusher.project_id, {item.key for item in items})
@@ -319,6 +324,8 @@ async def push(conn: AsyncConnection, pusher: Pusher, items: list, days: int) ->
         stored = await conn.execute(insert(s).values(rows).on_conflict_do_nothing().returning(s.c.id))
         done.accepted = len(stored.all())
         done.duplicates = len(rows) - done.accepted
+    if done.accepted:
+        await plugin_jobs.defer_on_signals(conn, pusher.project_id)
     figures = {"project": pusher.project, "via": pusher.via, "accepted": done.accepted, "rejected": len(done.rejected)}
     log.info("signals pushed", extra={**figures, "duplicates": done.duplicates, "batch_id": str(done.batch_id)})
     return done

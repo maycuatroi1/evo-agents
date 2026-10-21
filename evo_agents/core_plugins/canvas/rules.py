@@ -4,9 +4,11 @@ baseline). An agent never moves a claim to validated, whoever asked it to.
 
 A claim goes to validated only with at least one piece of real evidence that supports it. Real evidence is not
 synthetic, of a kind other than doc and simulation, not withdrawn, and added by a person; or added by an agent and
-confirmed by a writer; or written by the hub (the value check of a signal or the judging of feedback). A claim goes to
-testing only with a test card that holds a hypothesis, a test and a deadline. Going to invalidated or retired takes
-nothing: dropping a hypothesis is cheap and can be undone. A refusal is a 422 that says what is missing.
+confirmed by a writer; or written by the hub (the value check of a signal or the judging of feedback) from signals an
+ingest key or a member pushed, never from signals the agent of a run pushed (``rests_on_run``): an agent cannot
+measure its own claim true. A claim goes to testing only with a test card that holds a hypothesis, a test and a
+deadline. Going to invalidated or retired takes nothing: dropping a hypothesis is cheap and can be undone. A refusal
+is a 422 that says what is missing.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ class Evidence:
     actor: str
     confirmed: bool
     withdrawn: bool
+    rests_on_run: bool = False  # the hub wrote it from signals the agent of a run pushed
 
 
 def not_real(evidence: Evidence) -> str | None:
@@ -45,6 +48,8 @@ def not_real(evidence: Evidence) -> str | None:
         return "an agent added it and no writer confirmed it"
     if evidence.actor == "hub" and evidence.kind not in HUB_KINDS:
         return f"the hub writes evidence of kind {', '.join(HUB_KINDS)} only"
+    if evidence.rests_on_run:
+        return "it rests on signals the agent of a run pushed, not an ingest key or a member"
     return None
 
 
@@ -64,7 +69,8 @@ def _validated(number: int, evidence: list[Evidence]) -> None:
     raise CanvasError(
         422,
         f"{code(number)} goes to validated only with real evidence that supports it (not synthetic, of a kind other "
-        f"than {' or '.join(NOT_EVIDENCE_KINDS)}, not withdrawn, added by a person or confirmed by a writer): {why}",
+        f"than {' or '.join(NOT_EVIDENCE_KINDS)}, not withdrawn, added by a person or confirmed by a writer, not "
+        f"resting on a run's signals): {why}",
     )
 
 

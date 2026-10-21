@@ -81,6 +81,7 @@ HUB_TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 HUB_TABLES |= pg.CANVAS_TABLES  # migration 0067
 HUB_TABLES |= pg.SIGNAL_TABLES  # migration 0068
 HUB_TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0069
+HUB_TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0070
 
 
 @pytest.fixture

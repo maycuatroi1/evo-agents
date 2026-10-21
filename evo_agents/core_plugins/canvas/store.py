@@ -119,6 +119,8 @@ class EvidenceRow:
     withdrawn_at: datetime | None
     withdrawn_by: str | None
     withdrawn_reason: str | None
+    basis: dict | None = None  # what a piece the hub wrote rests on: a check's figures, or the item judged
+    rests_on_run: bool = False  # the hub wrote it from signals the agent of a run pushed
 
     def facts(self) -> Evidence:
         """What the rule of validated reads of it."""
@@ -130,6 +132,7 @@ class EvidenceRow:
             actor=self.provenance.actor,
             confirmed=self.confirmed_by is not None,
             withdrawn=self.withdrawn_at is not None,
+            rests_on_run=self.rests_on_run,
         )
 
 
@@ -185,23 +188,23 @@ def writable(access: ProjectAccess, canvas: CanvasRow) -> CanvasRow:
 # Canvases
 
 
-def _canvases_query(project_id: int):
+def _canvas_query():
     c, users = tables.canvas.canvases, tables.users
-    return (
-        select(
-            c.c.id,
-            c.c.slug,
-            c.c.name,
-            c.c.description,
-            c.c.label,
-            users.c.login.label("created_by"),
-            c.c.created_at,
-            c.c.updated_at,
-            c.c.archived_at,
-        )
-        .select_from(c.join(users, users.c.id == c.c.created_by))
-        .where(c.c.project_id == project_id)
-    )
+    return select(
+        c.c.id,
+        c.c.slug,
+        c.c.name,
+        c.c.description,
+        c.c.label,
+        users.c.login.label("created_by"),
+        c.c.created_at,
+        c.c.updated_at,
+        c.c.archived_at,
+    ).select_from(c.join(users, users.c.id == c.c.created_by))
+
+
+def _canvases_query(project_id: int):
+    return _canvas_query().where(tables.canvas.canvases.c.project_id == project_id)
 
 
 async def canvases(
@@ -215,6 +218,23 @@ async def canvases(
         query = query.where(c.c.archived_at.is_(None))
     rows = [CanvasRow(**row._mapping) for row in await conn.execute(query)]
     return [row for row in rows if visible(access, row.label, sink)]
+
+
+async def project_canvases(conn: AsyncConnection, project_id: int) -> list[CanvasRow]:
+    """The canvases of project ``project_id`` not archived, by slug, whatever their label: for the hub's own jobs,
+    which no member's grant bounds (the value check)."""
+    c = tables.canvas.canvases
+    query = _canvases_query(project_id).where(c.c.archived_at.is_(None)).order_by(c.c.slug)
+    return [CanvasRow(**row._mapping) for row in await conn.execute(query)]
+
+
+async def lock_canvas(conn: AsyncConnection, canvas_id: int) -> CanvasRow | None:
+    """Take the row lock of canvas ``canvas_id``, which every write of it takes, and read it again; None when it is
+    gone or archived since."""
+    c = tables.canvas.canvases
+    await conn.execute(select(c.c.id).where(c.c.id == canvas_id).with_for_update())
+    row = (await conn.execute(_canvas_query().where(c.c.id == canvas_id))).first()
+    return None if row is None or row.archived_at is not None else CanvasRow(**row._mapping)
 
 
 async def canvas(
@@ -375,6 +395,8 @@ async def evidence(conn: AsyncConnection, claim_ids: list[int]) -> dict[int, lis
             e.c.withdrawn_at,
             withdrawer.c.login.label("withdrawn_by"),
             e.c.withdrawn_reason,
+            e.c.basis,
+            e.c.rests_on_run,
         )
         .select_from(
             e.outerjoin(users, users.c.id == e.c.user_id)

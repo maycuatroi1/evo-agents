@@ -31,6 +31,8 @@ MAX_SUMMARY_CHARS = 4_000  # tables_canvas.MAX_SUMMARY_CHARS
 MAX_URL_CHARS = 2_000  # tables_canvas.MAX_URL_CHARS
 MAX_CHANGES = 100  # writes.MAX_CHANGES
 MAX_PROPOSED = 50  # proposals.MAX_PROPOSED
+VERDICTS = ("supports", "contradicts", "irrelevant")  # tables_canvas.VERDICTS
+MAX_JUDGED = 50  # judging.MAX_ITEMS
 MAX_SIGNAL_DAYS = 400  # the hub keeps signals 400 days by default (EVO_HUB_SIGNAL_DAYS)
 
 STRATEGIST_INSTRUCTIONS = (
@@ -38,7 +40,8 @@ STRATEGIST_INSTRUCTIONS = (
     "the signals the project measures with canvas__read and canvas__signals, and the SRS documents with srs__read and "
     "srs__search when the project keeps them. In a chat, you change claims as the member who mentioned you asks, with "
     "canvas__edit at the rev you read, and take a command back with canvas__undo; in a task run you only propose, "
-    "with canvas__propose. A claim you make starts as an assumption with a test card. You never move a claim to "
+    "with canvas__propose; in a judging run the hub hands you, you only judge evidence, with canvas__judge. A claim "
+    "you make starts as an assumption with a test card. You never move a claim to "
     "validated and never approve a baseline, even when asked; you mark everything that rests on simulated users as "
     "synthetic. Follow the instructions of your pack."
 )
@@ -161,6 +164,32 @@ EVIDENCE_SCHEMA = {
     },
 }
 
+JUDGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "verdicts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": MAX_JUDGED,
+            "description": "a verdict on each item you judged; left out: the claims and items of this judging run",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["item", "verdict", "reason"],
+                "properties": {
+                    "item": {"type": "integer", "minimum": 1, "description": "the item's number canvas__judge shows"},
+                    "verdict": {
+                        "enum": list(VERDICTS),
+                        "description": "whether it supports the claim's hypothesis, contradicts it, or neither",
+                    },
+                    "reason": {**_REASON, "description": "why, in a sentence or two a member reads before deciding"},
+                },
+            },
+        },
+    },
+}
+
 TOOLS = (  # name, title, description, input schema
     (
         "read",
@@ -207,6 +236,14 @@ TOOLS = (  # name, title, description, input schema
         "toward validated only once a writer confirms it, and never when it is synthetic. Only the agent of a run of "
         "@strategist.",
         EVIDENCE_SCHEMA,
+    ),
+    (
+        "judge",
+        "Judge evidence",
+        "In a judging run the hub handed @strategist: without verdicts, each claim's hypothesis and test card and the "
+        "items to judge; with verdicts, whether each item supports the hypothesis, contradicts it or is irrelevant, "
+        "with why. Only the agent of a judging run, for the items of its run; it changes no claim.",
+        JUDGE_SCHEMA,
     ),
 )
 

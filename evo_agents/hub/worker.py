@@ -38,6 +38,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   open again (``evo_agents.hub.server.collect``).
 - ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
   takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
+- ``hub.value_check``: deferred with each batch of a project's signals that stored any (``evo_agents.hub.signals``),
+  one at a time per project and at most one waiting: the plugins' jobs named value_check of that project, for it alone
+  (``evo_agents.hub.plugin_jobs.run_on_signals``).
 - ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
   again with a backoff (``evo_agents.hub.plugin_events``).
 - ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
@@ -284,6 +287,14 @@ async def plugin_job(context: JobContext, plugin: str, job: str) -> dict:
 
     found = hub(context)
     return await run_job(found.engine, found.config, plugin, job)
+
+
+@queue.task(name=jobs.VALUE_CHECK, pass_context=True)
+async def value_check(context: JobContext, project_id: int) -> dict:
+    from evo_agents.hub.plugin_jobs import run_on_signals
+
+    found = hub(context)
+    return await run_on_signals(found.engine, found.config, project_id)
 
 
 @queue.periodic(cron="* * * * *")

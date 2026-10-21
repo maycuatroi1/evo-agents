@@ -22,6 +22,7 @@ from evo_agents.core_plugins.canvas.content import (
     Content,
     diff,
 )
+from evo_agents.core_plugins.canvas.judging import JudgingRow
 from evo_agents.core_plugins.canvas.proposals import ProposalRow
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow, EvidenceRow, Provenance, RevRow
 from evo_agents.core_plugins.canvas.transfer import Report
@@ -34,6 +35,7 @@ from evo_agents.hub.tables_canvas import (
     CONFIDENCES,
     DIRECTIONS,
     EVIDENCE_KINDS,
+    JUDGED_SOURCES,
     MAX_DESCRIPTION_CHARS,
     MAX_NAME_CHARS,
     MAX_REASON_CHARS,
@@ -44,6 +46,7 @@ from evo_agents.hub.tables_canvas import (
     PROPOSAL_STATUSES,
     SLUG,
     STATUSES,
+    VERDICTS,
 )
 
 CODE = r"^(?:[Cc][Ll]-)?[1-9][0-9]{0,8}$"  # content.CODE
@@ -198,6 +201,13 @@ class CanvasEvidence(BaseModel):
     withdrawn_reason: str | None
     real: bool = Field(description="whether it is real evidence: one that supports its claim lets it be validated")
     not_real_because: str | None
+    basis: dict | None = Field(
+        description="what a piece the hub wrote rests on: the figures of the check of the test card (check, metric, "
+        "value, samples, window_days, comparator, threshold, result), or the item a judging run judged (judging)"
+    )
+    rests_on_run: bool = Field(
+        description="the hub wrote it from signals the agent of a run pushed: it never validates"
+    )
 
 
 class CanvasClaimDetail(CanvasClaim):
@@ -244,6 +254,27 @@ class CanvasProposal(BaseModel):
     decided_by: str | None
     decided_at: datetime | None
     decided_reason: str | None
+    evidence_id: int | None = Field(description="the evidence a value check proposed it on")
+
+
+class CanvasJudging(BaseModel):
+    """An item a judging run of @strategist had for a claim, and its verdict with why once judged."""
+
+    id: int
+    run_id: int | None = Field(description="the judging run, a task run of @strategist")
+    source: Literal[JUDGED_SOURCES] = Field(description="signal: a piece of feedback; evidence: the claim's evidence")
+    kind: str = Field(description="feedback, or the kind of the evidence judged")
+    signal_id: int | None
+    evidence_id: int | None
+    text: str = Field(description="what the run read of it")
+    synthetic: bool
+    rests_on_run: bool = Field(description="the agent of a run pushed the signal")
+    measured_at: datetime
+    created_at: datetime
+    verdict: Literal[VERDICTS] | None
+    reason: str | None
+    judged_at: datetime | None
+    verdict_evidence_id: int | None = Field(description="the evidence of kind feedback the hub wrote of the verdict")
 
 
 class CanvasBrainstorm(BaseModel):
@@ -469,6 +500,8 @@ def evidence_model(row: EvidenceRow) -> CanvasEvidence:
         withdrawn_reason=row.withdrawn_reason,
         real=why is None,
         not_real_because=why,
+        basis=row.basis,
+        rests_on_run=row.rests_on_run,
     )
 
 
@@ -502,4 +535,10 @@ def proposal_model(row: ProposalRow, changes: list[dict]) -> CanvasProposal:
         decided_by=row.decided_by,
         decided_at=row.decided_at,
         decided_reason=row.decided_reason,
+        evidence_id=row.evidence_id,
     )
+
+
+def judging_model(row: JudgingRow) -> CanvasJudging:
+    values = {name: getattr(row, name) for name in CanvasJudging.model_fields}
+    return CanvasJudging(**values)

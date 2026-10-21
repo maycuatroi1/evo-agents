@@ -397,7 +397,9 @@ async def undo(
 @dataclass(frozen=True)
 class EvidenceInput:
     """A piece of evidence to add: its kind, which way it points, a summary, a link, the day it was taken, and
-    whether it is synthetic (a simulation always is)."""
+    whether it is synthetic (a simulation always is). The hub's own (the value check) also says what it rests on
+    (``basis``), whether that is signals the agent of a run pushed (``rests_on_run``), and the label it carries when
+    the signals it sums up carry a higher one than the claim's."""
 
     kind: str
     direction: str
@@ -405,12 +407,18 @@ class EvidenceInput:
     url: str | None = None
     observed_on: date | None = None
     synthetic: bool = False
+    basis: dict | None = None
+    rests_on_run: bool = False
+    label: dict | None = None
 
 
 def _check_evidence(writer: Writer, given: EvidenceInput) -> None:
-    kinds = EVIDENCE_KINDS if writer.author.actor == "hub" else ADDED_KINDS
+    hub = writer.author.actor == "hub"
+    kinds = EVIDENCE_KINDS if hub else ADDED_KINDS
     if given.kind not in kinds:
         raise CanvasError(422, f"evidence added here is of kind {', '.join(kinds)}; {given.kind} is the hub's to write")
+    if not hub and (given.basis is not None or given.rests_on_run or given.label is not None):
+        raise CanvasError(422, "only the hub says what evidence rests on")
     if given.direction not in DIRECTIONS:
         raise CanvasError(422, f"evidence points one of {', '.join(DIRECTIONS)}; {given.direction!r} is none")
     if not given.summary.strip() or len(given.summary) > MAX_SUMMARY_CHARS:
@@ -434,7 +442,9 @@ async def add_evidence(conn: AsyncConnection, writer: Writer, claim: ClaimRow, g
         "url": given.url,
         "observed_on": given.observed_on,
         "synthetic": given.synthetic or given.kind == "simulation",
-        "label": claim.label,
+        "label": given.label or claim.label,
+        "basis": null() if given.basis is None else given.basis,  # SQL NULL, not a JSON null
+        "rests_on_run": given.rests_on_run,
         **writer.author.columns(),
     }
     return await conn.scalar(insert(e).values(**values).returning(e.c.id))

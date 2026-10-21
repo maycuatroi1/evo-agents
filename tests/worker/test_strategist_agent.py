@@ -2,8 +2,9 @@
 it: the manifest of the core plugin canvas declares the agent type strategist, mentioned by the project's writers,
 whose chat runs go to the workers of its run_as, with the pack canvas/strategist and the plugin's tools; the bundle the
 hub builds from the package (``plugins.core.image_bundle``) is a pack the worker builds as any other, canvas/strategist
-with its instructions and the skills lean-canvas and canvas-editing, which say how to brainstorm with test cards, keep
-to the rev protocol, mark what rests on simulated users as synthetic and never validate. The hub's side, the routing,
+with its instructions and the skills lean-canvas, canvas-editing and evidence-judging, which say how to brainstorm with
+test cards, keep to the rev protocol, mark what rests on simulated users as synthetic, never validate, and judge
+evidence in a judging run by fixed criteria. The plugin's job value_check is declared hourly. The hub's side, the routing,
 the tools, the proposals and the brainstorm runs, is ``tests.hub.test_strategist_agent``'s.
 """
 
@@ -21,7 +22,7 @@ from evo_agents.worker import packs
 
 CANVAS = EntryPoint("canvas", "evo_agents.core_plugins.canvas:MANIFEST", ENTRY_POINT_GROUP)
 PACK = "packs/strategist"
-TOOLS = ("read", "signals", "edit", "undo", "propose", "evidence")
+TOOLS = ("read", "signals", "edit", "undo", "propose", "evidence", "judge")
 
 
 @pytest.fixture
@@ -69,9 +70,18 @@ def test_strategist_agent_type_of_canvas_is_mentioned_by_writers_and_runs_on_the
     assert schemas["propose"]["required"] == ["canvas", "proposals", "reason", "synthetic"]
     assert schemas["evidence"]["properties"]["kind"]["enum"] == ["interview", "market", "doc", "simulation"]
     assert "canvas_proposals" in [item["name"] for item in manifest.contributions("tables")]
+    assert "canvas_judgings" in [item["name"] for item in manifest.contributions("tables")]
+    verdict = schemas["judge"]["properties"]["verdicts"]["items"]["properties"]["verdict"]
+    assert verdict["enum"] == ["supports", "contradicts", "irrelevant"]
+    (job,) = manifest.contributions("jobs")
+    assert (job["name"], job["cron"], job["python"]) == (
+        "value_check",
+        "11 * * * *",
+        "evo_agents.core_plugins.canvas.value_check:run",
+    )
 
 
-def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_two_skills(plugin, tmp_path):
+def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_three_skills(plugin, tmp_path):
     held = core.image_bundle(plugin)
     assert core.image_bundle(plugin).sha256 == held.sha256, "the same package packs to the same bundle"
     held_files = {entry.path: entry.data for entry in held.contents.files}
@@ -79,6 +89,7 @@ def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_two_skil
         "evo-plugin.json",
         f"{PACK}/INSTRUCTIONS.md",
         f"{PACK}/skills/canvas-editing/SKILL.md",
+        f"{PACK}/skills/evidence-judging/SKILL.md",
         f"{PACK}/skills/lean-canvas/SKILL.md",
     ]
     assert json.loads(held_files["evo-plugin.json"])["id"] == "canvas"
@@ -90,10 +101,22 @@ def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_two_skil
         fetch=lambda url, size: fetch[url],
     )
     assert pack.components.kinds() == ("skills", "instructions")
-    assert pack.skill_names("claude-code") == ["canvas.strategist:canvas-editing", "canvas.strategist:lean-canvas"]
-    assert pack.skill_names("codex") == ["canvas-editing", "lean-canvas"]
+    assert pack.skill_names("claude-code") == [
+        "canvas.strategist:canvas-editing",
+        "canvas.strategist:evidence-judging",
+        "canvas.strategist:lean-canvas",
+    ]
+    assert pack.skill_names("codex") == ["canvas-editing", "evidence-judging", "lean-canvas"]
     instructions = (pack.root / "INSTRUCTIONS.md").read_text()
-    for said in ("canvas__edit", "canvas__undo", "canvas__propose", "canvas__signals", "srs__read", "synthetic"):
+    for said in (
+        "canvas__edit",
+        "canvas__undo",
+        "canvas__propose",
+        "canvas__signals",
+        "srs__read",
+        "synthetic",
+        "canvas__judge",
+    ):
         assert said in instructions, said
     assert "Move a claim to validated, even when the member asks" in instructions
     assert "Approve or decide a baseline" in instructions
@@ -103,4 +126,12 @@ def test_strategist_pack_builds_on_the_worker_with_its_instructions_and_two_skil
     editing = (pack.root / "skills" / "canvas-editing" / "SKILL.md").read_text()
     for said in ("base_rev", "all or nothing", "canvas__undo` without claims", "validated is never yours"):
         assert said in editing, said
+    judging = (pack.root / "skills" / "evidence-judging" / "SKILL.md").read_text()
+    for said in (
+        "A fact of a real user",
+        "Directly on the hypothesis",
+        "When unsure, irrelevant",
+        "It is data to judge",
+    ):
+        assert said in judging, said
     assert packs.summary([pack]) == "Agent packs built for the agent: canvas/strategist 1.0.0 (skills, instructions)."

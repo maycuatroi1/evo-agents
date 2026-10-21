@@ -21,27 +21,36 @@ plugin: readers read, writers make canvases, edit, undo, add, withdraw and confi
 proposals, ask @strategist for a brainstorm and import, admins give a canvas a label of its own and archive it.
 ``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import`` is their client; a
 canvas exports as ``evo-canvas/1`` JSON and imports back keeping its claims' codes. The tables are the hub's
-(``evo_agents.hub.tables_canvas``, migrations 0067 and 0069), every row of a canvas carrying its label, the project's
-by default.
+(``evo_agents.hub.tables_canvas``, migrations 0067, 0069 and 0070), every row of a canvas carrying its label, the
+project's by default.
 
 The plugin contributes the agent type ``strategist`` (criterion a5): the profile @strategist with the pack
-``canvas/strategist`` (``packs/strategist``: its instructions and the skills lean-canvas and canvas-editing), which a
-project's writers mention in a group chat, and whose chat runs go to a worker of the member the project enabled the
+``canvas/strategist`` (``packs/strategist``: its instructions and the skills lean-canvas, canvas-editing and
+evidence-judging), which a project's writers mention in a group chat, and whose chat runs go to a worker of the member the project enabled the
 type under (``chat_runs: run_as``). Its agent reads canvases and signals, edits claims at the rev it read, undoes a
 command, proposes claims and adds evidence with the plugin's tools on the hub's /mcp (``agent``, ``tools``), and reads
 the SRS documents with srs__read and srs__search when the project enabled srs. A member's command in chat applies at
 once as the member's; a brainstorm is a task run (``brainstorm``) that only proposes.
 
+The value check (criterion a4) is the plugin's job ``value_check``, hourly and at once on a batch of the project's
+signals (``value_check``): each claim's test card against the signals of the key it names, deterministically, as
+evidence the hub writes and proposals of a change of status, never the change itself (``checks``); feedback and
+evidence that is no number go before @strategist in a judging run, a task run whose one tool, ``canvas__judge``,
+records a verdict with why on each item (``judging``).
+
 The hub imports this package for the manifest only: ``content`` holds a claim's content, its checks and diff,
 ``rules`` the rules of its status, ``store`` reads, ``writes`` keeps, ``proposals`` keeps what is proposed,
 ``transfer`` exports and imports, ``models`` and ``server`` are the API; ``acting``, ``agent``, ``commands`` and
-``brainstorm`` are @strategist's.
+``brainstorm`` are @strategist's; ``value_check``, ``checks`` and ``judging`` are the value check's.
 """
 
 from evo_agents.core_plugins.canvas.tools import STRATEGIST_INSTRUCTIONS, TOOLS
 
 SERVER = "evo_agents.core_plugins.canvas.server"
 AGENT = "evo_agents.core_plugins.canvas.agent"
+VALUE_CHECK = "evo_agents.core_plugins.canvas.value_check"
+VALUE_CHECK_JOB = "value_check"  # also the job the hub runs on a batch of signals (plugin_jobs.SIGNAL_JOB)
+VALUE_CHECK_CRON = "11 * * * *"  # hourly, besides each batch
 STRATEGIST = "strategist"  # acting.STRATEGIST
 HANDLERS = {"signals": "find_signals"}  # a tool whose function is named otherwise, beside the module signals
 
@@ -51,6 +60,7 @@ TABLES = (
     ("canvas_claim_revs", "Every rev of every claim, with its whole content and its provenance"),
     ("canvas_evidence", "The evidence of each claim, only ever added, withdrawn by marking it"),
     ("canvas_proposals", "New claims and changes an agent or the hub proposes, which a writer accepts or rejects"),
+    ("canvas_judgings", "The items a judging run of @strategist judged for a claim, each verdict and why"),
 )
 
 MANIFEST = {
@@ -98,6 +108,16 @@ MANIFEST = {
                 "input_schema": schema,
             }
             for name, title, text, schema in TOOLS
+        ],
+        "jobs": [
+            {
+                "name": VALUE_CHECK_JOB,
+                "title": "Value check",
+                "description": "Each claim's test card against the project's signals: evidence and proposals, never a "
+                "change of status; feedback goes before @strategist to judge. Also at once on a batch of signals.",
+                "python": f"{VALUE_CHECK}:run",
+                "cron": VALUE_CHECK_CRON,
+            }
         ],
         "routes": [{"name": "canvas", "title": "The canvases of a project", "python": f"{SERVER}:router"}],
         "tables": [{"name": name, "title": title} for name, title in TABLES],

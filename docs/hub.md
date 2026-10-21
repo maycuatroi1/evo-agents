@@ -2218,6 +2218,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   (Session transcripts, above).
 - `hub.prune_signals`, daily at 05:03: deletes the signals measured more than `EVO_HUB_SIGNAL_DAYS` days ago, 400 by
   default (`docs/signals.md`).
+- `hub.value_check`, deferred by each batch of a project's signals that stored any, when a plugin the project enables
+  has a job named `value_check`: runs those jobs for that project alone, one at a time per project, the batches that
+  come while one waits joining it (`docs/signals.md`, Value check).
 - `hub.analyze_facets`, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came and of each run that ended, made once and again when its content or the facet's version changed
   (Session facets, above).
