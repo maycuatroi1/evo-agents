@@ -1725,8 +1725,15 @@ token is replaced wherever it appears. The push follows the write rule (the writ
 digest carries the project's default label, so only members whose grant, and the sink they read through, clear it
 see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest; only the member who pushed a session
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
-the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
-days.
+the hub pushes it, with up to three others that waited. Claude Code runs no Stop hook for a turn the person
+interrupted, so a session whose every turn was interrupted, or that closed while a tool ran, had no digest:
+SessionEnd now pushes the session's digest too, with those that waited, before it reports the local run ended (its
+hook may take 20 seconds of the session's exit; Claude Code 2.1.299 waits for a SessionEnd hook as long as hooks.json
+says, up to 60). When SessionEnd did not run either, SessionStart finds the session: it reads the transcripts of the
+last 7 days under the Claude Code projects directories, untouched for 10 minutes, of the directories of a hub project
+and with no entry in `digest-state.json`, at most 40 for 2 seconds, and queues each of 6 messages for the next Stop;
+the others are noted with their size and read again only once they changed. The directories of a worker's runs are
+left out. `hub.prune_digests` deletes the digests not pushed for 90 days.
 
 **Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
 project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
