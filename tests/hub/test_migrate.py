@@ -2030,6 +2030,48 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
 
 
+def test_0085_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_while_one_does(hub_db):
+    move_to(hub_db, "0084")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    s = t.secrets
+    mine = {"owner_id": ids["user"], "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+    mine |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(mine))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0085")
+    with live.connect(hub_db) as conn:
+        profile = {"project_id": ids["project"], "handle": "auditor", "name": "Auditor", "color": "#475569"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        pid = conn.execute(insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id)).scalar_one()
+        agent = {"profile_id": pid, "name": "claude-a", "kind": "env", "env_var": "CLAUDE_CODE_OAUTH_TOKEN"}
+        agent |= {"sealed": b"s" * 20, "nonce": b"n" * 12, "key_id": "0123abcd"}
+        conn.execute(insert(s).values(agent))  # the member's secret of that name is another row
+        assert one(conn, select(func.count()).select_from(s).where(s.c.name == "claude-a")) == 2
+        for bad in (
+            insert(s).values({**agent, "owner_id": ids["user"]}),  # exactly one owner
+            insert(s).values({"name": "orphan", "kind": "env"}),
+            insert(s).values({**agent, "kind": "git", "name": "g"}),  # an agent's secret is env
+            insert(s).values(agent),  # unique by (profile, name) among the live ones
+            insert(s).values({**agent, "profile_id": pid + 1000, "name": "x"}),  # a profile that exists
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        gone = {"deleted_at": func.now(), "sealed": None, "nonce": None, "key_id": None}
+        conn.execute(update(s).values(gone).where(s.c.profile_id == pid))
+        conn.execute(insert(s).values(agent))  # a deleted one frees the name
+    with pytest.raises(RuntimeError, match=r"2 secret row\(s\) belong to agent profiles"):
+        move_to(hub_db, "0084", down=True)
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(s).where(s.c.profile_id.is_not(None)))
+    move_to(hub_db, "0084", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert "profile_id" not in columns(hub_db, "secrets")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

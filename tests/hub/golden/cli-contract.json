@@ -12130,6 +12130,404 @@
         }
       ],
       "json": null
+    },
+    "hub agent account add": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--env-var"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weight"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "env_var",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "created_at",
+          "updated_at",
+          "created"
+        ],
+        "schema": "AgentAccountWritten"
+      }
+    },
+    "hub agent account pause": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "env_var",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "AgentAccount"
+      }
+    },
+    "hub agent account remove": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "hub agent account renew": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "env_var",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "AgentAccount"
+      }
+    },
+    "hub agent account resume": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "env_var",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "AgentAccount"
+      }
+    },
+    "hub agent account set": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weight"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-expiry"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "name",
+          "env_var",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "AgentAccount"
+      }
     }
   },
   "openapi": {
@@ -50122,6 +50520,369 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Put Agent Account",
+          "description": "Give the agent the account ``name``, or replace it whole; the value is sealed and never shown again.",
+          "operationId": "put_agent_account_v1_projects__project__agents__handle__accounts__name__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAccountWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentAccountWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Change Agent Account",
+          "description": "Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.",
+          "operationId": "change_agent_account_v1_projects__project__agents__handle__accounts__name__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAccountChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentAccount"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Delete Agent Account",
+          "description": "Delete the account: its value and bindings go, and its leases not given back are revoked.",
+          "operationId": "delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -87647,6 +88408,449 @@
           ],
           "title": "ReplayTask",
           "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
+        },
+        "AgentAccountChange": {
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1,
+                  "format": "password",
+                  "writeOnly": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "renew: a new value for the same account"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "replaces the workers it is bound to"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "its new end; null drops the end"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused",
+              "description": "true pauses it, so no new run takes it; false resumes it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AgentAccountChange"
+        },
+        "AgentAccountWritten": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the id of its secret, which audit lines name it by"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when its value was last written"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when an account of this name was replaced"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "env_var",
+            "workers",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "created_at",
+            "updated_at",
+            "created"
+          ],
+          "title": "AgentAccountWritten"
+        },
+        "AgentAccount": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the id of its secret, which audit lines name it by"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when its value was last written"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "env_var",
+            "workers",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "AgentAccount",
+          "description": "An account of an agent as an admin sees it: everything but the value."
+        },
+        "AgentAccountWrite": {
+          "properties": {
+            "env_var": {
+              "type": "string",
+              "maxLength": 200,
+              "title": "Env Var",
+              "description": "the variable of the agent's environment it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)"
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "format": "password",
+              "title": "Value",
+              "description": "the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again",
+              "writeOnly": true
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Workers",
+              "description": "names of the workers it is bound to: yours that are not revoked, or a member's shared worker; each serves the agent's project"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "after this no run gets it; in the future"
+            },
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight",
+              "description": "its share in a weighted pool; 1 when new"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority",
+              "description": "the lower, the sooner; 0 when new"
+            }
+          },
+          "type": "object",
+          "required": [
+            "env_var",
+            "value",
+            "workers"
+          ],
+          "title": "AgentAccountWrite"
         }
       }
     }

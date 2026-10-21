@@ -709,7 +709,7 @@ secrets = Table(
     "secrets",
     metadata,
     _id(),
-    Column("owner_id", BigInteger, nullable=False),
+    Column("owner_id", BigInteger),  # a member's secret; null for one an agent profile owns (0085)
     Column("name", Text, nullable=False),
     Column("kind", Text, nullable=False),
     Column("env_var", Text),
@@ -722,12 +722,21 @@ secrets = Table(
     _stamp("updated_at"),
     _when("expires_at"),
     _when("deleted_at"),
+    Column("profile_id", BigInteger),  # 0085: the agent profile that owns it, null for a member's
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="secrets_owner_id_fkey"),
+    ForeignKeyConstraint(["profile_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="secrets_profile_id_fkey"),
     PrimaryKeyConstraint("id", name="secrets_pkey"),
 )
 Index(
     "secrets_name_key",
     secrets.c.owner_id,
+    secrets.c.name,
+    unique=True,
+    postgresql_where=secrets.c.deleted_at.is_(None),
+)
+Index(  # 0085: an agent's secret is unique by (profile, name) among the live ones
+    "secrets_profile_name_key",
+    secrets.c.profile_id,
     secrets.c.name,
     unique=True,
     postgresql_where=secrets.c.deleted_at.is_(None),
