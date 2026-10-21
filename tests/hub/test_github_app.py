@@ -109,6 +109,7 @@ def test_a_token_covers_only_the_repos_asked_for_with_the_permissions_of_a_run(f
     asked = [(OWNER, "evo-agents"), (OWNER, "evo-agents-harness"), (THEIRS, "lumen-identity")]
     before = datetime.now(UTC)
     result = tokens(config(fake, app_key), asked)
+    after = datetime.now(UTC)
 
     assert result.missing == {}
     by_account = {token.installation.account: token for token in result.tokens}
@@ -141,7 +142,11 @@ def test_a_token_covers_only_the_repos_asked_for_with_the_permissions_of_a_run(f
     for token in (mine, theirs):
         assert token.token.startswith("ghs_")
         assert token.permissions == GITHUB_PERMISSIONS == fake.app_tokens[token.token].permissions
-        assert timedelta(minutes=59) < token.expires_at - before <= timedelta(hours=1, seconds=1)
+        # The end is the one GitHub wrote (whole seconds), an hour after it made the token somewhere in [before, after];
+        # bounding by both ends keeps a slow run (Windows CI took 3.6 s here) from failing it.
+        made = fake.app_tokens[token.token].expires_at
+        assert token.expires_at == datetime.fromtimestamp(int(made), UTC)
+        assert before + timedelta(hours=1, seconds=-1) < token.expires_at <= after + timedelta(hours=1)
         assert token.token not in repr(token) and token.token not in repr(result)
 
     # The same installation asked for no repos would give a token for all of them: naming them is what narrows it.
