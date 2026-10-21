@@ -230,6 +230,67 @@ def test_merge_queue_a_rebase_that_changes_the_patch_judges_it_again_and_it_keep
     assert judge_runs(world) == 3
 
 
+# A rebase that would keep its head
+
+
+def test_merge_queue_a_merge_request_already_on_its_target_branch_is_merged_without_a_rebase(world):
+    first = labeled(world, "fix/one", "Fix one")
+    first.stale_reads = 2  # a rebase would start a pipeline on its head that the next reads do not show yet
+    gate_pass(world)
+    judge_next(world)
+    assert gate_pass(world) == {"merged": 1}
+    entry = by_iid(world)[1]
+    assert entry["state"] == "merged" and world.project.rebased == [] and merges(world) == [first.sha]
+    rebased = next(event for event in entry["events"] if event["kind"] == "rebased")
+    assert rebased["detail"] == {
+        "from": first.sha,
+        "to": first.sha,
+        "onto": sha_of("dev"),
+        "rebases": 1,
+        "asked": False,
+    }
+    assert rebased["reason"] == (
+        f"already on top of dev at {sha_of('dev')[:12]}: not rebased, which would only start its pipeline again"
+    )
+    assert "pipeline" in kinds(entry) and "merged" in kinds(entry)
+
+
+def test_merge_queue_a_rebase_that_keeps_its_head_waits_for_the_pipeline_gitlab_started_on_it(world):
+    first = labeled(world, "fix/one", "Fix one")
+    first.stale_reads = 2  # the reads right after its rebase still show the green head pipeline before it
+    gate_pass(world)
+    judge_next(world)
+    handle = world.fake.handle
+
+    def unknown_base(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/repository/merge_base"):  # GitLab cannot tell: the hub asks for a rebase
+            world.fake.requests.append(request)
+            return httpx.Response(404, json={"message": "404 Merge Base Not Found"})
+        return handle(request)
+
+    world.fake.handle = unknown_base
+    green_before = first.pipeline["id"]
+    assert gate_pass(world) == {}
+    entry = by_iid(world)[1]
+    assert world.project.rebased == [1] and first.sha == sha_of(f"{PATH}!1")  # the rebase kept its head
+    assert first.pipeline["id"] != green_before and first.pipeline["sha"] == first.sha  # and started a pipeline on it
+    assert merges(world) == [first.sha] and first.state == "opened"  # GitLab refused the merge (405) while it runs
+    assert entry["state"] == "testing"
+    assert (
+        entry["reason"] == "its turn (pipeline): GitLab would not merge it yet (405): a pipeline of its head still runs"
+    )
+    back = [
+        event for event in entry["events"] if event["kind"] == "pipeline" and event["detail"] == {"turn": "testing"}
+    ]
+    assert len(back) == 1 and back[0]["passed"] is None and back[0]["sha"] == first.sha
+    assert gate_pass(world) == {}
+    assert by_iid(world)[1]["reason"] == "its turn (pipeline): its head pipeline is running"
+    first.pipeline["status"] = "success"
+    assert gate_pass(world) == {"merged": 1}
+    assert by_iid(world)[1]["state"] == "merged" and merges(world) == [first.sha, first.sha]
+    assert world.project.notes == []  # never blocked
+
+
 # What blocks it in its turn
 
 
@@ -366,13 +427,13 @@ def test_merge_queue_hold_until_uat_check_waits_for_the_merge_before_to_pass_its
     entries = by_iid(world)
     assert entries[1]["state"] == "merged" and entries[2]["state"] == "ready"
     assert entries[2]["reason"] == "its turn waits for !1, merged before it, to pass its uat_check (merge.hold_until)"
-    assert world.project.rebased == [1]
+    assert world.project.rebased == []  # the first sat on dev: not rebased
     e = tables.merge_events
     project_id = sql(world.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
     check = {"project_id": project_id, "queue_id": entries[1]["id"], "kind": "uat_check", "passed": True}
     sql(world.db, insert(e).values(check))  # as what follows a merge records it (step 6 of the plan)
     assert gate_pass(world) == {}
-    assert by_iid(world)[2]["state"] == "testing" and world.project.rebased == [1, 2]
+    assert by_iid(world)[2]["state"] == "testing" and world.project.rebased == [2]
 
 
 def test_merge_queue_hold_until_merged_starts_the_next_turn_once_the_merge_before_is_merged(world):
@@ -401,7 +462,7 @@ def test_merge_queue_a_draft_gives_its_turn_back_and_takes_it_again_once_ready(w
     first.draft = False
     assert gate_pass(world) == {}
     entries = by_iid(world)
-    assert entries[1]["state"] == "testing" and world.project.rebased == [1, 2, 1]
+    assert entries[1]["state"] == "testing" and world.project.rebased == [1, 2]  # on dev since its rebase: not again
 
 
 def test_merge_queue_turning_the_repo_off_mid_turn_hands_its_merge_requests_back(world):

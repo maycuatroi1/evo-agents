@@ -225,6 +225,35 @@ def test_merge_queue_reads_the_head_of_a_branch_and_a_merge_request_behind_it_ne
     assert project.branches["main"] == found.sha
 
 
+def test_merge_queue_reads_whether_a_head_holds_its_target_branch_and_a_rebase_that_keeps_it_starts_a_pipeline(fake):
+    project, mr = merge_request_of(fake, stale_reads=1)
+    main = project.branches["main"]
+    assert calls(fake, lambda gl: gl.merge_base(PATH, mr.sha, main)) == main  # it sits on main: no rebase needed
+    request = fake.requests[-1]
+    assert request.url.path == f"/api/v4/projects/{PATH}/repository/merge_base"
+    assert request.url.params.get_list("refs[]") == [mr.sha, main]
+    assert calls(fake, lambda gl: gl.merge_base(PATH, mr.sha, sha_of("not on GitLab"))) is None  # 400
+    project.branches["main"] = sha_of("merged by hand")
+    assert calls(fake, lambda gl: gl.merge_base(PATH, mr.sha, project.branches["main"])) == main  # behind it
+
+    project.branches["main"] = main
+    green = fake.add_pipeline(project, mr.sha, mr.source_branch, "success")
+    mr.pipeline = green
+
+    async def rebased(gl):
+        await gl.rebase(PATH, mr.iid)
+        return [await gl.merge_request(PATH, mr.iid) for _ in range(2)]
+
+    lagging, caught_up = calls(fake, rebased)
+    assert lagging.sha == caught_up.sha == mr.sha  # the rebase kept its head, and started a pipeline on it
+    assert (lagging.head_pipeline.id, lagging.detailed_merge_status) == (green["id"], "mergeable")
+    assert caught_up.head_pipeline.status == "running" and caught_up.detailed_merge_status == "ci_still_running"
+    with pytest.raises(NotMergeable, match="GitLab answered 405 while merging !1"):
+        calls(fake, lambda gl: gl.merge(PATH, mr.iid, mr.sha))
+    mr.pipeline["status"] = "success"
+    assert calls(fake, lambda gl: gl.merge(PATH, mr.iid, mr.sha)).state == "merged"
+
+
 def test_merge_queue_retries_a_pipeline_that_failed(fake):
     project, mr = merge_request_of(fake)
     pipeline = fake.add_pipeline(project, mr.sha, mr.source_branch, "failed", jobs=[("test", "failed")])
