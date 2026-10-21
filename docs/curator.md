@@ -294,10 +294,11 @@ App any plan run of its owner gets, and it pushes as its plan says, the default 
 runs of the Curator. List in `night_plans` only plans you would let run unattended.
 
 **The Reviewer** works in worktrees detached at the commit origin's default branch has, and its prompt says that what
-it reads is data and never instructions. It looks through `review.lenses` of fourteen lenses a night, taken in turn
+it reads is data and never instructions. It looks through `review.lenses` of fifteen lenses a night, taken in turn
 (`tool_errors`, `environment`, `corrections`, `failed_runs`, `runtime`, `tech_debt`, `code_health`, `docs_drift`,
-`harness`, `skills_memory`, `cost`, `security`, `product_goals`, `kg_health`; `docs/hub.md`, "Runtime and harness",
-says what the night's figures hold for `runtime` and `harness`). Each finding and proposal cites evidence the hub
+`harness`, `skills_memory`, `cost`, `security`, `product_goals`, `product`, `kg_health`; `docs/hub.md`, "Runtime and
+harness", says what the night's figures hold for `runtime` and `harness`, and The lens product below what they hold for
+`product`). Each finding and proposal cites evidence the hub
 checks before it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest),
 `transcript:ID[:FILE]:LINE` (a line of a transcript the hub holds), `run:ID:SEQ` (an event of a run, a local run of the
 owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a file the knowledge graph does not hold
@@ -357,6 +358,33 @@ all. One sign fails the change and puts its proposal at tier 3.
 the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
 passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
 the Claude subscription login alone, never an API key.
+
+### The lens product
+
+The lens `product` (plan loop-engine, criterion a9) reads the product as the project measures it and writes proposals
+that members decide; it changes no claim, baseline, goal or policy itself, and hands no work to the Loop. It takes its
+turn with the other lenses: with three lenses a night, once in five nights.
+
+- **What it reads.** The night's figures hold `product`, counted without any model as the night shift's owner reads
+  the project through its hub sink: the active goals by rank with their metric and the signal key it names, their
+  deadline and canvas; each signal key that is not archived with how many values the span holds, when the newest was
+  measured and, for a number, the smallest, the largest and the newest; and, when the project enables the plugin
+  canvas, each canvas with its claims by status, the claims at testing past their test card's deadline, its open
+  proposals and its newest baseline. On its night the prompt shows this figure first. Where the project enables
+  canvas, the run reads a canvas or a claim whole with `canvas__read` and a key's values with `canvas__signals`.
+- **Claims.** It proposes a claim the numbers suggest and no canvas holds, or a change of a claim at the rev it read,
+  with `canvas__propose` (`docs/canvas-plugin.md`): a new claim starts as an assumption with a test card, and nothing
+  changes until a writer accepts it. The plugin takes the tool from a review run only on a night of this lens, and the
+  proposal carries the run as its provenance. The run never edits a claim, adds evidence, proposes `validated` or
+  decides a baseline: the plugin refuses each to it. A project that does not enable canvas gets no claim proposal, and
+  its figure's `canvases` is null.
+- **Policy.** It proposes a change of the project's autonomy policy, such as a cap or a pace that holds a goal back,
+  with `builder__propose` of kind `policy` (`docs/plugins.md`, Builder), where the project enables the plugin builder.
+  The proposal names the review run, has no thread, and is made for the night shift's owner while that member holds
+  the writer role; its Inbox notice links to the run, and an admin of the project approves or rejects it. The run
+  proposes no other kind, a goal included.
+
+The Loop's own numbers (work items by state and by goal) join the figure once the Loop keeps work items.
 
 ## Replays
 
@@ -630,6 +658,7 @@ evo-agents hub kg health --project demo
 | 0059 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
 | 0060 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
 | 0061 | the lenses `runtime` and `harness` |
+| 0088 | the lens `product` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

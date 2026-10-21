@@ -927,7 +927,9 @@ it is. Going back to 0085 deletes the deliveries and the rows of `hub_events` of
 permissions out of every grant. Schema 0087 adds the Loop of a project (plan loop-engine): `loop_states` (on or off,
 the cursor on `hub_events`, the breaker), `loop_items` (each work item: kind, cycle, key unique in the project,
 ancestors, state and reason, tries and failures, the engine that made it) and `loop_item_events`, its ledger, only
-ever added to; no column of an older table changes, and going back to 0086 drops the three tables.
+ever added to; no column of an older table changes, and going back to 0086 drops the three tables. Schema 0088 lets
+`findings.lens` and `proposals.lens` take the Curator's lens `product` (`docs/curator.md`, The lens product); going
+back to 0087 deletes the findings and proposals of that lens.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
