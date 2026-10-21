@@ -43,6 +43,9 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "canvas_baseline": "A baseline of a Lean Canvas waits for your review",
     "merge_paused": "Merge queue paused",
     "release": "Daily release",
+    "loop_paused": "The Loop of a project stopped",
+    "goal_review": "The goals of a project wait for their monthly review",
+    "loop_brief": "The Loop's morning brief",
 }
 
 

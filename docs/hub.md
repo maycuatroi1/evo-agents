@@ -1684,6 +1684,26 @@ evo-agents hub loop resume --project demo     # an admin resets the breaker that
 `GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the
 admin's reset (403 for anyone else, 409 when the breaker has not tripped), audited `loop.resume`.
 
+**The decision board** of a project, `GET /v1/projects/{p}/decision-board` (the web's `/p/{p}/decide`), gathers what
+waits for a person, the three gates first: the goals (the month's review once the hub asked for it with the notice
+`goal_review`, until a goal gets a revision or the month ends, and each active goal past its deadline), the canvases
+(each baseline still proposed with an item to decide, its overdue test cards among them, and each open proposal of a
+claim) and the policy (each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose
+breaker tripped, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
+decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person and
+its repos to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
+that wait for their review, with their settle chats. The SRS review and the settle chat are no fourth gate: the rules
+of the plugin srs stay. Each item has its group and kind, a title, since when, who may decide it (`decided_by`:
+`admin`, `writer`, `run_owner`, `srs_reviewer` or `chat_member`, and `deciders`, the logins that may now), the page
+where it is decided and the work item it holds up. Anyone with a grant reads the board and sees only what they may
+read (a canvas's items under its label, a decision of a run whose plan they read, through `X-Evo-Sink` or the
+project's hub sink); each page's buttons call the object's own route, so who may decide is as it was. The job
+`hub.loop_notices`, every 5 minutes, sends `goal_review` on the first day of each month to the admins and goal owners
+of a project whose Loop is on, and `loop_brief`, the Loop's part of the morning brief, at 07:00 in the Loop's zone to
+the goal owners of a project whose Curator sends no brief; the Curator's brief carries that part itself
+(`docs/notifications.md`, Notices). Schema 0090 lets `notifications.notice_kind` take both; going back to 0089 deletes
+them.
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a
@@ -2425,6 +2445,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/1`;
   it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
   (`HubContext.loop_tick`).
+- `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
+  on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each
+  once (The decision board, above; `evo_agents.hub.server.loop.notices`).
 - `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched

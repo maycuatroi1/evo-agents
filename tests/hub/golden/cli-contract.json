@@ -50461,6 +50461,96 @@
           }
         }
       },
+      "/v1/projects/{project}/decision-board": {
+        "get": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Decision Board",
+          "description": "Everything of the project that waits for a person: the goals, the canvases and the policy (the three gates),\nthen the Loop's exceptions and the SRS versions and settle chats its chain waits on; each with since when, who may\ndecide it and the page where it is decided.",
+          "operationId": "decision_board_v1_projects__project__decision_board_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DecisionBoard"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/merge-queue": {
         "get": {
           "tags": [
@@ -53590,6 +53680,133 @@
             "sha256"
           ],
           "title": "BlobCheck"
+        },
+        "BoardItem": {
+          "properties": {
+            "group": {
+              "type": "string",
+              "enum": [
+                "goal",
+                "canvas",
+                "policy",
+                "exception",
+                "srs"
+              ],
+              "title": "Group",
+              "description": "goal, canvas and policy are the three gates; exception and srs what the Loop's chain waits on"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "goal_review",
+                "goal_overdue",
+                "baseline",
+                "claim_proposal",
+                "policy_proposal",
+                "goal_proposal",
+                "merge_breaker",
+                "loop_breaker",
+                "loop_decision",
+                "run_decision",
+                "author_question",
+                "merge_held",
+                "merge_manual",
+                "merge_sample",
+                "srs_review",
+                "srs_finding"
+              ],
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "what waits, in one line"
+            },
+            "since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since",
+              "description": "when it began to wait"
+            },
+            "decided_by": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "writer",
+                "run_owner",
+                "srs_reviewer",
+                "chat_member"
+              ],
+              "title": "Decided By",
+              "description": "who may decide it, as a rule"
+            },
+            "deciders": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Deciders",
+              "description": "the logins of the members who may decide it now"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link",
+              "description": "the page of the hub's web where it is decided"
+            },
+            "work_item": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Item",
+              "description": "the Loop's work item that waits on it"
+            },
+            "refs": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "object",
+              "title": "Refs",
+              "description": "the ids of what waits: decision, run, proposal, baseline, plan, goal..."
+            }
+          },
+          "type": "object",
+          "required": [
+            "group",
+            "kind",
+            "title",
+            "since",
+            "decided_by",
+            "deciders",
+            "link"
+          ],
+          "title": "BoardItem",
+          "description": "One thing of the project that waits for a person."
         },
         "Branding": {
           "properties": {
@@ -60591,6 +60808,52 @@
           ],
           "title": "DecisionAsk"
         },
+        "DecisionBoard": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "loop": {
+              "type": "boolean",
+              "title": "Loop",
+              "description": "the policy's loop.enabled: the Loop makes work items"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "propertyNames": {
+                "enum": [
+                  "goal",
+                  "canvas",
+                  "policy",
+                  "exception",
+                  "srs"
+                ]
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "the items of each group"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/BoardItem"
+              },
+              "type": "array",
+              "title": "Items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "loop",
+            "counts",
+            "items"
+          ],
+          "title": "DecisionBoard",
+          "description": "Everything of a project that waits for a person, the three gates first, the oldest first in each group."
+        },
         "DecisionList": {
           "properties": {
             "decisions": {
@@ -67502,7 +67765,9 @@
                     "canvas_baseline",
                     "merge_paused",
                     "release",
-                    "loop_paused"
+                    "loop_paused",
+                    "goal_review",
+                    "loop_brief"
                   ]
                 },
                 {
