@@ -6473,6 +6473,54 @@
       ],
       "json": null
     },
+    "hub pm daily": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--date"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "date",
+          "previous_working_day",
+          "done_use_cases",
+          "done_tasks",
+          "sprint",
+          "late",
+          "review",
+          "stale",
+          "blocked",
+          "escalate",
+          "load",
+          "hidden"
+        ],
+        "schema": "PmDaily"
+      }
+    },
     "hub policy diff": {
       "positionals": [
         {
@@ -35179,6 +35227,125 @@
                 }
               },
               "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/pm/{project}/daily": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Daily",
+          "description": "The daily report: what was done on the working day before ``date``, the sprint, what is late, in review,\nstale or blocked, what to escalate, and the load of each member.",
+          "operationId": "daily_v1_x_pm__project__daily_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "date",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the day of the report; today when left out",
+                "title": "Date"
+              },
+              "description": "the day of the report; today when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PmDaily"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "422": {
               "content": {
@@ -70008,6 +70175,809 @@
             "published_at"
           ],
           "title": "PluginVersion"
+        },
+        "PmBlocked": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "decision"
+              ],
+              "title": "Kind"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "waiting_kind": {
+              "type": "string",
+              "enum": [
+                "member",
+                "task",
+                "text"
+              ],
+              "title": "Waiting Kind"
+            },
+            "waiting_on": {
+              "type": "string",
+              "title": "Waiting On"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "set_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Set By"
+            },
+            "age_days": {
+              "type": "integer",
+              "title": "Age Days",
+              "description": "working days since"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "kind",
+            "reason",
+            "waiting_kind",
+            "waiting_on",
+            "since",
+            "set_by",
+            "age_days",
+            "decision_id",
+            "run_id"
+          ],
+          "title": "PmBlocked"
+        },
+        "PmDaily": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "date": {
+              "type": "string",
+              "format": "date",
+              "title": "Date"
+            },
+            "previous_working_day": {
+              "type": "string",
+              "format": "date",
+              "title": "Previous Working Day"
+            },
+            "done_use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/PmDoneUseCase"
+              },
+              "type": "array",
+              "title": "Done Use Cases"
+            },
+            "done_tasks": {
+              "items": {
+                "$ref": "#/components/schemas/PmDoneTask"
+              },
+              "type": "array",
+              "title": "Done Tasks"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PmSprint"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "late": {
+              "items": {
+                "$ref": "#/components/schemas/PmLate"
+              },
+              "type": "array",
+              "title": "Late"
+            },
+            "review": {
+              "items": {
+                "$ref": "#/components/schemas/PmReview"
+              },
+              "type": "array",
+              "title": "Review"
+            },
+            "stale": {
+              "items": {
+                "$ref": "#/components/schemas/PmStale"
+              },
+              "type": "array",
+              "title": "Stale"
+            },
+            "blocked": {
+              "items": {
+                "$ref": "#/components/schemas/PmBlocked"
+              },
+              "type": "array",
+              "title": "Blocked"
+            },
+            "escalate": {
+              "items": {
+                "$ref": "#/components/schemas/PmEscalate"
+              },
+              "type": "array",
+              "title": "Escalate"
+            },
+            "load": {
+              "items": {
+                "$ref": "#/components/schemas/PmLoad"
+              },
+              "type": "array",
+              "title": "Load"
+            },
+            "hidden": {
+              "$ref": "#/components/schemas/PmHidden",
+              "description": "what each list leaves out because the reader may not see it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "date",
+            "previous_working_day",
+            "done_use_cases",
+            "done_tasks",
+            "sprint",
+            "late",
+            "review",
+            "stale",
+            "blocked",
+            "escalate",
+            "load",
+            "hidden"
+          ],
+          "title": "PmDaily",
+          "description": "What the project did on the working day before ``date``, and what needs the PM today."
+        },
+        "PmDoneTask": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the task's number as shown, T-42"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "done_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Done At",
+              "description": "when it moved to a status of group done, inside the window"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "assignees",
+            "done_at"
+          ],
+          "title": "PmDoneTask"
+        },
+        "PmDoneUseCase": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "task": {
+              "type": "string",
+              "title": "Task",
+              "description": "the task whose state is the use case's: its frame task, else the task opened last"
+            },
+            "done_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Done At"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "the section `## Kết quả` or `## Outcome` that ends its description"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "title",
+            "task",
+            "done_at",
+            "outcome"
+          ],
+          "title": "PmDoneUseCase"
+        },
+        "PmEscalate": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "decision"
+              ],
+              "title": "Kind"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "waiting_kind": {
+              "type": "string",
+              "enum": [
+                "member",
+                "task",
+                "text"
+              ],
+              "title": "Waiting Kind"
+            },
+            "waiting_on": {
+              "type": "string",
+              "title": "Waiting On"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "set_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Set By"
+            },
+            "age_days": {
+              "type": "integer",
+              "title": "Age Days",
+              "description": "working days since"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "escalate_to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escalate To",
+              "description": "the config's pm: whom the escalation is for"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "kind",
+            "reason",
+            "waiting_kind",
+            "waiting_on",
+            "since",
+            "set_by",
+            "age_days",
+            "decision_id",
+            "run_id",
+            "escalate_to"
+          ],
+          "title": "PmEscalate"
+        },
+        "PmHidden": {
+          "properties": {
+            "done_use_cases": {
+              "type": "integer",
+              "title": "Done Use Cases",
+              "default": 0
+            },
+            "done_tasks": {
+              "type": "integer",
+              "title": "Done Tasks",
+              "default": 0
+            },
+            "sprint": {
+              "type": "integer",
+              "title": "Sprint",
+              "default": 0
+            },
+            "late": {
+              "type": "integer",
+              "title": "Late",
+              "default": 0
+            },
+            "review": {
+              "type": "integer",
+              "title": "Review",
+              "default": 0
+            },
+            "stale": {
+              "type": "integer",
+              "title": "Stale",
+              "default": 0
+            },
+            "blocked": {
+              "type": "integer",
+              "title": "Blocked",
+              "default": 0
+            },
+            "escalate": {
+              "type": "integer",
+              "title": "Escalate",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "title": "PmHidden"
+        },
+        "PmLate": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the task's number as shown, T-42"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "due_on": {
+              "type": "string",
+              "format": "date",
+              "title": "Due On"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "overdue",
+                "at_risk"
+              ],
+              "title": "Kind"
+            },
+            "days_late": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days Late",
+              "description": "working days past due_on; overdue only"
+            },
+            "days_left": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days Left",
+              "description": "working days left to due_on, today's included; at risk only"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "assignees",
+            "due_on",
+            "kind",
+            "days_late",
+            "days_left"
+          ],
+          "title": "PmLate"
+        },
+        "PmLoad": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role"
+            },
+            "doing": {
+              "type": "integer",
+              "title": "Doing"
+            },
+            "wip_limit": {
+              "type": "integer",
+              "title": "Wip Limit"
+            },
+            "overloaded": {
+              "type": "boolean",
+              "title": "Overloaded",
+              "description": "doing is above wip_limit"
+            },
+            "empty": {
+              "type": "boolean",
+              "title": "Empty",
+              "description": "no task doing"
+            },
+            "review_as_qa": {
+              "type": "integer",
+              "title": "Review As Qa"
+            },
+            "late": {
+              "type": "integer",
+              "title": "Late"
+            },
+            "doing_tasks": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Doing Tasks"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "role",
+            "doing",
+            "wip_limit",
+            "overloaded",
+            "empty",
+            "review_as_qa",
+            "late",
+            "doing_tasks"
+          ],
+          "title": "PmLoad"
+        },
+        "PmReview": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the task's number as shown, T-42"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "qa": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Qa"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since",
+              "description": "when it moved to a status of group review"
+            },
+            "age_days": {
+              "type": "integer",
+              "title": "Age Days",
+              "description": "working days since"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "assignees",
+            "qa",
+            "since",
+            "age_days"
+          ],
+          "title": "PmReview"
+        },
+        "PmSprint": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "opened_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Opened At",
+              "description": "when it turned active, else its first day, else when it was made"
+            },
+            "scope": {
+              "type": "integer",
+              "title": "Scope",
+              "description": "the tasks it held when it opened"
+            },
+            "done_percent": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done Percent",
+              "description": "of that scope, done now; cancelled tasks leave the whole"
+            },
+            "added": {
+              "type": "integer",
+              "title": "Added",
+              "description": "tasks in it now that were not in it when it opened"
+            },
+            "removed": {
+              "type": "integer",
+              "title": "Removed",
+              "description": "tasks that were in it when it opened and are not now"
+            },
+            "working_days": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Working Days",
+              "description": "in the sprint, from its opening to ends_on"
+            },
+            "working_days_gone": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Working Days Gone",
+              "description": "before the date of the report"
+            },
+            "time_percent": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Time Percent",
+              "description": "working_days_gone over working_days"
+            },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/PmSprintUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "starts_on",
+            "ends_on",
+            "opened_at",
+            "scope",
+            "done_percent",
+            "added",
+            "removed",
+            "working_days",
+            "working_days_gone",
+            "time_percent",
+            "use_cases"
+          ],
+          "title": "PmSprint"
+        },
+        "PmSprintUseCase": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "the tasks of the sprint that link it, not cancelled"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "title",
+            "done",
+            "total"
+          ],
+          "title": "PmSprintUseCase"
+        },
+        "PmStale": {
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the task's number as shown, T-42"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "last_activity_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last Activity At"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "history, comment, run, plan_step or created"
+            },
+            "idle_days": {
+              "type": "integer",
+              "title": "Idle Days"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ref",
+            "title",
+            "assignees",
+            "last_activity_at",
+            "source",
+            "idle_days"
+          ],
+          "title": "PmStale"
         },
         "PolicyChange": {
           "properties": {
