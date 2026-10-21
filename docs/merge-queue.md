@@ -162,15 +162,19 @@ back until it reaches `merge.hold_until`: `merged` (the default) holds nothing, 
 that check of the merge.
 
 1. **Rebasing.** The hub reads the head of the target branch, asks GitLab to rebase the merge request onto it, and
-   waits for GitLab. A rebase GitLab fails, or one still running after `merge.pipeline_minutes`, blocks it.
+   waits for GitLab. A rebase GitLab fails, or one still running after `merge.pipeline_minutes`, blocks it. A merge
+   request whose head already holds the head of the target branch, a revert opened on it among them, is not rebased:
+   GitLab would start another pipeline on the same head and refuse the merge while it runs, though the head pipeline
+   it shows for a moment is still the green one before it.
 2. **Testing.** The target branch moving sends it back to `ready` at the head of the queue, to be rebased again; after
    three rebases in a row it is blocked. A push of someone else sends it back to its gates. The pipeline of the new head
    that fails runs again once, and failing again blocks the merge request. Green, gates 0, 1 and 3 are read again at
    that head: the same patch goes on to its merge; a new patch goes through its gates and Judges again, keeping its
    place.
 3. **Merging.** GitLab merges it only while its head is still the sha its pipeline passed on, by fast-forward. A push
-   in between sends it back to its gates; the target branch moving sends it back to `ready`; any other refusal blocks
-   it with GitLab's words.
+   in between sends it back to its gates; the target branch moving sends it back to `ready`; a pipeline of its head
+   still running (`ci_still_running`) sends it back to testing, to wait for that pipeline; any other refusal blocks it
+   with GitLab's words.
 
 Each move is written to Postgres before the GitLab call it leads to and read back from GitLab at the next move, so a
 hub that restarts mid-turn goes on where it was. Each move is a line of the ledger (`rebased`, `pipeline`, `retried`,
