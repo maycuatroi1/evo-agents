@@ -1773,6 +1773,38 @@ codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a p
    out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
    looks every hour.
 
+### The Python environment of a worktree
+
+`python -m pytest` and `python -m <package>` import the modules of the worktree, but read the package's metadata (its
+entry points, the core plugins among them) from whatever the machine's `python` has installed, which may be another
+version of the package or none. A repo asks for an environment of its own in its `pyproject.toml`, at the branch the run
+works on (`evo_agents/worker/venvs.py`):
+
+```toml
+[tool.evo-agents.worker]
+venv = true                                   # the worker makes <worktree>/.venv
+extras = ["test"]                             # the extras `uv sync` installs, --extra each
+groups = ["lint"]                             # dependency groups beyond uv's default ones, --group each
+requirements = ["deploy/plugins.txt"]         # requirement files installed after it, --no-deps, hashes checked
+```
+
+A plan run, and a run of one step, then run `uv sync --frozen` with those extras and groups in the worktree once it is
+made, before the agent starts, and `uv pip install --no-deps -r` of each requirement file into it: the repo's own
+package goes in editable mode into `<worktree>/.venv`, from the repo's `uv.lock`. Its `.venv/bin` goes first on the PATH
+of the agent and of every command the daemon runs for the run, and `VIRTUAL_ENV` (and `UV_PROJECT_ENVIRONMENT`) leave
+the agent's environment, so `uv pip` and `uv run` find the worktree's. The run's log notes each command and its time,
+and the run's record names each environment (`venvs`, repo -> its bin directory). `evo-agents worker step` makes the
+environment of the step's repo again before a done step's verify, and before the verify it runs again on a default
+branch the remote moved on, so an entry point or a dependency the step added to `pyproject.toml` is in it, and runs the
+verify with that repo's `.venv/bin` first; the daemon does the same before it runs the verify of a run of one step. uv
+is fast once its cache has the packages: the environment of evo-agents took 1.4 s on a Mac whose cache had them.
+
+A repo that does not ask, or whose `venv` is not `true`, gets nothing of it, and neither does a run whose agent runs in
+a container ([Environments of plugins](#environments-of-plugins)); the run's log says so. Settings that are not as
+above, or a command that fails, fail the run before the agent starts with failure_cause `environment` and the end of
+uv's output; uv not on the run's PATH fails it with `missing_tool`. A failed `uv sync` in `worker step` refuses the step,
+as a verify that fails does.
+
 ### A plan run on the machine
 
 1. The daemon takes the run's leases for all its repos, as for a run of one step, so the agent's `evo-agents worker
@@ -2310,8 +2342,8 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 |---|---|
 | `origin` | the project lists no origin for a repo it needs (preflight) |
 | `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
-| `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
-| `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight) |
+| `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), a verify command exited 127, or a repo asks for a Python environment and uv is not on PATH |
+| `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight); or the Python environment a repo asks for was not made ([The Python environment of a worktree](#the-python-environment-of-a-worktree)) |
 | `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
 | `push_declined` | origin declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset: git's `[remote rejected]`), neither for its credential nor because the branch moved on; the error ends with origin's reason, and the commits are still in the run's worktree. A chat run that failed so goes on in its session at the next message, whose run pushes again ([Chat runs](#chat-runs)); a triage agent asks the owner rather than rerun it |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
