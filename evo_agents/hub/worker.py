@@ -59,6 +59,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   time per project and at most one waiting, also queued by each event of the project. The tick is the server's
   (``evo_agents.hub.server.loop.tick``): the ``hub worker`` command hands it down (``HubContext.loop_tick``), as it
   does the release pass.
+- ``hub.loop_notices``, every 5 minutes: for each project whose Loop is on, the notice goal_review on the first day of
+  a month, and the Loop's part of the morning brief (loop_brief) at 07:00 for a project whose Curator sends none, in
+  the Loop's zone, each once (``evo_agents.hub.server.loop.notices``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -367,6 +370,14 @@ async def loop_ticks(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.loop_jobs import queue_ticks
 
     return await queue_ticks(hub(context).engine, context.app.job_manager)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.LOOP_NOTICES, pass_context=True, queueing_lock=jobs.LOOP_NOTICES)
+async def loop_notices(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_loop_notices
+
+    return await send_loop_notices(hub(context).engine)
 
 
 @queue.task(name=jobs.LOOP_TICK, pass_context=True)

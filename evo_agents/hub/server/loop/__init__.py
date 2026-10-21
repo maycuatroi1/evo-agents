@@ -15,7 +15,10 @@ into work items with ancestors and a key, and moves them on.
 - ``stall`` and ``breaker`` (criterion a7): triage at the second failure, a decision of a person at the third, and the
   breaker that stops the Loop of a project making too many work items in an hour; ``routes``: its state and the reset
   of its breaker;
-- ``state``: the Loop turned on and off with the revision of the policy that sets ``loop.enabled``.
+- ``state``: the Loop turned on and off with the revision of the policy that sets ``loop.enabled``;
+- ``board``, ``board_gates``, ``board_chain`` and ``board_items`` (criterion a8): the project's decision board, the
+  three gates and what the Loop's chain waits on a person for; ``notices``: the month's review of the goals, the Loop's
+  part of the morning brief, and its brief of its own for a project whose Curator sends none.
 
 The Loop's rows are tables loop_states, loop_items and loop_item_events (``evo_agents.hub.tables_loop``); its keys are
 the section ``loop`` of the autonomy policy (``evo_agents.hub.autonomy``). This package imports no core plugin: it

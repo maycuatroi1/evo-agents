@@ -306,6 +306,8 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 # loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
+# goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
+# loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -319,6 +321,8 @@ NOTICE_KINDS = (
     "merge_paused",
     "release",
     "loop_paused",
+    "goal_review",
+    "loop_brief",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel

@@ -159,12 +159,15 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
 | `merge_paused` | the breaker of a repo of the hub's merge queue on GitLab tripped, to each admin of the project: the queue of that repo waits until an admin resets it (`docs/merge-queue.md`, The breaker) | the repo, its target branch, the cause and its reason, the merge requests it paused, how to reset it, and a link to the project's merge queue |
 | `loop_paused` | the breaker of a project's Loop tripped: it made more work items in an hour than `loop.max_items_per_hour`, to each admin of the project; the Loop reads no event and hands out no run until an admin resets it (`evo-agents hub loop resume`) | the work items of the hour, the cap, how to reset it, and a link to the project's Loop page |
+| `goal_review` | the first day of a month in the Loop's zone (`loop.timezone`, else the charter's, else UTC), or the first pass of `hub.loop_notices` within its first week: each admin of a project whose Loop is on, and each owner of one of its active goals, once that month (gate 1 of the decision board, `docs/hub.md`, "The decision board") | the active goals with their metric, whether it meets its target, and their deadline; a link to the decision board |
+| `loop_brief` | 07:00 in the Loop's zone, within three hours, once a day: the Loop's part of the morning brief, for a project whose Loop is on and whose Curator sends no `curator_brief` (no night shift, or the feature `curator` off), to each owner of one of its active goals | the runs the Loop handed out and the work items it finished in the last 24 hours, and those waiting for a person by reason; a link to the decision board |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `release`, `merge_paused`, `loop_paused`, `author_waiting`, `chat_mention` and `chat_added`, and the
+`curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `author_waiting`, `chat_mention`
+and `chat_added`, and the
 `merge_default_branch` of its merge queue. A release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
@@ -272,7 +275,8 @@ A notification links to a page of the hub's web: a decision to `/inbox?decision=
 `/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
 `curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
 (`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
-(`/p/{p}/merge-queue`), `loop_paused` to the project's Loop page (`/p/{p}/loop`), and a chat's notice to the chat (`/chats/{id}`,
+(`/p/{p}/merge-queue`), `loop_paused` to the project's Loop page (`/p/{p}/loop`), `goal_review` and `loop_brief` to
+the project's decision board (`/p/{p}/decide`), and a chat's notice to the chat (`/chats/{id}`,
 with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 

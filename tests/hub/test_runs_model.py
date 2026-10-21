@@ -360,6 +360,8 @@ def test_decisions_and_notices_the_plan_names():
         "merge_paused",
         "release",
         "loop_paused",
+        "goal_review",
+        "loop_brief",
     )
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")

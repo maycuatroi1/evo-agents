@@ -608,7 +608,11 @@ that way is treated the same. No message holds a decision's context, a proposal'
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
 its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
 planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
-(`curator_briefs`, schema 0015). A planned change's reason is the one the night shift wrote the last time it passed
+(`curator_briefs`, schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
+runs the Loop handed out and the work items it finished in the 24 hours before the brief, and those waiting for a
+person by reason, with a link to the decision board (`docs/hub.md`, "The decision board"); a project whose Loop is off
+has none, and a project whose Loop is on with no brief of the Curator gets that part alone as the notice `loop_brief`
+at 07:00. A planned change's reason is the one the night shift wrote the last time it passed
 over it: the ruleset not checked or not keeping the Curator off, the owner's git secret missing, a run of its plan
 still active, no step ready, a worker on duty that cannot build it, or its plan gone from the hub. `evo-agents hub
 curator changes` shows it too.

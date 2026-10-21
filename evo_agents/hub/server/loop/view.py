@@ -530,9 +530,9 @@ async def _versions(conn: AsyncConnection, events: Sequence[Event]) -> dict[int,
 # The week
 
 
-async def _zone(conn: AsyncConnection, project_id: int, policy: dict) -> str:
-    """The zone of the Loop's schedule: ``loop.timezone``, else the charter's window's, else UTC; a zone Postgres does
-    not know is passed over."""
+async def loop_zone(conn: AsyncConnection, project_id: int, policy: dict) -> str:
+    """The zone of the Loop's schedule (its weekly look at the goals, the month's review of them, its brief):
+    ``loop.timezone``, else the charter's window's, else UTC; a zone Postgres does not know is passed over."""
     c = tables.charters
     charter = await conn.scalar(
         select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
@@ -557,7 +557,7 @@ def week_of(local_now: datetime, weekday: str, at: str) -> tuple[str, datetime] 
 
 
 async def _week(conn: AsyncConnection, project_id: int, policy: dict) -> tuple[str | None, datetime | None]:
-    zone = await _zone(conn, project_id, policy)
+    zone = await loop_zone(conn, project_id, policy)
     local_now = await conn.scalar(select(func.timezone(zone, func.now())))
     brainstorm = policy.get("brainstorm") or {}
     found = week_of(local_now, brainstorm.get("weekday", "monday"), brainstorm.get("time", "09:00"))
@@ -607,4 +607,4 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
     )
 
 
-__all__ = ["load", "reached", "week_of"]
+__all__ = ["load", "loop_zone", "reached", "run_chains", "week_of"]
