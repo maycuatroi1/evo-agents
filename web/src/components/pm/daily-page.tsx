@@ -20,11 +20,12 @@ import { TASKS_BOARD, TASKS_PLUGIN } from "@/lib/core-plugin-links";
 import { type PmDaily, pmDailyQuery, validDate } from "./api";
 import { BlockedSection, DoneSection, EscalateSection, LateSection, LoadSection, ReviewSection, SprintSection, StaleSection } from "./sections";
 
-/** A project with no task at all has nothing to report: the way to its first one. */
+/** A project with no task at all has nothing to report: the way to its first one. Its members are listed in the load with nothing counted, which is no task either. */
 function isBare(daily: PmDaily): boolean {
   return (
     daily.sprint === null &&
-    daily.done_use_cases.length + daily.done_tasks.length + daily.late.length + daily.review.length + daily.stale.length + daily.blocked.length + daily.escalate.length + daily.load.length === 0 &&
+    daily.done_use_cases.length + daily.done_tasks.length + daily.late.length + daily.review.length + daily.stale.length + daily.blocked.length + daily.escalate.length === 0 &&
+    daily.load.every((row) => row.doing === 0 && row.late === 0 && row.review_as_qa === 0) &&
     Object.values(daily.hidden).every((count) => count === 0)
   );
 }
