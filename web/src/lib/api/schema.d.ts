@@ -4085,6 +4085,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/pm/{project}/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily
+         * @description The daily report: what was done on the working day before ``date``, the sprint, what is late, in review,
+         *     stale or blocked, what to escalate, and the load of each member.
+         */
+        get: operations["daily_v1_x_pm__project__daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents": {
         parameters: {
             query?: never;
@@ -15206,6 +15227,379 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+        };
+        /** PmBlocked */
+        PmBlocked: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /**
+         * PmDaily
+         * @description What the project did on the working day before ``date``, and what needs the PM today.
+         */
+        PmDaily: {
+            /** Project */
+            project: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Previous Working Day
+             * Format: date
+             */
+            previous_working_day: string;
+            /** Done Use Cases */
+            done_use_cases: components["schemas"]["PmDoneUseCase"][];
+            /** Done Tasks */
+            done_tasks: components["schemas"]["PmDoneTask"][];
+            sprint: components["schemas"]["PmSprint"] | null;
+            /** Late */
+            late: components["schemas"]["PmLate"][];
+            /** Review */
+            review: components["schemas"]["PmReview"][];
+            /** Stale */
+            stale: components["schemas"]["PmStale"][];
+            /** Blocked */
+            blocked: components["schemas"]["PmBlocked"][];
+            /** Escalate */
+            escalate: components["schemas"]["PmEscalate"][];
+            /** Load */
+            load: components["schemas"]["PmLoad"][];
+            /** @description what each list leaves out because the reader may not see it */
+            hidden: components["schemas"]["PmHidden"];
+        };
+        /** PmDoneTask */
+        PmDoneTask: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Done At
+             * Format: date-time
+             * @description when it moved to a status of group done, inside the window
+             */
+            done_at: string;
+        };
+        /** PmDoneUseCase */
+        PmDoneUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /**
+             * Task
+             * @description the task whose state is the use case's: its frame task, else the task opened last
+             */
+            task: string;
+            /**
+             * Done At
+             * Format: date-time
+             */
+            done_at: string;
+            /**
+             * Outcome
+             * @description the section `## Kết quả` or `## Outcome` that ends its description
+             */
+            outcome: string | null;
+        };
+        /** PmEscalate */
+        PmEscalate: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Escalate To
+             * @description the config's pm: whom the escalation is for
+             */
+            escalate_to: string | null;
+        };
+        /** PmHidden */
+        PmHidden: {
+            /**
+             * Done Use Cases
+             * @default 0
+             */
+            done_use_cases: number;
+            /**
+             * Done Tasks
+             * @default 0
+             */
+            done_tasks: number;
+            /**
+             * Sprint
+             * @default 0
+             */
+            sprint: number;
+            /**
+             * Late
+             * @default 0
+             */
+            late: number;
+            /**
+             * Review
+             * @default 0
+             */
+            review: number;
+            /**
+             * Stale
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Blocked
+             * @default 0
+             */
+            blocked: number;
+            /**
+             * Escalate
+             * @default 0
+             */
+            escalate: number;
+        };
+        /** PmLate */
+        PmLate: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "overdue" | "at_risk";
+            /**
+             * Days Late
+             * @description working days past due_on; overdue only
+             */
+            days_late: number | null;
+            /**
+             * Days Left
+             * @description working days left to due_on, today's included; at risk only
+             */
+            days_left: number | null;
+        };
+        /** PmLoad */
+        PmLoad: {
+            /** Login */
+            login: string;
+            /** Role */
+            role: string;
+            /** Doing */
+            doing: number;
+            /** Wip Limit */
+            wip_limit: number;
+            /**
+             * Overloaded
+             * @description doing is above wip_limit
+             */
+            overloaded: boolean;
+            /**
+             * Empty
+             * @description no task doing
+             */
+            empty: boolean;
+            /** Review As Qa */
+            review_as_qa: number;
+            /** Late */
+            late: number;
+            /** Doing Tasks */
+            doing_tasks: string[];
+        };
+        /** PmReview */
+        PmReview: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /** Qa */
+            qa: string[];
+            /**
+             * Since
+             * Format: date-time
+             * @description when it moved to a status of group review
+             */
+            since: string;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+        };
+        /** PmSprint */
+        PmSprint: {
+            /** Name */
+            name: string;
+            /** Starts On */
+            starts_on: string | null;
+            /** Ends On */
+            ends_on: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             * @description when it turned active, else its first day, else when it was made
+             */
+            opened_at: string;
+            /**
+             * Scope
+             * @description the tasks it held when it opened
+             */
+            scope: number;
+            /**
+             * Done Percent
+             * @description of that scope, done now; cancelled tasks leave the whole
+             */
+            done_percent: number | null;
+            /**
+             * Added
+             * @description tasks in it now that were not in it when it opened
+             */
+            added: number;
+            /**
+             * Removed
+             * @description tasks that were in it when it opened and are not now
+             */
+            removed: number;
+            /**
+             * Working Days
+             * @description in the sprint, from its opening to ends_on
+             */
+            working_days: number | null;
+            /**
+             * Working Days Gone
+             * @description before the date of the report
+             */
+            working_days_gone: number | null;
+            /**
+             * Time Percent
+             * @description working_days_gone over working_days
+             */
+            time_percent: number | null;
+            /** Use Cases */
+            use_cases: components["schemas"]["PmSprintUseCase"][];
+        };
+        /** PmSprintUseCase */
+        PmSprintUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Done */
+            done: number;
+            /**
+             * Total
+             * @description the tasks of the sprint that link it, not cancelled
+             */
+            total: number;
+        };
+        /** PmStale */
+        PmStale: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /**
+             * Source
+             * @description history, comment, run, plan_step or created
+             */
+            source: string;
+            /** Idle Days */
+            idle_days: number;
         };
         /** PolicyChange */
         PolicyChange: {
@@ -37501,6 +37895,78 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    daily_v1_x_pm__project__daily_get: {
+        parameters: {
+            query?: {
+                /** @description the day of the report; today when left out */
+                date?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PmDaily"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
