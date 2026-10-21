@@ -1,4 +1,5 @@
 import copy
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -348,6 +349,169 @@ def test_bare_commits_in_evidence(harness: Path, evidence: str, message: str | N
     assert [(i.path, i.message, i.severity) for i in issues] == (
         [("steps[0].evidence", message, "warning")] if message else []
     )
+
+
+TITLE_60 = ("Đồng bộ khoá học nói thật " * 3)[:60]  # 60 characters, more than 60 bytes in UTF-8
+
+
+def structure(data: dict) -> list[tuple[str, str]]:
+    """The warnings plan_semantics gives a plan of the demo harness, as (path, message)."""
+    issues = plan_semantics({"id": "demo-plan", **data}, Path("plans/active/demo-plan.yaml"))
+    assert all(i.severity == "warning" for i in issues)
+    return [(i.path, i.message) for i in issues]
+
+
+def test_a_plan_in_the_shape_create_exec_plan_asks_has_no_structure_warning():
+    assert len(TITLE_60) == 60 and len(TITLE_60.encode("utf-8")) > 60
+    plan = {
+        "acceptance": [
+            {"id": "a1", "criterion": "x"},
+            {"id": "a2", "criterion": "y"},
+            {"id": "a3", "criterion": "holds after every step", "invariant": True},
+            {"criterion": "an old criterion without an id"},
+            "an old criterion as a sentence",
+        ],
+        "steps": [
+            {"id": 1, "title": TITLE_60, "what": "x", "acceptance": ["a1"]},
+            {"id": 2, "title": unicodedata.normalize("NFD", TITLE_60), "what": "y", "depends_on": [1]},
+            {"id": 3, "what": "an untitled step of an older plan", "acceptance": "a1; a2", "depends_on": [1, 2]},
+            {"id": 4, "what": "z", "acceptance": ["the page answers in a second, as a1 asked"], "depends_on": [3]},
+        ],
+    }
+    assert structure(plan) == []
+
+
+def test_a_duplicate_step_id_warns_once_at_the_later_step():
+    steps = [{"id": 1, "what": "a"}, {"id": 2, "what": "b"}, {"id": 1, "what": "c"}, {"id": 1, "what": "d"}]
+    [(where, message)] = structure({"steps": steps + [{"id": "1", "what": "a string is another id"}]})
+    assert where == "steps[2].id"
+    assert message.startswith("duplicate step id 1: an earlier step has it too")
+    assert message.endswith("give this step an id of its own")
+
+
+def test_a_step_that_depends_on_itself_and_a_cycle_warn_once_each():
+    steps = [
+        {"id": 1, "what": "a", "depends_on": [3]},
+        {"id": 2, "what": "b", "depends_on": [1]},
+        {"id": 3, "what": "c", "depends_on": [2]},
+        {"id": 4, "what": "d", "depends_on": [4, 1]},
+        {"id": 5, "what": "e", "depends_on": [4]},
+    ]
+    assert structure({"steps": steps}) == [
+        ("steps[3].depends_on", "step 4 depends on itself: remove 4 from its depends_on"),
+        (
+            "steps[0].depends_on",
+            "steps 1, 2, 3 depend on each other in a cycle (1 -> 3 -> 2 -> 1), so none of them can start first: "
+            "remove the depends_on that points back",
+        ),
+    ]
+
+
+def test_two_cycles_are_two_warnings_and_an_unknown_dependency_is_not_a_cycle():
+    steps = [
+        {"id": "s1", "what": "a", "depends_on": ["s2"]},
+        {"id": "s2", "what": "b", "depends_on": ["s1", "ghost"]},
+        {"id": "s3", "what": "c", "depends_on": ["s4"]},
+        {"id": "s4", "what": "d", "depends_on": ["s3"]},
+    ]
+    found = structure({"steps": steps})
+    assert found[0] == ("steps[1].depends_on", "unknown step 'ghost'")
+    assert [(w, m.split(" (")[1].split(")")[0]) for w, m in found[1:]] == [
+        ("steps[0].depends_on", "s1 -> s2 -> s1"),
+        ("steps[2].depends_on", "s3 -> s4 -> s3"),
+    ]
+
+
+def test_a_long_chain_of_steps_is_checked_without_recursion():
+    """The hub checks every plan pushed to it: a chain longer than Python's recursion limit is no crash."""
+    chain = [{"id": n, "what": "x", "depends_on": [n - 1] if n > 1 else []} for n in range(1, 5001)]
+    assert structure({"steps": chain}) == []
+    chain[0]["depends_on"] = [5000]
+    [(where, message)] = structure({"steps": chain})
+    assert where == "steps[0].depends_on" and message.startswith("steps 1, 2, 3, ")
+    assert "(1 -> 5000 -> 4999 -> " in message and "-> 2 -> 1), so none of them can start first" in message
+
+
+def test_a_title_over_60_characters_warns_and_a_missing_one_does_not():
+    steps = [
+        {"id": 1, "what": "a", "title": TITLE_60 + "!"},
+        {"id": 2, "what": "b"},
+        {"id": 3, "what": "c", "title": ""},
+    ]
+    assert structure({"steps": steps}) == [
+        (
+            "steps[0].title",
+            "title is 61 characters, over 60: shorten it to the outcome the step names; what keeps the full description",
+        )
+    ]
+
+
+def test_a_step_naming_a_criterion_the_plan_lacks_warns_for_each_id():
+    plan = {
+        "acceptance": [{"id": "a1", "criterion": "x"}],
+        "steps": [
+            {"id": 1, "what": "a", "acceptance": ["a1", "a99", "a99"]},
+            {"id": 2, "what": "b", "acceptance": "a1; a9"},
+            {"id": 3, "what": "c", "acceptance": ["a sentence that names no id, area51 neither"]},
+        ],
+    }
+    assert structure(plan) == [
+        (
+            "steps[0].acceptance",
+            "acceptance names 'a99', which no criterion of the plan's acceptance has as its id: "
+            "add that criterion, or name an existing one",
+        ),
+        (
+            "steps[1].acceptance",
+            "acceptance names 'a9', which no criterion of the plan's acceptance has as its id: "
+            "add that criterion, or name an existing one",
+        ),
+    ]
+
+
+def test_a_criterion_no_step_names_warns_unless_it_is_an_invariant():
+    plan = {
+        "acceptance": [
+            {"id": "a1", "criterion": "x"},
+            {"id": "a2", "criterion": "named nowhere"},
+            {"id": "a3", "criterion": "holds after every step", "invariant": True},
+            {"id": "AC-4", "criterion": "an id of another shape", "verify": "true"},
+        ],
+        "steps": [{"id": 1, "what": "a", "acceptance": ["a1", "AC-4"]}, {"id": 2, "what": "a2 in what is not enough"}],
+    }
+    assert structure(plan) == [
+        (
+            "acceptance[1]",
+            "no step's acceptance names criterion 'a2': add a2 to the acceptance of the step whose verify proves it, "
+            "or mark it invariant: true if it must hold after every step",
+        )
+    ]
+
+
+def test_validate_reports_a_long_title_a_duplicate_id_and_an_unknown_criterion(harness: Path, capsys):
+    (harness / "plans/active/demo-plan.yaml").write_text(
+        f"""
+id: demo-plan
+acceptance:
+  - id: a1
+    criterion: shipped
+steps:
+  - id: 1
+    title: {"x" * 80}
+    what: first
+    acceptance: [a1]
+  - id: 1
+    title: second
+    what: second
+    acceptance: [a99]
+""",
+        encoding="utf-8",
+    )
+    plan = report(harness, "plan")
+    assert plan.ok and [i.path for i in plan.issues] == ["steps[1].id", "steps[0].title", "steps[1].acceptance"]
+    assert main(["harness", "validate", "-v", str(harness)]) == 0
+    out = capsys.readouterr().out
+    assert "duplicate step id 1" in out and "title is 80 characters" in out and "acceptance names 'a99'" in out
 
 
 def test_find_manifest_walks_up(harness: Path):

@@ -224,9 +224,10 @@ fields of the result, and how the text of every tool is written.
 
 Hooks:
 
-- SessionStart prints a short note: the bound project, the snapshot age, and the commit each git source
-  read with how far behind its remote's default branch that is now (`commits read: app 1550c7a (3 behind
-  origin/main)`), counted from the checkout without the network.
+- SessionStart prints a short note: the bound project, the snapshot age, and how many git sources read a
+  commit that is current with its remote's default branch, naming only the others with the commit read and
+  how far behind it is now (`commits read: 16 sources, 13 current; behind: app 1550c7a (3 behind
+  origin/main)`, or `commits read: 16 sources, all current`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
   label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
   `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
