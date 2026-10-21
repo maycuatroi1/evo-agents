@@ -9,6 +9,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.hub.autonomy import effective
 from evo_agents.hub.server.loop import model
 from evo_agents.hub.server.loop.model import (
