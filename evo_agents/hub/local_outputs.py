@@ -12,9 +12,9 @@ What becomes an output of the session's run:
 - a file ``evo-agents hub send FILE`` names, which is how a CLI session, which has no SendUserFile, sends one;
 - every image block of a tool's result (a browser's screenshot through MCP or Playwright, a Read of an image), source
   ``tool``, in any of the shapes Claude Code hands a hook (IMAGE_SHAPES), MAX_IMAGES of one result at most. The tool's
-  event in the run's log keeps a reference to it in place of its base64 (``reference``: ``{"type": "output", "source":
-  "tool", "sha256", "media_type", "size", "name"}`` as the content of a ``tool_call_update``), which the run's outputs
-  match by SHA-256. A project whose admin turned tool images off gets none, once the sender read the switch.
+  event in the run's log keeps a link to it in place of its base64 (``reference``: the ACP ``resource_link`` of
+  ``outputs.output_link``, as a worker's run writes it, in the content of a ``tool_call_update``), which the run's
+  outputs match by SHA-256. A project whose admin turned tool images off gets none, once the sender read the switch.
 
 A shape the parser does not know is passed over, never an error: a SendUserFile without files, an Artifact call that
 is a quickstart or a listing, a block that is not an image.
@@ -106,15 +106,8 @@ class Image:
     sha256: str
 
     def reference(self) -> dict:
-        """What the tool's event holds in its place."""
-        return {
-            "type": "output",
-            "source": outputs.TOOL,
-            "sha256": self.sha256,
-            "media_type": self.media_type,
-            "size": len(self.data),
-            "name": self.name,
-        }
+        """What the tool's event holds in its place: the link a worker's run writes too (``outputs.output_link``)."""
+        return outputs.output_link(self.sha256, self.name, self.media_type, len(self.data))
 
 
 @dataclass(frozen=True)
