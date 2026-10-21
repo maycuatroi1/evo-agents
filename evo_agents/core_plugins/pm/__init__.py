@@ -5,7 +5,8 @@ For a project that enables pm and tasks, the report of a day answers what was do
 use cases and tasks that reached done), where the active sprint stands against what it held when it opened, which
 tasks are late or at risk, how long tasks wait in review, which have had no activity for ``stale_days`` working days,
 which are blocked and by what, what to escalate, and the load of each member. Days are counted in working days of the
-project's time zone (``timezone``, ``working_days``). Nothing is written.
+project's time zone (``timezone``, ``working_days``). The report writes nothing; the job ``daily`` (``job``) sends the
+digest and the escalations each working morning, once a day (criteria a6 and a8).
 
 The route is ``GET /v1/x/pm/<project>/daily?date=`` (``server``); the tools ``pm__daily`` and ``pm__member`` of the
 hub's /mcp (``agent``) answer the same data for the caller; ``evo-agents hub pm daily`` is the client of the route. pm
@@ -15,11 +16,14 @@ plugin tasks in the project.
 
 The hub imports this package for the manifest only: ``workdays`` counts days, ``settings`` reads the configs, ``reads``
 reads the facts, ``sprint_view``, ``report`` and ``outcome`` compute from them (no I/O), ``service`` joins the two,
-``models`` and ``server`` are the API, ``agent`` the tools.
+``models`` and ``server`` are the API, ``agent`` the tools, ``job`` the morning job.
 """
 
 SERVER = "evo_agents.core_plugins.pm.server"
 AGENT = "evo_agents.core_plugins.pm.agent"
+JOB = "evo_agents.core_plugins.pm.job"
+DAILY_JOB = "daily"
+DAILY_CRON = "0 1 * * 1-5"  # 01:00 UTC on weekdays; each project's own working days decide whether it acts
 
 _DAYS = {"type": "integer", "minimum": 0, "maximum": 365}
 
@@ -132,6 +136,18 @@ MANIFEST = {
                 "input_schema": MEMBER_SCHEMA,
             },
         ],
+        "jobs": [
+            {
+                "name": DAILY_JOB,
+                "title": "Morning digest and escalations",
+                "description": "On a working day of the project, sends the digest to the PM (and into the digest chat) "
+                "and escalates each blocker that has lasted too long to the PM and whom it waits on: counts, task "
+                "codes and a link, once a day.",
+                "python": f"{JOB}:run",
+                "cron": DAILY_CRON,
+            }
+        ],
+        "tables": [{"name": "pm_sends", "title": "What pm sent a project on a day: its digest and escalations"}],
     },
 }
 

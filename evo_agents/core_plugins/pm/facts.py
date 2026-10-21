@@ -50,6 +50,7 @@ class Blocker:
     set_by: str | None = None
     decision_id: int | None = None
     run_id: int | None = None
+    blocker_id: int | None = None  # the row of tasks_blockers, for a blocker set by hand
 
 
 @dataclass(frozen=True)

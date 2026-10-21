@@ -226,6 +226,19 @@ def _who(task: Task) -> dict:
     return {"ref": task.ref, "title": task.title, "assignees": list(task.assignees)}
 
 
+def escalations(data: Inputs, today: date) -> list[tuple[Task, Blocker, int]]:
+    """(task, blocker, working days it has lasted) of each blocker of an open task that has lasted longer than the
+    config's ``escalate_after_days``, as ``Daily.escalate`` lists them but whatever the reader sees."""
+    cal, limit = data.config.calendar, data.config.escalate_after_days
+    found = []
+    for task in data.tasks:
+        for blocker in task.blockers if task.open else ():
+            age = cal.elapsed(cal.local(blocker.since), today)
+            if age > limit:
+                found.append((task, blocker, age))
+    return found
+
+
 def daily(data: Inputs, today: date) -> dict:
     """The daily report of the project on ``today``."""
     return Daily(data, today).report()
@@ -255,4 +268,4 @@ def member(data: Inputs, today: date, login: str) -> dict:
     }
 
 
-__all__ = ["Daily", "daily", "member"]
+__all__ = ["Daily", "daily", "escalations", "member"]

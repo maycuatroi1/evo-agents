@@ -4849,7 +4849,9 @@
       "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
       "canvas_baseline": "Một baseline của Lean Canvas chờ bạn duyệt",
       "merge_paused": "Hàng đợi merge của một repo đã dừng",
-      "release": "Phát hành hằng ngày"
+      "release": "Phát hành hằng ngày",
+      "pm_daily": "Bản tin buổi sáng của dự án",
+      "pm_escalation": "Một task bị chặn cần được báo lên"
     },
     "item": {
       "unread": "Chưa đọc",

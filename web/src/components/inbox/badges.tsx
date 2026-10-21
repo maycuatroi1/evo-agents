@@ -7,6 +7,7 @@ import {
   CirclePause,
   CircleX,
   ClipboardCheck,
+  ClipboardList,
   DatabaseZap,
   GitMerge,
   Hammer,
@@ -20,6 +21,7 @@ import {
   Tags,
   Target,
   Trash2,
+  TriangleAlert,
   Unplug,
   Upload,
   UserPlus,
@@ -74,6 +76,8 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   canvas_baseline: { icon: ClipboardCheck },
   merge_paused: { icon: PowerOff },
   release: { icon: Tags },
+  pm_daily: { icon: ClipboardList },
+  pm_escalation: { icon: TriangleAlert },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
