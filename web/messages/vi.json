@@ -23,6 +23,7 @@
     "plans": "Plans",
     "runs": "Run",
     "insights": "Thống kê",
+    "signals": "Tín hiệu",
     "kg": "Đồ thị tri thức",
     "admin": "Quản trị",
     "toggleSidebar": "Ẩn hoặc hiện thanh bên",
@@ -4846,6 +4847,7 @@
       "chat_added": "Có người thêm bạn vào một chat",
       "plugin_disabled": "Hub đã tắt một plugin",
       "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
+      "canvas_baseline": "Một baseline của Lean Canvas chờ bạn duyệt",
       "merge_paused": "Hàng đợi merge của một repo đã dừng",
       "release": "Phát hành hằng ngày"
     },
@@ -4856,6 +4858,7 @@
       "view": "Xem",
       "viewLabel": "Xem quyết định #{id}",
       "openRun": "Mở run #{id}",
+      "openBaseline": "Duyệt baseline",
       "markRead": "Đánh dấu đã đọc",
       "markReadLabel": "Đánh dấu đã đọc: {title}",
       "showMore": "Xem toàn bộ",
@@ -7588,6 +7591,489 @@
       "noPreviewText": "Dán hay đọc một file, rồi bấm Xem trước: hub đọc nó theo dự án và không ghi gì.",
       "readerTitle": "Nhập task vào {project} cần vai trò ghi",
       "backToBoard": "Quay lại bảng"
+    }
+  },
+  "canvas": {
+    "readerTitle": "Bạn đọc {project} với vai trò người đọc",
+    "meta": {
+      "canvases": "Lean Canvas của {project}",
+      "canvas": "{slug}, Lean Canvas của {project}",
+      "claim": "{code} của {slug} trong {project}",
+      "baseline": "Baseline {number} của {slug} trong {project}"
+    },
+    "status": {
+      "assumption": "Giả định",
+      "testing": "Đang kiểm",
+      "validated": "Đã xác thực",
+      "invalidated": "Bị bác bỏ",
+      "retired": "Đã bỏ",
+      "none": "Chưa có claim"
+    },
+    "baselineStatus": {
+      "proposed": "Chờ duyệt",
+      "approved": "Đã duyệt",
+      "expired": "Đã hết hạn"
+    },
+    "confidence": {
+      "low": "Thấp",
+      "medium": "Vừa",
+      "high": "Cao",
+      "title": "Độ tin: {confidence}"
+    },
+    "evidenceKind": {
+      "signal": "Tín hiệu",
+      "feedback": "Phản hồi",
+      "interview": "Phỏng vấn",
+      "experiment": "Thử nghiệm",
+      "market": "Thị trường",
+      "doc": "Tài liệu",
+      "simulation": "Mô phỏng"
+    },
+    "direction": {
+      "supports": "Ủng hộ",
+      "contradicts": "Phản bác",
+      "neutral": "Trung lập"
+    },
+    "verdict": {
+      "supports": "Ủng hộ",
+      "contradicts": "Phản bác",
+      "irrelevant": "Không liên quan",
+      "waiting": "Chưa chấm"
+    },
+    "provenance": {
+      "hub": "Hub",
+      "someone": "ai đó",
+      "agent": "@strategist",
+      "forMember": "cho {login}",
+      "model": "({model})"
+    },
+    "list": {
+      "columns": {
+        "canvas": "Canvas",
+        "claims": "Claim",
+        "statuses": "Theo trạng thái",
+        "createdBy": "Người tạo",
+        "updatedAt": "Cập nhật"
+      },
+      "caption": "Lean Canvas của {project}",
+      "claimsShort": "{count} claim",
+      "new": "Canvas mới",
+      "signals": "Tín hiệu",
+      "settings": "Cài đặt",
+      "readerText": "Người đọc mở được canvas, claim, bằng chứng và baseline. Sửa claim, thêm bằng chứng và duyệt baseline cần vai trò ghi.",
+      "emptyTitle": "Chưa có canvas",
+      "emptyWriter": "Mỗi sản phẩm có một Lean Canvas sống: các claim trong chín ô, mỗi claim có trạng thái, test card và bằng chứng, cùng baseline cả nhóm duyệt mỗi tuần. Bắt đầu với sản phẩm bạn hiểu rõ nhất.",
+      "emptyReader": "Mỗi sản phẩm có một Lean Canvas sống: các claim trong chín ô, mỗi claim có trạng thái, test card và bằng chứng. Người có vai trò ghi của dự án tạo canvas đầu tiên."
+    },
+    "newCanvas": {
+      "title": "Canvas mới",
+      "text": "Mỗi sản phẩm một canvas. Chín ô ban đầu trống; bạn thêm claim vào sau.",
+      "name": "Tên sản phẩm",
+      "namePlaceholder": "Northwind Checkout",
+      "nameMissing": "Đặt tên cho sản phẩm.",
+      "slug": "Slug",
+      "slugHelp": "Chữ thường, chữ số và dấu gạch ngang. Là địa chỉ của canvas và tên mà CLI và @strategist dùng.",
+      "slugBad": "Dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số.",
+      "description": "Mô tả (không bắt buộc)",
+      "cancel": "Huỷ",
+      "create": "Tạo canvas",
+      "created": "Đã tạo canvas {name}"
+    },
+    "newClaim": {
+      "title": "Claim mới trong ô {cell}",
+      "text": "Claim bắt đầu ở rev 1. Viết thành một nhận định kiểm được.",
+      "reason": "Lý do (không bắt buộc)",
+      "reasonPlaceholder": "Lưu cùng rev",
+      "cancel": "Huỷ",
+      "create": "Thêm claim",
+      "created": "Đã thêm {code} vào ô {cell}"
+    },
+    "cell": {
+      "problem": "Vấn đề",
+      "problemHint": "Những vấn đề lớn nhất của khách hàng, và cách họ đang tự giải quyết",
+      "customer_segments": "Phân khúc khách hàng",
+      "customer_segmentsHint": "Ai gặp vấn đề này, và những người dùng sớm trong số đó",
+      "unique_value_proposition": "Giá trị độc đáo",
+      "unique_value_propositionHint": "Một thông điệp rõ ràng: vì sao sản phẩm khác biệt và đáng mua",
+      "solution": "Giải pháp",
+      "solutionHint": "Bộ tính năng nhỏ nhất giải quyết từng vấn đề",
+      "channels": "Kênh",
+      "channelsHint": "Đường đến với khách hàng",
+      "revenue_streams": "Dòng doanh thu",
+      "revenue_streamsHint": "Sản phẩm kiếm tiền thế nào: giá, mô hình, giá trị vòng đời",
+      "cost_structure": "Cơ cấu chi phí",
+      "cost_structureHint": "Chi phí để làm, vận hành và bán sản phẩm",
+      "key_metrics": "Chỉ số chính",
+      "key_metricsHint": "Những con số cho biết việc kinh doanh đang ra sao",
+      "unfair_advantage": "Lợi thế khó sao chép",
+      "unfair_advantageHint": "Điều khó bị bắt chước hay mua lại"
+    },
+    "grid": {
+      "count": ", {count, plural, =0 {chưa có claim} other {# claim}}",
+      "add": "Thêm claim vào ô {cell}",
+      "empty": "Chưa có claim."
+    },
+    "claimCard": {
+      "due": "Hạn test card {day}",
+      "overdue": "Quá hạn ({day}) mà chưa có bằng chứng thật",
+      "evidence": "{real} trên {count} bằng chứng là thật và ủng hộ"
+    },
+    "form": {
+      "text": "Claim",
+      "textPlaceholder": "Chủ shop mất đơn khi thanh toán kéo dài hơn hai phút",
+      "textMissing": "Viết nội dung claim.",
+      "cell": "Ô",
+      "status": "Trạng thái",
+      "confidence": "Độ tin",
+      "statusHelp": "Đang kiểm cần giả thuyết, cách kiểm và hạn. Đã xác thực cần bằng chứng thật ủng hộ claim.",
+      "testingHelp": "Đang kiểm cần test card có giả thuyết, cách kiểm và hạn.",
+      "validatedHelp": "Hub chỉ nhận Đã xác thực khi có bằng chứng thật ủng hộ claim: không dựa trên người dùng mô phỏng, không thuộc loại tài liệu hay mô phỏng, do người thêm hoặc được người có vai trò ghi xác nhận.",
+      "links": "Liên kết",
+      "useCases": "Use case",
+      "useCasesPlaceholder": "UC ORD-1, UC ORD-2",
+      "useCasesHelp": "Mã use case trong SRS của dự án hiện thực claim này, cách nhau bằng dấu phẩy; tối đa {max}.",
+      "signalKeys": "Khoá tín hiệu đo claim này",
+      "noKeys": "Registry của dự án chưa có khoá tín hiệu nào. Admin thêm bằng evo-agents hub signal keys add.",
+      "keyKind": {
+        "number": "số",
+        "feedback": "phản hồi"
+      }
+    },
+    "card": {
+      "heading": "Test card",
+      "hypothesis": "Chúng tôi tin rằng",
+      "hypothesisPlaceholder": "chủ shop sẽ trả tiền cho thanh toán một chạm",
+      "test": "Để kiểm, chúng tôi sẽ",
+      "testPlaceholder": "mời 20 shop dùng thử trong một tháng",
+      "metric": "Và đo",
+      "noMetric": "Không đo",
+      "feedback": "Phản hồi do @strategist chấm",
+      "aggregate": "Cách gộp",
+      "aggregates": {
+        "last": "giá trị cuối",
+        "mean": "trung bình",
+        "sum": "tổng",
+        "count": "số lượng",
+        "p50": "trung vị",
+        "p90": "phân vị 90"
+      },
+      "comparator": "Đúng nếu",
+      "threshold": "Ngưỡng",
+      "windowDays": "Trong số ngày",
+      "minSamples": "Ít nhất số mẫu",
+      "tenant": "Tenant",
+      "tenantPlaceholder": "Mọi tenant",
+      "deadline": "Hạn",
+      "needed": "Đang kiểm cần trường này.",
+      "none": "Không",
+      "empty": "Chưa có test card. Đang kiểm cần giả thuyết, cách kiểm và hạn.",
+      "check": "Value check",
+      "checkNumber": "{aggregate} trong {days} ngày {comparator} {threshold}",
+      "checkFeedback": "tỉ lệ phản hồi ủng hộ trong {days} ngày {comparator} {threshold}",
+      "pastDeadline": "đã quá hạn, chưa có bằng chứng thật"
+    },
+    "links": {
+      "heading": "Liên kết",
+      "useCases": "Use case",
+      "signalKeys": "Khoá tín hiệu",
+      "none": "Không có"
+    },
+    "field": {
+      "cell": "Ô",
+      "position": "Vị trí trong ô",
+      "text": "Claim",
+      "status": "Trạng thái",
+      "confidence": "Độ tin",
+      "archived": "Lưu trữ",
+      "use_cases": "Use case",
+      "signal_keys": "Khoá tín hiệu",
+      "card": {
+        "hypothesis": "Giả thuyết",
+        "test": "Cách kiểm",
+        "metric": "Chỉ số",
+        "aggregate": "Cách gộp",
+        "window_days": "Số ngày",
+        "comparator": "Phép so",
+        "threshold": "Ngưỡng",
+        "min_samples": "Số mẫu tối thiểu",
+        "tenant": "Tenant",
+        "deadline": "Hạn"
+      },
+      "yes": "Có",
+      "no": "Không",
+      "nothing": "Không có gì thay đổi.",
+      "was": "trước",
+      "now": "giờ",
+      "none": "Không có"
+    },
+    "evidence": {
+      "heading": "Bằng chứng ({real} trên {count} là thật và ủng hộ)",
+      "add": "Thêm bằng chứng",
+      "none": "Chưa có bằng chứng.",
+      "hidden": "Còn {count} bằng chứng ở mức bạn không được đọc.",
+      "synthetic": "Mô phỏng",
+      "syntheticTitle": "Dựa trên người dùng mô phỏng, không bao giờ là bằng chứng thật",
+      "real": "Bằng chứng thật",
+      "notReal": "Không phải bằng chứng thật: {why}",
+      "observed": "Lấy ngày {day}",
+      "confirmedBy": "{login} đã xác nhận",
+      "withdrawnBy": "{login} đã rút: {reason}",
+      "openSignals": "Mở các tín hiệu",
+      "newTab": "(mở trong tab mới)",
+      "confirm": "Xác nhận",
+      "confirmed": "Đã xác nhận bằng chứng {id}",
+      "withdraw": "Rút",
+      "withdrawn": "Đã rút bằng chứng {id}",
+      "withdrawReason": "Lý do rút",
+      "cancel": "Huỷ"
+    },
+    "evidenceForm": {
+      "kind": "Loại",
+      "direction": "Chiều",
+      "summary": "Nội dung",
+      "summaryPlaceholder": "12 trên 20 chủ shop nói thời gian thanh toán quyết định nơi họ mua",
+      "summaryMissing": "Ghi bằng chứng cho thấy điều gì.",
+      "url": "Liên kết (không bắt buộc)",
+      "urlBad": "Dùng địa chỉ bắt đầu bằng http:// hoặc https://.",
+      "observed": "Ngày lấy (không bắt buộc)",
+      "synthetic": "Dựa trên người dùng mô phỏng",
+      "syntheticHelp": "Bằng chứng mô phỏng không bao giờ xác thực được claim.",
+      "simulationHelp": "Mô phỏng luôn là bằng chứng mô phỏng.",
+      "cancel": "Huỷ",
+      "add": "Thêm bằng chứng",
+      "added": "Đã thêm bằng chứng cho {claim}"
+    },
+    "basis": {
+      "number": "Value check đọc được {aggregate} = {value} từ {samples} tín hiệu trong {days} ngày,",
+      "feedback": "Value check đọc được {value} trên {samples} phản hồi đã chấm là ủng hộ trong {days} ngày,",
+      "against": "so với {comparator} {threshold}",
+      "met": "đạt",
+      "not_met": "không đạt",
+      "insufficient": "chưa đủ mẫu",
+      "signalsOfTenant": "{metric} của {tenant}"
+    },
+    "judgings": {
+      "heading": "@strategist đã chấm ({count})",
+      "feedback": "Phản hồi",
+      "evidence": "Bằng chứng {id} ({kind})",
+      "why": "Lý do:"
+    },
+    "history": {
+      "heading": "Lịch sử ({count} rev)",
+      "rev": "Rev {rev}",
+      "change": {
+        "create": "tạo",
+        "edit": "sửa",
+        "archive": "lưu trữ",
+        "unarchive": "bỏ lưu trữ",
+        "undo": "hoàn tác",
+        "import": "nhập",
+        "proposal": "nhận đề xuất",
+        "baseline": "quyết định baseline"
+      },
+      "undoOf": "hoàn tác rev {rev}",
+      "undo": "Hoàn tác rev {rev}",
+      "undoFirst": "Hoàn tác rev 1, lưu trữ claim",
+      "undone": "Đã hoàn tác rev {rev} của {claim}",
+      "undoConflict": "{claim} đã đổi từ lúc bạn mở: {login} đã viết rev {rev}. Đọc lại trước khi hoàn tác.",
+      "compare": "So sánh rev",
+      "from": "Từ",
+      "to": "Đến",
+      "sameRev": "Chọn hai rev khác nhau.",
+      "comparing": "Đang so sánh...",
+      "compareFailed": "Không so sánh được hai rev này."
+    },
+    "editor": {
+      "heading": "Sửa {claim} ở rev {rev}",
+      "reason": "Lý do (không bắt buộc)",
+      "reasonPlaceholder": "Lưu cùng rev",
+      "cancel": "Huỷ",
+      "save": "Lưu",
+      "saved": "Đã lưu {claim}",
+      "nothing": "Không có gì thay đổi nên chưa lưu",
+      "conflict": "{claim} đã đổi từ lúc bạn mở ở rev {base}: {login} đã viết rev {rev}",
+      "conflictText": "Chưa lưu gì. Thay đổi của họ:",
+      "keepMine": "Áp thay đổi của tôi lên rev {rev}",
+      "startAgain": "Bắt đầu lại từ rev {rev}"
+    },
+    "claim": {
+      "inCanvas": "Thuộc canvas",
+      "created": "{login} tạo",
+      "atRev": "Đang ở rev {rev}.",
+      "archived": "Lưu trữ",
+      "edit": "Sửa",
+      "askReview": "Đề nghị duyệt ngay",
+      "reviewOpened": "Đã mở baseline {number}",
+      "reviewOpenedText": "Một người khác có vai trò ghi của dự án sẽ quyết định.",
+      "openReview": "Mở trang duyệt",
+      "reviewFailed": "Không mở được lượt duyệt cho {claim}",
+      "reviewConflict": "Claim này đã nằm trong một baseline đang chờ duyệt, hoặc không có gì cần duyệt.",
+      "readerText": "Người đọc xem được claim, bằng chứng và lịch sử. Sửa, hoàn tác và thêm bằng chứng cần vai trò ghi."
+    },
+    "proposals": {
+      "heading": "Đề xuất chờ nhận ({count})",
+      "newClaim": "Claim mới",
+      "change": "thay đổi ở rev {rev}",
+      "accept": "Nhận",
+      "reject": "Từ chối",
+      "rejectReason": "Lý do từ chối (không bắt buộc)",
+      "cancel": "Huỷ",
+      "accepted": "Đã nhận đề xuất thành {claim}",
+      "rejected": "Đã từ chối đề xuất {id}"
+    },
+    "baselines": {
+      "heading": "Baseline",
+      "none": "Chưa có baseline. Hub đề xuất mỗi tuần một lần vào giờ trong cài đặt của plugin, và người có vai trò ghi có thể đề nghị duyệt ngay một claim.",
+      "name": "Baseline {number}",
+      "weekly": "tuần {week}",
+      "push": "{login} mở",
+      "waitingCount": "{count} trên {total} đang chờ",
+      "items": "{count} mục",
+      "waitingTitle": "Baseline {number} chờ duyệt: {count} mục",
+      "waitingText": "Trạng thái mới chỉ có hiệu lực khi người có vai trò ghi nhận.",
+      "waitingMore": "Còn {count} baseline khác cũng đang chờ.",
+      "review": "Duyệt"
+    },
+    "page": {
+      "sub": "{login} tạo. {claims, plural, =0 {Chưa có claim.} other {# claim.}}",
+      "addClaim": "Thêm claim",
+      "export": "Xuất JSON",
+      "exported": "Đã xuất canvas",
+      "exportFailed": "Không xuất được canvas",
+      "archived": "Hiện claim đã lưu trữ",
+      "statuses": "Claim theo trạng thái",
+      "grid": "Canvas",
+      "readerText": "Người đọc xem được canvas, đề xuất và baseline. Thêm claim và quyết định đề xuất cần vai trò ghi."
+    },
+    "baseline": {
+      "title": "Baseline {number}",
+      "weekly": "Tuần {week}",
+      "push": "Mở ngay",
+      "ofCanvas": "Của canvas",
+      "proposed": "Hub đề xuất",
+      "openedBy": "{login} mở",
+      "approvedBy": "{logins} đã duyệt",
+      "nobody": "không ai, không có mục nào chờ",
+      "expiredAt": "Hết hạn",
+      "waiting": "{count} trên {total} {total, plural, other {mục}} chờ quyết định",
+      "due": "Đề xuất cho {when} ({zone}). Baseline được duyệt khi không còn mục nào chờ.",
+      "approveWhen": "Baseline được duyệt khi không còn mục nào chờ.",
+      "expiredTitle": "Baseline này đã hết hạn",
+      "expiredText": "Các quyết định đã có vẫn giữ; claim chưa được quyết định sẽ quay lại ở baseline sau.",
+      "items": "Các mục ({count})",
+      "readerText": "Người đọc xem được baseline. Quyết định một mục cần vai trò ghi."
+    },
+    "item": {
+      "atRev": "ở rev {rev}",
+      "from": "từ",
+      "to": "sang",
+      "overdue": "Hạn của test card, {day}, đã qua mà chưa có bằng chứng thật: gia hạn hoặc bỏ claim.",
+      "real": "thật",
+      "notReal": "không thật",
+      "noEvidence": "Không có bằng chứng.",
+      "hidden": "Còn {count} bằng chứng ở mức bạn không được đọc.",
+      "proposers": "Không được quyết định: {logins}",
+      "by": "bởi {login}",
+      "newDeadline": "hạn mới {day}",
+      "because": "vì {reason}",
+      "yours": "Bạn đã đổi trạng thái claim này hoặc mở baseline này, nên người khác quyết định.",
+      "notYours": "Một người khác có vai trò ghi của dự án quyết định mục này."
+    },
+    "itemKind": {
+      "status": "Đổi trạng thái",
+      "value_check": "Value check đề xuất",
+      "overdue": "Test card quá hạn",
+      "new": "Claim mới"
+    },
+    "decision": {
+      "accepted": "Đã nhận",
+      "rejected": "Đã từ chối",
+      "deferred": "Để lần sau",
+      "extended": "Đã gia hạn",
+      "retired": "Đã bỏ",
+      "included": "Đưa vào"
+    },
+    "decide": {
+      "label": "Quyết định {claim}",
+      "reason": "Lý do (không bắt buộc)",
+      "reasonPlaceholder": "Lưu cùng rev mà quyết định ghi",
+      "newDeadline": "Hạn mới",
+      "deadlineBad": "Chọn một ngày sau hôm nay.",
+      "choice": {
+        "accepted": "Nhận",
+        "rejected": "Từ chối",
+        "deferred": "Để lần sau",
+        "extended": "Gia hạn",
+        "retired": "Bỏ"
+      },
+      "done": {
+        "accepted": "Đã nhận {claim}",
+        "rejected": "Đã từ chối {claim}",
+        "deferred": "Đã để {claim} sang baseline sau",
+        "extended": "Đã gia hạn {claim}",
+        "retired": "Đã bỏ {claim}"
+      }
+    },
+    "snapshot": {
+      "heading": "Ảnh chụp ({count} claim)",
+      "text": "Mỗi claim ở rev và trạng thái có hiệu lực lúc baseline được duyệt. Ảnh chụp không bao giờ đổi.",
+      "rev": "rev {rev}"
+    }
+  },
+  "signals": {
+    "kind": {
+      "number": "Số",
+      "feedback": "Phản hồi"
+    },
+    "page": {
+      "title": "Tín hiệu",
+      "meta": "Tín hiệu của {project}",
+      "keysHeading": "Khoá tín hiệu",
+      "pick": "Mở một khoá để xem giá trị theo thời gian.",
+      "unknownKey": "Registry không có khoá {key}",
+      "unknownKeyText": "Có thể khoá đã được lưu trữ. Chọn một khoá trong danh sách.",
+      "emptyTitle": "Chưa có khoá tín hiệu",
+      "emptyText": "Một khoá đặt tên cho thứ dịch vụ đo, như checkout.conversion. Admin thêm khoá bằng evo-agents hub signal keys add và tạo ingest key bằng evo-agents hub signal ingest create."
+    },
+    "keys": {
+      "caption": "Khoá tín hiệu của {project}",
+      "columns": {
+        "key": "Khoá",
+        "kind": "Loại",
+        "source": "Nguồn",
+        "description": "Đo gì",
+        "latest": "Mới nhất"
+      },
+      "number": "số",
+      "feedback": "phản hồi",
+      "noSignal": "Chưa có tín hiệu",
+      "latestFailed": "Không đọc được"
+    },
+    "series": {
+      "tenant": "Tenant",
+      "tenantPlaceholder": "Mọi tenant",
+      "tenantSearch": "Tín hiệu của một tenant",
+      "apply": "Áp dụng",
+      "clearTenant": "Hiện mọi tenant, không chỉ {tenant}",
+      "rangeLabel": "Khoảng thời gian",
+      "range": {
+        "7": "7 ngày",
+        "30": "30 ngày",
+        "90": "90 ngày",
+        "365": "1 năm"
+      },
+      "count": "{count} tín hiệu trong {days} ngày qua, mới nhất trước",
+      "chartLabel": "{key}, {count} giá trị theo thời gian; bảng bên dưới liệt kê chúng",
+      "tableLabel": "Tín hiệu của {key}",
+      "measuredAt": "Thời điểm đo",
+      "value": "Giá trị",
+      "feedback": "Phản hồi",
+      "source": "Người gửi",
+      "synthetic": "mô phỏng",
+      "tenantOf": "Tenant {tenant}",
+      "emptyTitle": "Không có tín hiệu trong khoảng này",
+      "empty": "Không có số đo nào trong {days} ngày qua.",
+      "emptyTenant": "Không có số đo nào cho {tenant} trong {days} ngày qua."
     }
   }
 }

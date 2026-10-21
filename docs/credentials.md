@@ -145,7 +145,7 @@ the pipelines of a commit, rebases it, merges it with the sha it checked, plays 
 
 - Writing one needs the admin role on each of its projects, where `env` and `git` need writer. It needs `expires_at`,
   takes no `username` (GitLab reads the token from the `PRIVATE-TOKEN` header) and no `workers`, holds one line, and
-  its `url_prefix` is not on github.com, where the hub merges by the Curator's tiers. Migration 0074 widens the checks
+  its `url_prefix` is not on github.com, where the hub merges by the Curator's tiers. Migration 0080 widens the checks
   of `secrets` for it; the table has no new column.
 - It is never leased: the lease query reads kinds `env` and `git` alone (`credentials.LEASED_KINDS`). No route of the
   worker protocol, `/mcp` or the API reads its value; `GET /v1/secrets` shows its owner its name and target, as for

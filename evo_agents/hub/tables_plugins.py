@@ -41,8 +41,9 @@ of that member's workers they may run on, the cap of their cost per day, who ena
 turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
 of its branch.
 
-``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``) and
-tasks (0047, ``tables_tasks``), each as one attribute of ``evo_agents.hub.tables`` (``tables.srs``, ``tables.tasks``).
+``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),
+tasks (0047, ``tables_tasks``) and canvas (0073, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
+(``tables.srs``, ``tables.tasks``, ``tables.canvas``).
 """
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
+from evo_agents.hub.tables_canvas import CanvasTables, canvas_tables
 from evo_agents.hub.tables_srs import SrsTables, srs_tables
 from evo_agents.hub.tables_tasks import TasksTables, tasks_tables
 
@@ -301,6 +303,7 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
     return agent_types
 
 
-def core_plugin_tables(metadata: MetaData) -> tuple[SrsTables, TasksTables]:
-    """The tables of the core plugins srs and tasks, added to ``metadata`` (tasks links to srs_items and runs)."""
-    return srs_tables(metadata), tasks_tables(metadata)
+def core_plugin_tables(metadata: MetaData) -> tuple[SrsTables, TasksTables, CanvasTables]:
+    """The tables of the core plugins srs, tasks and canvas, added to ``metadata`` (tasks links to srs_items and runs;
+    canvas names runs and chat_messages)."""
+    return srs_tables(metadata), tasks_tables(metadata), canvas_tables(metadata)

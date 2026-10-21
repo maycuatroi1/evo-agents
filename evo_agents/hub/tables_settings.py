@@ -1,5 +1,5 @@
 """The tables of the hub's own settings (0037), of the proposals of @builder (0043) and of the autonomy policies of
-projects (0073), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes
+projects (0079), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes
 (``tables.hub_settings``, ``tables.builder_proposals``, ``tables.autonomy_policies``): queries name them there.
 
 hub_settings holds every version of each layer of a setting a hub admin changes, never changed: its kind (branding,
@@ -37,7 +37,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 KINDS = ("branding", "features")  # hub_settings.kind (0037)
-PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy")  # builder_proposals.kind (0043, 0073)
+PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy")  # builder_proposals.kind (0043, 0079)
 PROPOSAL_STATES = ("pending", "applied", "rejected", "failed", "rolled_back")  # builder_proposals.state (0043)
 
 

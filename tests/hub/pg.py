@@ -133,13 +133,23 @@ SRS_FINDING_TABLES = frozenset({"srs_findings"})
 SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
 # migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
 SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
-# migration 0073: the revisions of each project's autonomy policy
+# migration 0073: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
+CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
+# migration 0074: the registry of a project's signal keys, its signals, and the ingest keys services write them with
+SIGNAL_TABLES = frozenset({"signal_keys", "signals", "signal_ingest_keys"})
+# migration 0075: what an agent or the hub proposes on a canvas, for a writer to accept or reject
+CANVAS_PROPOSAL_TABLES = frozenset({"canvas_proposals"})
+# migration 0076: the items judging runs of @strategist judged for the value check of canvas, with their verdicts
+CANVAS_JUDGING_TABLES = frozenset({"canvas_judgings"})
+# migration 0077: the baselines of canvas with what each asks of a claim, and the hub's events the Loop reads by cursor
+CANVAS_BASELINE_TABLES = frozenset({"canvas_baselines", "canvas_baseline_items", "hub_events"})
+# migration 0079: the revisions of each project's autonomy policy
 POLICY_TABLES = frozenset({"autonomy_policies"})
-# migration 0075: the merge queue on GitLab and its ledger
+# migration 0081: the merge queue on GitLab and its ledger
 MERGE_TABLES = frozenset({"merge_queue", "merge_events"})
-# migration 0077: the audit samples of the merge queue
+# migration 0083: the audit samples of the merge queue
 SAMPLE_TABLES = frozenset({"merge_samples"})
-# migration 0078: the breaker of each repo of the merge queue
+# migration 0084: the breaker of each repo of the merge queue
 BREAKER_TABLES = frozenset({"merge_breakers"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

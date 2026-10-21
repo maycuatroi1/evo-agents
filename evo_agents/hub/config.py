@@ -23,9 +23,11 @@ deletes them (``evo_agents.hub.server.run_state``). EVO_HUB_AUDIT_DAYS is how ma
 the daily hub.prune_audit deletes it (``evo_agents.hub.worker``): 365 by default, from 30 to 3650, so a month of the
 trail always stays. EVO_HUB_TRANSCRIPT_DAYS is how many days the hub keeps a session's transcript after its last part
 came before the daily hub.prune_transcripts deletes its content (``evo_agents.hub.server.transcripts``): 365 by
-default, from 30 to 3650. EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for
-(``runs.LEASE_SECONDS`` by default); the reaper finds a run lost once its lease ran out, so tests shorten it, and it
-must stay well above the daemon's heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
+default, from 30 to 3650. EVO_HUB_SIGNAL_DAYS is how many days the hub keeps a signal after it was measured before
+the daily hub.prune_signals deletes it (``evo_agents.hub.signals``): 400 by default, from 30 to 3650.
+EVO_HUB_RUN_LEASE_SECONDS is how long a claim and each heartbeat lease a run for (``runs.LEASE_SECONDS`` by default);
+the reaper finds a run lost once its lease ran out, so tests shorten it, and it must stay well above the daemon's
+heartbeat of 15 seconds. EVO_HUB_DECISION_WAIT_SECONDS is how long a plan run waits
 for its owner's answer before the reaper (the job hub.recover_runs of ``hub worker``) parks it
 (``runs.DECISION_WAIT_SECONDS``, a day, by default); the end-to-end tests shorten it to see a run parked and resumed.
 
@@ -105,6 +107,10 @@ MAX_AUDIT_DAYS = 3650
 DEFAULT_TRANSCRIPT_DAYS = 365
 MIN_TRANSCRIPT_DAYS = 30
 MAX_TRANSCRIPT_DAYS = 3650
+# Days a signal stays after it was measured (evo_agents.hub.signals.prune_signals).
+DEFAULT_SIGNAL_DAYS = 400
+MIN_SIGNAL_DAYS = 30
+MAX_SIGNAL_DAYS = 3650
 # Seconds a claim and each heartbeat lease a run for (evo_agents.hub.server.runs).
 MIN_RUN_LEASE_SECONDS = 5
 MAX_RUN_LEASE_SECONDS = 3600
@@ -175,6 +181,7 @@ class HubConfig:
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
     audit_days: int = DEFAULT_AUDIT_DAYS  # days an audit row is kept
     transcript_days: int = DEFAULT_TRANSCRIPT_DAYS  # days a transcript is kept after its last part came
+    signal_days: int = DEFAULT_SIGNAL_DAYS  # days a signal is kept after it was measured
     run_lease_seconds: int = LEASE_SECONDS  # how long a claim and each heartbeat lease a run for
     decision_wait_seconds: int = DECISION_WAIT_SECONDS  # how long a plan run waits for an answer before it parks
     forwarded_allow_ips: str | None = None  # proxies whose X-Forwarded-For uvicorn believes; None: uvicorn's default
@@ -293,6 +300,14 @@ def _transcript_days(env: Mapping[str, str]) -> int:
     value = _number(env, name, DEFAULT_TRANSCRIPT_DAYS, minimum=MIN_TRANSCRIPT_DAYS)
     if value > MAX_TRANSCRIPT_DAYS:
         raise ConfigError(name, f"{name} must be at most {MAX_TRANSCRIPT_DAYS}, got {value}")
+    return value
+
+
+def _signal_days(env: Mapping[str, str]) -> int:
+    name = "EVO_HUB_SIGNAL_DAYS"
+    value = _number(env, name, DEFAULT_SIGNAL_DAYS, minimum=MIN_SIGNAL_DAYS)
+    if value > MAX_SIGNAL_DAYS:
+        raise ConfigError(name, f"{name} must be at most {MAX_SIGNAL_DAYS}, got {value}")
     return value
 
 
@@ -567,6 +582,7 @@ def load_config(
         run_log_days=_run_log_days(env),
         audit_days=_audit_days(env),
         transcript_days=_transcript_days(env),
+        signal_days=_signal_days(env),
         run_lease_seconds=_run_lease_seconds(env),
         decision_wait_seconds=_decision_wait_seconds(env),
         forwarded_allow_ips=_forwarded_allow_ips(env),

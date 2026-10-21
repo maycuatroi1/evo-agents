@@ -1,7 +1,7 @@
 """The hub's merge queue on GitLab: one row for each merge request it takes, and its ledger.
 
-Revision ID: 0075
-Revises: 0074
+Revision ID: 0081
+Revises: 0080
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_merge`` and ``evo_agents.hub.merge_gate`` as of this revision,
@@ -21,15 +21,15 @@ plan, and runs_judge_schedule_check, which held every judge run to a schedule, n
 when it is on a plan, the Curator's. No column of runs changes.
 
 Going back drops both tables, deletes the judge runs on no plan and puts back the checks of 0067 and 0017: the hub of
-0074 has no queue, and its projects' merge requests stay open for a person.
+0080 has no queue, and its projects' merge requests stay open for a person.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0075"
-down_revision = "0074"
+revision = "0081"
+down_revision = "0080"
 branch_labels = None
 depends_on = None
 

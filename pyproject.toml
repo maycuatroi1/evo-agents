@@ -73,6 +73,7 @@ git = "evo_agents.kg.connectors.git:run"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
 srs = "evo_agents.core_plugins.srs:MANIFEST"
 tasks = "evo_agents.core_plugins.tasks:MANIFEST"
+canvas = "evo_agents.core_plugins.canvas:MANIFEST"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -239,6 +240,7 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.srs"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.canvas",
     "evo_agents.core_plugins.tasks",
     "evo_agents.cli",
     "evo_agents.worker",
@@ -256,6 +258,7 @@ type = "forbidden"
 source_modules = ["evo_agents.core_plugins.tasks"]
 forbidden_modules = [
     "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.canvas",
     "evo_agents.core_plugins.srs",
     "evo_agents.cli",
     "evo_agents.worker",
@@ -266,6 +269,24 @@ to, its access rules, its server's dependencies). It imports no other core plugi
 worker or the command line: it reads srs items through evo_agents.hub.tables.srs and finds them by code with \
 evo_agents.hub.tables_srs.code_key. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
 plugins."""
+
+[[tool.importlinter.contracts]]
+id = "canvas-plugin-own-package"
+name = "The core plugin canvas imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.canvas"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.srs",
+    "evo_agents.core_plugins.tasks",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin canvas is one package that leans on the hub alone (its tables, its access rules, its server's \
+dependencies). It imports no other core plugin, the plugin srs included, nor the worker or the command line: what \
+it reads of srs it reads through evo_agents.hub.tables.srs. Move what both need into evo_agents.hub. See \
+docs/plugins.md, section Core plugins."""
 
 [[tool.importlinter.contracts]]
 id = "packages-acyclic"

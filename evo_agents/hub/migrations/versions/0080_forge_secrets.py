@@ -1,7 +1,7 @@
 """Secrets of kind forge: a GitLab token of a project that only the hub's own process opens.
 
-Revision ID: 0074
-Revises: 0073
+Revision ID: 0080
+Revises: 0079
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.credentials`` as of this revision, never imports, so a later change to
@@ -19,8 +19,8 @@ Going back deletes the forge secrets with their bindings (no lease names one) an
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0074"
-down_revision = "0073"
+revision = "0080"
+down_revision = "0079"
 branch_labels = None
 depends_on = None
 

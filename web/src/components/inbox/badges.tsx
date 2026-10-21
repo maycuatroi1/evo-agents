@@ -6,6 +6,7 @@ import {
   CircleCheck,
   CirclePause,
   CircleX,
+  ClipboardCheck,
   DatabaseZap,
   GitMerge,
   Hammer,
@@ -70,6 +71,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   chat_added: { icon: UserPlus },
   plugin_disabled: { icon: Unplug },
   builder_proposal: { icon: Hammer },
+  canvas_baseline: { icon: ClipboardCheck },
   merge_paused: { icon: PowerOff },
   release: { icon: Tags },
 };

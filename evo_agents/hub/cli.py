@@ -9,9 +9,10 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``sessions`` by ``cli_sessions``, ``email`` by
-``cli_emails``, ``release`` by ``release_cli``, ``policy`` by ``cli_policy`` and ``merge`` by ``cli_merge``; they need
-nothing beyond the core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract
+``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``, ``signal`` by
+``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by ``release_cli``,
+``policy`` by ``cli_policy`` and ``merge`` by ``cli_merge``; they need nothing beyond the core package, so they work on
+a core install. ``hub openapi`` (``openapi``) and ``hub contract
 print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
 """
 
@@ -165,6 +166,61 @@ def cmd_migrate(args) -> int:
     return 0
 
 
+def _register_client_commands(hsub) -> None:
+    """The command groups of the client, each registered by its own module, imported only when the parser is built."""
+    from evo_agents.hub.cli_client import register_client
+
+    register_client(hsub)
+
+    from evo_agents.hub.cli_agents import register_agents
+
+    register_agents(hsub)
+
+    from evo_agents.hub.cli_chats import register_chats
+
+    register_chats(hsub)
+
+    from evo_agents.hub.cli_plugins import register_plugins
+
+    register_plugins(hsub)
+
+    from evo_agents.hub.cli_srs import register_srs
+
+    register_srs(hsub)
+
+    from evo_agents.hub.cli_tasks import register_tasks
+
+    register_tasks(hsub)
+
+    from evo_agents.hub.cli_canvas import register_canvas
+
+    register_canvas(hsub)
+
+    from evo_agents.hub.cli_signals import register_signals
+
+    register_signals(hsub)
+
+    from evo_agents.hub.cli_sessions import register_sessions
+
+    register_sessions(hsub)
+
+    from evo_agents.hub.cli_emails import register_emails
+
+    register_emails(hsub)
+
+    from evo_agents.hub.release_cli import register_release
+
+    register_release(hsub)
+
+    from evo_agents.hub.cli_policy import register_policy
+
+    register_policy(hsub)
+
+    from evo_agents.hub.cli_merge import register_merge
+
+    register_merge(hsub)
+
+
 def register(sub) -> None:
     hub = sub.add_parser("hub", help="team hub for memories, plans, skills and knowledge graphs")
     hsub = hub.add_subparsers(dest="hub_command", required=True)
@@ -214,48 +270,7 @@ def register(sub) -> None:
     )
     plugin_host.set_defaults(func=cmd_plugin_host)
 
-    from evo_agents.hub.cli_client import register_client
-
-    register_client(hsub)
-
-    from evo_agents.hub.cli_agents import register_agents
-
-    register_agents(hsub)
-
-    from evo_agents.hub.cli_chats import register_chats
-
-    register_chats(hsub)
-
-    from evo_agents.hub.cli_plugins import register_plugins
-
-    register_plugins(hsub)
-
-    from evo_agents.hub.cli_srs import register_srs
-
-    register_srs(hsub)
-
-    from evo_agents.hub.cli_tasks import register_tasks
-
-    register_tasks(hsub)
-
-    from evo_agents.hub.cli_sessions import register_sessions
-
-    register_sessions(hsub)
-
-    from evo_agents.hub.cli_emails import register_emails
-
-    register_emails(hsub)
-
-    from evo_agents.hub.release_cli import register_release
-
-    register_release(hsub)
-    from evo_agents.hub.cli_policy import register_policy
-
-    register_policy(hsub)
-
-    from evo_agents.hub.cli_merge import register_merge
-
-    register_merge(hsub)
+    _register_client_commands(hsub)
 
     from evo_agents.hub.openapi import register as register_openapi
 

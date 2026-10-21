@@ -1,7 +1,7 @@
 """The autonomy policy of a project, kept as revisions, and @builder's proposals of a change of it.
 
-Revision ID: 0073
-Revises: 0072
+Revision ID: 0079
+Revises: 0078
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_settings`` and ``evo_agents.hub.autonomy`` as of this revision,
@@ -17,15 +17,15 @@ builder_proposals.kind takes ``policy``: @builder proposes a change of the proje
 project approves before the hub writes it as the next revision.
 
 Going back deletes the proposals of kind policy and their Inbox notices, puts the check of 0043 back on
-builder_proposals and drops autonomy_policies: the hub of 0072 has no policy, so every repo is off.
+builder_proposals and drops autonomy_policies: the hub of 0078 has no policy, so every repo is off.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0073"
-down_revision = "0072"
+revision = "0079"
+down_revision = "0078"
 branch_labels = None
 depends_on = None
 
