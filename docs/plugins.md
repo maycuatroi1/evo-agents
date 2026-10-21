@@ -341,7 +341,7 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins builder, srs, tasks and canvas in `evo_agents.core_plugins`, declared in its own entry
+evo-ak ships its core plugins builder, srs, tasks, canvas and pm in `evo_agents.core_plugins`, declared in its own entry
 points, so every install has them, the hub's image among them. No package of evo_agents imports them (import-linter
 contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
@@ -443,6 +443,16 @@ Two more core plugins keep a project's requirements and work in the hub's databa
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
+### PM
+
+**pm** (`evo_agents/core_plugins/pm`, `docs/pm-plugin.md`) answers the daily report of a project that enabled it and
+tasks: what was done on the last working day, the sprint against what it held when it opened, the tasks that are late,
+in review, stale or blocked, what to escalate and the load of each member, counted in working days of the project's
+time zone. It reads the tables of tasks, srs, plans, runs and decisions and writes nothing. It contributes the route
+`GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
+`chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
+plugin.
 
 ### Lean Canvas
 
@@ -560,7 +570,7 @@ functions alone: no token, the channel's kind, never a hub admin, whoever the me
 | `direct_chat_member(conn, plugin, kind, chat_id)` | the member of a direct chat whose channel of `kind` is linked and live; None otherwise |
 | `set_channel_state(conn, member, state)` | keeps a JSON object of 16 KiB at most as the channel's `state`, such as the ids it sent; 404 once unlinked |
 | `delivered_notification(conn, member, external_id)` | the member's own notification their channel delivered as `external_id` |
-| `prepare(conn, notification, cleared)`, `restricted(conn, project, cleared)` | what a channel cleared for a `Clearance` may send: `extra` is `{"restricted": true}` alone for a project kept from it (or a decision or proposal of no project), else the decision (`question`, `category`, `plan_id`, `step_key`, `options`, `state`, `run_kind`, `run_title`) and the proposal (`title`, `tier`, `kind`, `lens`, `evidence_count`, `state`). A project is kept from it with no hub sink, a level or location (the sink's or the clearance's) its ladder lacks, or a hub sink above the clearance in level or location; a location of None sits at the top, as `evo_agents.kg.policy` reads one. `Clearance(level, location, below=True)` (1.1) takes what sits under its level and location instead, not at them, and on a ladder without the rung only the lowest one: Telegram's is `Clearance("customer", "domestic-only", below=True)` |
+| `prepare(conn, notification, cleared)`, `restricted(conn, project, cleared)` | what a channel cleared for a `Clearance` may send: `extra` is `{"restricted": true}` alone for a project kept from it (or a decision or proposal of no project), else the decision (`question`, `category`, `plan_id`, `step_key`, `options`, `state`, `run_kind`, `run_title`) and the proposal (`title`, `tier`, `kind`, `lens`, `evidence_count`, `state`), and for a decision or a notice `run_outputs` that carries files a channel may send, those files: `outputs`, at most 10 oldest first, none of source `tool`, each `{id, name, media_type, viewer, size, caption, url}` with `url` a presigned GET of its bytes for 5 minutes (None outside the job's pass), and `outputs_count`, how many there are (`docs/notifications.md`, The files of a run). These two keys came after 1.1 without a new version: they only add to an open object, and a plugin reads them with `.get`. A project is kept from it with no hub sink, a level or location (the sink's or the clearance's) its ladder lacks, or a hub sink above the clearance in level or location; a location of None sits at the top, as `evo_agents.kg.policy` reads one. `Clearance(level, location, below=True)` (1.1) takes what sits under its level and location instead, not at them, and on a ladder without the rung only the lowest one: Telegram's is `Clearance("customer", "domestic-only", below=True)` |
 
 **What a member does from it.** Each goes through the code of the web route that does the same, with its checks.
 

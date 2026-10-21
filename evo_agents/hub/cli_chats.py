@@ -65,6 +65,7 @@ MESSAGE_KEYS = (
     "label",
     "created_at",
     "progress",
+    "outputs",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 

@@ -41,7 +41,9 @@ from evo_agents.hub import (
     tables_kg,
     tables_loop,
     tables_merge,
+    tables_outputs,
     tables_plugins,
+    tables_pm,
     tables_profiles,
     tables_release,
     tables_sessions,
@@ -835,7 +837,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# The tool figures of runs (0013); the session digests are in tables_sessions
+# The tool figures of runs (0013, and the skills of 0087); the session digests are in tables_sessions
 
 run_tool_stats = Table(
     "run_tool_stats",
@@ -845,6 +847,7 @@ run_tool_stats = Table(
     Column("calls", Integer, nullable=False),
     Column("errors", Integer, nullable=False),
     Column("duration_ms", BigInteger, nullable=False),
+    Column("skills", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
 )
@@ -972,10 +975,12 @@ plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0079
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
+run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
+notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 srs, tasks, canvas = tables_plugins.core_plugin_tables(metadata)  # srs (0046), tasks (0047), canvas (0073)
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
-goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0085)
-loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0087)
+goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0091)
+loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0059
 history_lines, history_indexed = tables_sessions.search_tables(metadata)  # the words of the history (0060)
@@ -984,6 +989,7 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
+pm_sends = tables_pm.pm_tables(metadata)  # 0086
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

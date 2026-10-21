@@ -23,7 +23,8 @@ from urllib.parse import quote
 import aiohttp
 
 from evo_agents import __version__
-from evo_agents.hub.client import check_url
+from evo_agents.hub.client import HubError, check_url
+from evo_agents.hub.client import Unreachable as HubUnreachable
 from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VERSION
 
 TIMEOUT = 30.0  # seconds for one call
@@ -41,6 +42,14 @@ class HubProblem(Exception):
         self.code = code
         self.payload = payload
         self.retry_after: float | None = None
+
+    def hub_error(self, message: str | None = None) -> HubError:
+        """This problem as the HubError of a command, whose exit status (``client.exit_status``) says what went wrong:
+        a call no answer came to is ``client.Unreachable``; a 5xx or 429 keeps its status."""
+        text = message or str(self)
+        if isinstance(self, Unreachable) and self.status is None:
+            return HubUnreachable(text)
+        return HubError(text, self.status, self.code)
 
     @property
     def from_hub(self) -> bool:
@@ -285,6 +294,23 @@ class WorkerHub:
     async def commit_blobs(self, run_id: int, upload_ids: list[str]) -> dict:
         body = {"upload_ids": upload_ids}
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/blobs", body, timeout=UPLOAD_TIMEOUT)
+
+    # The outputs of a run (evo_agents.hub.outputs, docs/workers.md "Outputs")
+
+    async def output_settings(self, run_id: int) -> dict:
+        """``{tool_images, max_file_bytes, max_outputs, max_run_bytes, outputs, bytes, ...}`` of a run this worker
+        holds; an older hub without the route answers 404 (Refused)."""
+        answer = await self.call("GET", f"/v1/worker/runs/{int(run_id)}/output-settings")
+        return answer if isinstance(answer, dict) else {}
+
+    async def output_uploads(self, run_id: int, items: list[dict]) -> dict:
+        """The presigned PUTs of the outputs ``items`` ({sha256, size, source}) whose bytes the project lacks."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/output-uploads", {"items": items})
+
+    async def record_outputs(self, run_id: int, items: list[dict]) -> dict:
+        """Commit the uploads of ``items`` and record them as outputs of the run: ``{outputs, added}``, in order."""
+        body = {"outputs": items}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/outputs", body, timeout=UPLOAD_TIMEOUT)
 
     async def put(self, url: str, data: bytes) -> None:
         """PUT ``data`` to a presigned URL of the blob store. The URL is a credential until it expires: an error

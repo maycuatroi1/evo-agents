@@ -20,6 +20,8 @@
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
 - ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
+- ``output FILE...``: the command of any run's agent that sends files to the run's outputs on the hub, as ``ask
+  --attach`` and ``chat post --attach`` do for a question and a message (``output_cli``).
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
@@ -34,7 +36,7 @@
   holds no socket here.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
-stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
+stderr and exit status 69, 75 or 1 (``client.exit_status``); a command lacking the worker extra says how to get it (2).
 ``run`` on a machine that is not a worker, such as one revoked with ``revoke``, exits ``home.EXIT_REVOKED`` (3, or
 what EVO_WORKER_REVOKED_EXIT says), so a service does not start it again and again. ``run`` needs the extra (aiohttp)
 and so does ``join``; the others need the core package only.
@@ -49,22 +51,22 @@ import json
 import logging
 import os
 import platform
-import re
 import sys
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
 from evo_agents.hub import runs
-from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
+from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, playbook_cli, triage_cli
-from evo_agents.worker.agent_input import evidence_items, read_text
+from evo_agents.worker import chat_cli, output_cli, playbook_cli, triage_cli
+from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
+from evo_agents.worker.step_verify import push_conflict as _push_conflict
+from evo_agents.worker.step_verify import verify as _verify
+from evo_agents.worker.step_verify import verify_env as _verify_env
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -91,7 +93,7 @@ def _worker_command(func):
             return EXIT_USAGE
         except (HubError, WorkerStateError) as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
+            return exit_status(exc) if isinstance(exc, HubError) else EXIT_FAILED
 
     return run
 
@@ -229,8 +231,8 @@ def cmd_join(args) -> int:
         answer = asyncio.run(join())
     except hubapi.HubProblem as exc:
         if exc.status == 429 and exc.retry_after is not None:
-            raise HubError(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
-        raise HubError(str(exc)) from None
+            raise exc.hub_error(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
+        raise exc.hub_error() from None
     config, token = _config_of(url, answer)
     _joined(home, config, token, "Joined")
     return 0
@@ -484,7 +486,10 @@ AGENT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch")  # the hub 
 MAX_VERIFY_COMMANDS = 50
 MAX_VERIFY_CHARS = 2000
 MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
-OUTPUT_TAIL = 4000  # characters of a failed verify command's output printed
+# The parsers of a run's agent in group chats, of `repo open` of a chat run's, of a triage thread's for a failed run, of
+# a review run's on the playbook, and of any run's outputs
+AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
+AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output)
 
 
 @dataclass
@@ -534,7 +539,7 @@ def _with_hub(agent: _AgentRun, work):
     try:
         return asyncio.run(go())
     except hubapi.HubProblem as exc:
-        raise HubError(str(exc), exc.status, exc.code) from None
+        raise exc.hub_error() from None
     except gitops.GitError as exc:
         raise WorkerStateError(str(exc)) from None
 
@@ -574,55 +579,8 @@ def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
     return next(iter(workspaces)) if len(workspaces) == 1 else None
 
 
-async def _verify(path: Path, commands: list[str]) -> list[dict]:
-    """Run each command with /bin/sh in ``path``, every one even after a failure; each one's exit code."""
-    results = []
-    for command in commands:
-        started = time.monotonic()
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(path),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        output, _ = await proc.communicate()
-        duration_ms = int((time.monotonic() - started) * 1000)
-        results.append({"command": command, "exit_code": proc.returncode, "duration_ms": duration_ms})
-        print(f"verify: `{command}` exited {proc.returncode} after {duration_ms} ms")
-        if proc.returncode != 0:
-            tail = output.decode(errors="replace")[-OUTPUT_TAIL:].rstrip()
-            if tail:
-                print("\n".join(f"  | {line}" for line in tail.splitlines()))
-    return results
-
-
-async def _push_conflict(hub, agent: _AgentRun, name: str, conflict) -> None:
-    """A push of ``worker step`` went to the run's side branch (``gitops.PushConflict``): tell the run's owner, and
-    leave the daemon the word to fail the run once the agent's turn ends."""
-    from evo_agents.worker import gitops
-    from evo_agents.worker.hubapi import HubProblem
-
-    agent.home.save_conflict(
-        agent.run_id,
-        {
-            "error": f"{name}: {conflict}",
-            "repo": name,
-            "branch": conflict.branch,
-            "side_branch": conflict.side_branch,
-            "head": conflict.head,
-        },
-    )
-    try:
-        await hub.notice(agent.run_id, gitops.conflict_notice(agent.run_id, name, conflict))
-        print(f"Notified the run's owner that the commits of {name} are on {conflict.side_branch}.", file=sys.stderr)
-    except HubProblem as exc:
-        print(f"warning: the notice of {conflict.side_branch} was not sent ({exc})", file=sys.stderr)
-
-
-@_worker_command
-def cmd_step(args) -> int:
-    agent = _agent_run("step")
+def _step_verify_commands(args) -> list[str]:
+    """The verify commands of ``worker step``, once the status and the commands agree."""
     verify = list(args.verify or [])
     if args.status == "done" and not verify:
         raise WorkerStateError(
@@ -637,15 +595,52 @@ def cmd_step(args) -> int:
         )
     if args.evidence is not None and (not args.evidence.strip() or len(args.evidence) > MAX_EVIDENCE_CHARS):
         raise WorkerStateError(f"--evidence takes 1 to {MAX_EVIDENCE_CHARS} characters")
+    return verify
+
+
+def _step_workspaces(agent: _AgentRun, repo: str | None) -> dict:
+    """The run's worktrees by repo, once ``--repo``, when given, names one of them."""
     workspaces = _workspaces(agent)
-    if args.repo is not None and args.repo not in workspaces:
-        raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {args.repo}")
+    if repo is not None and repo not in workspaces:
+        raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {repo}")
+    return workspaces
+
+
+def _refuse_done_after_conflict(agent: _AgentRun, status: str) -> None:
+    """A run whose push went to its side branch reports nothing done any more."""
     conflict = agent.home.load_conflict(agent.run_id)
-    if args.status == "done" and conflict is not None:
+    if status == "done" and conflict is not None:
         raise WorkerStateError(
             f"run {agent.run_id} ends failed (push_conflict) once this turn ends: {conflict['error']}. Nothing more is "
             "pushed or reported done; end your turn now"
         )
+
+
+async def _notify_push(hub, agent: _AgentRun, name: str, pushed) -> None:
+    """Tell the run's owner of a change pushed to a default branch; the push happened, so a failed notice only warns."""
+    from evo_agents.worker import gitops
+    from evo_agents.worker.hubapi import HubProblem
+
+    if not (pushed.default and pushed.changed):
+        return
+    try:
+        await hub.notice(agent.run_id, gitops.push_notice(agent.run_id, name, pushed))
+        print(f"Notified the run's owner of the push to {pushed.branch}, a default branch.")
+    except HubProblem as exc:
+        print(
+            f"warning: the notice of the push to {pushed.branch} was not sent ({exc}); send it with "
+            "`evo-agents worker notify --kind push_default_branch`",
+            file=sys.stderr,
+        )
+
+
+@_worker_command
+def cmd_step(args) -> int:
+    agent = _agent_run("step")
+    verify = _step_verify_commands(args)
+    output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
+    workspaces = _step_workspaces(agent, args.repo)
+    _refuse_done_after_conflict(agent, args.status)
     from evo_agents.worker import gitops
 
     async def work(hub) -> int:
@@ -662,7 +657,7 @@ def cmd_step(args) -> int:
             if name is None:
                 raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
             workspace = workspaces[name]
-            results = await _verify(workspace.worktree, verify)
+            results = await _verify(workspace.worktree, verify, await _verify_env(agent, name, workspace.worktree))
             failed = [item for item in results if item["exit_code"] != 0]
             if failed:
                 print(
@@ -712,7 +707,11 @@ def cmd_step(args) -> int:
                         f"{workspace.branch} of {name} moved on at origin: the run's commits were put on top of it, "
                         f"and the verify of step {args.key} runs again at {head[:12]}."
                     )
-                    again[:] = await _verify(path, verify)
+                    try:
+                        env = await _verify_env(agent, name, path)
+                    except WorkerStateError as exc:
+                        return str(exc)
+                    again[:] = await _verify(path, verify, env)
                     failed = [item for item in again if item["exit_code"] != 0]
                     return "; ".join(f"`{item['command']}` exited {item['exit_code']}" for item in failed) or None
 
@@ -751,18 +750,7 @@ def cmd_step(args) -> int:
                         f"since then are on top of it at {pushed.head[:12]}, and their verify passed there."
                     )
                     results = again or results
-            if pushed.default and pushed.changed:
-                from evo_agents.worker.hubapi import HubProblem
-
-                try:
-                    await hub.notice(agent.run_id, gitops.push_notice(agent.run_id, name, pushed))
-                    print(f"Notified the run's owner of the push to {pushed.branch}, a default branch.")
-                except HubProblem as exc:  # the push happened: the step is reported all the same
-                    print(
-                        f"warning: the notice of the push to {pushed.branch} was not sent ({exc}); send it with "
-                        "`evo-agents worker notify --kind push_default_branch`",
-                        file=sys.stderr,
-                    )
+            await _notify_push(hub, agent, name, pushed)
             report["verify"] = results
             report["commit_sha"] = pushed.head
         answer = await hub.step(agent.run_id, args.key, report)
@@ -774,22 +762,10 @@ def cmd_step(args) -> int:
     return _with_hub(agent, work)
 
 
-def _option(text: str) -> dict:
-    """``KEY=LABEL[:DESCRIPTION]`` as an option of a decision."""
-    key, sep, rest = text.partition("=")
-    label, _, description = rest.partition(":")
-    key, label, description = key.strip(), label.strip(), description.strip()
-    if not sep or not label or not re.fullmatch(runs.OPTION_KEY, key):
-        raise WorkerStateError(
-            f"--option takes KEY=LABEL[:DESCRIPTION], KEY being letters, digits, _ and - (at most 32), not {text!r}"
-        )
-    return {"key": key, "label": label, **({"description": description} if description else {})}
-
-
 @_worker_command
 def cmd_ask(args) -> int:
     agent = _agent_run("ask", runs.RESUME_KINDS)
-    options = [_option(text) for text in args.option]
+    options = [decision_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
     if not fewest <= len(options) <= most or len(set(keys)) != len(keys):
@@ -797,19 +773,14 @@ def cmd_ask(args) -> int:
     if args.recommended is not None and args.recommended not in keys:
         raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
     body: dict = {"category": args.category, "question": args.question, "options": options}
-    if args.context_file:
-        try:
-            text = sys.stdin.read() if args.context_file == "-" else Path(args.context_file).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise WorkerStateError(f"cannot read {args.context_file}: {exc}") from None
-        if len(text.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
-            raise WorkerStateError(f"the context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
-        if text.strip():
-            body["context"] = text
+    context = read_text(args.context_file, "context", runs.MAX_DECISION_CONTEXT_BYTES) if args.context_file else None
+    if context is not None:
+        body["context"] = context
     if args.recommended is not None:
         body["recommended"] = args.recommended
     if args.step is not None:
         body["step_key"] = args.step
+    body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
 
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
@@ -1154,6 +1125,7 @@ def register(sub) -> None:
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
     ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
+    output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)
 
     notify = wsub.add_parser(
@@ -1224,6 +1196,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    chat = (chat_cli.register_chat, chat_cli.register_repo)  # a run's agent in group chats, `repo open` of a chat run's
-    for extra in (*chat, triage_cli.register_triage, playbook_cli.register_playbook):
-        extra(wsub)  # and a triage thread's for a failed run, a review run's on the playbook
+    for extra in AGENT_PARSERS:
+        extra(wsub)

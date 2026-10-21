@@ -5,8 +5,9 @@
 POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run, an author run or a chat run
 (404 for any other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (a
 chat run's is ``triage`` alone, and ``triage`` is no other run's; 422 for any other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
-agent recommends, and the step it is about, which must be a step of the run's plan (422 for an author run that has put
-no plan yet, which has no steps). The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
+agent recommends, the step it is about, which must be a step of the run's plan (422 for an author run that has put
+no plan yet, which has no steps), and the outputs of the run it carries (``output_ids``, 422 for one of another run;
+``output_store``), which every view of the decision lists with the decision's URL of their bytes. The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
 ``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
 decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once
@@ -60,13 +61,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import outputs, runs, tables
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
+from evo_agents.hub.server.output_store import link_decision
+from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
@@ -113,6 +117,11 @@ class DecisionAsk(BaseModel):
     recommended: OptionKey | None = Field(None, description="the key of the option the agent recommends")
     step_key: str | None = Field(
         None, min_length=1, max_length=200, pattern=LINE, description="the step of the plan it is about"
+    )
+    output_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
+        default_factory=list,
+        max_length=outputs.MAX_ATTACHED,
+        description="outputs of the run the question carries, such as the screenshot it is about",
     )
 
     @model_validator(mode="after")
@@ -174,6 +183,10 @@ class Decision(BaseModel):
     asked_at: datetime
     answered_at: datetime | None
     delivered_at: datetime | None = Field(description="when the worker handed the answer to the agent")
+    outputs: list[RunOutput] = Field(
+        default_factory=list,
+        description="the files of its run it carries, oldest first, each with the decision's URL of its bytes",
+    )
 
 
 class DecisionList(BaseModel):
@@ -289,7 +302,21 @@ def _decision(row) -> Decision:
 
 async def decision_view(conn: AsyncConnection, decision_id: int) -> Decision:
     row = (await conn.execute(_decisions().where(tables.decisions.c.id == decision_id))).one()
-    return _decision(row)
+    (view,) = await with_outputs(conn, [_decision(row)])
+    return view
+
+
+async def with_outputs(conn: AsyncConnection, decisions: list[Decision]) -> list[Decision]:
+    """``decisions``, each with the outputs it carries."""
+    by_project: dict[str, list[int]] = {}
+    for decision in decisions:
+        by_project.setdefault(decision.project, []).append(decision.id)
+    for project, ids in by_project.items():
+        found = await outputs_by_decision(conn, project, ids)
+        for decision in decisions:
+            if decision.project == project:
+                decision.outputs = found.get(decision.id, [])
+    return decisions
 
 
 def _no_decision(project: str, decision_id: int) -> HTTPException:
@@ -348,7 +375,7 @@ async def list_decisions(
         unplanned = sees_unplanned(access, sink)
         where = _listed(access.project_id, plans, unplanned, list(dict.fromkeys(state)), run_id, plan_id, user.user_id)
         query = _decisions().where(*where).order_by(d.c.id.desc()).limit(limit).offset(offset)
-        page = [_decision(row) for row in (await conn.execute(query)).all()]
+        page = await with_outputs(conn, [_decision(row) for row in (await conn.execute(query)).all()])
         counted = select(func.count()).select_from(d.join(r, r.c.id == d.c.run_id)).where(*where)
         total = (await conn.execute(counted)).scalar_one()
     return DecisionList(decisions=page, total=total, limit=limit, offset=offset)
@@ -433,8 +460,9 @@ async def _notify_asked(conn: AsyncConnection, row, run_id: int, decision_id: in
 
 async def store_decision(conn: AsyncConnection, run_id: int, row, body: DecisionAsk) -> Decision:
     """Store the decision ``body`` asks for run ``run_id``, whose row the caller holds locked, in the caller's
-    transaction, notify the run's owner and log it: ``row`` is what ``held_plan_run`` reads, or for a local run
-    (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open, 422 for a step the plan does not have."""
+    transaction, with the outputs of the run it names, notify the run's owner and log it: ``row`` is what
+    ``held_plan_run`` reads, or for a local run (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open,
+    422 for a step the plan does not have or an output of another run."""
     d = tables.decisions
     opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
     if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
@@ -458,6 +486,7 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
         .returning(d.c.id)
     )
     decision_id = (await conn.execute(stored)).scalar_one()
+    await link_decision(conn, run_id, decision_id, body.output_ids)
     await _notify_asked(conn, row, run_id, decision_id, key, body)
     shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
     await write_event(

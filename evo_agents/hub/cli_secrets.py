@@ -329,6 +329,8 @@ def register_secrets(hsub) -> None:
 ACCOUNT_KEYS = (
     "name",
     "env_var",
+    "provider",
+    "category",
     "auth",
     "projects",
     "workers",
@@ -411,6 +413,7 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
+            a["provider"],
             a["auth"],
             a["state"],
             a["weight"],
@@ -418,7 +421,7 @@ def cmd_account_list(args) -> int:
             _when(a["cooldown_until"]),
             _usage_text(a["last_usage"]),
             f"{a['runs_24h']}/{a['runs_7d']}",
-            money(a["cost_7d_usd"]),
+            "-" if a["cost_7d_usd"] is None else money(a["cost_7d_usd"]),
             " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
             ", ".join(a["projects"]),
             ", ".join(a["workers"]) or "any",
@@ -428,6 +431,7 @@ def cmd_account_list(args) -> int:
     header = (
         "NAME",
         "VARIABLE",
+        "PROVIDER",
         "AUTH",
         "STATE",
         "WEIGHT",
@@ -527,8 +531,11 @@ def _print_account(a: dict) -> None:
     print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
     print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
     print(f"  Last usage: {usage}{reported}.")
-    print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
-    print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
+    if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
+        print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
+    else:
+        print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
+        print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
     print(f"  Held by: {held}.")
 
 

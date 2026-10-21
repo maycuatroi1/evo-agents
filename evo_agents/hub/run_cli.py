@@ -8,8 +8,8 @@ your request with the create-exec-plan skill on a worker of yours (POST /v1/proj
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
 until the hub sends ``end``. ``send`` leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``,
-``handback`` and ``rerun`` are the owner's controls. ``credentials`` lists the leases the run got of its owner's secrets
-and of the hub's GitHub App (GET .../runs/{id}/credentials, the owner only), never their values. Every command after
+``handback`` and ``rerun`` are the owner's controls; ``outputs`` lists the files its agent made (``run_cli_outputs``).
+``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a value. Every command after
 ``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
 message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
 dispatched with a token. ``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand,
@@ -51,16 +51,17 @@ from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_options import (
-    KIND_TEXTS,
     account_option,
     author_options,
     dispatch_options,
+    kind_text,
     list_options,
     plan_options,
     rerun_body,
     rerun_options,
     usage_error,
 )
+from evo_agents.hub.run_cli_outputs import register_outputs
 from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
     EVENT_KINDS,
@@ -80,6 +81,7 @@ BACKOFF = (1, 2, 4, 8, 15)  # seconds before each of those tries
 RETRIED_STATUSES = frozenset({502, 503, 504})  # a proxy in front of a hub that restarts: worth another try
 TITLE_CHARS = 40  # of a step's title in the run table
 RAW_CHARS = 300  # of an event body shown as JSON
+PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 RUN_KEYS = (
@@ -539,7 +541,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
     if kind == "step":
         return [("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")), ("plan", plan)]
     each = "a new session for each step" if run.get("session_per_step") else "one session"
-    said = KIND_TEXTS.get(kind) or f"plan run: every step of the plan not done yet, in {each}"
+    said = kind_text(run) or f"plan run: every step of the plan not done yet, in {each}"
     lines = [("kind", said)] + ([("title", run["title"])] if run["title"] else [])
     if kind == "review":
         lines.append(("project", run["project"]))
@@ -547,7 +549,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
         link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
-    if kind not in ("review", "author", "chat", "task", "local") or run.get("plan_id"):
+    if kind not in ("review", "author", "chat", "task", "local", "judge") or run.get("plan_id"):
         lines.append(("plan", plan))
     return lines
 
@@ -872,10 +874,9 @@ def register_runs(hsub) -> None:
         "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
     )
     rsub = run.add_subparsers(dest="run_command", required=True)
-    project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
     def with_project(parser) -> None:
-        parser.add_argument("--project", help=project_help)
+        parser.add_argument("--project", help=PROJECT_HELP)
 
     def with_run(parser) -> None:
         parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
@@ -988,6 +989,7 @@ def register_runs(hsub) -> None:
     credentials.set_defaults(func=cmd_credentials)
 
     register_candidates(rsub, with_run, _project)
+    register_outputs(rsub, with_run, _project)
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
         with_run(parser)

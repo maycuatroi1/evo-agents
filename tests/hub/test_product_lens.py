@@ -3,7 +3,7 @@ review run reads the project's signals, the claims of its canvases and its goals
 ``canvas__propose`` of the plugin canvas and proposals of a change of the autonomy policy through ``builder__propose``
 of kind policy, and changes no claim, baseline, goal or policy itself. The lens takes its turn with the other lenses;
 only a review run whose night looks through it proposes, and a project without the plugin canvas proposes no claim.
-And schema 0088. The agent on the worker is a stand-in: the test calls the tools with the worker's token and the run,
+And schema 0094. The agent on the worker is a stand-in: the test calls the tools with the worker's token and the run,
 as its MCP client would. The product of the canvas, Northwind Pantry, is made up.
 """
 
@@ -270,10 +270,10 @@ def test_product_lens_proposes_for_a_night_shift_owner_who_still_writes(product)
     assert error and canvas_proposals(product.db) == []
 
 
-# Schema 0088
+# Schema 0094
 
 
-def test_product_lens_schema_0088_takes_the_lens_and_going_back_deletes_what_it_wrote(review):  # noqa: F811
+def test_product_lens_schema_0092_takes_the_lens_and_going_back_deletes_what_it_wrote(review):  # noqa: F811
     run_id = held(review, PRODUCT_NIGHT)["id"]
     client, worker, db = review.client, review.worker, review.db
     evidence = [{"kind": "run", "run_id": run_id, "seq": 1}]
@@ -282,7 +282,7 @@ def test_product_lens_schema_0088_takes_the_lens_and_going_back_deletes_what_it_
         assert made_one.status_code == 201, made_one.text
     proposed(client, worker, run_id, lens="product", evidence=evidence)
 
-    move_to(db, "0087", down=True)
+    move_to(db, "0093", down=True)
     assert sql(db, select(tables.findings.c.lens)) == [("cost",)]
     assert sql(db, select(func.count()).select_from(tables.proposals))[0][0] == 0
     f = tables.findings
@@ -292,6 +292,6 @@ def test_product_lens_schema_0088_takes_the_lens_and_going_back_deletes_what_it_
     names = ("project_id", "run_id", "lens", "severity", "title", "evidence", "label")
     with pytest.raises(psycopg.errors.CheckViolation, match="findings_lens_check"):
         sql(db, insert(f).from_select(names, copied.where(f.c.lens == "cost")))
-    assert migrate(db.dsn).applied == ALL[ALL.index("0088") :]
+    assert migrate(db.dsn).applied == ALL[ALL.index("0094") :]
     again = finding(client, worker, run_id, lens="product", title="again", evidence=evidence)
     assert again.status_code == 201, again.text

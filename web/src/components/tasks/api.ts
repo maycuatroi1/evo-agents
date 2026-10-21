@@ -21,6 +21,9 @@ export type TaskDetail = Schemas["TasksItemDetail"];
 export type TaskLink = Schemas["TasksLink"];
 export type TaskEvent = Schemas["TasksEvent"];
 export type TaskComment = Schemas["TasksComment"];
+export type TaskBlocker = Schemas["TasksBlocker"];
+export type TaskBlockerIn = Schemas["TasksBlockerIn"];
+export type TaskBlockerEdit = Schemas["TasksBlockerEdit"];
 export type TaskPerson = Schemas["TasksPerson"];
 export type Sprint = Schemas["TasksSprint"];
 export type SprintState = Sprint["state"];
@@ -107,6 +110,17 @@ export async function commentOn(api: ApiClient, project: string, ref: string, bo
   const headers = await csrfHeaders(api);
   const params = { path: { project, ref } };
   return call(api.POST("/v1/x/tasks/{project}/tasks/{ref}/comments", { params, body: { body }, headers }));
+}
+
+export async function addBlocker(api: ApiClient, project: string, ref: string, body: TaskBlockerIn) {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/x/tasks/{project}/tasks/{ref}/blockers", { params: { path: { project, ref } }, body, headers }));
+}
+
+export async function editBlocker(api: ApiClient, project: string, ref: string, id: number, body: TaskBlockerEdit) {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, ref, blocker_id: id } };
+  return call(api.PATCH("/v1/x/tasks/{project}/tasks/{ref}/blockers/{blocker_id}", { params, body, headers }));
 }
 
 export async function createSprint(api: ApiClient, project: string, body: SprintIn) {

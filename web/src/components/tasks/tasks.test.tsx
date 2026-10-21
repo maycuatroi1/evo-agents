@@ -9,9 +9,11 @@ import { queryKeys } from "@/lib/queries";
 import { detailOf, SETTINGS, SPRINTS, TASKS } from "@/test/fixtures/tasks";
 import { renderVi } from "@/test/render";
 
-import type { Task, TaskDetail, TaskEdit, TaskLink } from "./api";
+import type { Task, TaskBlocker, TaskDetail, TaskEdit, TaskLink } from "./api";
 import { tasksKeys } from "./api";
 import { BoardPage } from "./board-page";
+import { TaskBlockers } from "./task-blockers";
+import { TaskDescription } from "./task-description";
 import { TaskLinks } from "./task-links";
 
 vi.mock("next/navigation", () => ({
@@ -109,6 +111,15 @@ describe("BoardPage", () => {
     const card = within(column("in_review")).getByTestId("task-card");
     expect(within(card).getByTestId("task-codes")).toHaveTextContent("UC ORD-3");
     expect(within(card).getByTestId("task-assignee-select")).toHaveValue("__many__");
+  });
+
+  it("marks a blocked card with Blocked and leaves the others plain", () => {
+    const client = seeded("reader");
+    client.setQueryData(tasksKeys.list(PROJECT, SPRINT_7), TASKS.map((one) => (one.number === 14 ? { ...one, blocked: true } : one)));
+    withClient(<BoardPage project={PROJECT} title="Tasks" ask={null} initialError={null} />, client);
+    const blocked = screen.getAllByTestId("task-blocked");
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0].closest("[data-testid=task-card]")).toHaveAttribute("data-task", "T-14");
   });
 
   it("keeps the tasks of a role, an SRS code or the visitor's own", async () => {
@@ -215,5 +226,94 @@ describe("TaskLinks", () => {
     await waitFor(() =>
       expect(sent).toContainEqual({ method: "PATCH", path: "/v1/x/tasks/demo/tasks/T-14", body: { links: { use_cases: ["BR ORD3-2"], steps: [], runs: [12], pulls: [] } } }),
     );
+  });
+});
+
+describe("TaskBlockers", () => {
+  const blocker = (patch: Partial<TaskBlocker>): TaskBlocker => ({
+    id: 1,
+    kind: "manual",
+    reason: "Waiting for the sandbox",
+    waiting_kind: "text",
+    waiting_on: "the payment vendor",
+    since: "2026-10-20T02:00:00Z",
+    set_by: "alice",
+    cleared_at: null,
+    cleared_by: null,
+    decision_id: null,
+    run_id: null,
+    ...patch,
+  });
+  const blocked: TaskDetail = detailOf(TASKS[2], {
+    blocked: true,
+    blockers: [
+      blocker({}),
+      blocker({ id: 2, reason: "Needs the QA plan", waiting_kind: "member", waiting_on: "bao" }),
+      blocker({ id: 3, reason: "Cart API first", waiting_kind: "task", waiting_on: "T-12" }),
+      blocker({ id: null, kind: "decision", reason: "Which window?", waiting_kind: "member", waiting_on: "alice", set_by: null, decision_id: 9, run_id: 4 }),
+    ],
+  });
+
+  it("lists who each blocker waits on, why and since when, and links a task and a decision; a reader has no control", () => {
+    withClient(<TaskBlockers project={PROJECT} task={blocked} people={[]} writer={false} />, seeded("reader"));
+    const lines = screen.getAllByTestId("task-blocker");
+    expect(lines).toHaveLength(4);
+    expect(within(lines[0]).getByTestId("task-blocker-reason")).toHaveTextContent("Waiting for the sandbox");
+    expect(lines[0]).toHaveTextContent("the payment vendor");
+    expect(lines[1]).toHaveTextContent("bao");
+    expect(within(lines[2]).getByTestId("task-blocker-task")).toHaveAttribute("href", "/p/demo/x/tasks/board/T-12");
+    expect(within(lines[3]).getByTestId("task-blocker-decision")).toHaveAttribute("href", "/inbox?decision=9");
+    expect(screen.queryByTestId("task-blocker-form")).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId("task-blocker-clear")).toHaveLength(0);
+  });
+
+  it("says nothing blocks a task with no blocker", () => {
+    withClient(<TaskBlockers project={PROJECT} task={detailOf(TASKS[2])} people={[]} writer={false} />, seeded("reader"));
+    expect(screen.getByTestId("task-blockers-empty")).toBeInTheDocument();
+  });
+
+  it("lets a writer clear a manual blocker, not a decision's, and block with a reason and a waiter", async () => {
+    const user = userEvent.setup();
+    withClient(<TaskBlockers project={PROJECT} task={blocked} people={PEOPLE} writer />, seeded("writer"));
+    expect(screen.getAllByTestId("task-blocker-clear")).toHaveLength(3);
+    await user.click(screen.getAllByTestId("task-blocker-clear")[1]);
+    await waitFor(() => expect(sent).toContainEqual({ method: "PATCH", path: "/v1/x/tasks/demo/tasks/T-14/blockers/2", body: { cleared: true } }));
+    await user.type(screen.getByTestId("task-blocker-reason-input"), "No data yet");
+    expect(screen.getByTestId("task-blocker-add")).toBeDisabled();
+    await user.selectOptions(screen.getByTestId("task-blocker-kind"), "member");
+    await user.selectOptions(screen.getByTestId("task-blocker-value"), "chi");
+    await user.click(screen.getByTestId("task-blocker-add"));
+    await waitFor(() =>
+      expect(sent).toContainEqual({
+        method: "POST",
+        path: "/v1/x/tasks/demo/tasks/T-14/blockers",
+        body: { reason: "No data yet", waiting_member: "chi", waiting_task: null, waiting_text: null },
+      }),
+    );
+  });
+});
+
+describe("TaskDescription outcome", () => {
+  it("shows the outcome of a task, or says the report falls back to the description's section", () => {
+    const { unmount } = withClient(<TaskDescription project={PROJECT} task={detailOf(TASKS[2], { outcome_md: "Orders cancel in one tap." })} writer={false} />, seeded("reader"));
+    expect(screen.getByTestId("task-outcome-body")).toHaveTextContent("Orders cancel in one tap.");
+    unmount();
+    withClient(<TaskDescription project={PROJECT} task={detailOf(TASKS[2])} writer={false} />, seeded("reader"));
+    expect(screen.queryByTestId("task-outcome-body")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-outcome")).toHaveTextContent("Kết quả");
+  });
+
+  it("lets a writer edit the outcome and sends only the field that changed", async () => {
+    const user = userEvent.setup();
+    const task = detailOf(TASKS[2], { description_md: "Body", outcome_md: "Old." });
+    answer = () => json({ ...task, outcome_md: "Shipped." });
+    withClient(<TaskDescription project={PROJECT} task={task} writer />, seeded("writer"));
+    await user.click(screen.getByTestId("task-edit"));
+    const field = screen.getByTestId("task-editor-outcome");
+    expect(field).toHaveValue("Old.");
+    await user.clear(field);
+    await user.type(field, "Shipped.");
+    await user.click(screen.getByTestId("task-editor-save"));
+    await waitFor(() => expect(sent).toContainEqual({ method: "PATCH", path: "/v1/x/tasks/demo/tasks/T-14", body: { outcome_md: "Shipped." } }));
   });
 });

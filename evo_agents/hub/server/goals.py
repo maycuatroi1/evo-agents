@@ -1,5 +1,5 @@
 """The goals of a project, kept as revisions (plan loop-engine, criterion a2; the model in ``evo_agents.hub.goals``).
-Tables goals and goal_revisions, schema 0085.
+Tables goals and goal_revisions, schema 0091.
 
 - GET /v1/projects/{project}/goals: the project's goals as they are now, by rank, for a member with a grant on the
   project; ``?status=`` keeps those of one status. GET .../goals/{ref}: one goal, by its code (G-<number>) or its

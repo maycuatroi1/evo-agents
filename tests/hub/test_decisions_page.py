@@ -1,5 +1,5 @@
 """The decision board of a project and the notices of the Loop's clock (``evo_agents.hub.server.loop``: ``board``,
-``board_gates``, ``board_chain``, ``notices``), as criterion a8 of plan loop-engine names it, and schema 0090, on the
+``board_gates``, ``board_chain``, ``notices``), as criterion a8 of plan loop-engine names it, and schema 0096, on the
 hub with Postgres.
 
 GET /v1/projects/{p}/decision-board gathers what waits for a person: the three gates (the month's review of the goals
@@ -416,15 +416,17 @@ def test_brief_of_the_loop_goes_to_goal_owners_at_seven_when_the_curator_sends_n
     assert sent(client, seven + timedelta(days=1)) == {}, "no brief of the Loop once it is off"
 
 
-def test_decisions_page_schema_0090_takes_the_loops_notices_and_going_back_deletes_them(client, hub, hub_db):
+def test_decisions_page_schema_0094_takes_the_loops_notices_and_going_back_deletes_them(client, hub, hub_db):
     policy(client, hub, {"enabled": True})
     assert sent(client, datetime(2026, 11, 1, 10, 30, tzinfo=UTC)) == {"goal_review": 1}
     assert len(notices_of(hub_db, "goal_review")) == 1
-    move_to(hub_db, "0089", down=True)
-    assert notices_of(hub_db, "goal_review") == []
     n = tables.notifications
     notice = {"user_id": user_id(hub_db, OWNER), "kind": "notice", "notice_kind": "loop_brief", "title": "Loop"}
+    sql(hub_db, insert(n).values({**notice, "notice_kind": "pm_daily", "title": "Digest"}))
+    move_to(hub_db, "0095", down=True)
+    assert notices_of(hub_db, "goal_review") == []
+    assert len(notices_of(hub_db, "pm_daily")) == 1, "going back keeps the notices of the plugin pm (0086)"
     with pytest.raises(psycopg.errors.CheckViolation, match="notifications_notice_kind_check"):
         sql(hub_db, insert(n).values(notice))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0090") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0096") :]
     sql(hub_db, insert(n).values(notice))

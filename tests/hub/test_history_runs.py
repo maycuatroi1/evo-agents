@@ -474,7 +474,7 @@ def test_the_rows_of_0059_hold_together_and_it_goes_down_to_0058_and_up_again(la
         sql(lab.db, insert(r).values(**{**copy, "plan_id": "fleet", "plan_revision": 1}))
     move_to(lab.db, "0058", down=True)
     assert sql(lab.db, select(func.to_regclass("public.facet_clusters"))) == [(None,)]
-    move_to(lab.db, "0059")
+    move_to(lab.db, "head")  # not 0059: the night's collection reads the columns of every later revision
     assert sql(lab.db, select(func.count()).select_from(c)) == [(0,)]
     assert sql(lab.db, select(func.count()).select_from(f).where(f.c.llm.is_not(None))) == [(0,)]
     sql(lab.db, delete(tables.curator_figures))

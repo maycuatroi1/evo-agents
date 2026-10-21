@@ -35,6 +35,7 @@ import {
 } from "./model";
 import { NotificationItem } from "./notification-item";
 import { ProposalSheet } from "./proposal-sheet";
+import { NoticeSettingsButton } from "./notice-settings";
 import { TelegramButton } from "./telegram-dialog";
 import {
   MAX_READ_IDS,
@@ -174,6 +175,7 @@ export function InboxPage({ initialError }: { initialError: ApiErrorInfo | null 
         actions={
           <>
             <TelegramButton />
+            <NoticeSettingsButton />
             <Button
               type="button"
               variant="outline"

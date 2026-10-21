@@ -45,3 +45,8 @@ export function planStepHref(project: string, plan: string, step: string): Route
 export function runHref(project: string, id: number): Route {
   return projectHref(project, `runs/${id}`);
 }
+
+/** Where the web shows a decision and its answer form (the inbox, as the hub's notifications link to it). */
+export function decisionHref(id: number): Route {
+  return `/inbox?decision=${id}` as Route;
+}

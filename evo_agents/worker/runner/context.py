@@ -18,18 +18,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from evo_agents.hub import curator, releases
 from evo_agents.worker import credentials
-from evo_agents.worker.adapter import Outcome
+from evo_agents.worker.adapter import AgentEvent, Outcome
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runner.common import RunFailed, RunGone, Stopped, log, now
 from evo_agents.worker.runner.inbox import Inbox
 from evo_agents.worker.runner.kinds import kind_class
+from evo_agents.worker.runner.outputs import CLOSE_GRACE, Outputs
 from evo_agents.worker.runner.reports import LOG_LIMIT, Reports
 from evo_agents.worker.runner.sender import Sender
 from evo_agents.worker.runner.transitions import failure_ending, run_record, stop_ending
@@ -62,6 +64,13 @@ class RunKind(Protocol):
         """Leave the plan's branches once the run is over, so they can be checked out elsewhere."""
 
 
+def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None]:
+    """The judge, replay and history keys of a run of the Curator, taken out of its spec (None for another run)."""
+    if curator is None:
+        return None, None, None
+    return tuple(curator.pop(f"{kind}_key", None) for kind in ("judge", "replay", "history"))  # type: ignore[return-value]
+
+
 class Run:
     """One run on this worker, from the claim to its last report: its state and log, what the heartbeat asks of it,
     the parts every kind shares, and its kind (``kind``)."""
@@ -92,6 +101,7 @@ class Run:
         self.finish_asked = asyncio.Event()  # the owner ended the chat of an author run: end it done after the turn
         self.open_decisions = 0  # the run's decisions still open, as the last heartbeat counted them
         self.worktree: Path | None = None  # the agent's directory
+        self.venvs: dict[str, Path] = {}  # repo -> its worktree, whose .venv the worker made (runner.venv)
         self.verify: list[dict] = []
         self.summary: str | None = None
         self.outcome: Outcome | None = None
@@ -99,9 +109,7 @@ class Run:
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
         # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
         # and records see.
-        self.judge_key: str | None = self.curator.pop("judge_key", None) if self.curator is not None else None
-        self.replay_key: str | None = self.curator.pop("replay_key", None) if self.curator is not None else None
-        self.history_key: str | None = self.curator.pop("history_key", None) if self.curator is not None else None
+        self.judge_key, self.replay_key, self.history_key = _own_keys(self.curator)
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()
@@ -145,6 +153,16 @@ class Run:
             with contextlib.suppress(OSError), open(self.log_path, "ab") as handle:
                 handle.write(line)
             self.log_bytes += len(line)
+
+    def agent_event(self, event: AgentEvent) -> None:
+        """An event of the run's agent, headless or in a terminal: the files the adapter took out of it go to the
+        run's outputs (``Outputs.take``), and its body, which links to them, to the run's log."""
+        self.event(event.kind, self.outputs.take(event), event.at)
+
+    @functools.cached_property
+    def outputs(self) -> Outputs:
+        """The run's outputs on their way to the hub (``runner.outputs``)."""
+        return Outputs(self)
 
     def note(self, text: str, **extra) -> None:
         """A ``system`` event: what the daemon does with the run."""
@@ -252,6 +270,7 @@ class Run:
 
     async def main(self) -> None:
         sender = asyncio.create_task(self.sender.run())
+        self.outputs.start()
         try:
             await self._go()
             if self.ended:
@@ -300,6 +319,9 @@ class Run:
         for task in list(self._background):
             task.cancel()
         await self.agent.terminal.close_web()
+        await self.outputs.close(
+            0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE
+        )  # its text redacted with the leases
         try:
             await self.credentials.release(stop=self.daemon.hard_stop)
         except Exception:

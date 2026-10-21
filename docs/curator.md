@@ -316,6 +316,17 @@ every string that looks like a secret replaced before it leaves the machine; the
 charter's owner; and the tool figures of each run, written when it ends and kept after its events are pruned
 (`docs/workers.md`, "Tool figures").
 
+The figures measure skills and commands in three tiers, and two lenses read them. Called: per skill, its loads
+through the Skill tool and typed as `/name`, in sessions and in runs, and the loads that failed. Snags: the Bash
+commands, failures by kind, interrupts and corrections from each load to the person's next turn, next to the baseline
+of every session, and per program its `usage_errors` (a wrong call) and `env_errors` (the hub, the network, a timeout,
+a blocked command), with the failures of commands that ran several programs counted apart. Work done: per skill, the
+runs that loaded it that ended done, the steps whose verify the worker ran again at `evo-agents worker step done`, and
+the runs that failed or were lost, by cause. `tool_errors` reads the programs' kinds, `skills_memory` the skills, and
+when either is among the night's lenses the prompt says which tier has data: a digest that an older `evo-hub` plugin
+pushed counts no skill and no kind, and a run that ended before schema 0087 recorded no skill, so a zero there means no
+data, not no friction.
+
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
@@ -662,7 +673,7 @@ evo-agents hub kg health --project demo
 | 0059 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
 | 0060 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
 | 0061 | the lenses `runtime` and `harness` |
-| 0088 | the lens `product` |
+| 0094 | the lens `product` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

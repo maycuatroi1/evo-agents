@@ -12,7 +12,10 @@ writes). Its turn:
 
 - ``rebasing``: the hub reads the head of the target branch (``before_sha``), asks GitLab to rebase the merge request
   onto it, and reads it until GitLab is done. GitLab failing to rebase it blocks it, and so does a rebase still running
-  after ``merge.pipeline_minutes``.
+  after ``merge.pipeline_minutes``. A head the gates read that already holds the target branch's head
+  (``gitlab.merge_base``; a revert opened on that head does) is not rebased: GitLab would start another pipeline on
+  that same head, and merge it only once that pipeline ends, while the head pipeline it shows is still the green one
+  before it.
 - ``testing``: the target branch moving, or GitLab saying the merge request needs a rebase, sends it back to
   ``ready`` at the head of the queue, its next turn rebasing it again; after MAX_REBASES rebases again in a row it is
   blocked. A push of someone else sends it back to its gates (``gating``). Then the pipeline of the new head: one that
@@ -22,8 +25,10 @@ writes). Its turn:
   gates and Judges again, keeping its place.
 - ``merging``: GitLab merges it only while its head is still the sha its pipeline passed on (``gitlab.merge``), by
   fast-forward, so ``after_sha`` is that head. A push in between (409) sends it back to its gates; GitLab refusing the
-  merge because the target branch moved sends it back to ``ready``, for any other reason blocks it with GitLab's
-  words. A merge GitLab made while the hub did not hear its answer is read from GitLab at the next move.
+  merge because the target branch moved sends it back to ``ready``, because a pipeline of its head still runs
+  (``still_running``: one GitLab started after the head pipeline the hub read) back to ``testing`` to wait for it, for
+  any other reason blocks it with GitLab's words. A merge GitLab made while the hub did not hear its answer is read
+  from GitLab at the next move.
 
 ``merged`` is where what follows a merge takes it on (``evo_agents.hub.server.post_merge``): a revert merged reverts
 its culprit, and the merge may be drawn for an audit sample. A revert the hub opened goes first in line, and no merge
@@ -59,6 +64,7 @@ log = logging.getLogger(__name__)
 MAX_MOVES = 20  # moves of the turn of one target branch in one pass
 RETRYABLE = frozenset({"failed", "canceled"})  # a pipeline the turn runs again once
 NEEDS_REBASE = "need_rebase"  # GitLab's detailed_merge_status of a merge request behind its fast-forward target
+CI_RUNNING = "ci_still_running"  # ... of one GitLab merges only once the pipeline of its head ends
 
 
 async def take_turns(found: queue.RepoPass) -> None:
@@ -77,6 +83,13 @@ async def take_turns(found: queue.RepoPass) -> None:
             return
         if not moved:
             return
+
+
+def still_running(mr: MergeRequest) -> bool:
+    """Whether GitLab says a pipeline of the head of ``mr`` still runs, by its merge status or the head pipeline it
+    shows: GitLab merges it only once that pipeline ends."""
+    pipeline = mr.head_pipeline
+    return mr.detailed_merge_status == CI_RUNNING or (pipeline is not None and pipeline.status in merge_gate.RUNNING)
 
 
 async def curator_merged(conn: AsyncConnection, row, after: str) -> None:
@@ -208,11 +221,15 @@ class Turn:
         return True
 
     async def rebasing(self, row, mr: MergeRequest) -> bool:
-        """Ask GitLab to rebase the merge request onto the head of the target branch, then read it until it did."""
+        """Ask GitLab to rebase the merge request onto the head of the target branch, then read it until it did. A
+        head the gates read that already holds the target branch's head is not rebased: GitLab would start another
+        pipeline on that same head, which the head pipeline it shows does not name yet."""
         if row.before_sha is None:
             base = await self.gl.branch_head(self.path, self.target)
             if base is None:
                 return await self.waits(row, "rebase", f"branch {self.target} is not on GitLab")
+            if mr.sha and mr.sha == row.head_sha and await self.gl.merge_base(self.path, mr.sha, base) == base:
+                return await self.rebased(row.id, mr, base)
             async with self.engine.begin() as conn:
                 await queue.set_row(conn, row.id, before_sha=base)
             await self.gl.rebase(self.path, row.iid)
@@ -222,16 +239,27 @@ class Turn:
         if mr.merge_error and mr.sha == row.head_sha:
             why = f"GitLab could not rebase it onto {self.target}: {mr.merge_error}"
             return await self.blocked(row.id, why, stage="rebase", kind="rebased")
+        return await self.rebased(row.id, mr)
+
+    async def rebased(self, row_id: int, mr: MergeRequest, base: str | None = None) -> bool:
+        """The merge request sits on the target branch, rebased onto the head the hub read before asking, or already
+        on top of ``base`` with no rebase asked: its turn tests its head."""
         async with self.engine.begin() as conn:
-            locked = await queue.row_of(conn, row.id, lock=True)
+            locked = await queue.row_of(conn, row_id, lock=True)
             if locked is None or locked.state != "rebasing" or not mr.sha:
                 return False
+            before = base or locked.before_sha
             new = mr.sha != locked.head_sha
             values = {"head_at": func.now()} if new else {}  # its pipeline's wait counts from its new head
-            await queue.set_row(conn, row.id, state="testing", reason=None, head_sha=mr.sha, **values)
-            onto = f"{self.target} at {locked.before_sha[:12]}"
+            await queue.set_row(
+                conn, row_id, state="testing", reason=None, head_sha=mr.sha, before_sha=before, **values
+            )
+            onto = f"{self.target} at {before[:12]}"
             why = f"rebased onto {onto}: its head is {mr.sha[:12]}" if new else f"already on top of {onto}"
-            detail = {"from": locked.head_sha, "to": mr.sha, "onto": locked.before_sha, "rebases": locked.rebases}
+            detail = {"from": locked.head_sha, "to": mr.sha, "onto": before, "rebases": locked.rebases}
+            if base is not None:
+                why += ": not rebased, which would only start its pipeline again"
+                detail["asked"] = False
             await queue.record(conn, locked, "rebased", passed=True, reason=why, sha=mr.sha, detail=detail)
         return True
 
@@ -343,6 +371,9 @@ class Turn:
             moved = await self.target_moved(row, mr)
             if moved is not None:
                 return await self.again(row.id, moved)
+            if still_running(await self.gl.merge_request(self.path, row.iid)):
+                why = f"GitLab would not merge it yet ({exc.status}): a pipeline of its head still runs"
+                return await self.retest(row.id, why)
             return await self.blocked(row.id, f"GitLab would not merge it: {exc}", stage="merge", kind="merged")
         return await self.merged(row.id, merged)
 
@@ -395,6 +426,18 @@ class Turn:
             else:
                 await self.back(conn, row, merge_gate.turn_reason("rebase", f"{why}: it keeps its place, first"))
         return True
+
+    async def retest(self, row_id: int, why: str) -> bool:
+        """GitLab would not merge the merge request while a pipeline of its head runs: it keeps its turn, back in
+        ``testing`` to wait for that pipeline, still at most ``merge.pipeline_minutes`` from its head; the pass ends."""
+        async with self.engine.begin() as conn:
+            row = await queue.row_of(conn, row_id, lock=True)
+            if row is None or row.state != "merging":
+                return False
+            reason = merge_gate.turn_reason("pipeline", why)
+            await queue.set_row(conn, row.id, state="testing", reason=reason)
+            await queue.record(conn, row, "pipeline", reason=reason, sha=row.head_sha, detail={"turn": "testing"})
+        return False
 
     async def waits(self, row, stage: str, why: str) -> bool:
         """Keep the turn while ``why`` lasts, at most ``merge.pipeline_minutes`` from its head; then block it."""

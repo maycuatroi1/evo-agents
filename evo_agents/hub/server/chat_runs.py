@@ -17,7 +17,8 @@ row is dispatched by them; the person stays the origin the hub's chat code acts 
 
 A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) wake the chat's streams, whose progress of the
 run under its messages changed (``chat_progress``), and put the agent's reaction on the message that started it by
-rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
+rule (``chat_store.status_reaction``); once it ended, the files it sent after its last message go under that message
+(``output_store.attach_leftovers``); a run that failed says why in the thread, and one that ended
 done with messages of its inbox untaken goes on in its session at once, with them. Its prompt is built when it is
 claimed (``chat_prompt``); on a daemon of ``runs.LAZY_CHAT_REPOS`` it lists every repo of the project, those open and
 those the message or the thread names first (``rules.ranked_repos``). The agent's reply at the end of each turn, and
@@ -41,6 +42,7 @@ from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
+from evo_agents.hub.server.output_store import attach_leftovers, link_message
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
@@ -559,11 +561,14 @@ async def post_agent(
     *,
     hand: Hand | None = None,
     target: str | None = None,
+    output_ids: list[int] | None = None,
 ) -> tuple[int, list[dict]]:
     """Store a message of agent ``profile`` of run ``run_id`` in ``chat``, in the thread of ``root_id``; (its id, its
     mentions). A person it mentions gets the notice. The agent ``target`` names gets the work ``hand`` asks
     (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL). The agent naming itself ("I am
-    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing."""
+    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing. The message
+    carries the outputs of the run ``output_ids`` names and, for a chat run, those no message carries yet
+    (``output_store.link_message``)."""
     from evo_agents.hub.server.chats import resolve_mentions  # its routes hand work through this module
 
     origin = await _principal(conn, chat.user_id)
@@ -582,6 +587,7 @@ async def post_agent(
         asked = replace(hand, message_id=message_id, root_id=root_id or message_id)
         mention["run_id"], mention["refusal"] = await _hand_on(conn, asked, mention["profile_id"])
     await insert_mentions(conn, message_id, kept)
+    await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
         await notice_mention(conn, chat, user_id, message_id, body)
     return message_id, kept
@@ -623,8 +629,9 @@ async def _run_profile(conn: AsyncConnection, run_id: int) -> Profile:
     return await by_id(conn, profile_id)
 
 
-async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int, text: str) -> int:
-    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``; its id."""
+async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, text: str) -> int:
+    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``, or, with no root, one that
+    starts none; its id."""
     projects = await agent_projects(conn, chat_id)
     c, u = tables.chats, tables.users
     row = (
@@ -663,6 +670,8 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         return None
     await wake(conn, found.chat_id)
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
+    if new in runs.TERMINAL_STATES:  # what it sent after its last message goes under that one
+        await attach_leftovers(conn, run_id)
     if new == "failed":
         profile = await _run_profile(conn, run_id)
         why = found.error or "its worker gave no reason"

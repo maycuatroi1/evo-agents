@@ -1,7 +1,7 @@
 """The goals of a project, kept as revisions, and @builder's proposals of one.
 
-Revision ID: 0085
-Revises: 0084
+Revision ID: 0091
+Revises: 0090
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_goals``, ``evo_agents.hub.goals`` and
@@ -20,15 +20,15 @@ builder_proposals.kind takes ``goal``: @builder proposes a goal or a change of o
 approves before the hub writes it as the goal's next revision. No column of an older table changes.
 
 Going back deletes the proposals of kind goal and their Inbox notices, puts the check of 0079 back on
-builder_proposals and drops both tables: the hub of 0084 reads the goals of a charter alone.
+builder_proposals and drops both tables: the hub of 0090 reads the goals of a charter alone.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0085"
-down_revision = "0084"
+revision = "0091"
+down_revision = "0090"
 branch_labels = None
 depends_on = None
 
