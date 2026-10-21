@@ -8,7 +8,7 @@
 - ``doctor [--json]``: what this machine holds or allows that a worker should not, such as another administrator or a
   long-lived credential of its owner (``doctor``); exit status 2 when a finding is high.
 - ``attach N``: this terminal on the tmux session of run N while a person drives its agent (``evo-run-N``).
-- ``drain [--resume]``, ``revoke [--force]``: the owner's controls, with the machine token.
+- ``drain [--resume]``, ``revoke [--force]``, ``projects``: the owner's controls, with the machine token.
 - ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
   verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
   and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
@@ -60,7 +60,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, output_cli, playbook_cli, triage_cli
+from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, triage_cli
 from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
@@ -78,7 +78,7 @@ class _MissingExtra(Exception):
     pass
 
 
-def _worker_command(func):
+def worker_command(func):
     """Turn the failures of ``func`` into an ``error:`` line and an exit status."""
 
     @functools.wraps(func)
@@ -160,7 +160,7 @@ def _member_hub(url: str) -> Hub | None:
     return Hub(credentials.url, credentials.token)
 
 
-def _owner_hub(config: WorkerConfig) -> Hub:
+def owner_hub(config: WorkerConfig) -> Hub:
     hub = _member_hub(config.url)
     if hub is None:
         raise HubError(
@@ -190,7 +190,7 @@ def refresh_repos(config: WorkerConfig, hub: Hub | None = None) -> list[str]:
     return missed
 
 
-def _print_checkouts(config: WorkerConfig) -> None:
+def print_checkouts(config: WorkerConfig) -> None:
     from evo_agents.worker.checkouts import discover
 
     found = discover(config)
@@ -199,8 +199,8 @@ def _print_checkouts(config: WorkerConfig) -> None:
     missing = [p for p in config.projects if not any(key.startswith(f"{p}/") for key in found)]
     for project in missing:
         print(
-            f"  no checkout of {project} found: run `evo-agents hub registry pull`, or clone its repos where the "
-            "harness registry says"
+            f"  no checkout of {project} found: a run of it clones the repos it needs; `evo-agents hub registry "
+            "pull` finds those cloned here already"
         )
 
 
@@ -212,11 +212,11 @@ def _joined(home: WorkerHome, config: WorkerConfig, token: str, how: str) -> Non
     print(f"The worker token is in {home.token_path}.")
     if missed and _member_hub(config.url) is not None:
         print(f"  the repos of {', '.join(missed)} could not be read from the hub; the harness registry is used")
-    _print_checkouts(config)
+    print_checkouts(config)
     print("Start it with `evo-agents worker run`.")
 
 
-@_worker_command
+@worker_command
 def cmd_join(args) -> int:
     home = WorkerHome()
     _refuse_rejoin(home, args.replace)
@@ -238,7 +238,7 @@ def cmd_join(args) -> int:
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_register(args) -> int:
     home = WorkerHome()
     _refuse_rejoin(home, args.replace)
@@ -258,7 +258,7 @@ def cmd_register(args) -> int:
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_run(args) -> int:
     home = WorkerHome()
     try:
@@ -307,7 +307,7 @@ def _dir_bytes(path) -> int:
     return total
 
 
-@_worker_command
+@worker_command
 def cmd_attach(args) -> int:
     from evo_agents.worker import interactive
 
@@ -329,21 +329,21 @@ def cmd_attach(args) -> int:
     return 0  # pragma: no cover - execvpe does not return
 
 
-@_worker_command
+@worker_command
 def cmd_git_credential(args) -> int:
     from evo_agents.worker import credential_commands
 
     return credential_commands.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
 
 
-@_worker_command
+@worker_command
 def cmd_env(args) -> int:
     from evo_agents.worker import credential_commands
 
     return credential_commands.print_env(args.run, sys.stdout, sys.stderr)
 
 
-@_worker_command
+@worker_command
 def cmd_status(args) -> int:
     from evo_agents.worker.adapter import detect_runtimes, load_adapters
     from evo_agents.worker.checkouts import discover
@@ -412,19 +412,19 @@ def cmd_status(args) -> int:
     for key in sorted(found):
         print(f"  checkout {key}: {found[key]['path']} ({found[key].get('branch') or 'detached'})")
     if not found:
-        print("  no checkout of the worker's projects found")
+        print("  no checkout of the worker's projects found: each run clones the repos it needs")
     unfinished = [r for r in records if not r.get("finished_at")]
     print(f"  runs kept here: {len(records)} ({len(unfinished)} not ended); spool: {status['spool_bytes']} bytes")
     print(*(f"  {line}" for line in [*home.kg_sync_lines(), f"state: {home.root}"]), sep="\n")
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_drain(args) -> int:
     home = WorkerHome()
     config = home.load_config()
     action = "undrain" if args.resume else "drain"
-    answer = _owner_hub(config).call("POST", f"/v1/workers/{config.worker_id}/{action}")
+    answer = owner_hub(config).call("POST", f"/v1/workers/{config.worker_id}/{action}")
     status = answer.get("status") if isinstance(answer, dict) else None
     if args.resume:
         print(f"Worker {config.name} claims runs again (status {status}).")
@@ -436,12 +436,12 @@ def cmd_drain(args) -> int:
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_revoke(args) -> int:
     home = WorkerHome()
     config = home.load_config()
     try:
-        _owner_hub(config).call("POST", f"/v1/workers/{config.worker_id}/revoke")
+        owner_hub(config).call("POST", f"/v1/workers/{config.worker_id}/revoke")
         said = f"Revoked worker {config.name} (id {config.worker_id}) on {config.url}"
     except HubError as exc:
         if exc.status == 409:
@@ -634,7 +634,7 @@ async def _notify_push(hub, agent: _AgentRun, name: str, pushed) -> None:
         )
 
 
-@_worker_command
+@worker_command
 def cmd_step(args) -> int:
     agent = _agent_run("step")
     verify = _step_verify_commands(args)
@@ -762,7 +762,7 @@ def cmd_step(args) -> int:
     return _with_hub(agent, work)
 
 
-@_worker_command
+@worker_command
 def cmd_ask(args) -> int:
     agent = _agent_run("ask", runs.RESUME_KINDS)
     options = [decision_option(text) for text in args.option]
@@ -808,7 +808,7 @@ def cmd_ask(args) -> int:
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_notify(args) -> int:
     agent = _agent_run("notify")
     body: dict = {"kind": args.kind, "title": args.title}
@@ -826,7 +826,7 @@ def cmd_notify(args) -> int:
     return 0
 
 
-@_worker_command
+@worker_command
 def cmd_plan(args) -> int:
     agent = _agent_run("plan", ("plan", "author"))
 
@@ -879,7 +879,7 @@ async def _attest(evidence: list[dict], workspaces: dict) -> None:
             item["commit"] = head
 
 
-@_worker_command
+@worker_command
 def cmd_finding(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
 
@@ -916,7 +916,7 @@ def _plan_file(source: str) -> dict:
     return json.loads(json.dumps(plan, default=str))  # dates as text, as the hub keeps JSON
 
 
-@_worker_command
+@worker_command
 def cmd_propose(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
     from evo_agents.hub.tiers import split_target
@@ -966,7 +966,7 @@ def cmd_propose(args) -> int:
 # The command of an author run's agent
 
 
-@_worker_command
+@worker_command
 def cmd_put(args) -> int:
     import yaml
 
@@ -1196,5 +1196,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in AGENT_PARSERS:
+    for extra in (*AGENT_PARSERS, projects_cli.register_projects):
         extra(wsub)

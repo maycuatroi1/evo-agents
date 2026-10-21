@@ -13008,7 +13008,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.31.0"
+      "version": "0.32.0"
     },
     "paths": {
       "/v1/health": {
@@ -19992,7 +19992,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a\nweb session or with their machine token.",
+          "description": "Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner\nonly, from a web session or with their machine token.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -63276,6 +63276,14 @@
               },
               "type": "array",
               "title": "Missing"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/RunRepoSource"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "each repo of the run, in the run's order"
             }
           },
           "type": "object",
@@ -83957,6 +83965,59 @@
           "title": "RunRepo",
           "description": "A repo of a plan run, with the branch the plan names for it."
         },
+        "RunRepoSource": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "as a project registered it; null when none did"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path",
+              "description": "as that project registered it: relative to its workspace, ~/..., or absolute"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the project that registered it: the run's, or another of its owner's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "origin",
+            "path",
+            "project"
+          ],
+          "title": "RunRepoSource",
+          "description": "A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it."
+        },
         "RunSkill": {
           "properties": {
             "name": {
@@ -95213,6 +95274,14 @@
               "type": "boolean",
               "title": "Version Locked",
               "description": "its owner locked its version: the daemon stays on the evo-agents it runs and does not update itself; a hub before 0048 sends none, and a daemon that got none does not update itself either"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config"
             }
           },
           "type": "object",
@@ -95309,6 +95378,24 @@
               ],
               "title": "Shared",
               "description": "true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default"
+            },
+            "projects": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Projects",
+              "description": "every project it takes runs of, the whole list: the writer role on each one added; one dropped must have no active run on the worker and no night shift on duty there"
             }
           },
           "type": "object",

@@ -1,6 +1,7 @@
 """What a run may reach: the leases it takes for its repos, and the preflight that checks them before its agent starts.
 
-Once its leases are taken, and before anything is fetched or the agent starts, a run checks what it needs
+Once its leases are taken, a run clones each of its repos this worker has no checkout of (``clones``). Then, before
+anything is fetched or the agent starts, it checks what it needs
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
 pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
 claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
@@ -30,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, preflight
 from evo_agents.worker.environments import Container
-from evo_agents.worker.runner import parallel
+from evo_agents.worker.runner import clones, parallel
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.transitions import MAX_ERROR_CHARS
 
@@ -43,9 +44,12 @@ def repo_names(repos: Iterable) -> list[str]:
     return list(dict.fromkeys(repo for repo in repos if isinstance(repo, str) and repo))
 
 
-async def take_credentials(run: Run, repos: Iterable) -> None:
+async def take_credentials(
+    run: Run, repos: Iterable, *, clone: Iterable | None = None, best_effort: bool = False
+) -> None:
     """Take the run's leases for ``repos``, handed to the origins of their checkouts here (read several at a time,
-    ``parallel.each``)."""
+    ``parallel.each``); then set up a checkout of each of ``clone`` (every one of ``repos`` when None) this worker has
+    none of, through those leases (``clones.ensure``; with ``best_effort`` one that cannot be is left out)."""
     names = repo_names(repos)
 
     async def urls_of(name: str) -> list[str] | None:
@@ -58,6 +62,7 @@ async def take_credentials(run: Run, repos: Iterable) -> None:
     found = await parallel.each(run, names, urls_of)
     origins = {name: urls for name, urls in zip(names, found, strict=True) if urls is not None}
     await run.credentials.take(run.daemon.hub, origins, stop=run.daemon.hard_stop)
+    await clones.ensure(run, names if clone is None else repo_names(clone), best_effort=best_effort)
 
 
 def run_path(run: Run) -> str | None:

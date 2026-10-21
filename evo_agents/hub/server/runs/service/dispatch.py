@@ -25,6 +25,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.plugin_configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
 from evo_agents.hub.server.runs.service import plugin_runtimes
@@ -142,7 +143,8 @@ def unfit(
 ) -> list[str]:
     """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
     with a session per step when ``session_per_step``), as its last heartbeat reported it and the claim checks it;
-    empty when nothing does."""
+    empty when nothing does. A repo it has no checkout of keeps only an older daemon from it: one that says it clones
+    them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
@@ -175,10 +177,10 @@ def unfit(
     elif runtime != "any" and runtime not in usable:
         problems.append(f"it does not report {runtime} available")
     missing = [f"{project}/{repo}" for repo in repos if f"{project}/{repo}" not in worker.checkouts]
-    if missing:
+    if missing and runs.CLONES_CHECKOUTS not in worker.features:
         problems.append(
-            f"it has no checkout of {', '.join(missing)}: clone each one where the harness registry or the "
-            "project's workspace places it, or name its path in checkouts of the worker's config.json, then restart "
+            f"it has no checkout of {', '.join(missing)}, and its daemon (evo-agents "
+            f"{worker.agent_version or 'of an unknown version'}) does not clone what it lacks: upgrade it and restart "
             "its daemon"
         )
     return problems
@@ -204,21 +206,21 @@ def _short(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-async def _refuse_without_origin(conn: AsyncConnection, access: ProjectAccess, repos: list[str], what: str) -> None:
-    """409 when the project lists no origin for one of ``repos`` (no repo of that name, or one without its origin): no
-    credential is leased for such a repo, and the worker's preflight would fail the run before its agent starts."""
-    pr = tables.project_repos
-    listed = await conn.execute(
-        select(pr.c.name, pr.c.origin).where(pr.c.project_id == access.project_id, pr.c.name.in_(repos))
-    )
-    origins = {name: origin for name, origin in listed}
-    unlisted = [name for name in dict.fromkeys(repos) if not origins.get(name)]
+async def _refuse_without_origin(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, repos: list[str], what: str
+) -> None:
+    """409 when no origin is known for one of ``repos``, neither in the project nor in another one ``user`` holds a
+    grant on (``repo_origins``): no credential is leased for such a repo, a worker without a checkout of it has
+    nothing to clone, and the worker's preflight would fail the run before its agent starts."""
+    origins = await repo_origins(conn, access.project_id, user.user_id, repos)
+    unlisted = [name for name in dict.fromkeys(repos) if name not in origins]
     if unlisted:
         names = ", ".join(unlisted)
         raise HTTPException(
             409,
-            f"{what} needs {names}, for which project {access.name} lists no origin: add the repo with its origin to "
-            "the harness and run `evo-agents hub project register` again; nothing was dispatched",
+            f"{what} needs {names}, for which neither project {access.name} nor another project you hold a grant on "
+            "lists an origin: add the repo with its origin to the harness of either and run `evo-agents hub project "
+            "register` again; nothing was dispatched",
         )
 
 
@@ -273,7 +275,7 @@ async def queue_run(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
     _fits(pinned, access, "step", [name], runtime)
-    await _refuse_without_origin(conn, access, [name], f"step {key} of plan {held.plan_id}")
+    await _refuse_without_origin(conn, access, user, [name], f"step {key} of plan {held.plan_id}")
     values = {
         "project_id": access.project_id,
         "plan_id": held.plan_id,
@@ -453,7 +455,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         repos = plan_run_repos(held)
         names = [entry["repo"] for entry in repos]
         _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
-        await _refuse_without_origin(conn, access, names, f"plan {held.plan_id}")
+        await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
         )

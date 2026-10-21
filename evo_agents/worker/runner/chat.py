@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import chat_runs, runs
 from evo_agents.worker import gitops
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
-from evo_agents.worker.runner import access, transitions, verify
+from evo_agents.worker.runner import access, clones, transitions, verify
 from evo_agents.worker.runner.branch_work import CHAT, BranchWork
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, RunFailed, Stopped, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation, post_last_message
@@ -112,12 +112,14 @@ class ChatRun:
             raise RunFailed(f"a chat run works on a branch chat/<run>, not {self.branch}")
         if resume_of is not None:  # the earlier run's directory, worktrees and session, when they are still here
             self.conversation.adopt()
+        named = [entry.get("repo") for entry in repos]
+        checked = f"{len(named)} repo(s): {', '.join(map(str, named))}" if named else "the run has no repo"
+        run.note(f"Checking access of the run: {checked}.", setup="checking")
+        # the leases are the run's own, a run going on in a session too; a repo this worker lacks is cloned first
+        await access.take_credentials(run, named, best_effort=True)
+        run.check()
         held = self.work.held_repos(repos)
         names = [entry["repo"] for entry in held]
-        checked = f"{len(names)} repo(s): {', '.join(names)}" if names else "the run has no repo"
-        run.note(f"Checking access of the run: {checked}.", setup="checking")
-        await access.take_credentials(run, names)  # the leases are the run's own, a run going on in a session too
-        run.check()
         await access.check(run, names, path=access.run_path(run), fetched=self.work.adopted(names))
         run.check()
         await self.work.prepare(held)  # its notes of each repo's fetch say it opens that repo (BranchWork.setup)
@@ -201,18 +203,24 @@ class ChatRun:
         if not self.opens or self.directory.path is None:
             return f"run {run.id} opens a repo only while its agent's turns run"
         checkout = run.daemon.checkout_for(run.project, name)
-        if checkout is None:
-            return (
-                f"worker {run.daemon.config.name} has no checkout of {name} of project {run.project}: the run cannot "
-                "open it here"
-            )
         refusal = await self._add_on_hub(name)
         if refusal is not None:
             return refusal
         urls: list[str] = []
-        with contextlib.suppress(gitops.GitError, OSError):
-            urls = await gitops.remote_urls(checkout)
+        if checkout is not None:
+            with contextlib.suppress(gitops.GitError, OSError):
+                urls = await gitops.remote_urls(checkout)
         await run.credentials.add(name, urls)
+        if checkout is None:  # cloned through the leases the hub just took for it
+            try:
+                await clones.ensure(run, [name])
+            except RunFailed as exc:
+                return exc.error
+            except Stopped as exc:
+                return f"the run is stopping ({exc.reason})"
+            checkout = run.daemon.checkout_for(run.project, name)
+            if checkout is None:
+                return f"worker {run.daemon.config.name} could not set up a checkout of {name} of project {run.project}"
         try:
             await self.directory.make_each([name], lambda repo, folder: self.work.make_worktree(repo, checkout, folder))
         except RunFailed as exc:

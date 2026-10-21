@@ -9,12 +9,17 @@ highest level (fail closed). Files with errors are refused before anything is se
 Paths are sent so that another machine can rebuild them: the workspace as ``~/...`` when it is under the home
 directory, and the harness root and every repo relative to the workspace when they are inside it (``~/...`` or
 absolute otherwise). ``place`` turns them back into paths on the machine that reads them.
+
+The harness is sent among the repos too, named by its directory as a worker keys its checkout, with the origin its git
+remote names, when harness.yaml does not list it and that remote has one: a plan names the harness as a repo (its
+plans live there), and a run can lease a credential for it, and a worker clone it, only from the origin the hub holds.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +31,7 @@ from evo_agents.schema import errors
 
 PROJECT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # as the hub accepts it
 SHOWN_ERRORS = 5
+GIT_TIMEOUT = 10  # seconds a git command that reads the harness's remote may take
 
 
 @dataclass(frozen=True)
@@ -78,6 +84,34 @@ def place(text: str, workspace: Path) -> Path:
 
 def _text(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
+
+
+def _git(root: Path, *args: str) -> str | None:
+    """What ``git -C root <args>`` prints, stripped; None when git fails or prints nothing."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _text(done.stdout.strip()) if done.returncode == 0 else None
+
+
+def _harness_repo(root: Path, workspace: Path, repos: list[dict]) -> dict | None:
+    """The harness as a repo of the project (see the module's docstring); None when a repo of ``repos`` is it already,
+    by its name or its path, or its git remote names no origin."""
+    name = root.name
+    here = _real(root)
+    for repo in repos:
+        path = repo.get("path")
+        if repo.get("name") == name or (path and _real(place(path, workspace)) == here):
+            return None
+    origin = _git(root, "config", "--get", "remote.origin.url")
+    if origin is None:
+        return None
+    head = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    branch = head.removeprefix("origin/") if head and head.startswith("origin/") else None
+    return {"name": name, "origin": origin, "default_branch": branch, "path": relative(root, workspace)}
 
 
 def registration(start: str | Path | None = None) -> Registration:
@@ -135,6 +169,9 @@ def registration(start: str | Path | None = None) -> Registration:
                 "path": relative(path, workspace) if path is not None else None,
             }
         )
+    harness_repo = _harness_repo(harness.root, workspace, repos)
+    if harness_repo is not None:
+        repos.append(harness_repo)
     body = {
         "levels": policy.levels,
         "locations": policy.locations,

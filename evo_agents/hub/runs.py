@@ -26,7 +26,8 @@ member's own machine, which no worker runs and the hub only watches and asks dec
 ``evo_agents.hub.server.local_runs``). A worker takes a kind of run only once its heartbeat says its daemon runs that
 kind (``run_kinds``): a daemon older than the review run reads every run as a step or plan run. Likewise it takes a plan
 run with a session per step only once its heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon
-would run it in one session.
+would run it in one session. A worker whose heartbeat lists CLONES_CHECKOUTS takes a run whatever checkouts it has,
+cloning those it lacks before the run starts; an older one takes only the runs of the repos it has a checkout of.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -170,6 +171,9 @@ UPDATE_NOW = "update_now"
 # a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
 # (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
 MERGE_JUDGE = "merge_judge"
+# a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
+# the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
+CLONES_CHECKOUTS = "clones_checkouts"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -183,6 +187,7 @@ WORKER_FEATURES = (
     LAZY_CHAT_REPOS,
     UPDATE_NOW,
     MERGE_JUDGE,
+    CLONES_CHECKOUTS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
