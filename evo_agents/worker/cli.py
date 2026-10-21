@@ -20,6 +20,8 @@
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
 - ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
+- ``output FILE...``: the command of any run's agent that sends files to the run's outputs on the hub, as ``ask
+  --attach`` and ``chat post --attach`` do for a question and a message (``output_cli``).
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
@@ -49,7 +51,6 @@ import json
 import logging
 import os
 import platform
-import re
 import shutil
 import sys
 import time
@@ -62,8 +63,8 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, playbook_cli, triage_cli
-from evo_agents.worker.agent_input import evidence_items, read_text
+from evo_agents.worker import chat_cli, output_cli, playbook_cli, triage_cli
+from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
@@ -486,6 +487,10 @@ MAX_VERIFY_COMMANDS = 50
 MAX_VERIFY_CHARS = 2000
 MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
 OUTPUT_TAIL = 4000  # characters of a failed verify command's output printed
+# The parsers of a run's agent in group chats, of `repo open` of a chat run's, of a triage thread's for a failed run, of
+# a review run's on the playbook, and of any run's outputs
+AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
+AGENT_PARSERS += (playbook_cli.register_playbook, output_cli.register_output)
 
 
 @dataclass
@@ -654,9 +659,8 @@ async def _push_conflict(hub, agent: _AgentRun, name: str, conflict) -> None:
         print(f"warning: the notice of {conflict.side_branch} was not sent ({exc})", file=sys.stderr)
 
 
-@_worker_command
-def cmd_step(args) -> int:
-    agent = _agent_run("step")
+def _step_verify(args) -> list[str]:
+    """The verify commands of ``worker step``, once its arguments are checked."""
     verify = list(args.verify or [])
     if args.status == "done" and not verify:
         raise WorkerStateError(
@@ -671,6 +675,14 @@ def cmd_step(args) -> int:
         )
     if args.evidence is not None and (not args.evidence.strip() or len(args.evidence) > MAX_EVIDENCE_CHARS):
         raise WorkerStateError(f"--evidence takes 1 to {MAX_EVIDENCE_CHARS} characters")
+    return verify
+
+
+@_worker_command
+def cmd_step(args) -> int:
+    agent = _agent_run("step")
+    verify = _step_verify(args)
+    output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
     workspaces = _workspaces(agent)
     if args.repo is not None and args.repo not in workspaces:
         raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {args.repo}")
@@ -812,22 +824,10 @@ def cmd_step(args) -> int:
     return _with_hub(agent, work)
 
 
-def _option(text: str) -> dict:
-    """``KEY=LABEL[:DESCRIPTION]`` as an option of a decision."""
-    key, sep, rest = text.partition("=")
-    label, _, description = rest.partition(":")
-    key, label, description = key.strip(), label.strip(), description.strip()
-    if not sep or not label or not re.fullmatch(runs.OPTION_KEY, key):
-        raise WorkerStateError(
-            f"--option takes KEY=LABEL[:DESCRIPTION], KEY being letters, digits, _ and - (at most 32), not {text!r}"
-        )
-    return {"key": key, "label": label, **({"description": description} if description else {})}
-
-
 @_worker_command
 def cmd_ask(args) -> int:
     agent = _agent_run("ask", runs.RESUME_KINDS)
-    options = [_option(text) for text in args.option]
+    options = [decision_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
     if not fewest <= len(options) <= most or len(set(keys)) != len(keys):
@@ -835,19 +835,14 @@ def cmd_ask(args) -> int:
     if args.recommended is not None and args.recommended not in keys:
         raise WorkerStateError(f"--recommended names one of the options: {', '.join(keys)}")
     body: dict = {"category": args.category, "question": args.question, "options": options}
-    if args.context_file:
-        try:
-            text = sys.stdin.read() if args.context_file == "-" else Path(args.context_file).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise WorkerStateError(f"cannot read {args.context_file}: {exc}") from None
-        if len(text.encode()) > runs.MAX_DECISION_CONTEXT_BYTES:
-            raise WorkerStateError(f"the context is at most {runs.MAX_DECISION_CONTEXT_BYTES} bytes of UTF-8")
-        if text.strip():
-            body["context"] = text
+    context = read_text(args.context_file, "context", runs.MAX_DECISION_CONTEXT_BYTES) if args.context_file else None
+    if context is not None:
+        body["context"] = context
     if args.recommended is not None:
         body["recommended"] = args.recommended
     if args.step is not None:
         body["step_key"] = args.step
+    body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
 
     async def work(hub) -> dict:
         return await hub.decision(agent.run_id, body)
@@ -1192,6 +1187,7 @@ def register(sub) -> None:
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
     ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
+    output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)
 
     notify = wsub.add_parser(
@@ -1262,6 +1258,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    chat = (chat_cli.register_chat, chat_cli.register_repo)  # a run's agent in group chats, `repo open` of a chat run's
-    for extra in (*chat, triage_cli.register_triage, playbook_cli.register_playbook):
-        extra(wsub)  # and a triage thread's for a failed run, a review run's on the playbook
+    for extra in AGENT_PARSERS:
+        extra(wsub)

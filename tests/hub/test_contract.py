@@ -183,6 +183,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker chat read",
         "worker finding",
         "worker notify",
+        "worker output",
         "worker plan",
         "worker playbook add",
         "worker playbook harmful",
@@ -216,6 +217,10 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert verify["repeatable"] and not verify["required"]
     ask = {o["flags"][0]: o for o in printed["worker ask"]["options"]}
     assert ask["--category"]["required"] and ask["--option"]["required"] and ask["--option"]["repeatable"]
+    assert ask["--attach"]["repeatable"] and not ask["--attach"]["required"]
+    output = printed["worker output"]
+    assert [(p["name"], p["repeatable"]) for p in output["positionals"]] == [("files", True)]
+    assert [o["flags"] for o in output["options"]] == [["--caption"]] and output["json"] is None
     assert ask["--category"]["choices"] == [
         "deploy",
         "delete_data",
@@ -241,7 +246,8 @@ def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():
     plan = {"id": "fleet", "repos": [{"repo": "evo-agents"}], "steps": [{"id": 1, "what": "x", "repo": "evo-agents"}]}
     prompt = build_plan_prompt(plan, [{"repo": "evo-agents", "branch": None}])
     found = [f.text for f in find_commands(prompt, "prompt")]
-    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"plan", "step", "ask", "notify"}
+    named = {text.split()[2] for text in found if text.split()[1] == "worker"}
+    assert named == {"plan", "step", "ask", "notify", "output"}
     assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 

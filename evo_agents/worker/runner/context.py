@@ -18,18 +18,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from evo_agents.hub import curator, releases
 from evo_agents.worker import credentials
-from evo_agents.worker.adapter import Outcome
+from evo_agents.worker.adapter import AgentEvent, Outcome
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runner.common import RunFailed, RunGone, Stopped, log, now
 from evo_agents.worker.runner.inbox import Inbox
 from evo_agents.worker.runner.kinds import kind_class
+from evo_agents.worker.runner.outputs import CLOSE_GRACE, Outputs
 from evo_agents.worker.runner.reports import LOG_LIMIT, Reports
 from evo_agents.worker.runner.sender import Sender
 from evo_agents.worker.runner.transitions import failure_ending, run_record, stop_ending
@@ -147,6 +149,16 @@ class Run:
                 handle.write(line)
             self.log_bytes += len(line)
 
+    def agent_event(self, event: AgentEvent) -> None:
+        """An event of the run's agent, headless or in a terminal: the files the adapter took out of it go to the
+        run's outputs (``Outputs.take``), and its body, which links to them, to the run's log."""
+        self.event(event.kind, self.outputs.take(event), event.at)
+
+    @functools.cached_property
+    def outputs(self) -> Outputs:
+        """The run's outputs on their way to the hub (``runner.outputs``)."""
+        return Outputs(self)
+
     def note(self, text: str, **extra) -> None:
         """A ``system`` event: what the daemon does with the run."""
         self.event("system", {"text": text, **extra})
@@ -253,6 +265,7 @@ class Run:
 
     async def main(self) -> None:
         sender = asyncio.create_task(self.sender.run())
+        self.outputs.start()
         try:
             await self._go()
             if self.ended:
@@ -301,6 +314,9 @@ class Run:
         for task in list(self._background):
             task.cancel()
         await self.agent.terminal.close_web()
+        await self.outputs.close(
+            0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE
+        )  # its text redacted with the leases
         try:
             await self.credentials.release(stop=self.daemon.hard_stop)
         except Exception:

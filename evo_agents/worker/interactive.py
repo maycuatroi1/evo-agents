@@ -583,9 +583,7 @@ def claude_transcript_events(record: dict) -> list[AgentEvent]:
             if block.get("type") == "tool_result":
                 status = "failed" if block.get("is_error") else "completed"
                 events.append(
-                    common.tool_update(
-                        str(block.get("tool_use_id") or ""), status, claude_code._text_of(block.get("content"))
-                    )
+                    claude_code.tool_result(str(block.get("tool_use_id") or ""), status, block.get("content"))
                 )
             elif block.get("type") == "text" and str(block.get("text") or "").strip():
                 typed.append(str(block["text"]))

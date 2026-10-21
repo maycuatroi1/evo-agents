@@ -2,8 +2,10 @@
 (``evo_agents.hub.chat_runs``), which the agent of a chat run uses, and the agent of a step, plan or author run too;
 and ``evo-agents worker repo open``, which only a chat run's agent uses.
 
-- ``post TEXT [--chat ID] [--reply-to MESSAGE]``: a message of the run's agent, in the thread of a chat run, else in a
-  chat its agent is in (``--chat``), in the thread of ``--reply-to`` when given. An @ of an agent in it hands no work.
+- ``post TEXT [--chat ID] [--reply-to MESSAGE] [--attach FILE]``: a message of the run's agent, in the thread of a
+  chat run, else in a chat its agent is in (``--chat``), in the thread of ``--reply-to`` when given. An @ of an agent
+  in it hands no work. Each ``--attach`` file goes to the run's outputs first and under the message
+  (``output_cli.attached``).
 - ``react MESSAGE EMOJI [--remove]``: an emoji of the run's agent on a message, or taken off.
 - ``create --title TEXT [--person LOGIN ...]``: a new chat of the run's agent and the person who dispatched the run,
   with the people named; the hub tells each of them.
@@ -147,8 +149,12 @@ def _where(args) -> dict:
 
 @chat_command
 def cmd_post(args) -> int:
+    from evo_agents.worker.output_cli import attached
+
     run = agent_run("post")
-    answer = call(run, "chat/messages", {"body": text_of(args.text), **_where(args)})
+    body = {"body": text_of(args.text), **_where(args)}
+    body.update(attached(WorkerHome(), run.run_id, args.attach))  # the outputs the message carries
+    answer = call(run, "chat/messages", body)
     thread = f", in the thread of #{answer['thread_root_id']}" if answer.get("thread_root_id") else ""
     print(f"Posted message #{answer['id']} in chat {answer['chat_id']}{thread}.")
     return 0
@@ -239,6 +245,9 @@ def register_chat(wsub) -> None:
     post = csub.add_parser("post", help="post a message of the run's agent: in the thread of a chat run by default")
     post.add_argument("text", metavar="TEXT", help="the message, at most 16 KiB (- for stdin); an @ hands no work")
     _where_options(post)
+    from evo_agents.worker.output_cli import attach_option
+
+    attach_option(post, "the message")
     post.set_defaults(func=cmd_post)
     react = csub.add_parser("react", help="put an emoji of the run's agent on a message, or take it off")
     react.add_argument("message", metavar="MESSAGE", type=int, help="the message's id")
