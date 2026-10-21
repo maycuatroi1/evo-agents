@@ -685,8 +685,13 @@ evo-agents hub kg health --project demo
 - It merges nothing on GitHub for a project whose charter leaves `auto_merge` empty. On GitLab it merges nothing
   itself: the hub's merge queue merges its merge request when the project's autonomy policy has the repo in mode `auto`
   (`docs/merge-queue.md`), and it stays open otherwise.
-- It does not turn a product goal into plans on its own. Its replays decide one thing alone: a change of a harness
-  alone whose replays won merges as tier 0; any other change keeps its tier whatever its replays came to.
+- It does not turn a product goal into plans on its own. That step, the third phase that the plans curator-agent,
+  history-driven-curator and hub-plan-authoring left out of their scope, is the Loop's (plan loop-engine,
+  `docs/loop.md`): deterministic code of the hub that hands an approved use case's frame task to an author run and the
+  plan it writes to a plan run. The Curator stays the night shift that tunes the harness and the runtime; its lens
+  `product` only proposes claims and changes of the policy, and hands no work to the Loop. Its replays decide one
+  thing alone: a change of a harness alone whose replays won merges as tier 0; any other change keeps its tier
+  whatever its replays came to.
 - It publishes no skill of a project, and no global skill it did not merge or that came from another repo.
 - It reads no transcript on a member's machine: the evo-hub plugin sends them to the hub, with every string that looks
   like a secret replaced on the machine, and the Reviewer reads what the hub holds through the hub's tools.
