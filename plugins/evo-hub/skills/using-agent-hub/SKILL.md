@@ -1,6 +1,6 @@
 ---
 name: using-agent-hub
-description: Team hub (MCP server evo-hub). Before relying on what you remember about a project or a person, search its memories with memory_search and read them with memory_get; read plans with plan_show and mark steps with plan_step. In a harness naming hub.project, plans/*.yaml are read-only copies.
+description: Team hub (MCP server evo-hub). Before relying on what you remember about a project or a person, search its memories with memory_search and read them with memory_get; read plans with plan_show and mark steps with plan_step. To wait for a hub run, follow its live stream in the background with evo-agents hub run logs RUN --follow. In a harness naming hub.project, plans/*.yaml are read-only copies.
 ---
 
 # Using the agent hub
@@ -46,6 +46,15 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
   `evo-agents hub plan patch` or `evo-agents hub plan put FILE --if-revision N` with a draft.
 - When a write fails (no grant, a revision conflict, the hub not answering), report the error to the person. Do not
   fall back to editing the YAML: nothing is ever written on this machine in place of the hub.
+
+## Runs
+
+- `evo-agents hub run show RUN` gives a run's state, step, worker, commit and verify results; `evo-agents hub run
+  logs RUN` prints its events so far; `evo-agents hub run logs RUN --follow` reads its live stream until the run ends.
+- To wait for a run you started or watch, start `evo-agents hub run logs RUN --follow` as a background command (Bash
+  with `run_in_background`, or Monitor) and go on; you are woken when it ends. Then read the outcome with `hub run
+  show RUN`. In a worker run, a background command keeps the session for at most 30 minutes after your turn ends.
+- Never wait with a foreground `sleep N` followed by `hub run show`: the harness refuses a foreground sleep.
 
 ## Reading results
 
