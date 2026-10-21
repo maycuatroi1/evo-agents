@@ -40,7 +40,8 @@ export function Day({ value }: { value: string }) {
 }
 
 /**
- * Ready, cooling until when, paused or expired, as the hub read it when it answered; under it, the day a token that
+ * Cooling until when, paused, expired or needing a new sign-in, as the hub read it when it answered, and nothing
+ * visible for a ready account; under it, the day a token that
  * ends within 30 days ends, with the reminder to renew it, or the day an expired one ended.
  */
 export function StateCell({ account, now }: { account: Account; now: number }) {
@@ -49,10 +50,17 @@ export function StateCell({ account, now }: { account: Account; now: number }) {
   const due = account.state === "expired" ? null : renewalDue(account, now);
   return (
     <span className="inline-flex flex-col items-start gap-0.5">
-      <Badge variant={variant} data-testid="account-state" data-state={account.state}>
-        <Icon aria-hidden="true" />
-        {t(`state.${account.state}`)}
-      </Badge>
+      {account.state === "ready" ? (
+        // A ready account has no pill: only what is wrong is marked. Its state stays in the text for a screen reader.
+        <span className="sr-only" data-testid="account-state" data-state="ready">
+          {t("state.ready")}
+        </span>
+      ) : (
+        <Badge variant={variant} data-testid="account-state" data-state={account.state}>
+          <Icon aria-hidden="true" />
+          {t(`state.${account.state}`)}
+        </Badge>
+      )}
       {account.state === "cooling" && account.cooldown_until ? (
         <span className="text-xs text-fg-subtle" title={account.cooldown_reason ?? undefined} data-testid="account-cooling-until">
           {t.rich("until", { time: () => <At value={account.cooldown_until ?? ""} /> })}

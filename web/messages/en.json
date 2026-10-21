@@ -2749,7 +2749,7 @@
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
     "caption": "Your accounts",
-    "listSummary": "Your env secrets that runs take in turn for the same variable. Yours alone, and no value is ever shown.",
+    "listSummary": "Your env secrets, by what they sign in to. Yours alone, and no value is ever shown.",
     "secrets": "Secrets",
     "add": "Add Claude account",
     "columns": {
@@ -2760,7 +2760,8 @@
       "runs": "Runs 24 h / 7 d",
       "cost": "Cost 24 h / 7 d",
       "heldBy": "Held by",
-      "actions": "Actions"
+      "actions": "Actions",
+      "lastUsed": "Last used"
     },
     "anyWorker": "Any of yours",
     "state": {
@@ -2809,7 +2810,6 @@
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
     "costTitle": "Estimated from the usage of its runs: {day} in 24 hours, {week} in 7 days",
-    "notHeld": "No run",
     "heldLabel": "Open run #{id} of {project}",
     "edit": "Edit",
     "editLabel": "Edit the weight and priority of {name}",
@@ -2992,7 +2992,35 @@
       "saved": "Policy for {project} saved",
       "savedText": "Runs dispatched from now on follow it.",
       "failed": "Couldn't save the policy for {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Other"
+    },
+    "groups": {
+      "model": {
+        "title": "Model accounts",
+        "description": "The sign-in of the model a run talks to. Runs take them in turn, and their cost is counted here.",
+        "none": "No model account. Add a Claude account to give runs a model."
+      },
+      "service": {
+        "title": "Service credentials",
+        "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
+        "none": "No service credential. Add one as a secret bound to a project."
+      }
+    },
+    "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
+    "variablesLabel": "Variables of {provider}",
+    "apiValue": "API value",
+    "costLabel": "Cost",
+    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run."
   },
   "runs": {
     "title": "Runs",
