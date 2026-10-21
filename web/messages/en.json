@@ -449,6 +449,18 @@
       "path": "Harness folder",
       "created": "Registered",
       "updated": "Updated"
+    },
+    "outputs": {
+      "title": "Run outputs",
+      "description": "The files the agents of this project's runs make: those they send, those they leave in .evo-run/outputs/, and the images of tools' results.",
+      "toolImages": "Keep images of tools' results",
+      "toolImagesHint": "Screenshots and images a tool returns become files of the run, and go with the run's log. Off, the machines send none and the hub refuses them.",
+      "adminOnly": "An admin of the project switches this.",
+      "limits": "At most {file} a file, {count, number} files and {run} a run.",
+      "loadFailed": "Couldn't read the project's outputs settings.",
+      "turnedOn": "Images of tools' results are kept",
+      "turnedOff": "Images of tools' results are no longer kept",
+      "failed": "Couldn't switch the images of tools' results"
     }
   },
   "admin": {
@@ -3597,7 +3609,8 @@
           "trace": "Trace",
           "log": "Raw log",
           "terminal": "Terminal",
-          "chat": "Chat"
+          "chat": "Chat",
+          "outputs": "Outputs"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
         "connect": "Connect terminal",
@@ -4005,6 +4018,37 @@
         "unknown": "unknown",
         "plan": "Plan",
         "step": "Step"
+      },
+      "outputs": {
+        "count": "{count, plural, one {# file} other {# files}}",
+        "label": "Outputs of run #{id}",
+        "filter": "Source",
+        "all": "All",
+        "sources": {
+          "sent": "Sent",
+          "tool": "Tools",
+          "outputs": "Output folder"
+        },
+        "summary": "{count, plural, one {# file} other {# files}}, {size}",
+        "toolImagesOff": "Images of tools' results are off in this project.",
+        "noMatch": "No file of this source.",
+        "none": "This run has no files.",
+        "loading": "Loading the files",
+        "failed": "The files could not be read.",
+        "retry": "Try again",
+        "arrived": "{count, plural, one {# new file} other {# new files}}",
+        "showInTrace": "Show in trace",
+        "delete": "Delete",
+        "deleteTitle": "Delete {name}?",
+        "deleteDescription": "It goes from the run, and from the questions and chat messages that carry it; its bytes go once nothing else refers to them. This cannot be undone.",
+        "deleteConfirm": "Delete file",
+        "deleting": "Deleting",
+        "keep": "Keep it",
+        "deleted": "Deleted {name}",
+        "deleteFailed": "Couldn't delete {name}",
+        "deleteForbidden": "Only who dispatched the run, or an admin of the project, deletes its files.",
+        "preview": "Outputs",
+        "previewOpen": "Open all outputs"
       }
     },
     "diff": {
@@ -4879,7 +4923,8 @@
       "merge_paused": "The merge queue of a repo stopped",
       "release": "Daily release",
       "pm_daily": "Daily digest of a project",
-      "pm_escalation": "A blocked task waits to be escalated"
+      "pm_escalation": "A blocked task waits to be escalated",
+      "run_outputs": "Files from a run"
     },
     "item": {
       "unread": "Unread",
@@ -5065,6 +5110,22 @@
       "resumeConflict": "This breaker is not tripped any more.",
       "resumeGone": "The breaker was reset by {login}.",
       "resumed": "Breaker of {repo} reset"
+    },
+    "settings": {
+      "button": "Notices",
+      "title": "Notices",
+      "description": "Which notices reach you, in the Inbox and on Telegram. The questions of your runs always reach you.",
+      "loadFailed": "Couldn't read your notices from the hub.",
+      "retry": "Try again",
+      "close": "Close",
+      "kind": {
+        "run_outputs": {
+          "label": "Files from your runs",
+          "hint": "The files an agent sends while it works on a run you dispatched, a minute at a time."
+        }
+      },
+      "saved": "{on, select, true {You get the notice again} other {You no longer get the notice}}: {kind}",
+      "failed": "Couldn't change the notice"
     }
   },
   "toast": {
@@ -8211,6 +8272,58 @@
       "emptyTitle": "No signals in this span",
       "empty": "Nothing was measured in the last {days} days.",
       "emptyTenant": "Nothing was measured for {tenant} in the last {days} days."
+    }
+  },
+  "outputs": {
+    "open": "Open {name}, {kind}, {size}",
+    "more": "{count, plural, one {# more file} other {# more files}}",
+    "source": {
+      "sent": "Sent by the agent",
+      "tool": "From a tool's result",
+      "outputs": "Output folder"
+    },
+    "strip": {
+      "question": "Files of this question",
+      "message": "Files of this message",
+      "notice": "Files of this notice",
+      "calls": "Files of these calls",
+      "recorded": "Files the hub recorded"
+    },
+    "viewer": {
+      "kind": {
+        "image": "Image",
+        "video": "Video",
+        "audio": "Audio",
+        "pdf": "PDF",
+        "text": "Text",
+        "html": "Web page",
+        "none": "File"
+      },
+      "kindSize": "{kind}, {size}",
+      "navigation": "Files",
+      "previous": "Previous file",
+      "next": "Next file",
+      "position": "{index} of {total}",
+      "zoom": "Zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fit": "Fit to the window",
+      "download": "Download",
+      "close": "Close the viewer",
+      "frameTitle": "Preview of {name}",
+      "pdfNote": "If your browser shows no PDF here, open it in a tab of its own.",
+      "openTab": "Open in a new tab",
+      "sandboxNote": "Shown in a sandbox: its scripts run, but it cannot reach the hub or your session.",
+      "noPreview": "There is no preview of this kind of file. Download it to open it.",
+      "imageFailed": "Your browser could not show this image.",
+      "loading": "Reading the file",
+      "readFailed": "The file could not be read.",
+      "retry": "Try again",
+      "emptyFile": "The file is empty.",
+      "tableLabel": "Rows of the file",
+      "textLabel": "Contents of the file",
+      "csvMore": "Showing the first {count, number} rows.",
+      "textCut": "Showing the first {size}. Download the file for the rest."
     }
   }
 }

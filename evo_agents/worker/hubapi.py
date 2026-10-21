@@ -295,6 +295,23 @@ class WorkerHub:
         body = {"upload_ids": upload_ids}
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/blobs", body, timeout=UPLOAD_TIMEOUT)
 
+    # The outputs of a run (evo_agents.hub.outputs, docs/workers.md "Outputs")
+
+    async def output_settings(self, run_id: int) -> dict:
+        """``{tool_images, max_file_bytes, max_outputs, max_run_bytes, outputs, bytes, ...}`` of a run this worker
+        holds; an older hub without the route answers 404 (Refused)."""
+        answer = await self.call("GET", f"/v1/worker/runs/{int(run_id)}/output-settings")
+        return answer if isinstance(answer, dict) else {}
+
+    async def output_uploads(self, run_id: int, items: list[dict]) -> dict:
+        """The presigned PUTs of the outputs ``items`` ({sha256, size, source}) whose bytes the project lacks."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/output-uploads", {"items": items})
+
+    async def record_outputs(self, run_id: int, items: list[dict]) -> dict:
+        """Commit the uploads of ``items`` and record them as outputs of the run: ``{outputs, added}``, in order."""
+        body = {"outputs": items}
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/outputs", body, timeout=UPLOAD_TIMEOUT)
+
     async def put(self, url: str, data: bytes) -> None:
         """PUT ``data`` to a presigned URL of the blob store. The URL is a credential until it expires: an error
         names nothing of it."""

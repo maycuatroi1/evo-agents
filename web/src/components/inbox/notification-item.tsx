@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { type MouseEvent, useId, useState } from "react";
 
 import { TierTag } from "@/components/curator/badges";
+import { OutputStrip } from "@/components/data/output-strip";
 import { proposalHref } from "@/components/curator/queries";
 import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
@@ -152,6 +153,7 @@ export function NotificationItem({
   reading: boolean;
 }) {
   const t = useTranslations("inbox.item");
+  const tFiles = useTranslations("outputs.strip");
   const unread = notification.read_at === null;
   const decision = notification.kind === "decision";
   const proposal = notification.kind === "proposal" && notification.proposal_id != null;
@@ -242,6 +244,7 @@ export function NotificationItem({
         )}
         {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
         {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
+        <OutputStrip outputs={notification.outputs ?? []} label={tFiles(decision ? "question" : "notice")} testId="notification-files" />
         {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
           {decision && href && notification.decision_id !== null ? (

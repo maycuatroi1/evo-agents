@@ -521,6 +521,6 @@ def register_client(hsub) -> None:
 
     register_mcp(hsub)
 
-    from evo_agents.hub.hooks import register_hooks
+    from evo_agents.hub.hooks import register_plugin
 
-    register_hooks(hsub)
+    register_plugin(hsub)

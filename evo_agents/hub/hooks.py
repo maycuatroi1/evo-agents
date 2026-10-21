@@ -69,8 +69,11 @@ EVO_HUB_TRANSCRIPTS=0 (or ``off``) turns that off, and a worker run sends none, 
 
 A session of a hub project is also a run of kind local on the hub (``evo_agents.hub.local_sync``): UserPromptSubmit
 registers it and reports running, a second PostToolUse hook adds the agent's words and the tool that ran to its log,
-Stop (here) sends the last words and reports idle before it pushes memories, SessionEnd reports ended.
-EVO_HUB_LOCAL_SYNC=0 turns that off and leaves everything above as it was; a worker run never registers one.
+Stop (here) sends the last words and reports idle before it pushes memories, SessionEnd reports ended. The files the
+session sends (SendUserFile, the Artifact tool, ``hub send``) and the images of its tools' results become outputs of
+that run (``evo_agents.hub.local_outputs``): the hooks only queue them on this machine, and ``hub send --queued``,
+started in the background, uploads them. EVO_HUB_LOCAL_SYNC=0 turns that off and leaves everything above as it was; a
+worker run never registers one.
 
 PostToolUse (``evo_agents.hub.spool``) writes a tool result longer than its threshold to a file under
 ~/.evo/tool-output and hands the model its head, its tail and the file's path instead, by the same rules.
@@ -796,6 +799,15 @@ def cmd_hook_session_end(args) -> int:
     return 0
 
 
+def register_plugin(hsub) -> None:
+    """The commands of the evo-hub plugin: its hooks, and ``hub send`` (``evo_agents.hub.local_send``), which sends a
+    session's files to its local run and which the hooks start in the background."""
+    from evo_agents.hub.local_send import register_send
+
+    register_hooks(hsub)
+    register_send(hsub)
+
+
 def register_hooks(hsub) -> None:
     hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
     ksub = hook.add_subparsers(dest="hook_name", required=True)
@@ -821,7 +833,8 @@ def register_hooks(hsub) -> None:
     ).set_defaults(func=cmd_hook_user_prompt)
     ksub.add_parser(
         "local-tool",
-        help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
+        help="put the agent's words and the tool that ran, redacted, in the log of the session's local run, and queue "
+        "the files it sent and the images of its result as the run's outputs",
     ).set_defaults(func=cmd_hook_local_tool)
     ksub.add_parser(
         "session-end",
