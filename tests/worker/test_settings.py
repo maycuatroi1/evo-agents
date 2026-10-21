@@ -5,7 +5,8 @@ The checks of step 2 of the worker-settings-web plan: settings that differ from 
 memory and on disk (0600, the other fields kept) with one log line; more slots are claimed at the next turn; fewer
 stop no run, the daemon only claims nothing until it holds fewer runs than the new slots; an answer without settings
 (a hub before schema 0026) changes nothing; the free slots a heartbeat reports go up to 16, and
-``worker register --slots`` takes 1 to 16."""
+``worker register --slots`` takes 1 to 16. And the projects the worker serves, which its owner changes in place: they
+reach config.json the same way, with the repos ``worker projects`` wrote there for a new project."""
 
 from __future__ import annotations
 
@@ -146,6 +147,26 @@ def test_a_new_name_and_labels_in_the_settings_reach_config_json_and_free_slots_
     with_daemon(machine, body)
 
 
+def test_the_projects_in_the_settings_reach_config_json_with_the_repos_written_there_meanwhile(machine, caplog):  # noqa: F811
+    caplog.set_level(logging.INFO, logger="evo_agents.worker")
+
+    async def body(hub: FakeHub, daemon):
+        before = list(daemon.config.projects)
+        # what `worker projects --add blog` on this machine writes before the daemon hears of it
+        on_file = machine.home.load_config()
+        on_file.repos["blog"] = {"workspace": None, "repos": [{"name": "blog"}], "harness": None}
+        machine.home.save(on_file)
+        hub.settings = {"slots": 1, "name": "mac", "labels": [], "projects": ["blog", *before]}
+        await wait_for(lambda: on_disk(machine)["projects"] == ["blog", *before], "the new projects on disk")
+        assert daemon.config.projects == ["blog", *before]
+        assert daemon.config.repos["blog"]["repos"] == [{"name": "blog"}]
+        assert on_disk(machine)["repos"]["blog"]["repos"] == [{"name": "blog"}]
+        (said,) = records(caplog, CHANGED)
+        assert said.changed == {"projects": {"old": before, "new": ["blog", *before]}}
+
+    with_daemon(machine, body)
+
+
 def test_a_heartbeat_answer_without_settings_or_with_unreadable_ones_keeps_the_config(machine, caplog):  # noqa: F811
     caplog.set_level(logging.INFO, logger="evo_agents.worker")
 
@@ -175,6 +196,8 @@ def test_a_heartbeat_answer_without_settings_or_with_unreadable_ones_keeps_the_c
         {"slots": 2, "name": "", "labels": []},
         {"slots": 2, "name": "mac", "labels": [1]},
         {"slots": 2, "name": "mac"},
+        {"slots": 2, "name": "mac", "labels": [], "projects": "demo"},
+        {"slots": 2, "name": "mac", "labels": [], "projects": [1]},
     ],
 )
 def test_settings_not_as_the_hub_sends_them_are_not_read(value):
@@ -184,6 +207,9 @@ def test_settings_not_as_the_hub_sends_them_are_not_read(value):
 def test_settings_as_the_hub_sends_them_are_read_and_unknown_keys_left():
     value = {"slots": 16, "name": "mac", "labels": ["gpu"], "later": 1}
     assert _settings(value) == {"slots": 16, "name": "mac", "labels": ["gpu"]}
+    projects = {**value, "projects": ["blog", "demo"]}
+    assert _settings(projects) == {"slots": 16, "name": "mac", "labels": ["gpu"], "projects": ["blog", "demo"]}
+    assert _settings({**value, "projects": []}) == {"slots": 16, "name": "mac", "labels": ["gpu"]}  # none sent
 
 
 def test_register_slots_takes_1_to_16():

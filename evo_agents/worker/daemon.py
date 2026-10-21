@@ -110,7 +110,7 @@ def _strings(value) -> bool:
 
 def _settings(value) -> dict | None:
     """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, "plugins" when the hub sends them
-    (0039) and "version_locked" (0048), or None when they are not as the hub sends them."""
+    (0039), "version_locked" (0048) and "projects" (evo-ak 0.31.2), or None when they are not as the hub sends them."""
     if not isinstance(value, dict):
         return None
     slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
@@ -127,6 +127,11 @@ def _settings(value) -> dict | None:
         if not isinstance(value["version_locked"], bool):
             return None
         found["version_locked"] = value["version_locked"]
+    if "projects" in value:  # a worker serves one project at least: none is a hub that sent no list
+        if not _strings(value["projects"]):
+            return None
+        if value["projects"]:
+            found["projects"] = list(value["projects"])
     return found
 
 
@@ -486,9 +491,10 @@ class Daemon:
         log.info("runtimes of plugins declared", extra={"runtimes": sorted(found)})
 
     def _take_settings(self, settings) -> None:
-        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked) when they differ from
-        the config: in memory, and in config.json, read again so a field set by hand since the start (checkouts) stays.
-        Settings this daemon cannot read are logged and left, and leave the lock unknown."""
+        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked, projects) when they
+        differ from the config: in memory, and in config.json, read again so a field set by hand since the start
+        (checkouts) stays. New projects have the checkouts looked at again at the next turn. Settings this daemon
+        cannot read are logged and left, and leave the lock unknown."""
         wanted = _settings(settings)
         self.updater.hear_lock(None if wanted is None else wanted.get("version_locked"))
         if wanted is None:
@@ -508,6 +514,8 @@ class Daemon:
             on_disk = self.config
         for key, value in wanted.items():
             setattr(on_disk, key, value)
+        if "projects" in wanted and old["projects"] != wanted["projects"]:
+            self.config.repos = on_disk.repos  # those `worker projects` on this machine read for new projects
         try:
             self.home.save(on_disk)
         except OSError as exc:
@@ -516,6 +524,8 @@ class Daemon:
         log.info("worker settings changed on the hub", extra={"changed": changed})
         if "slots" in changed:
             self.slot_free.set()  # more slots: the claim loop claims at once
+        if "projects" in changed:
+            self._checkouts_at = float("-inf")  # the checkouts of the projects it serves now
 
     # Updating itself
 
