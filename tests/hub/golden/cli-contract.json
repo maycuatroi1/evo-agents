@@ -8865,6 +8865,72 @@
       ],
       "json": null
     },
+    "hub send": {
+      "positionals": [
+        {
+          "name": "files",
+          "metavar": "FILE",
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--caption"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--session"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--queued"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--wait"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 0,
+          "maximum": 60,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "run_id",
+          "session_id",
+          "outputs",
+          "queued"
+        ]
+      }
+    },
     "hub serve": {
       "positionals": [],
       "options": [
