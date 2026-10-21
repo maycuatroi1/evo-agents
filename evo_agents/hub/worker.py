@@ -38,6 +38,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   open again (``evo_agents.hub.server.collect``).
 - ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
   takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
+- ``hub.value_check``: deferred with each batch of a project's signals that stored any (``evo_agents.hub.signals``),
+  one at a time per project and at most one waiting: the plugins' jobs named value_check of that project, for it alone
+  (``evo_agents.hub.plugin_jobs.run_on_signals``).
 - ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
   again with a backoff (``evo_agents.hub.plugin_events``).
 - ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
@@ -55,6 +58,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.prune_signals``, daily: the signals measured more than EVO_HUB_SIGNAL_DAYS days ago, 400 by default
+  (``evo_agents.hub.signals``).
 - ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came, and of each run that ended, made once and again when its content or the facet's version changed
   (``evo_agents.hub.facet_job``).
@@ -297,6 +302,14 @@ async def plugin_job(context: JobContext, plugin: str, job: str) -> dict:
     return await run_job(found.engine, found.config, plugin, job)
 
 
+@queue.task(name=jobs.VALUE_CHECK, pass_context=True)
+async def value_check(context: JobContext, project_id: int) -> dict:
+    from evo_agents.hub.plugin_jobs import run_on_signals
+
+    found = hub(context)
+    return await run_on_signals(found.engine, found.config, project_id)
+
+
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.DELIVER_PLUGIN_EVENTS, pass_context=True, queueing_lock=jobs.DELIVER_PLUGIN_EVENTS)
 async def deliver_plugin_events(context: JobContext, timestamp: int | None = None) -> dict:
@@ -358,6 +371,15 @@ async def prune_transcripts(context: JobContext, timestamp: int | None = None) -
 
     found = hub(context)
     return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="3 5 * * *")
+@queue.task(name=jobs.PRUNE_SIGNALS, pass_context=True, queueing_lock=jobs.PRUNE_SIGNALS)
+async def prune_signals(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.signals import prune_signals as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.config.signal_days)
 
 
 @queue.periodic(cron="41 * * * *")

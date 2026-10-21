@@ -48,7 +48,7 @@ Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, 
 wrong: a 404, a validation failure or an unhandled exception never answers with HTML or a traceback, and the
 `request_id` is the one in the api's log line for that request.
 
-A request carries one of three credentials:
+A request carries one of four credentials:
 
 - a machine token (`evh_...`) as `Authorization: Bearer`, which `evo-agents hub login` stores on a machine;
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
@@ -58,6 +58,9 @@ A request carries one of three credentials:
   `/v1` (`docs/workers.md`); outside `/v1` it opens `/mcp` for the agent of a run its worker holds (below). Revoking
   it (`DELETE /v1/tokens/{id}`, or `DELETE /v1/admin/tokens/{id}`) revokes its worker too and releases the runs the
   worker holds.
+- an ingest key of a project's signals (`evi_...`) as `Authorization: Bearer`, which an admin of the project makes for a
+  service (`docs/signals.md`). It writes that project's signals through `POST /v1/signals/{project}` and gets 403
+  everywhere else, the routes that read signals included; a revoked one gets 401 at its next batch.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
 `/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
@@ -97,6 +100,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
+| signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -105,6 +109,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
+| canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
@@ -895,6 +900,14 @@ adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.revi
 of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
 approved). Schema 0072 drops `chats.budget_usd` and its check (Group chats, Caps); going back to 0071 puts it back at
 5 on every chat. Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
+Schemas 0073 to 0078 add the core plugin canvas and the hub's signals: 0073 `canvas_canvases`, `canvas_claims`,
+`canvas_claim_revs` and `canvas_evidence`; 0074 the hub's `signal_keys`, `signal_ingest_keys` and `signals`
+(`docs/signals.md`); 0075 `canvas_proposals`; 0076 `canvas_judgings`, `canvas_evidence.basis` and `rests_on_run`, and
+`canvas_proposals.evidence_id`; 0077 `canvas_baselines`, `canvas_baseline_items`, `canvas_claim_revs.baseline_id`
+and the hub's `hub_events`, with the delivery kinds `canvas.claim`, `canvas.baseline` and `signal.posted`, the
+permissions `canvas:read` and `signals:read` and the notice `canvas_baseline`; 0078 `canvas_claims.use_cases` and
+`signal_keys` (`docs/canvas-plugin.md`, Tables). Going back past 0077 deletes the deliveries of the three events and the
+`canvas_baseline` notices and takes the two permissions out of every grant; going back past each drops what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2115,6 +2128,31 @@ evo-agents hub task show T-1 --project evo-agents
 The agent type `ba` of srs adds @ba, which drafts and reviews documents for the project's writers on the workers of
 the member the project enabled it under (`docs/srs-plugin.md`, @ba).
 
+The core plugin canvas keeps a living Lean Canvas for each product of a project (`docs/canvas-plugin.md`): claims with
+a status, a test card, evidence and every rev, an edit that names the rev it read and applies at once, undo, and a
+weekly baseline the project's writers approve on the web. Its commands are clients of its routes under
+`/v1/x/canvas/`; the signals it reads are the hub's (`docs/signals.md`):
+
+```sh
+evo-agents hub plugin enable canvas --project evo-agents
+evo-agents hub canvas create pantry --project evo-agents --name "Northwind Pantry"
+evo-agents hub canvas edit pantry --project evo-agents --cell problem --text "Shops run out of stock on Mondays"
+evo-agents hub canvas edit pantry --project evo-agents --claim CL-1 --base-rev 1 --status invalidated
+evo-agents hub canvas undo pantry CL-1 --project evo-agents --rev 2
+evo-agents hub canvas show pantry --project evo-agents --claim CL-1
+evo-agents hub canvas list --project evo-agents
+evo-agents hub canvas export pantry --project evo-agents --output pantry.json
+evo-agents hub canvas import pantry.json --project evo-agents --dry-run
+evo-agents hub signal keys add pantry.reorders --project evo-agents --kind number --unit orders  # an admin
+evo-agents hub signal ingest create pantry-app --project evo-agents --max-level internal       # an admin; the evi_ token, once
+evo-agents hub signal push --project evo-agents --key pantry.reorders --value 4
+evo-agents hub signal list --project evo-agents --key pantry.reorders
+```
+
+The agent type `strategist` of canvas adds @strategist, which edits claims as a writer asks in chat, brainstorms
+proposals in a task run and judges feedback for the value check, on the workers of the member the project enabled it
+under (`docs/canvas-plugin.md`, @strategist).
+
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
 project (agent) and a run's own (`plugin_config` of `POST .../runs`, plain values only). A field takes its value from the
@@ -2275,6 +2313,11 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
   `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names
   (Session transcripts, above).
+- `hub.prune_signals`, daily at 05:03: deletes the signals measured more than `EVO_HUB_SIGNAL_DAYS` days ago, 400 by
+  default (`docs/signals.md`).
+- `hub.value_check`, deferred by each batch of a project's signals that stored any, when a plugin the project enables
+  has a job named `value_check`: runs those jobs for that project alone, one at a time per project, the batches that
+  come while one waits joining it (`docs/signals.md`, Value check).
 - `hub.analyze_facets`, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came and of each run that ended, made once and again when its content or the facet's version changed
   (Session facets, above).
@@ -2420,6 +2463,7 @@ environment, never in a committed file.
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
 | `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |
+| `EVO_HUB_SIGNAL_DAYS` | api, worker | days a signal is kept after it was measured before the daily `hub.prune_signals` deletes it; a batch item measured earlier is refused; default `400`, from `30` to `3650` (`docs/signals.md`) |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
 | `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a plan run waits for its owner's answer before the reaper parks it; default `86400` (a day), from `1` to `604800` (the end-to-end tests shorten it) |

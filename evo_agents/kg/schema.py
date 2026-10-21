@@ -29,6 +29,8 @@ HUB_KINDS = {
     "Chat": "a group chat of the hub",
     "ChatThread": "a thread of a group chat: its first message and the replies to it",
     "ChatMessage": "a message of a group chat, named by the hub, whose text only search reads",
+    "Claim": "a claim of a Lean Canvas of the hub, by its code (CL-3): a hypothesis about a product, with its status",
+    "SignalKey": "a key of a project's registry of signals on the hub: what a product measures, as kb.search.latency",
 }
 
 HUB_RELATIONS = {
@@ -55,6 +57,7 @@ HUB_RELATIONS = {
     "schedules": ("*", "*"),
     "changes": ("Commit", "*"),  # a commit to a file or document it changed (a merge: against its first parent)
     "merged_as": ("PullRequest", "Commit"),  # a merged pull request to the commit that merged it
+    "measured_by": ("Claim", "SignalKey"),  # a claim of a Lean Canvas to a signal key that measures it
 }
 
 ITEM_KIND_TO_NODE = {

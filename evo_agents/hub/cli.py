@@ -9,10 +9,10 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``sessions`` by ``cli_sessions``, ``email`` by
-``cli_emails`` and ``release`` by ``release_cli``; they need nothing beyond the core package, so they work on a core
-install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document;
-``hub contract check`` does not.
+``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``, ``signal`` by
+``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails`` and ``release`` by ``release_cli``; they
+need nothing beyond the core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract
+print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -237,6 +237,14 @@ def register(sub) -> None:
     from evo_agents.hub.cli_tasks import register_tasks
 
     register_tasks(hsub)
+
+    from evo_agents.hub.cli_canvas import register_canvas
+
+    register_canvas(hsub)
+
+    from evo_agents.hub.cli_signals import register_signals
+
+    register_signals(hsub)
 
     from evo_agents.hub.cli_sessions import register_sessions
 

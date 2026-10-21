@@ -223,6 +223,8 @@ project is what the project granted that its installed version still asks for, c
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
+| `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
+| `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -284,14 +286,22 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 - **Jobs.** A job runs when its `cron` (five fields, UTC; `0 * * * *` when it names none) takes the minute, while a
   project enables its plugin, through the hub's job queue: `hub.plugin_jobs` queues one `hub.plugin_job` for it, with
   the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. The call names the projects
-  that enable the plugin and may take 120 seconds.
+  that enable the plugin and may take 120 seconds. A job named `value_check` (the core plugin canvas's) also runs at
+  once for one project when a batch of the project's signals comes: `hub.value_check` calls it with that project alone
+  (`docs/signals.md`, Value check).
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
-  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision), and
+  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
-  task (section Agent types). A payload
-  carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
+  task (section Agent types), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
+  claim's id and code, the rev, its cell, the kind of change, the status before and after, who wrote it and the run),
+  `canvas.baseline` with `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each
+  change of status that took effect with its evidence), and `signal.posted` with `signals:read` (a batch of signals:
+  its id, each key with how many and when the first and last were measured, the ingest key or the member that sent
+  it). A payload carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks
+  the hub for more. The last three carry `v`, the version of their shape, and the hub also writes each into its own
+  table `hub_events`, in the same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
@@ -322,9 +332,9 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins builder, srs and tasks in `evo_agents.core_plugins`, declared in its own entry points, so
-every install has them, the hub's image among them. No package of evo_agents imports them (import-linter contract
-core-plugins-by-entry-point): the hub reaches them through their manifests.
+evo-ak ships its core plugins builder, srs, tasks and canvas in `evo_agents.core_plugins`, declared in its own entry
+points, so every install has them, the hub's image among them. No package of evo_agents imports them (import-linter
+contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
 telegram and chats are core plugins of another repository,
 [maycuatroi1/evo-agents-core-plugins](https://github.com/maycuatroi1/evo-agents-core-plugins), published on PyPI as
@@ -416,6 +426,28 @@ Two more core plugins keep a project's requirements and work in the hub's databa
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
+### Lean Canvas
+
+**canvas** (`evo_agents/core_plugins/canvas`, `docs/canvas-plugin.md`) keeps a living Lean Canvas for each product of
+a project, and projects enable it. Each of the nine cells holds claims with a status, a test card, evidence and every
+rev; an edit names the rev it read and applies at once, an undo is a new rev, and a claim goes to `validated` only with
+real evidence. It contributes routes under `/v1/x/canvas/`, eight tables `canvas_*` (migrations 0073 and 0075 to 0078),
+the native page Lean Canvas, the MCP tools `canvas__read`, `canvas__signals`, `canvas__edit`, `canvas__undo`,
+`canvas__propose`, `canvas__evidence` and `canvas__judge`, a source of the knowledge graph (`kg_sources`, Claim and
+SignalKey nodes), the jobs `value_check` (hourly, and at once on a batch of the project's signals: `docs/signals.md`,
+Value check) and `baseline` (every 15 minutes, a weekly baseline per canvas at the time of its config), and the agent
+type `strategist` with the pack `canvas/strategist`: @strategist edits claims as a writer asks in chat, brainstorms
+proposals in a task run, and judges feedback in a judging run. The type declares `chat_runs: run_as`, and the plugin
+hands @strategist its brainstorms and judging runs as task runs of its own, with no `runs:dispatch` grant. It asks for
+no permission.
+
+It emits `canvas.claim` on every rev of a claim and `canvas.baseline` when a baseline is approved, for plugins the
+project granted `canvas:read`, and the hub emits `signal.posted` on each batch of signals for those granted
+`signals:read` (section Extension points); the hub also writes all three into `hub_events`, which the Loop reads by
+cursor. A weekly baseline that waits for review sends the notice `canvas_baseline`. Import-linter keeps it in its own
+package (contract canvas-plugin-own-package): it imports no other core plugin, and reads the items of srs through the
+hub's tables, as tasks does.
 
 ### Chat history
 

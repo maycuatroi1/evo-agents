@@ -353,6 +353,8 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits,
         run_leases,
         secrets,
+        signal_keys,
+        signals,
         task_dispatch,
         triage_actions,
     )
@@ -389,6 +391,9 @@ def create_app(config: HubConfig) -> FastAPI:
         branding.admin_router,
         features.router,
         features.admin_router,
+        signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
+        signals.router,
+        signal_keys.router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

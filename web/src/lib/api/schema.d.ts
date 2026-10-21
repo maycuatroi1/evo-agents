@@ -3636,6 +3636,455 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/canvas/{project}/canvases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Canvases
+         * @description The canvases of the project the caller sees, by slug, with how many claims hold each status.
+         */
+        get: operations["list_canvases_v1_x_canvas__project__canvases_get"];
+        put?: never;
+        /**
+         * Create Canvas
+         * @description A new canvas of a product, with nine empty cells, under the project's label unless an admin gives another.
+         */
+        post: operations["create_canvas_v1_x_canvas__project__canvases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Canvas
+         * @description A canvas whole: its nine cells in order, each with its claims by place; archived claims with ``archived``.
+         */
+        get: operations["show_canvas_v1_x_canvas__project__canvases__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Claim
+         * @description A claim whole: every rev with its content, provenance and what it changed, and its evidence, each piece with
+         *     whether it is real; pieces above what the caller may read are counted only.
+         */
+        get: operations["show_claim_v1_x_canvas__project__canvases__slug__claims__ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/judgings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Judgings
+         * @description What judging runs of @strategist had for a claim, newest first: each piece of feedback or evidence, and once
+         *     judged its verdict and why. Items above what the caller may read are left out.
+         */
+        get: operations["list_judgings_v1_x_canvas__project__canvases__slug__claims__ref__judgings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Claim
+         * @description What differs between two revs of a claim, field by field.
+         */
+        get: operations["diff_claim_v1_x_canvas__project__canvases__slug__claims__ref__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Canvas
+         * @description The canvas as evo-canvas/1: every claim with its code, rev and content, and the evidence the caller may
+         *     read.
+         */
+        get: operations["export_canvas_v1_x_canvas__project__canvases__slug__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Canvas
+         * @description Archive a canvas, as an admin of the project: it is read still, and takes no change until unarchived.
+         */
+        post: operations["archive_canvas_v1_x_canvas__project__canvases__slug__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Canvas
+         * @description Open an archived canvas to changes again, as an admin of the project.
+         */
+        post: operations["unarchive_canvas_v1_x_canvas__project__canvases__slug__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit Claims
+         * @description Change claims of the canvas and make new ones, all or nothing. A change of a claim names the rev it was read
+         *     at (``base_rev``): when the claim changed since, the answer is a 409 whose detail holds, per claim, both contents,
+         *     who changed it and the diff, and nothing is written. Each change writes a rev with the caller as its author; a
+         *     claim goes to validated only with real evidence that supports it, to testing only with a test card that holds a
+         *     hypothesis, a test and a deadline.
+         */
+        post: operations["edit_claims_v1_x_canvas__project__canvases__slug__edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Claims
+         * @description Take back the current rev of each claim named, all or nothing: a new rev with the content of the rev before
+         *     it (undoing a first rev archives the claim). A rev that is no longer the claim's current is a 409.
+         */
+        post: operations["undo_claims_v1_x_canvas__project__canvases__slug__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Evidence
+         * @description Add a piece of evidence to a claim, as the caller's; the claim's rev stays. A simulation is always synthetic.
+         */
+        post: operations["add_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/evidence/{evidence_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Evidence
+         * @description Withdraw a piece of evidence, with why: it stays on the claim, marked, and counts no more.
+         */
+        post: operations["withdraw_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence__evidence_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/evidence/{evidence_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Evidence
+         * @description Vouch for a piece of evidence an agent added, as a writer, so it may validate the claim.
+         */
+        post: operations["confirm_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence__evidence_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description The proposals of a canvas, newest first, each with what it changes from the rev it was made at.
+         */
+        get: operations["list_proposals_v1_x_canvas__project__canvases__slug__proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Proposal
+         * @description Accept an open proposal: its change is written as the caller's rev, under the rules of every edit (a claim
+         *     goes to validated only with real evidence that supports it). A proposal whose claim changed since is stale.
+         */
+        post: operations["accept_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Proposal
+         * @description Reject an open proposal, with why: nothing of it is written.
+         */
+        post: operations["reject_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/brainstorm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Brainstorm
+         * @description Hand @strategist a brainstorm of the canvas as a task run, which proposes new claims, each an assumption
+         *     with a test card, and changes none. 409, with why, when the project has not enabled the agent type strategist,
+         *     turned it off, or its runs spent their cap of the day.
+         */
+        post: operations["brainstorm_v1_x_canvas__project__canvases__slug__brainstorm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Canvas
+         * @description Import evo-canvas/1: the canvas it names (made when the project has none of that slug) with its claims, each
+         *     keeping its code; a claim the canvas holds changes as an edit at the rev the file gives, so one changed since is a
+         *     409. ``dry_run`` reports what it would do and writes nothing.
+         */
+        post: operations["import_canvas_v1_x_canvas__project__canvases_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Baselines
+         * @description The baselines of a canvas, newest first: weekly ones and those a writer opened at once, each proposed, approved
+         *     or expired, with how many items wait for a member.
+         */
+        get: operations["list_baselines_v1_x_canvas__project__canvases__slug__baselines_get"];
+        put?: never;
+        /**
+         * Open Baseline
+         * @description Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's
+         *     proposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the
+         *     claim asks nothing of a baseline, or a baseline still proposed holds it.
+         */
+        post: operations["open_baseline_v1_x_canvas__project__canvases__slug__baselines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/baselines/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Baseline
+         * @description A baseline whole: what it asks of each claim with the claim's evidence and the decision on it, what the caller
+         *     may decide, and once approved its snapshot (each claim's rev, the status in effect and the SHA-256 of its
+         *     content), which never changes.
+         */
+        get: operations["show_baseline_v1_x_canvas__project__canvases__slug__baselines__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/canvas/{project}/canvases/{slug}/baselines/{number}/items/{ref}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Item
+         * @description Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend
+         *     (with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller
+         *     changed or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind
+         *     baseline. Once no item waits, the baseline is approved and its snapshot taken.
+         */
+        post: operations["decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents": {
         parameters: {
             query?: never;
@@ -5937,6 +6386,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/signals/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Signals
+         * @description Store a batch of signals of the project, sent with one of its ingest keys or by a writer: each item checked on
+         *     its own, the refused ones answered with why.
+         */
+        post: operations["push_signals_v1_signals__project__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Signals
+         * @description The project's signals the member may read, newest first.
+         */
+        get: operations["list_signals_v1_projects__project__signals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/signal-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Keys
+         * @description The keys of the project's registry, by name.
+         */
+        get: operations["list_keys_v1_projects__project__signal_keys_get"];
+        put?: never;
+        /**
+         * Add Key
+         * @description Add a key to the project's registry: from now on the hub takes signals of it.
+         */
+        post: operations["add_key_v1_projects__project__signal_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/signal-keys/{name}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Key
+         * @description Archive a key: it takes no new signal, and its signals stay. Archiving it again changes nothing.
+         */
+        post: operations["archive_key_v1_projects__project__signal_keys__name__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/signal-ingest-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ingest Keys
+         * @description The project's ingest keys, oldest first; never a token.
+         */
+        get: operations["list_ingest_keys_v1_projects__project__signal_ingest_keys_get"];
+        put?: never;
+        /**
+         * Create Ingest Key
+         * @description A new ingest key for a service; its token is in this answer and nowhere else.
+         */
+        post: operations["create_ingest_key_v1_projects__project__signal_ingest_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/signal-ingest-keys/{key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Ingest Key
+         * @description Revoke an ingest key: the next batch sent with it gets 401. Revoking it again changes nothing.
+         */
+        post: operations["revoke_ingest_key_v1_projects__project__signal_ingest_keys__key_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7188,6 +7766,1230 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /**
+         * CanvasBaseline
+         * @description A baseline whole: its items, and once approved who decided and its snapshot, which never changes.
+         */
+        CanvasBaseline: {
+            /** Number */
+            number: number;
+            /**
+             * Kind
+             * @description weekly: the plugin's job; push: a writer opened it at once
+             * @enum {string}
+             */
+            kind: "weekly" | "push";
+            /**
+             * Week
+             * @description the ISO week of a weekly baseline, as 2026-W43
+             */
+            week: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** Time Zone */
+            time_zone: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "approved" | "expired";
+            /**
+             * Created By
+             * @description the writer who opened it at once
+             */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Approved At */
+            approved_at: string | null;
+            /** Expired At */
+            expired_at: string | null;
+            /** Item Count */
+            item_count: number;
+            /**
+             * Waiting
+             * @description its items no member has decided yet
+             */
+            waiting: number;
+            /** Canvas */
+            canvas: string;
+            /** Items */
+            items: components["schemas"]["CanvasBaselineItem"][];
+            /** Approved By */
+            approved_by: string[];
+            /** Snapshot */
+            snapshot: components["schemas"]["CanvasSnapshotClaim"][] | null;
+        };
+        /**
+         * CanvasBaselineDecisionIn
+         * @description A decision on the item of one claim.
+         */
+        CanvasBaselineDecisionIn: {
+            /**
+             * Decision
+             * @description accepted, rejected or deferred for a change of status; extended, retired or deferred for an overdue test card
+             * @enum {string}
+             */
+            decision: "accepted" | "deferred" | "extended" | "rejected" | "retired";
+            /**
+             * Deadline
+             * @description the new deadline an extension takes, after today
+             */
+            deadline?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * CanvasBaselineItem
+         * @description What a baseline asks of one claim, and the decision on it.
+         */
+        CanvasBaselineItem: {
+            /**
+             * Claim
+             * @description the claim's code
+             */
+            claim: string;
+            /**
+             * Kind
+             * @description status: members changed its status; value_check: the value check proposes a status; overdue: its test card's deadline passed without real evidence; new: a claim at assumption, included as it is
+             * @enum {string}
+             */
+            kind: "status" | "value_check" | "overdue" | "new";
+            /**
+             * From Status
+             * @description the status in effect when the baseline was proposed
+             * @enum {string}
+             */
+            from_status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * At Status
+             * @description the status the claim was at
+             * @enum {string}
+             */
+            at_status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * To Status
+             * @description the status it asks; none for an overdue test card
+             */
+            to_status: ("assumption" | "testing" | "validated" | "invalidated" | "retired") | null;
+            /**
+             * Claim Rev
+             * @description the claim's rev when the baseline was proposed
+             */
+            claim_rev: number;
+            /**
+             * Proposal Id
+             * @description the value check's proposal
+             */
+            proposal_id: number | null;
+            /**
+             * Deadline
+             * @description the deadline an overdue test card passed
+             */
+            deadline: string | null;
+            /**
+             * Evidence
+             * @description the claim's evidence the caller may read, as it is now
+             */
+            evidence: components["schemas"]["CanvasEvidence"][];
+            /**
+             * Hidden Evidence
+             * @description pieces of its evidence above what the caller may read
+             */
+            hidden_evidence: number;
+            /**
+             * Proposers
+             * @description the members who may not decide it: they changed the status, or opened it
+             */
+            proposers: string[];
+            /** Decision */
+            decision: ("accepted" | "rejected" | "deferred" | "extended" | "retired" | "included") | null;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * New Deadline
+             * @description the deadline an extension gave
+             */
+            new_deadline: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Rev
+             * @description the rev the decision wrote
+             */
+            rev: number | null;
+            /**
+             * Decisions
+             * @description what the caller may decide of it now; none when they may not
+             */
+            decisions: string[];
+        };
+        /**
+         * CanvasBaselineOpenIn
+         * @description Open a baseline of one claim at once, for another writer to approve.
+         */
+        CanvasBaselineOpenIn: {
+            /**
+             * Claim
+             * @description the claim's code, as CL-3
+             */
+            claim: string;
+        };
+        /**
+         * CanvasBaselineSummary
+         * @description A baseline of a canvas.
+         */
+        CanvasBaselineSummary: {
+            /** Number */
+            number: number;
+            /**
+             * Kind
+             * @description weekly: the plugin's job; push: a writer opened it at once
+             * @enum {string}
+             */
+            kind: "weekly" | "push";
+            /**
+             * Week
+             * @description the ISO week of a weekly baseline, as 2026-W43
+             */
+            week: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** Time Zone */
+            time_zone: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "approved" | "expired";
+            /**
+             * Created By
+             * @description the writer who opened it at once
+             */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Approved At */
+            approved_at: string | null;
+            /** Expired At */
+            expired_at: string | null;
+            /** Item Count */
+            item_count: number;
+            /**
+             * Waiting
+             * @description its items no member has decided yet
+             */
+            waiting: number;
+        };
+        /**
+         * CanvasBrainstorm
+         * @description The task run of @strategist's brainstorm, which proposes and changes nothing.
+         */
+        CanvasBrainstorm: {
+            /** Run Id */
+            run_id: number;
+            /** Title */
+            title: string;
+        };
+        /** CanvasBrainstormIn */
+        CanvasBrainstormIn: {
+            /**
+             * Focus
+             * @description what to think about, in the asker's words
+             * @default
+             */
+            focus: string;
+            /**
+             * Cells
+             * @description every cell: none
+             */
+            cells?: ("problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage")[];
+        };
+        /** CanvasCell */
+        CanvasCell: {
+            /**
+             * Cell
+             * @enum {string}
+             */
+            cell: "problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage";
+            /** Claims */
+            claims: components["schemas"]["CanvasClaim"][];
+        };
+        /**
+         * CanvasChangeIn
+         * @description One change of an edit: the fields it sets on ``claim``, read at ``base_rev``; without ``claim``, a new claim
+         *     with at least a cell and a text. ``test_card`` null takes the card away; ``use_cases`` and ``signal_keys`` give
+         *     the whole list of links, each one a change adds checked against the project's SRS and registry of signals.
+         */
+        CanvasChangeIn: {
+            /**
+             * Claim
+             * @description CL-3, or 3; left out: a new claim
+             */
+            claim?: string | null;
+            /** Base Rev */
+            base_rev?: number | null;
+            /** Cell */
+            cell?: ("problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage") | null;
+            /** Position */
+            position?: number | null;
+            /** Text */
+            text?: string | null;
+            /** Status */
+            status?: ("assumption" | "testing" | "validated" | "invalidated" | "retired") | null;
+            /** Confidence */
+            confidence?: ("low" | "medium" | "high") | null;
+            test_card?: components["schemas"]["CanvasTestCardIn"] | null;
+            /** Archived */
+            archived?: boolean | null;
+            /**
+             * Use Cases
+             * @description the codes of the use cases of the plugin srs that realize it, as UC ORD-1 or an alias: the whole list, [] for none
+             */
+            use_cases?: string[] | null;
+            /**
+             * Signal Keys
+             * @description the keys of the project's signals that measure it, as declared in its registry: the whole list, [] for none
+             */
+            signal_keys?: string[] | null;
+        };
+        /**
+         * CanvasClaim
+         * @description A claim as it is now.
+         */
+        CanvasClaim: {
+            /**
+             * Code
+             * @description CL-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Cell
+             * @enum {string}
+             */
+            cell: "problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage";
+            /**
+             * Position
+             * @description its place in the cell, the lowest first
+             */
+            position: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            test_card: components["schemas"]["CanvasTestCard"] | null;
+            /** Archived */
+            archived: boolean;
+            /**
+             * Use Cases
+             * @description the codes of the use cases of the plugin srs it links, sorted
+             */
+            use_cases: string[];
+            /**
+             * Signal Keys
+             * @description the keys of the project's signals it links, sorted
+             */
+            signal_keys: string[];
+            /**
+             * Rev
+             * @description the rev it is at: an edit names it as base_rev
+             */
+            rev: number;
+            /**
+             * Evidence Count
+             * @description the pieces of evidence the caller may read, withdrawn ones included
+             */
+            evidence_count: number;
+            /**
+             * Real Support Count
+             * @description those that are real and support it, which validated needs
+             */
+            real_support_count: number;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Archived At */
+            archived_at: string | null;
+        };
+        /**
+         * CanvasClaimDetail
+         * @description A claim whole: every rev with its provenance and diff, and its evidence.
+         */
+        CanvasClaimDetail: {
+            /**
+             * Code
+             * @description CL-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Cell
+             * @enum {string}
+             */
+            cell: "problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage";
+            /**
+             * Position
+             * @description its place in the cell, the lowest first
+             */
+            position: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            test_card: components["schemas"]["CanvasTestCard"] | null;
+            /** Archived */
+            archived: boolean;
+            /**
+             * Use Cases
+             * @description the codes of the use cases of the plugin srs it links, sorted
+             */
+            use_cases: string[];
+            /**
+             * Signal Keys
+             * @description the keys of the project's signals it links, sorted
+             */
+            signal_keys: string[];
+            /**
+             * Rev
+             * @description the rev it is at: an edit names it as base_rev
+             */
+            rev: number;
+            /**
+             * Evidence Count
+             * @description the pieces of evidence the caller may read, withdrawn ones included
+             */
+            evidence_count: number;
+            /**
+             * Real Support Count
+             * @description those that are real and support it, which validated needs
+             */
+            real_support_count: number;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Archived At */
+            archived_at: string | null;
+            /** Canvas */
+            canvas: string;
+            /** Revs */
+            revs: components["schemas"]["CanvasRev"][];
+            /** Evidence */
+            evidence: components["schemas"]["CanvasEvidence"][];
+            /**
+             * Hidden Evidence
+             * @description pieces of evidence above what the caller may read, not shown
+             */
+            hidden_evidence: number;
+        };
+        /**
+         * CanvasContent
+         * @description A claim at one rev.
+         */
+        CanvasContent: {
+            /**
+             * Cell
+             * @enum {string}
+             */
+            cell: "problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage";
+            /** Position */
+            position: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            test_card: components["schemas"]["CanvasTestCard"] | null;
+            /** Archived */
+            archived: boolean;
+            /**
+             * Use Cases
+             * @description the codes of the use cases of the plugin srs it links, sorted
+             */
+            use_cases: string[];
+            /**
+             * Signal Keys
+             * @description the keys of the project's signals it links, sorted
+             */
+            signal_keys: string[];
+        };
+        /**
+         * CanvasDetail
+         * @description A canvas whole: its nine cells, each with its claims in order.
+         */
+        CanvasDetail: {
+            /** Slug */
+            slug: string;
+            /**
+             * Name
+             * @description the product's name
+             */
+            name: string;
+            /** Description */
+            description: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Claims
+             * @description its claims that are not archived
+             */
+            claims: number;
+            /**
+             * Statuses
+             * @description how many of those hold each status
+             */
+            statuses: {
+                [key: string]: number;
+            };
+            /** Cells */
+            cells: components["schemas"]["CanvasCell"][];
+        };
+        /** CanvasDiff */
+        CanvasDiff: {
+            /** Claim */
+            claim: string;
+            /** Base */
+            base: number;
+            /** Head */
+            head: number;
+            base_content: components["schemas"]["CanvasContent"];
+            head_content: components["schemas"]["CanvasContent"];
+            /** Changes */
+            changes: components["schemas"]["CanvasFieldChange"][];
+        };
+        /** CanvasEditIn */
+        CanvasEditIn: {
+            /** Changes */
+            changes: components["schemas"]["CanvasChangeIn"][];
+            /**
+             * Reason
+             * @description why, kept with each rev it writes
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * CanvasEditResult
+         * @description The claims an edit or an undo named, as they are now, in its order.
+         */
+        CanvasEditResult: {
+            /** Claims */
+            claims: components["schemas"]["CanvasClaim"][];
+            /**
+             * Written
+             * @description the codes of the claims it wrote a rev of
+             */
+            written: string[];
+        };
+        /** CanvasEvidence */
+        CanvasEvidence: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "signal" | "feedback" | "interview" | "experiment" | "market" | "doc" | "simulation";
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "supports" | "contradicts" | "neutral";
+            /** Summary */
+            summary: string;
+            /** Url */
+            url: string | null;
+            /**
+             * Observed On
+             * @description the day it was taken
+             */
+            observed_on: string | null;
+            /** Synthetic */
+            synthetic: boolean;
+            provenance: components["schemas"]["CanvasProvenance"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Confirmed By
+             * @description the writer who vouched for what an agent added
+             */
+            confirmed_by: string | null;
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+            /** Withdrawn By */
+            withdrawn_by: string | null;
+            /** Withdrawn Reason */
+            withdrawn_reason: string | null;
+            /**
+             * Real
+             * @description whether it is real evidence: one that supports its claim lets it be validated
+             */
+            real: boolean;
+            /** Not Real Because */
+            not_real_because: string | null;
+            /**
+             * Basis
+             * @description what a piece the hub wrote rests on: the figures of the check of the test card (check, metric, value, samples, window_days, comparator, threshold, result), or the item a judging run judged (judging)
+             */
+            basis: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Rests On Run
+             * @description the hub wrote it from signals the agent of a run pushed: it never validates
+             */
+            rests_on_run: boolean;
+        };
+        /** CanvasEvidenceIn */
+        CanvasEvidenceIn: {
+            /**
+             * Kind
+             * @description signal and feedback are the hub's to write
+             * @enum {string}
+             */
+            kind: "interview" | "experiment" | "market" | "doc" | "simulation";
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "supports" | "contradicts" | "neutral";
+            /** Summary */
+            summary: string;
+            /** Url */
+            url?: string | null;
+            /**
+             * Observed On
+             * @description the day it was taken
+             */
+            observed_on?: string | null;
+            /**
+             * Synthetic
+             * @description it rests on simulated people; a simulation always does
+             * @default false
+             */
+            synthetic: boolean;
+        };
+        /**
+         * CanvasExport
+         * @description evo-canvas/1: a canvas with every claim, archived ones included, and the evidence the caller may read.
+         */
+        CanvasExport: {
+            /**
+             * Format
+             * @constant
+             */
+            format: "evo-canvas/1";
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Project */
+            project: string;
+            canvas: components["schemas"]["CanvasExportCanvas"];
+            /** Claims */
+            claims: components["schemas"]["CanvasExportClaim"][];
+        };
+        /** CanvasExportCanvas */
+        CanvasExportCanvas: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+        };
+        /** CanvasExportClaim */
+        CanvasExportClaim: {
+            /**
+             * Cell
+             * @enum {string}
+             */
+            cell: "problem" | "customer_segments" | "unique_value_proposition" | "solution" | "channels" | "revenue_streams" | "cost_structure" | "key_metrics" | "unfair_advantage";
+            /** Position */
+            position: number;
+            /** Text */
+            text: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "low" | "medium" | "high";
+            test_card: components["schemas"]["CanvasTestCard"] | null;
+            /** Archived */
+            archived: boolean;
+            /**
+             * Use Cases
+             * @description the codes of the use cases of the plugin srs it links, sorted
+             */
+            use_cases: string[];
+            /**
+             * Signal Keys
+             * @description the keys of the project's signals it links, sorted
+             */
+            signal_keys: string[];
+            /** Code */
+            code: string;
+            /** Rev */
+            rev: number;
+            /** Evidence */
+            evidence: components["schemas"]["CanvasExportEvidence"][];
+        };
+        /** CanvasExportEvidence */
+        CanvasExportEvidence: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "signal" | "feedback" | "interview" | "experiment" | "market" | "doc" | "simulation";
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "supports" | "contradicts" | "neutral";
+            /** Summary */
+            summary: string;
+            /** Url */
+            url: string | null;
+            /** Observed On */
+            observed_on: string | null;
+            /** Synthetic */
+            synthetic: boolean;
+            /**
+             * Actor
+             * @enum {string}
+             */
+            actor: "person" | "agent" | "hub";
+            /** Confirmed */
+            confirmed: boolean;
+            /** Withdrawn */
+            withdrawn: boolean;
+        };
+        /** CanvasFieldChange */
+        CanvasFieldChange: {
+            /**
+             * Field
+             * @description a field of a claim, a test card's as test_card.deadline
+             */
+            field: string;
+            /** Before */
+            before?: unknown;
+            /** After */
+            after?: unknown;
+        };
+        /** CanvasImportIn */
+        CanvasImportIn: {
+            /**
+             * Data
+             * @description evo-canvas/1, as export writes it
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** @description the label of a canvas the import makes; an admin's to give */
+            label?: components["schemas"]["LabelIn"] | null;
+        };
+        /** CanvasImportResult */
+        CanvasImportResult: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Canvas */
+            canvas: string;
+            /** Canvas Created */
+            canvas_created: boolean;
+            /** Created */
+            created: string[];
+            /** Edited */
+            edited: string[];
+            /** Unchanged */
+            unchanged: string[];
+            /**
+             * Evidence
+             * @description pieces of evidence added
+             */
+            evidence: number;
+            /**
+             * Problems
+             * @description warnings: what was left out, by claim
+             */
+            problems: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CanvasIn */
+        CanvasIn: {
+            /** Slug */
+            slug: string;
+            /**
+             * Name
+             * @description the product's name
+             */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** @description a label above the project's default; an admin's to give */
+            label?: components["schemas"]["LabelIn"] | null;
+        };
+        /**
+         * CanvasJudging
+         * @description An item a judging run of @strategist had for a claim, and its verdict with why once judged.
+         */
+        CanvasJudging: {
+            /** Id */
+            id: number;
+            /**
+             * Run Id
+             * @description the judging run, a task run of @strategist
+             */
+            run_id: number | null;
+            /**
+             * Source
+             * @description signal: a piece of feedback; evidence: the claim's evidence
+             * @enum {string}
+             */
+            source: "signal" | "evidence";
+            /**
+             * Kind
+             * @description feedback, or the kind of the evidence judged
+             */
+            kind: string;
+            /** Signal Id */
+            signal_id: number | null;
+            /** Evidence Id */
+            evidence_id: number | null;
+            /**
+             * Text
+             * @description what the run read of it
+             */
+            text: string;
+            /** Synthetic */
+            synthetic: boolean;
+            /**
+             * Rests On Run
+             * @description the agent of a run pushed the signal
+             */
+            rests_on_run: boolean;
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            measured_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Verdict */
+            verdict: ("supports" | "contradicts" | "irrelevant") | null;
+            /** Reason */
+            reason: string | null;
+            /** Judged At */
+            judged_at: string | null;
+            /**
+             * Verdict Evidence Id
+             * @description the evidence of kind feedback the hub wrote of the verdict
+             */
+            verdict_evidence_id: number | null;
+        };
+        /**
+         * CanvasProposal
+         * @description A new claim, or a change of a claim at the rev it was read at, that an agent or the hub proposed, and what
+         *     became of it.
+         */
+        CanvasProposal: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description create: a new claim; change: a change of claim at base_rev
+             * @enum {string}
+             */
+            kind: "create" | "change";
+            /**
+             * Claim
+             * @description the claim it changes, or the one accepting it made; None for a new one
+             */
+            claim: string | null;
+            /**
+             * Base Rev
+             * @description the rev of the claim it was made at
+             */
+            base_rev: number | null;
+            /**
+             * Fields
+             * @description the fields of the claim it sets, as an edit sets them
+             */
+            fields: {
+                [key: string]: unknown;
+            };
+            /**
+             * Changes
+             * @description what it changes, field by field, from its base rev
+             */
+            changes: components["schemas"]["CanvasFieldChange"][];
+            /** Reason */
+            reason: string;
+            /**
+             * Synthetic
+             * @description it rests on simulated users
+             */
+            synthetic: boolean;
+            provenance: components["schemas"]["CanvasProvenance"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Status
+             * @description stale: its claim changed since its base rev
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "rejected" | "stale";
+            /**
+             * Rev
+             * @description the rev accepting it wrote
+             */
+            rev: number | null;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided Reason */
+            decided_reason: string | null;
+            /**
+             * Evidence Id
+             * @description the evidence a value check proposed it on
+             */
+            evidence_id: number | null;
+        };
+        /**
+         * CanvasProvenance
+         * @description Who wrote a rev or a piece of evidence.
+         */
+        CanvasProvenance: {
+            /**
+             * Actor
+             * @description a person, an agent or the hub
+             * @enum {string}
+             */
+            actor: "person" | "agent" | "hub";
+            /**
+             * Login
+             * @description the member the write was for; None for the hub
+             */
+            login: string | null;
+            /**
+             * Run Id
+             * @description the run of the agent that wrote it
+             */
+            run_id: number | null;
+            /** Runtime */
+            runtime: string | null;
+            /** Model */
+            model: string | null;
+            /**
+             * Chat Message Id
+             * @description the chat message that asked for it
+             */
+            chat_message_id: number | null;
+        };
+        /** CanvasRejectIn */
+        CanvasRejectIn: {
+            /**
+             * Reason
+             * @description why, kept with the proposal
+             * @default
+             */
+            reason: string;
+        };
+        /** CanvasRev */
+        CanvasRev: {
+            /** Rev */
+            rev: number;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "create" | "edit" | "archive" | "unarchive" | "undo" | "import" | "proposal" | "baseline";
+            /**
+             * Undo Of
+             * @description the rev an undo took back
+             */
+            undo_of: number | null;
+            content: components["schemas"]["CanvasContent"];
+            /**
+             * Changes
+             * @description what differs from the rev before it
+             */
+            changes: components["schemas"]["CanvasFieldChange"][];
+            provenance: components["schemas"]["CanvasProvenance"];
+            /** Reason */
+            reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Baseline Id
+             * @description the baseline whose decision wrote it (change baseline)
+             */
+            baseline_id: number | null;
+        };
+        /**
+         * CanvasSnapshotClaim
+         * @description One claim of an approved baseline's snapshot.
+         */
+        CanvasSnapshotClaim: {
+            /** Claim */
+            claim: string;
+            /** Claim Id */
+            claim_id: number;
+            /** Rev */
+            rev: number;
+            /**
+             * Status
+             * @description the status in effect
+             * @enum {string}
+             */
+            status: "assumption" | "testing" | "validated" | "invalidated" | "retired";
+            /**
+             * Sha256
+             * @description the SHA-256 of the claim's content at that rev, as canonical JSON
+             */
+            sha256: string;
+        };
+        /**
+         * CanvasSummary
+         * @description A canvas, as a list shows it.
+         */
+        CanvasSummary: {
+            /** Slug */
+            slug: string;
+            /**
+             * Name
+             * @description the product's name
+             */
+            name: string;
+            /** Description */
+            description: string;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Claims
+             * @description its claims that are not archived
+             */
+            claims: number;
+            /**
+             * Statuses
+             * @description how many of those hold each status
+             */
+            statuses: {
+                [key: string]: number;
+            };
+        };
+        /** CanvasTestCard */
+        CanvasTestCard: {
+            /** Hypothesis */
+            hypothesis: string | null;
+            /** Test */
+            test: string | null;
+            /** Metric */
+            metric: string | null;
+            /** Aggregate */
+            aggregate: ("last" | "mean" | "sum" | "count" | "p50" | "p90") | null;
+            /** Window Days */
+            window_days: number | null;
+            /** Comparator */
+            comparator: (">=" | ">" | "<=" | "<") | null;
+            /** Threshold */
+            threshold: number | null;
+            /** Min Samples */
+            min_samples: number | null;
+            /** Tenant */
+            tenant: string | null;
+            /** Deadline */
+            deadline: string | null;
+        };
+        /**
+         * CanvasTestCardIn
+         * @description A test card: the four fields of a Test Card (hypothesis, test, metric, threshold), how a value check compares
+         *     a signal with it (aggregate, window_days, comparator, min_samples, tenant), and its deadline. Every field may be
+         *     left out; testing needs hypothesis, test and deadline.
+         */
+        CanvasTestCardIn: {
+            /** Hypothesis */
+            hypothesis?: string | null;
+            /** Test */
+            test?: string | null;
+            /**
+             * Metric
+             * @description a signal's key, or feedback
+             */
+            metric?: string | null;
+            /** Aggregate */
+            aggregate?: ("last" | "mean" | "sum" | "count" | "p50" | "p90") | null;
+            /** Window Days */
+            window_days?: number | null;
+            /** Comparator */
+            comparator?: (">=" | ">" | "<=" | "<") | null;
+            /** Threshold */
+            threshold?: number | null;
+            /** Min Samples */
+            min_samples?: number | null;
+            /** Tenant */
+            tenant?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+        };
+        /** CanvasUndoIn */
+        CanvasUndoIn: {
+            /** Revs */
+            revs: components["schemas"]["CanvasUndoTarget"][];
+            /**
+             * Reason
+             * @description why, kept with each rev it writes
+             * @default
+             */
+            reason: string;
+        };
+        /** CanvasUndoTarget */
+        CanvasUndoTarget: {
+            /**
+             * Claim
+             * @description CL-3, or 3
+             */
+            claim: string;
+            /**
+             * Rev
+             * @description the rev to take back, which must be the claim's current rev
+             */
+            rev: number;
+        };
+        /** CanvasWithdrawIn */
+        CanvasWithdrawIn: {
+            /** Reason */
+            reason: string;
         };
         /**
          * Change
@@ -11240,7 +13042,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "release") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "release") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -16240,6 +18042,277 @@ export interface components {
              * @default
              */
             text: string;
+        };
+        /** Signal */
+        Signal: {
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "feedback";
+            /** Value */
+            value: number | null;
+            /** Text */
+            text: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            measured_at: string;
+            /** Tenant */
+            tenant: string | null;
+            /** Synthetic */
+            synthetic: boolean;
+            /** External Id */
+            external_id: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Via
+             * @description who pushed it: an ingest key, a member, a run
+             * @enum {string}
+             */
+            via: "ingest" | "member" | "run";
+            /**
+             * Ingest Key
+             * @description the ingest key's name, when one pushed it
+             */
+            ingest_key: string | null;
+            /**
+             * Login
+             * @description the member who pushed it, or for whom a run did
+             */
+            login: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+        };
+        /** SignalBatchIn */
+        SignalBatchIn: {
+            /** Items */
+            items: components["schemas"]["SignalIn"][];
+        };
+        /** SignalBatchResult */
+        SignalBatchResult: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Accepted
+             * @description signals stored
+             */
+            accepted: number;
+            /**
+             * Duplicates
+             * @description items whose external_id this key or member had sent before
+             */
+            duplicates: number;
+            /** Rejected */
+            rejected: components["schemas"]["SignalRejection"][];
+        };
+        /** SignalIn */
+        SignalIn: {
+            /**
+             * Key
+             * @description a key of the project's registry
+             */
+            key: string;
+            /**
+             * Value
+             * @description the number, for a key of kind number
+             */
+            value?: number | null;
+            /**
+             * Text
+             * @description the feedback, for a key of kind feedback: at most 4 KiB in UTF-8
+             */
+            text?: string | null;
+            /**
+             * Source
+             * @description who measured it; the key's source when left out
+             */
+            source?: string | null;
+            /**
+             * Measured At
+             * @description when it was measured; now when left out
+             */
+            measured_at?: string | null;
+            /**
+             * Tenant
+             * @description who it is about, such as a customer; free text
+             */
+            tenant?: string | null;
+            /**
+             * Synthetic
+             * @description it comes from simulated people, not real ones
+             * @default false
+             */
+            synthetic: boolean;
+            /**
+             * External Id
+             * @description the sender's id of it: sent again with the same key, it is stored once
+             */
+            external_id?: string | null;
+            /**
+             * Level
+             * @description its sensitivity, a level of the project's ladder; the key's, else the project's default
+             */
+            level?: string | null;
+        };
+        /** SignalIngestKey */
+        SignalIngestKey: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Max Level */
+            max_level: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+        };
+        /** SignalIngestKeyIn */
+        SignalIngestKeyIn: {
+            /**
+             * Name
+             * @description the service it is for, unique among live keys
+             */
+            name: string;
+            /**
+             * Max Level
+             * @description the highest level it writes; the project's default level when left out
+             */
+            max_level?: string | null;
+        };
+        /** SignalIngestKeyIssued */
+        SignalIngestKeyIssued: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Max Level */
+            max_level: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+            /**
+             * Token
+             * @description evi_...: shown this once, the hub keeps only its SHA-256
+             */
+            token: string;
+        };
+        /** SignalKey */
+        SignalKey: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "feedback";
+            /** Unit */
+            unit: string;
+            /** Description */
+            description: string;
+            /** Source */
+            source: string;
+            /** Level */
+            level: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Archived At */
+            archived_at: string | null;
+        };
+        /** SignalKeyIn */
+        SignalKeyIn: {
+            /**
+             * Name
+             * @description two to six dotted parts
+             */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "feedback";
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Level
+             * @description the level its signals get when they name none; the project's default level when left out
+             */
+            level?: string | null;
+        };
+        /** SignalRejection */
+        SignalRejection: {
+            /**
+             * Index
+             * @description the item's place in the batch, 0 first
+             */
+            index: number;
+            /** Key */
+            key: string;
+            /** External Id */
+            external_id: string | null;
+            /** Reason */
+            reason: string;
         };
         /** SignedIn */
         SignedIn: {
@@ -32630,6 +34703,1916 @@ export interface operations {
             };
         };
     };
+    list_canvases_v1_x_canvas__project__canvases_get: {
+        parameters: {
+            query?: {
+                /** @description archived ones too */
+                archived?: boolean;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_canvas_v1_x_canvas__project__canvases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_canvas_v1_x_canvas__project__canvases__slug__get: {
+        parameters: {
+            query?: {
+                /** @description archived ones too */
+                archived?: boolean;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_claim_v1_x_canvas__project__canvases__slug__claims__ref__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasClaimDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_judgings_v1_x_canvas__project__canvases__slug__claims__ref__judgings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasJudging"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    diff_claim_v1_x_canvas__project__canvases__slug__claims__ref__diff_get: {
+        parameters: {
+            query?: {
+                /** @description a rev; the one before head when left out */
+                base?: number | null;
+                /** @description a rev; the claim's current when left out */
+                head?: number | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasDiff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_canvas_v1_x_canvas__project__canvases__slug__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_canvas_v1_x_canvas__project__canvases__slug__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unarchive_canvas_v1_x_canvas__project__canvases__slug__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_claims_v1_x_canvas__project__canvases__slug__edit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    undo_claims_v1_x_canvas__project__canvases__slug__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasUndoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEvidenceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    withdraw_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence__evidence_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+                evidence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasWithdrawIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_evidence_v1_x_canvas__project__canvases__slug__claims__ref__evidence__evidence_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+                evidence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEvidence"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_x_canvas__project__canvases__slug__proposals_get: {
+        parameters: {
+            query?: {
+                /** @description the statuses to list; open when left out */
+                status?: ("open" | "accepted" | "rejected" | "stale")[] | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasProposal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reject_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasRejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    brainstorm_v1_x_canvas__project__canvases__slug__brainstorm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasBrainstormIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasBrainstorm"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_canvas_v1_x_canvas__project__canvases_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasImportResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_baselines_v1_x_canvas__project__canvases__slug__baselines_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasBaselineSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_baseline_v1_x_canvas__project__canvases__slug__baselines_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasBaselineOpenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_baseline_v1_x_canvas__project__canvases__slug__baselines__number__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the baseline's number in the canvas */
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the canvas's slug */
+                slug: string;
+                /** @description the baseline's number in the canvas */
+                number: number;
+                /** @description the claim's code, as CL-3 or 3 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasBaselineDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasBaseline"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_documents_v1_x_srs__project__documents_get: {
         parameters: {
             query?: {
@@ -41702,6 +45685,574 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsLayer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    push_signals_v1_signals__project__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalBatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalBatchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_signals_v1_projects__project__signals_get: {
+        parameters: {
+            query?: {
+                /** @description one key; all when left out */
+                key?: string | null;
+                /** @description measured at or after */
+                since?: string | null;
+                /** @description measured before */
+                until?: string | null;
+                tenant?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_keys_v1_projects__project__signal_keys_get: {
+        parameters: {
+            query?: {
+                /** @description archived keys too */
+                archived?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalKey"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_key_v1_projects__project__signal_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalKeyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalKey"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_key_v1_projects__project__signal_keys__name__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the key, as kb.search.hits */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalKey"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_ingest_keys_v1_projects__project__signal_ingest_keys_get: {
+        parameters: {
+            query?: {
+                /** @description revoked keys too */
+                revoked?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalIngestKey"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_ingest_key_v1_projects__project__signal_ingest_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignalIngestKeyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalIngestKeyIssued"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_ingest_key_v1_projects__project__signal_ingest_keys__key_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignalIngestKey"];
                 };
             };
             /** @description Unauthorized */
