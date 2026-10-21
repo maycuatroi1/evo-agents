@@ -102,6 +102,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | autonomy policy | `GET` and `PUT /v1/projects/{project}/policy`, `GET .../policy/revisions`, `.../policy/revisions/{revision}`, `.../policy/compare?from=N&to=M`: reading needs a grant on the project, writing the admin role (`docs/merge-queue.md`) |
+| goals | `GET /v1/projects/{project}/goals` (`?status=`), `GET .../goals/{ref}` (`?revision=`), `.../goals/{ref}/revisions`, `PUT .../goals/{ref}`, `POST .../goals/{ref}/close`: reading needs a grant on the project, writing the admin role (section Goals) |
 | merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
@@ -1631,6 +1632,27 @@ evo-agents hub merge resume lumen-api --project demo         # an admin resets t
 ```
 
 The web shows it on the project's Merge queue page (`/p/{project}/merge-queue`), with the tabs Figures and Policy.
+
+## Goals
+
+A goal says what a project is for, and how to tell it is reached (plan loop-engine): a statement, a metric (a key of kind
+number of the project's registry of signals, summed up over a window as a test card of the plugin canvas does it, and
+compared with a target), a deadline, the canvas whose product it drives, a rank among the project's goals (1 first), an
+owner with the writer role or above, and a status: `active`, `paused`, or `closed` with a reason (`achieved`,
+`dropped`, `expired`). A goal has no budget. Its code is `G-<number>`, given in order and never again: a goal is closed,
+never deleted. An admin of the project writes a goal whole as its next revision, and every revision is kept and
+audited (`goal.set`); the agent of a run only proposes one, through @builder (proposal kind `goal`). The lens
+`product_goals` of the Curator reads the active goals by rank. A goal of the Curator's charter (`{id, what}`) becomes
+a goal without a metric the first time the goals are read, its `id` kept as an alias that names it as its code does.
+
+```sh
+evo-agents hub goal list --project demo                       # by rank; --status active, paused or closed
+evo-agents hub goal show G-1 --project demo                   # with its revisions; --revision N for an older one
+evo-agents hub goal set --statement "Fewer searches find nothing" --metric search.zero_rate --aggregate p50 \
+  --comparator "<=" --target 0.05 --window-days 30 --deadline 2026-12-31 --project demo   # a new goal: G-<next>
+evo-agents hub goal set G-1 --target 0.03 --note "tighter" --project demo                  # the options given change
+evo-agents hub goal close G-1 --reason achieved --project demo
+```
 
 ## Memories, skills and knowledge graphs
 

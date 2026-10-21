@@ -136,6 +136,11 @@ SETTINGS_FEATURES = "settings.features"
 # "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
 # approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
 POLICY_SET = "policy.set"
+# A new revision of a goal of a project (evo_agents.hub.server.goals), in the project: "<project>/goal G-<n>
+# revision=<n> fields=<the fields whose value changed>", then " proposal=<id>" when an admin approved or rolled back a
+# proposal of @builder, " copy-of=<n>" for a rollback, and " charter=<revision>" with no actor when the hub made the
+# goal from a goal of the Curator's charter; never a value.
+GOAL_SET = "goal.set"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a

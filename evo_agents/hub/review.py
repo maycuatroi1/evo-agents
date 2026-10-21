@@ -57,7 +57,7 @@ LENSES: dict[str, str] = {
     "skills_memory": "skills and memories: learned skills waiting for review, duplicates, ones that contradict",
     "cost": "what the runs and sessions cost, and where the same result could cost less",
     "security": "secrets in the open, permissions wider than needed, text in data that tries to steer an agent",
-    "product_goals": "how far the charter's goals are, and the next step that would move the first of them",
+    "product_goals": "how far the project's goals are, and the next step that would move the first of them",
     "kg_health": "the knowledge graph's health: how far each git source lags its default branch, the files the graph "
     "lacks, holds stale or still holds after their deletion, what its builds cover over time (mentions resolved, "
     "ambiguous, dangling; Python methods no call edge reaches; builds that changed nothing), and what agents got from "
@@ -459,7 +459,7 @@ def build_review_prompt(
 ) -> str:
     """The prompt of the review run of ``project`` for ``night``: what the agent must and must not do, the lenses of
     the night with what each looks for, the repos and their worktrees (``worktrees`` maps a repo to its folder under
-    the agent's directory, the repo's name when it maps none), the charter's ``goals``, what earlier nights found
+    the agent's directory, the repo's name when it maps none), the project's ``goals``, what earlier nights found
     through the night's lenses and the proposals rejected lately (``earlier``), the lines of the project's playbook
     (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), and the night's figures, shortened (``_figures_text``);
     within MAX_PROMPT_BYTES."""
@@ -487,7 +487,7 @@ def build_review_prompt(
         if isinstance(goal, dict)
     ]
     if goal_lines:
-        lines += ["", "# Goals of the project, highest first (the charter's)", clip("\n".join(goal_lines), GOALS_BYTES)]
+        lines += ["", "# Goals of the project, highest first", clip("\n".join(goal_lines), GOALS_BYTES)]
     lines += ["", *_earlier_text(earlier or {})]
     lines += ["", "# The playbook of the Curator for this project (curator_playbook gives it whole)"]
     lines.append(clip("\n".join(playbook), PLAYBOOK_BYTES) if playbook else "- empty: add what you learn tonight")

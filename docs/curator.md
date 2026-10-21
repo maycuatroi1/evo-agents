@@ -121,7 +121,7 @@ env_secrets: [claude-oauth]
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. The lens `product_goals` reads them |
+| `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
 | `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
 | `worker` | required | the worker on duty, by name (below) |
 | `night_budget_usd` | required | the most a night may cost, every run of the night together |

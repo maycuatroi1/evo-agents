@@ -110,6 +110,7 @@ TABLES |= pg.POLICY_TABLES  # migration 0079
 TABLES |= pg.MERGE_TABLES  # migration 0081
 TABLES |= pg.SAMPLE_TABLES  # migration 0083
 TABLES |= pg.BREAKER_TABLES  # migration 0084
+TABLES |= pg.GOAL_TABLES  # migration 0085
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -184,8 +185,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_twenty_eight_tables(hub_db):
-    assert len(TABLES) == 128  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_tables(hub_db):
+    assert len(TABLES) == 130  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2028,6 +2029,81 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
+
+
+def test_0085_keeps_the_revisions_of_goals_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0084")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0079 knows no goal proposal
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "goal"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0085")
+    assert columns(hub_db, "goals") == {"id", "project_id", "number", "alias", "revision", "created_at"}
+    assert columns(hub_db, "goal_revisions") == {
+        "goal_id",
+        "revision",
+        "statement",
+        "metric",
+        "deadline",
+        "canvas_id",
+        "rank",
+        "owner_id",
+        "status",
+        "close_reason",
+        "note",
+        "created_by",
+        "created_at",
+    }
+    g, r, p, n = t.goals, t.goal_revisions, t.builder_proposals, t.notifications
+    goal = {"project_id": ids["project"], "number": 1, "alias": "night-shift", "revision": 1}
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Goal"}
+    with live.connect(hub_db) as conn:
+        goal_id = one(conn, insert(g).values(goal).returning(g.c.id))
+        row = {"goal_id": goal_id, "revision": 1, "statement": "Run the approved plans at night", "rank": 1}
+        row |= {"owner_id": ids["user"], "status": "active", "created_by": ids["user"]}
+        conn.execute(insert(r).values(row))
+        metric = {"key": "night.plans_done", "aggregate": "sum", "comparator": ">=", "target": 3}
+        closed = {"status": "closed", "close_reason": "achieved", "metric": metric, "note": "three a night"}
+        conn.execute(insert(r).values({**row, "revision": 2, **closed}))
+        for bad in (
+            insert(g).values({**goal, "alias": None}),  # one number a project
+            insert(g).values({**goal, "number": 2}),  # one alias a project
+            insert(g).values({**goal, "number": 0, "alias": None}),
+            insert(g).values({**goal, "number": 3, "alias": "Night Shift"}),
+            insert(r).values(row),  # one row per revision of a goal
+            insert(r).values({**row, "revision": 0}),
+            insert(r).values({**row, "revision": 3, "statement": "  "}),
+            insert(r).values({**row, "revision": 3, "statement": "x" * 2001}),
+            insert(r).values({**row, "revision": 3, "metric": ["night.plans_done"]}),
+            insert(r).values({**row, "revision": 3, "rank": 0}),
+            insert(r).values({**row, "revision": 3, "status": "done"}),
+            insert(r).values({**row, "revision": 3, "status": "closed"}),  # a closed goal names its reason
+            insert(r).values({**row, "revision": 3, "close_reason": "achieved"}),  # and only a closed one does
+            insert(r).values({**row, "revision": 3, "status": "closed", "close_reason": "weather"}),
+            insert(r).values({**row, "revision": 3, "note": ""}),
+            insert(p).values({**proposal, "kind": "secrets"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(insert(p).values({**proposal, "kind": "goal", "target": {"goal": "G-2"}}))
+        conn.execute(insert(p).values({**proposal, "kind": "policy"}))
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 1, "kind": "goal"}}))
+        conn.execute(insert(n).values({**notice, "details": {"proposal": 2, "kind": "policy"}}))
+    assert query(hub_db, select(r.c.revision, r.c.status).order_by(r.c.revision)) == [(1, "active"), (2, "closed")]
+    # Going back drops the goals, and the proposals of a goal with their notices.
+    move_to(hub_db, "0084", down=True)
+    assert not {"goals", "goal_revisions"} & tables(hub_db)
+    assert query(hub_db, select(p.c.kind)) == [("policy",)]
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("policy",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
