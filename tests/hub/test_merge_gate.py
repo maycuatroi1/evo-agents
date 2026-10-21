@@ -30,6 +30,7 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import judge, merge_gate, runs, tables
 from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
 from tests.hub import test_credentials_api as leases_api
@@ -129,11 +130,12 @@ def auto(**judge_keys) -> dict:
 
 
 @pytest.fixture
-def world(hub_db, tmp_path, github):
+def world(hub_db, tmp_path, github, monkeypatch):
     """test_credentials_api's project (lumen-kb-docs on GitLab among its repos), its hub holding the secrets key; owner
     an admin with a forge secret over the GitLab group and the worker mac-mini, which judges merge requests; the
     policy has lumen-kb-docs in mode auto with target branch dev; the fake GitLab holds its project, set up as the
-    queue needs it."""
+    queue needs it. The audit sample's draw is 0.5: a merge is a sample only at a rate above it."""
+    monkeypatch.setattr(after_merge, "draw", lambda: 0.5)
     config = live.hub_config(
         hub_db, tmp_path, github, secrets_key=secrets.token_bytes(KEY_BYTES), **live.web_changes(github)
     )

@@ -127,6 +127,8 @@ NIGHTLY_TABLES = frozenset({"hub_nightly"})
 POLICY_TABLES = frozenset({"autonomy_policies"})
 # migration 0068: the merge queue on GitLab and its ledger
 MERGE_TABLES = frozenset({"merge_queue", "merge_events"})
+# migration 0070: the audit samples of the merge queue
+SAMPLE_TABLES = frozenset({"merge_samples"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

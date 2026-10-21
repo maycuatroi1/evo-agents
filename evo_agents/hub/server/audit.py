@@ -140,6 +140,16 @@ POLICY_SET = "policy.set"
 MERGE_OPEN = "merge.open"
 MERGE_JUDGE = "merge.judge"
 MERGE_MERGE = "merge.merge"
+# What follows a merge of the queue (evo_agents.hub.server.post_merge), in the project: the hub ran the PROD deploy job,
+# "<project>/<repo> !<iid> job=<name> sha=<commit>[ carries=<!iid,...>]", or the rollback job, "... job=<name>
+# to=<commit>", or opened a revert, "<project>/<repo> !<iid> revert=!<iid> branch=<branch>"; an admin approved a PROD
+# release, "<project>/<repo> !<iid> approved", asked for a revert, "<project>/<repo> !<iid> revert=asked", or answered
+# an audit sample, "<project>/<repo> !<iid> sample=<id> result=<ok|faulty>". Never a note.
+MERGE_DEPLOY = "merge.deploy"
+MERGE_ROLLBACK = "merge.rollback"
+MERGE_REVERT = "merge.revert"
+MERGE_RELEASE = "merge.release"
+MERGE_SAMPLE = "merge.sample"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases
