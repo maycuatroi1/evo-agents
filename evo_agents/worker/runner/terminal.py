@@ -211,7 +211,7 @@ class Terminal:
                 )
                 source = interactive.follow_pane(pane_log, tui.logs_done)
             async for event in source:
-                run.event(event.kind, event.body, event.at)
+                run.agent_event(event)
         except Exception:
             log.warning("the log of the terminal failed", extra={"run_id": run.id}, exc_info=True)
         finally:

@@ -263,3 +263,28 @@ def parse_range(header: str | None, size: int) -> tuple[int, int] | None | bool:
     if first >= size or last < first:
         return False
     return first, min(last, size - 1)
+
+
+# An event's link to an output
+
+LINK_SCHEME = "evo-output"  # an event names an output by its SHA-256, evo-output:sha256:<hex>
+_SUFFIXES = {"image/jpeg": ".jpg", "image/svg+xml": ".svg", "text/plain": ".txt"}
+
+
+def link_uri(sha256: str) -> str:
+    """The URI an event names the output of the file whose SHA-256 is ``sha256`` with."""
+    return f"{LINK_SCHEME}:sha256:{sha256}"
+
+
+def output_link(sha256: str, name: str, media_type: str, size: int) -> dict:
+    """The block of ACP content (a ``resource_link``) that stands in an event for a file taken out of it, such as an
+    image of a tool's result: the event keeps this link, never the bytes, and the run's output of that SHA-256 (the
+    one of its tool call) holds the file."""
+    return {"type": "resource_link", "uri": link_uri(sha256), "name": name, "mimeType": media_type, "size": size}
+
+
+def suffix(media_type: str) -> str:
+    """The extension of a file of ``media_type`` (``.png``), or none."""
+    if media_type in _SUFFIXES:
+        return _SUFFIXES[media_type]
+    return mimetypes.guess_extension(media_type, strict=False) or ""
