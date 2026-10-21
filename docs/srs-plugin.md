@@ -397,7 +397,7 @@ curl -X PUT "$HUB/v1/projects/evo-agents/agent-types/srs/ba" -H "Authorization: 
 
 `run_as` is the member whose workers run @ba, a writer or an admin of the project; `workers` the workers of that
 member it may take (none: any the profile allows); `daily_usd` the cap of what its task runs, the reviews and the
-splits below, cost in 24 hours. A chat run of @ba spends the chat's budget, as any chat run does.
+splits below, cost in 24 hours. A chat run of @ba has no cost cap, as any chat run.
 
 **Where its runs go.** The type declares `chat_runs: run_as`, so every chat run of @ba goes to a worker of `run_as`,
 whoever mentioned it: a writer without a worker reaches @ba too. The run's row is dispatched by `run_as`, whose worker

@@ -1,7 +1,7 @@
 """Baselines of the core plugin canvas, the hub's events for the Loop, and three events plugins may take.
 
-Revision ID: 0076
-Revises: 0075
+Revision ID: 0077
+Revises: 0076
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas``, ``evo_agents.hub.tables_signals``,
@@ -21,15 +21,15 @@ plugin_deliveries.kind takes canvas.claim, canvas.baseline and signal.posted; pr
 canvas:read and signals:read; notifications.notice_kind takes canvas_baseline.
 
 Going back deletes the deliveries of the three events and the canvas_baseline notices, takes the two permissions out
-of every grant, puts the checks of 0075 back, and drops the column and the three tables.
+of every grant, puts the checks of 0076 back, and drops the column and the three tables.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0076"
-down_revision = "0075"
+revision = "0077"
+down_revision = "0076"
 branch_labels = None
 depends_on = None
 

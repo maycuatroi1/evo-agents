@@ -5,8 +5,8 @@ no one's say-so only inside this frame, which the hub enforces on each call (``e
 whatever the agent was told:
 
 - run the failed step again for its owner (``RERUN_CAUSES``: the causes the policy table of the design report gives
-  an automatic rerun), at most ``RERUN_CAP`` times in a chain of reruns and ``CAUSE_CAP`` time for each cause, within
-  the chat's budget; a cause the hub guessed first has to be confirmed by the agent after it read the log;
+  an automatic rerun), at most ``RERUN_CAP`` times in a chain of reruns and ``CAUSE_CAP`` time for each cause; a cause
+  the hub guessed first has to be confirmed by the agent after it read the log;
 - change the ``verify`` or narrow the ``what`` of a step of the failed run's plan that is still ``pending`` and
   names a repo of that run (``edit_problems``), as a new revision under the owner's name, never losing a clause of
   the ``verify``; the ``verify_failed`` cause is rerun only together with such an edit.

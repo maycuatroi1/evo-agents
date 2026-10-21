@@ -1,12 +1,10 @@
 """Chat runs on the hub (``evo_agents.hub.chat_runs``): the run a mention of an agent in a group chat makes, the worker
-it goes to, the session it goes on in, the chat's budget, the agent's messages in the thread and the reactions that
-follow the run.
+it goes to, the session it goes on in, the agent's messages in the thread and the reactions that follow the run.
 
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
-writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
-the chat's budget is spent, or when no worker of the person can take it now. Each
-(thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
+writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), or
+when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
 its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
 allows, with the most of the project's repos checked out first, on the branch ``chat/<run>``, in the repos of the
@@ -36,7 +34,7 @@ from sqlalchemy import func, insert, literal, null, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, curator, profiles, runs, tables
+from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
@@ -52,7 +50,6 @@ from evo_agents.hub.server.security import MACHINE
 
 log = logging.getLogger(__name__)
 
-WINDOW = func.make_interval(0, 0, 0, 0, rules.BUDGET_HOURS)
 AGENT_REPLY_REFUSAL = f"an agent's @ in a message hands no work: it uses `{rules.MENTION_COMMAND}`"
 
 
@@ -88,32 +85,6 @@ class Hand:
     def run_via(self) -> str:
         """The credential kind of the run's row: the person's, or machine for a run that goes under run_as."""
         return MACHINE if self.route is not None else self.via
-
-
-# The chat's budget
-
-
-async def chat_spend(conn: AsyncConnection, chat_id: int) -> tuple[float, float]:
-    """(what the chat runs of chat ``chat_id`` queued in the last BUDGET_HOURS cost, its budget). A run that went on
-    in the session of another counts what its session cost after that run's (Claude Code's total is the session's)."""
-    r, before, c = tables.runs, tables.runs.alias("before"), tables.chats
-    query = (
-        select(r.c.usage, before.c.usage.label("before"))
-        .select_from(r.outerjoin(before, before.c.id == r.c.resume_of_run_id))
-        .where(r.c.chat_id == chat_id, r.c.queued_at > func.now() - WINDOW)
-    )
-    spent = sum(
-        max(curator.run_cost(row.usage) - curator.run_cost(row.before), 0.0) for row in await conn.execute(query)
-    )
-    budget = (await conn.execute(select(c.c.budget_usd).where(c.c.id == chat_id))).scalar_one()
-    return round(spent, 4), float(budget)
-
-
-def _spent(spent: float, budget: float) -> str:
-    return (
-        f"the chat's budget of {curator.money(budget)} for {rules.BUDGET_HOURS} hours is spent: its agents' runs cost "
-        f"{curator.money(spent)} in that time; the chat's creator may raise it"
-    )
 
 
 # The worker
@@ -192,7 +163,6 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
             r.c.profile_id,
             r.c.worker_id,
             r.c.session_id,
-            r.c.usage,
             r.c.failure_cause,
             w.c.revoked_at.is_not(None).label("revoked"),
             m.c.author_user_id.label("author_id"),
@@ -290,15 +260,14 @@ async def _woken_title(conn: AsyncConnection, run_id: int, text: str) -> str | N
     return None if row is None else rules.turn_title(row.handle, row.title, text)
 
 
-async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> int:
+async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title."""
-    budget = rules.run_budget(left + curator.run_cost(previous.usage))  # the claim takes the session's cost off
     values = {
         "dispatched_by": hand.owner_id,
         "dispatched_via": hand.run_via,
         "chat_message_id": hand.message_id,
         "hop": hand.hop,
-        "budget": budget,
+        "budget": rules.run_budget(),
     }
     values = _titled(values, rules.turn_title(hand.profile.handle, hand.chat.title, hand.body))
     new_id = (await conn.execute(_continue_run(previous.id, values))).scalar_one()
@@ -328,19 +297,17 @@ async def go_on_parked(
                 r.c.chat_id,
                 r.c.chat_message_id,
                 r.c.hop,
-                r.c.usage,
                 r.c.run_seconds,
             ).where(r.c.id == parked_id)
         )
     ).one()
-    spent, budget = await chat_spend(conn, row.chat_id)
     values = {
         "dispatched_by": row.dispatched_by,
         "dispatched_via": row.dispatched_via,
         "chat_message_id": row.chat_message_id,
         "hop": row.hop,
         "run_seconds": row.run_seconds,
-        "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(row.usage)),
+        "budget": rules.run_budget(),
     }
     if woken_by is not None:
         values = _titled(values, await _woken_title(conn, parked_id, woken_by))
@@ -358,7 +325,7 @@ async def go_on_parked(
     return new_id
 
 
-async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
+async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
     project the worker has a checkout of: of them, the project's harness alone on a daemon of
     ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``)."""
@@ -391,7 +358,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
         "chat_id": hand.chat.chat_id,
         "chat_message_id": hand.message_id,
         "hop": hand.hop,
-        "budget": rules.run_budget(left),
+        "budget": rules.run_budget(),
     }
     run_id = await insert_run(conn, values)
     branch = rules.branch_of(run_id)
@@ -477,9 +444,6 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
     if session is not None and session.state in runs.MESSAGE_STATES:
         await _to_inbox(conn, session.id, hand)
         return session.id, None
-    spent, budget = await chat_spend(conn, hand.chat.chat_id)
-    if spent >= budget:
-        return None, _spent(spent, budget)
     if session is not None and session.state == "parked" and session.session_id:
         new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread", woken_by=hand.body)
         await _to_inbox(conn, new_id, hand)
@@ -490,11 +454,11 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         and session.session_id
         and not session.revoked
     ):
-        return await _go_on(conn, session, hand, budget - spent), None
+        return await _go_on(conn, session, hand), None
     worker, why = await pick_worker(conn, hand)
     if worker is None:
         return None, why
-    return await _start(conn, hand, worker, budget - spent), None
+    return await _start(conn, hand, worker), None
 
 
 async def hand_mentions(conn: AsyncConnection, hand: Hand, kept: list[dict]) -> list[str]:
@@ -707,16 +671,15 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         return None
     untaken = await _untaken(conn, run_id)
     r = tables.runs
-    session = (await conn.execute(select(r.c.session_id, r.c.usage).where(r.c.id == run_id))).one()
+    session = (await conn.execute(select(r.c.session_id).where(r.c.id == run_id))).one()
     if not untaken or not session.session_id:
         return None
-    spent, budget = await chat_spend(conn, found.chat_id)
     values = {
         "dispatched_by": found.dispatched_by,
         "dispatched_via": found.via,
         "chat_message_id": found.message_id,
         "hop": found.hop,
-        "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(session.usage)),
+        "budget": rules.run_budget(),
     }
     values = _titled(values, await _woken_title(conn, run_id, rules.woken_text(untaken[0].body)))
     new_id = (await conn.execute(_continue_run(run_id, values))).scalar_one()
@@ -806,7 +769,6 @@ async def chat_prompt(
         direct=direct,
     )
     people, agents = await _member_names(conn, found.chat_id)
-    _, budget = await chat_spend(conn, found.chat_id)
     listing, harness = None, None
     if runs.LAZY_CHAT_REPOS in features:
         listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
@@ -822,7 +784,6 @@ async def chat_prompt(
         login=found.dispatcher,
         hop=found.hop,
         branch=branch or rules.branch_of(run_id),
-        budget_usd=budget,
         blocks=blocks,
         repos=repos,
         listing=listing,

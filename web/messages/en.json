@@ -2651,15 +2651,13 @@
       "leave": "Leave",
       "leaving": "Leaving",
       "removePerson": "Take {login} out of the chat",
-      "budget": "Budget",
       "restricted": "A project of this chat's agents is restricted, so its notices name the chat and link to it, nothing more.",
       "left": "You left {title}",
       "done": {
         "addAgent": "{name} added to the chat",
         "removeAgent": "{name} taken out of the chat",
         "addPerson": "{name} added to the chat",
-        "removePerson": "{name} taken out of the chat",
-        "budget": "Budget changed"
+        "removePerson": "{name} taken out of the chat"
       },
       "leaveTitle": "Leave {title}?",
       "leaveBody": "You will no longer read or write in this chat, and its notices stop. A member can add you again.",
@@ -2678,12 +2676,6 @@
       "addPerson": "Add a person",
       "peopleFull": "A chat holds at most {max} people.",
       "personHint": "People who share a project or a chat with you; type the login of someone else who signed in to the hub. Each needs a grant that clears the projects of this chat's agents.",
-      "budgetRead": "The runs of its agents may cost up to {amount} in any 24 hours. {creator}, who created the chat, changes it.",
-      "budgetLabel": "Spend limit for 24 hours, in USD",
-      "saving": "Saving",
-      "save": "Save",
-      "badBudget": "A number above 0, at most {max}.",
-      "budgetHint": "The runs of its agents may cost up to {amount} in any 24 hours, as their usage says; past it the hub hands them no work.",
       "detailsTitle": "Details",
       "directDescription": "Your direct chat with {name}.",
       "directNote": "A direct chat is you and one agent, for good. To bring in other people or agents, start a group chat with New chat."

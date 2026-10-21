@@ -993,7 +993,7 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "a chat's members, budget and the leave confirmation",
+    name: "a chat's members and the leave confirmation",
     open: async ({ page, me }) => {
       const { chat } = await seedChat(me);
       await open(page, chatPath(chat.id));
