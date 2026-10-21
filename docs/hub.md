@@ -344,7 +344,10 @@ under the handle of another project's agent (409), since `@<name>` would name bo
 
 Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
 itself when a secret, a skill or a worker is added, and an empty one allows nothing. A profile only narrows what the
-member who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+member who dispatches a run has (their workers, their secrets, the projects they write to), with one exception: the
+agent account, an `env` secret the profile owns itself, which its runs are leased on the workers it is bound to instead
+of the dispatcher's secret for the same variable, whatever the credential axis says (see "Accounts of an agent" in
+[credentials.md](credentials.md)).
 
 | Axis | An allowlist names | Enforced |
 | --- | --- | --- |
