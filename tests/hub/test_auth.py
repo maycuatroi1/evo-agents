@@ -94,6 +94,8 @@ HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0083
 HUB_TABLES |= pg.BREAKER_TABLES  # migration 0084
 HUB_TABLES |= pg.TASKS_BLOCKER_TABLES  # migration 0085
 HUB_TABLES |= pg.PM_TABLES  # migration 0086
+HUB_TABLES |= pg.OUTPUT_TABLES  # migration 0089
+HUB_TABLES |= pg.MUTE_TABLES  # migration 0090
 
 
 @pytest.fixture

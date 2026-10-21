@@ -199,7 +199,8 @@ async def delivered_notification(conn: AsyncConnection, member: Member, external
 async def prepare(conn: AsyncConnection, notification: Outgoing, cleared: Clearance) -> Outgoing:
     """``notification`` with what a channel cleared for ``cleared`` may send of it in ``extra``: ``{"restricted":
     true}`` alone when its project is kept from the channel, or it is a decision or a proposal of no project; else its
-    decision and its proposal, each None when gone, as ``docs/plugins.md`` lists their fields."""
+    decision and its proposal, each None when gone, and for a decision or a notice ``run_outputs`` its files
+    (``outputs``, ``outputs_count``), as ``docs/plugins.md`` lists their fields."""
     if not isinstance(notification, Outgoing):
         raise ValueError("prepare takes the Outgoing a channel's prepare is given")
     own_clearance(cleared)

@@ -96,7 +96,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
@@ -1114,6 +1114,55 @@ Telegram and the Inbox like any other, and the first answer wins, from the web, 
 machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
 states and kind in `hub run list/show`; the machine side talks HTTP.
 
+## Outputs of runs
+
+An output is a file a run's agent made that the hub keeps for the people who read the run (`evo_agents.hub.outputs`):
+a file it sent on purpose (source `sent`: `evo-agents worker output`, SendUserFile, the Artifact tool, a file attached
+to a question or a chat message), an image the machine took out of a tool's result (`tool`: a browser's screenshot, a
+Read of an image), or a file left in the run's `.evo-run/outputs/` (`outputs`). It has a name, a media type, a size, a
+SHA-256, a caption, when it came and the tool call of the trace it came from. Its bytes are a blob of kind
+`run-output` the run's project holds; a run holds one output per SHA-256, so a file sent twice is the output it is.
+Schema 0089 holds them (`run_outputs`), what carries them (`run_output_links`: a question or a chat message) and a
+project's switch (`projects.output_tool_images`); going back to 0084 drops them, and the chat events of kind
+`message_changed`.
+
+- **Sending.** The worker of a run and the machine of a local session send outputs in two calls, the presigned
+  uploads of the bytes the project does not hold and the outputs (`docs/workers.md`, "Outputs").
+- **Limits.** 200 MiB a file, 500 outputs and 1 GiB a run, a SHA-256 counted once; past one, 413 names the limit.
+- **Reading.** Readers of a run list its outputs (`GET /v1/projects/{p}/runs/{id}/outputs`, `?source=` and `?after=`)
+  and a local run's are its member's alone. Each output's `url` serves its bytes from the hub's own origin to whoever
+  reads what listed it: the run (`.../runs/{id}/outputs/{oid}/content`), a question that carries it
+  (`.../decisions/{id}/outputs/{oid}/content`, its readers) or a chat message that carries it
+  (`/v1/chats/{id}/outputs/{oid}/content`, a member of the chat who reads the message). Anyone else gets 404.
+- **Serving.** An answer carries the output's type (text of every kind as UTF-8 `text/plain`), `nosniff`,
+  `Cross-Origin-Resource-Policy: same-origin`, a Content-Disposition with a safe name (an attachment with
+  `?download=true`, and always for a type the web does not view) and its SHA-256 as ETag, and serves one byte range
+  (206, 416 outside the file), so a video seeks. HTML and SVG never run with the hub's origin: their
+  Content-Security-Policy's `sandbox` gives them an opaque origin, without `allow-same-origin`, and `connect-src
+  'none'` lets an HTML page call nothing, so it reads no cookie and calls no API as the viewer; SVG runs no script.
+- **Questions and chats.** A question carries outputs of its run (`output_ids`), and every view of the question
+  lists them. A chat message of a run's agent carries outputs of that run, never a tool image. A chat run's own files
+  go under its next message, and once it ended under its last one, which the chat's streams hear of as
+  `message_changed`.
+- **Notices.** The files of sources `sent` and `outputs` go to the run's owner as the notice `run_outputs`, gathered a
+  minute a run, in the Inbox with their outputs and on Telegram with the run's link, never an image of source `tool`;
+  a member turns it off (`docs/notifications.md`, "The files of a run").
+- **Deleting.** The run's dispatcher or an admin of the project deletes an output (`DELETE
+  .../runs/{id}/outputs/{oid}`, audit `run.output_delete`): it leaves the questions and messages that carried it, and
+  its bytes go once nothing refers to them any longer (the blob collection counts `run_outputs.sha256`).
+- **Retention.** An output of source `tool` goes with its run's events, `EVO_HUB_RUN_LOG_DAYS` after the run ended
+  (hub.prune_run_events), unless a question or a chat message carries it. The other sources stay until someone deletes
+  them.
+- **The switch.** `GET /v1/projects/{p}/output-settings` answers any member whether the project takes tool images
+  (`tool_images`, on by default) and the limits; an admin of the project switches it with `PUT` (audit
+  `settings.outputs`). Off, the hub refuses outputs of source `tool` (409) and the machines send none; they read it at
+  `GET /v1/worker/runs/{id}/output-settings` and `GET .../local-runs/{id}/output-settings`.
+
+`evo-agents hub run outputs RUN [--source S] [--json]` lists a run's outputs, and `--download DIR` saves each under
+its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked against its SHA-256, next to a file of
+that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
+and in the `--json` of `hub chat send|react`.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -1896,6 +1945,24 @@ The questions of the session reach the member too (`docs/notifications.md`, A de
 hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
 reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
 it stopped waiting.
+The session's files become outputs of its run (Outputs of runs; `evo_agents/hub/local_outputs.py`): each file
+SendUserFile sends (its input's `files` and `caption`), each page the Artifact tool publishes (its `file_path`, the
+caption naming the page's title and claude.ai link), each file of `evo-agents hub send FILE... [--caption TEXT]` (a CLI
+session has no SendUserFile; the command finds the session by `CLAUDE_CODE_SESSION_ID`), all of source `sent`, and
+every image block of a tool's result (an MCP or Playwright screenshot, a Read of an image), of source `tool`. The
+tool's `tool_call_update` keeps, after its text, a content block per image in place of its base64: the ACP
+`resource_link` a worker's run writes (`{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name",
+"mimeType", "size"}`, `evo_agents.hub.outputs.output_link`), which the run's outputs match by SHA-256. A shape the
+hook does not know is passed over. The `local-tool` hook parses its payload whole up to 64 Mi characters (the other
+hooks stop at 1 MiB), and of a longer one still makes the tool's event from its first and last characters. No upload
+runs in a hook: the hook writes an image's bytes and the queue under `~/.evo/hub/local-outputs/<session>/` and starts
+`evo-agents hub send --queued` in the background, detached, unless one runs or the hub did not answer in the last 15 s;
+Stop, UserPromptSubmit and SessionEnd start it too while outputs wait. The sender copies each file sent (a text file
+through `redact_data`, as the events, captions too), reads the project's switch (off: the images are deleted unsent and
+no longer taken), then uploads and records in batches of 100; an output the hub refuses is dropped and named in
+`send.log`, and a hub or blob store that does not answer keeps everything for a later run. A question of the dialog
+carries the outputs of source `sent` of the turn (since the person's last message), waiting up to 3 s for those not
+recorded yet. Queues untouched for 7 days are deleted.
 [Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
@@ -2329,8 +2396,9 @@ be limited to that one bucket. Keys:
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
   blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
-  the retention deleted (Session transcripts, above), and only once no row refers to them. The `blobs`
-  table says which projects hold each.
+  the retention deleted (Session transcripts, above), and the outputs of runs deleted by hand or with their run's
+  events (Outputs of runs, above), and only once no row refers to them. The `blobs` table says which projects hold
+  each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
 An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presigned PUT URLs (valid 15 minutes, for
@@ -2338,7 +2406,7 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
-file, 48 MiB for a part of a session's transcript.
+file, 48 MiB for a part of a session's transcript, 200 MiB for an output of a run (`run-output`).
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls

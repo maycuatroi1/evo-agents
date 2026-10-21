@@ -30,7 +30,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import access, tables, telegram
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, output_notices
 from evo_agents.hub.server.notifications import SESSION_ENDED, Outgoing
 from evo_agents.hub.server.security import WEB
 
@@ -334,7 +334,10 @@ async def prepare(
     """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``: only
     ``{"restricted": true}`` when its project is kept from the channel (or it is a decision or proposal of no project),
     else its decision (question, category, plan_id, step_key, options, state, run_kind, run_title) and its proposal
-    (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them."""
+    (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them, and for a decision or a notice
+    of a run's files that carries files a channel may send, those files (``outputs``: at most
+    ``output_notices.CHANNEL_OUTPUTS``, none of source tool, each with a presigned GET of its bytes) and how many there
+    are (``outputs_count``)."""
     restricted = notification.kind in ANSWERABLE
     if notification.project is not None:
         restricted = kept_from(await rules_of(conn, notification.project), level, location, below)
@@ -360,6 +363,9 @@ async def prepare(
         query = select(p.c.title, p.c.tier, p.c.kind, p.c.lens, p.c.evidence_count, p.c.state)
         row = (await conn.execute(query.where(p.c.id == notification.proposal_id))).one_or_none()
         extra["proposal"] = None if row is None else dict(row._mapping)
+    carried = await output_notices.channel_outputs(conn, notification)
+    if carried is not None and carried[1]:
+        extra["outputs"], extra["outputs_count"] = carried
     return dataclasses.replace(notification, extra=extra)
 
 

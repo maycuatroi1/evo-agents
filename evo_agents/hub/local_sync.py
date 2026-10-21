@@ -9,12 +9,15 @@ current:
   (``local_account``) registers again with the new one;
 - ``local-tool`` (PostToolUse of every tool): the words the agent wrote since the last hook and the tool that ran, as
   the log of the run, redacted here as the digest is (``evo_agents.hub.redact``, this machine's hub token among the
-  values replaced);
+  values replaced); the files the tool sent and the images of its result wait on this machine as the run's outputs,
+  the event holding a reference to each image instead of its base64, and go to the hub from a sender in the
+  background (``evo_agents.hub.local_outputs``, ``evo_agents.hub.local_send``);
 - ``stop`` (the Stop hook of ``evo_agents.hub.hooks`` calls ``on_stop``): the last words, then ``idle``;
 - ``session-end`` (the SessionEnd hook of ``evo_agents.hub.hooks`` calls ``on_session_end`` once it pushed the
   session's digest): ``ended``;
 - ``local-ask`` (PreToolUse of AskUserQuestion): each question of the dialog is put to the hub as a decision of the
-  run (category ``question``, its options keyed 1, 2, ..), so the member can answer it on the web, in Telegram or
+  run (category ``question``, its options keyed 1, 2, .., carrying the files the session sent since the person's last
+  message: ``local_outputs.for_question``), so the member can answer it on the web, in Telegram or
   with ``hub decision answer`` too; the hook does not wait, so the dialog opens at once. When the person answers in
   the dialog, ``local-tool`` (PostToolUse of AskUserQuestion) reports it (``.../decisions/<id>/answered``): the first
   answer wins on the hub, and a later one gets 409, which is left alone. An answer the hook cannot report waits in the
@@ -66,7 +69,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub import digest, hooks, local_account
+from evo_agents.hub import digest, hooks, local_account, local_outputs
 from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
@@ -263,10 +266,12 @@ def _live(rec: dict | None, url: str, project: str | None) -> int | None:
     return run if isinstance(run, int) and run > 0 else None
 
 
-def run_for(url: str, project: str | None, env: Mapping[str, str] | None = None, cwd: str | None = None) -> int | None:
-    """The local run of the session that is writing to the hub's plans: the one of CLAUDE_CODE_SESSION_ID, else the
-    newest run of a session whose directory is ``cwd``. None when sync is off, the session never registered or is
-    another project's. Reads files only; never raises."""
+def live_session(
+    url: str, project: str | None, env: Mapping[str, str] | None = None, cwd: str | None = None
+) -> tuple[str, dict] | None:
+    """(session id, file) of the session that is writing to the hub: the one of CLAUDE_CODE_SESSION_ID, else the
+    session of the newest run whose directory is ``cwd``. None when sync is off, the session never registered, ended,
+    or is another project's (``project`` None: any). Reads files only; never raises."""
     try:
         env = os.environ if env is None else env
         if not enabled(env):
@@ -275,18 +280,25 @@ def run_for(url: str, project: str | None, env: Mapping[str, str] | None = None,
         if session_id:
             if not digest.SESSION_ID.fullmatch(session_id):
                 return None
-            return _live(_read(_directory() / f"{session_id}.json"), url, project)
+            rec = _read(_directory() / f"{session_id}.json")
+            return (session_id, rec) if _live(rec, url, project) is not None else None
         where = os.path.abspath(cwd or os.getcwd())
         now, found = _now(), []
         for path in _directory().glob("*.json"):
             rec = _read(path)
             if rec and rec.get("cwd") == where and now - float(rec.get("touched") or 0) < PLAN_FALLBACK_SECONDS:
-                run = _live(rec, url, project)
-                if run is not None:
-                    found.append((float(rec["touched"]), run))
-        return max(found)[1] if found else None
+                if _live(rec, url, project) is not None:
+                    found.append((float(rec["touched"]), path.stem, rec))
+        newest = max(found, key=lambda entry: entry[0]) if found else None
+        return (newest[1], newest[2]) if newest else None
     except Exception:
         return None
+
+
+def run_for(url: str, project: str | None, env: Mapping[str, str] | None = None, cwd: str | None = None) -> int | None:
+    """The local run of the session that is writing to the hub's plans (``live_session``), or None."""
+    found = live_session(url, project, env, cwd)
+    return found[1]["run_id"] if found else None
 
 
 # The log
@@ -327,33 +339,29 @@ def _text_of(response) -> str:
     return "" if response is None else str(response)
 
 
-def tool_events(payload: dict) -> list[tuple[str, dict]]:
-    """The call and its result of a PostToolUse payload, as the ACP events the run's trace shows."""
+def tool_events(payload: dict, found: local_outputs.Found | None = None) -> list[tuple[str, dict]]:
+    """The call and its result of a PostToolUse payload, as the ACP events the run's trace shows: each image of the
+    result (``local_outputs.found_in``) as a reference to its output after the text, never its base64."""
     name = payload.get("tool_name")
     if not isinstance(name, str) or not name:
         return []
+    found = local_outputs.found_in(payload) if found is None else found
     call = payload.get("tool_use_id")
     call = call if isinstance(call, str) and call else f"{payload.get('session_id')}-{int(_now() * 1000)}"
-    text = " ".join(_text_of(payload.get("tool_response")).split())
+    text = " ".join(_text_of(found.response).split())
+    content = [{"type": "content", "content": {"type": "text", "text": _cut(text, OUTPUT_CHARS)}}]
+    content += [{"type": "content", "content": reference} for reference in found.references()]
     return [
         (
             "tool_call",
             {
                 "toolCallId": call,
                 "title": name,
-                "rawInput": _tool_input(name, payload.get("tool_input")),
+                "rawInput": _tool_input(name, found.tool_input),
                 "status": "in_progress",
             },
         ),
-        (
-            "tool_call_update",
-            {
-                "toolCallId": call,
-                "title": name,
-                "status": "completed",
-                "content": [{"type": "content", "content": {"type": "text", "text": _cut(text, OUTPUT_CHARS)}}],
-            },
-        ),
+        ("tool_call_update", {"toolCallId": call, "title": name, "status": "completed", "content": content}),
     ]
 
 
@@ -516,45 +524,22 @@ class Delivery:
             rec["flushed"] = _now()
 
     def ask(self) -> None:
-        """Put the questions of the AskUserQuestion dialog about to open to the hub, as decisions of the run."""
-        from evo_agents.hub.redact import redact
-
+        """Put the questions of the AskUserQuestion dialog about to open to the hub, as decisions of the run, each
+        carrying the files the session sent since the person's last message (``local_outputs.for_question``)."""
         rec = self.rec
         data = self.payload.get("tool_input")
         questions = data.get("questions") if isinstance(data, dict) else None
         if not isinstance(questions, list):
             return
+        attached = local_outputs.for_question(self.sid, self.hub.url, self.deadline)
         entries = []
         for q in questions[:MAX_QUESTIONS]:
-            options = q.get("options") if isinstance(q, dict) else None
-            if not isinstance(q.get("question"), str) or not isinstance(options, list):
+            found = _question(q)
+            if found is None:
                 continue
-            keys, sent = {}, []
-            for n, option in enumerate(options[: OPTIONS[1]], start=1):
-                label = " ".join(str(option.get("label") if isinstance(option, dict) else option).split())
-                if not label:
-                    continue
-                shown = {"key": str(n), "label": _cut(redact(label), LABEL_CHARS)}
-                if isinstance(option, dict) and isinstance(option.get("description"), str) and option["description"]:
-                    shown["description"] = _cut(redact(option["description"]), DESCRIPTION_CHARS)
-                keys[label] = shown["key"]
-                sent.append(shown)
-            if len(sent) < OPTIONS[0]:
-                continue
-            body = {
-                "category": "question",
-                "question": _cut(redact(q["question"]).strip(), QUESTION_CHARS),
-                "options": sent,
-            }
-            header = q.get("header")
-            multi = "Several options may be picked in the session. " if q.get("multiSelect") else ""
-            if multi or isinstance(header, str) and header.strip():
-                body["context"] = _cut(multi + (redact(header) if isinstance(header, str) else ""), 1000).strip()
-            try:
-                view = self.call("POST", f"{self.base()}/{rec['run_id']}/decisions", body)
-            except HubError as exc:
-                if transient(exc) or exc.status not in (404, 409, 422):
-                    raise
+            body, keys = found
+            view = self._decision({**body, "output_ids": attached} if attached else body)
+            if view is None:
                 continue  # the hub will not take this question: the dialog still opens
             entries.append({"decision": int(view["id"]), "question": q["question"], "keys": keys})
             rec["sent"] = "waiting"
@@ -563,6 +548,19 @@ class Delivery:
             asks[str(self.payload.get("tool_use_id") or "last")] = entries
             for stale in list(asks)[:-MAX_ASKS]:
                 del asks[stale]
+
+    def _decision(self, body: dict) -> dict | None:
+        """The hub's view of the decision ``body`` asks; None when the hub will not take it. A question whose files
+        the hub refuses (422: an output of another run, or deleted) is asked again without them."""
+        for attempt in (body, {k: v for k, v in body.items() if k != "output_ids"}):
+            try:
+                return self.call("POST", f"{self.base()}/{self.rec['run_id']}/decisions", attempt)
+            except HubError as exc:
+                if transient(exc) or exc.status not in (404, 409, 422):
+                    raise
+                if exc.status != 422 or "output_ids" not in attempt:
+                    return None
+        return None
 
     def answered(self) -> None:
         """Dialogs were answered in the session: report each answer to the decision it was put as, the ones an earlier
@@ -642,6 +640,41 @@ class Delivery:
             self.inbox()
 
 
+def _options(options: list) -> tuple[list[dict], dict[str, str]]:
+    """The options of a question as the hub takes them, keyed 1, 2, .., and {label: key}."""
+    from evo_agents.hub.redact import redact
+
+    keys, sent = {}, []
+    for n, option in enumerate(options[: OPTIONS[1]], start=1):
+        label = " ".join(str(option.get("label") if isinstance(option, dict) else option).split())
+        if not label:
+            continue
+        shown = {"key": str(n), "label": _cut(redact(label), LABEL_CHARS)}
+        if isinstance(option, dict) and isinstance(option.get("description"), str) and option["description"]:
+            shown["description"] = _cut(redact(option["description"]), DESCRIPTION_CHARS)
+        keys[label] = shown["key"]
+        sent.append(shown)
+    return sent, keys
+
+
+def _question(q) -> tuple[dict, dict[str, str]] | None:
+    """(the decision a question of the dialog is put as, {label: key}); None for one the hub cannot take."""
+    from evo_agents.hub.redact import redact
+
+    options = q.get("options") if isinstance(q, dict) else None
+    if not isinstance(q.get("question") if isinstance(q, dict) else None, str) or not isinstance(options, list):
+        return None
+    sent, keys = _options(options)
+    if len(sent) < OPTIONS[0]:
+        return None
+    body = {"category": "question", "question": _cut(redact(q["question"]).strip(), QUESTION_CHARS), "options": sent}
+    header = q.get("header")
+    multi = "Several options may be picked in the session. " if q.get("multiSelect") else ""
+    if multi or isinstance(header, str) and header.strip():
+        body["context"] = _cut(multi + (redact(header) if isinstance(header, str) else ""), 1000).strip()
+    return body, keys
+
+
 def limit_key(hook: str, payload: dict) -> str:
     """The row of LIMITS a hook runs under: PostToolUse of the AskUserQuestion dialog has more to say than any other."""
     return "tool-ask" if hook == "tool" and payload.get("tool_name") == ASK_TOOL else hook
@@ -687,7 +720,7 @@ def _refused_lately(rec: dict, now: float) -> bool:
     return isinstance(refused, int | float) and 0 <= now - refused < REFUSAL_COOLDOWN
 
 
-def _hook_events(hook: str, payload: dict, rec: dict) -> list[tuple[str, dict]]:
+def _hook_events(hook: str, payload: dict, rec: dict, found: local_outputs.Found) -> list[tuple[str, dict]]:
     """What the hook of ``payload`` adds to the log of ``rec``: the agent's words since the last hook (PostToolUse and
     Stop) and the tool that ran (PostToolUse). At the person's message, the transcript's end is where its turn starts."""
     events = []
@@ -695,7 +728,7 @@ def _hook_events(hook: str, payload: dict, rec: dict) -> list[tuple[str, dict]]:
     if hook in ("tool", "stop") and transcript:
         events += [("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))]
     if hook == "tool":
-        events += tool_events(payload)
+        events += tool_events(payload, found)
     if hook == "user-prompt" and rec.get("offset") is None and transcript:
         with contextlib.suppress(OSError):
             rec["offset"] = os.stat(transcript).st_size  # what is in the transcript now is not this turn's
@@ -719,12 +752,14 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         return []
     asking = limit_key(hook, payload) == "tool-ask"
     wait = LOCK_WAIT_TOOL if hook == "tool" and not asking else LOCK_WAIT
+    found = local_outputs.found_in(payload) if hook == "tool" else local_outputs.Found()
+    _outputs(hook, session_id, hub, found, payload, now)  # before the lock: a busy session file loses no file
     with locked(store.lock, wait) as got:
         if not got:
             return []
         rec = store.load() or store.fresh(cwd)
         title = _title(payload) if hook == "user-prompt" else None
-        _append(rec, _hook_events(hook, payload, rec), hub.token)
+        _append(rec, _hook_events(hook, payload, rec, found), hub.token)
         if asking:
             _keep_answers(rec, payload)
         rec["touched"] = now
@@ -750,6 +785,17 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
     if reached and hook == "stop":
         sweep(hub, login, state, session_id, delivery.deadline, now)
     return delivery.notes if hook == "user-prompt" else []
+
+
+def _outputs(hook: str, session_id: str, hub: Hub, found: local_outputs.Found, payload: dict, now: float) -> None:
+    """The outputs' share of a hook (``evo_agents.hub.local_outputs``): a tool's images and files sent wait on this
+    machine, the person's message starts a turn, and the sender starts in the background while outputs wait."""
+    if hook == "user-prompt":
+        local_outputs.new_turn(session_id, hub.url)
+    call = payload.get("tool_use_id") if isinstance(payload.get("tool_use_id"), str) else None
+    queued = local_outputs.take(session_id, hub.url, found, hub.token, call)
+    if queued or (hook in ("user-prompt", "stop", "session-end") and local_outputs.waiting(session_id, hub.url)):
+        local_outputs.kick(hub.url, now)
 
 
 def _deliver(delivery: Delivery, title: str | None, wanted: str, due: bool, now: float) -> bool:
@@ -847,7 +893,7 @@ def _command(hook: str) -> Callable:
     def command(args) -> int:
         try:
             with hooks.budget(BUDGET[hook]):
-                payload = hooks.read_payload()
+                payload = local_outputs.read_payload() if hook == "tool" else hooks.read_payload()
                 notes = hook_run(hook, payload)
                 if notes:
                     out = {

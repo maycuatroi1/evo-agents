@@ -35,7 +35,7 @@ import json
 import re
 from datetime import date
 
-from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
+from evo_agents.hub.runs import MAX_PROMPT_BYTES, OUTPUTS_RULE, RESULT_DIR, RESULT_FILE, clip
 from evo_agents.hub.tiers import CHANGE_KINDS, REJECTED_DAYS, normalize_path
 
 # lens: what the Reviewer looks for through it, in the order the nights take them.
@@ -395,6 +395,7 @@ def _rules(project: str) -> list[str]:
         *kinds,
         "- Look through the lenses of this night below; leave the others to other nights. Prefer a few proposals with "
         "strong evidence to many weak ones, and stop well before the run's budget ends.",
+        OUTPUTS_RULE,
         f'- Before you stop, write {RESULT_FILE} as a JSON object whose "summary" says what you looked at, the '
         "findings and proposals you recorded (their ids), and what you left for another night.",
     ]

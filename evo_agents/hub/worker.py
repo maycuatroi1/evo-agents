@@ -25,7 +25,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
-- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
+- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, the outputs of
+  source tool of those runs that no question or chat message carries (``evo_agents.hub.output_prune``), and the sealed
   values of the GitHub tokens leased to runs that are past their end.
 - ``hub.prune_audit``, daily: the audit rows older than EVO_HUB_AUDIT_DAYS (365 by default).
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
@@ -242,7 +243,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.server.notifications import deliver_notifications as deliver
 
     found = hub(context)
-    return await deliver(found.engine, config=found.config)
+    return await deliver(found.engine, config=found.config, blobs=found.blobs)
 
 
 @queue.periodic(cron="* * * * *")
@@ -359,7 +360,7 @@ async def prune_run_events(context: JobContext, timestamp: int | None = None) ->
     from evo_agents.hub.server.run_state import prune_run_events as prune
 
     found = hub(context)
-    return await prune(found.engine, found.config.run_log_days)
+    return await prune(found.engine, found.config.run_log_days, found.blobs)
 
 
 @queue.periodic(cron="33 4 * * *")

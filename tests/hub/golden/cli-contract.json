@@ -2310,7 +2310,8 @@
           "reactions",
           "label",
           "created_at",
-          "progress"
+          "progress",
+          "outputs"
         ],
         "schema": "GroupMessage"
       }
@@ -2373,7 +2374,8 @@
           "reactions",
           "label",
           "created_at",
-          "progress"
+          "progress",
+          "outputs"
         ],
         "schema": "GroupMessage"
       }
@@ -4064,7 +4066,8 @@
           "answer_run_id",
           "asked_at",
           "answered_at",
-          "delivered_at"
+          "delivered_at",
+          "outputs"
         ],
         "schema": "Decision"
       }
@@ -4198,7 +4201,8 @@
           "answer_run_id",
           "asked_at",
           "answered_at",
-          "delivered_at"
+          "delivered_at",
+          "outputs"
         ],
         "schema": "Decision"
       }
@@ -8190,6 +8194,67 @@
         "schema": "RunEvents"
       }
     },
+    "hub run outputs": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "sent",
+            "tool",
+            "outputs"
+          ]
+        },
+        {
+          "flags": [
+            "--download"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "outputs",
+          "count",
+          "bytes",
+          "tool_images"
+        ],
+        "schema": "RunOutputs"
+      }
+    },
     "hub run plan": {
       "positionals": [
         {
@@ -8861,6 +8926,72 @@
         }
       ],
       "json": null
+    },
+    "hub send": {
+      "positionals": [
+        {
+          "name": "files",
+          "metavar": "FILE",
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--caption"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--session"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--queued"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--wait"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 0,
+          "maximum": 60,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "run_id",
+          "session_id",
+          "outputs",
+          "queued"
+        ]
+      }
     },
     "hub serve": {
       "positionals": [],
@@ -11541,6 +11672,14 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--attach"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null
@@ -11630,6 +11769,14 @@
           "value": "integer",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--attach"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null
@@ -11807,6 +11954,28 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker output": {
+      "positionals": [
+        {
+          "name": "files",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--caption"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -12356,7 +12525,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.29.2"
+      "version": "0.29.4"
     },
     "paths": {
       "/v1/health": {
@@ -25834,6 +26003,88 @@
           }
         }
       },
+      "/v1/me/notification-settings": {
+        "get": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Show Notification Settings",
+          "description": "The kinds of notice the caller may turn off, and whether each is on.",
+          "operationId": "show_notification_settings_v1_me_notification_settings_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "notifications"
+          ],
+          "summary": "Set Notification Settings",
+          "description": "Turn kinds of notice on or off for the caller; decisions and the other notices always come.",
+          "operationId": "set_notification_settings_v1_me_notification_settings_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/me/overview": {
         "get": {
           "tags": [
@@ -28048,6 +28299,1791 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/output-settings": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Show Settings",
+          "description": "The project's switch of tool images and the limits of outputs, for any member of it.",
+          "operationId": "show_settings_v1_projects__project__output_settings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OutputSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Put Settings",
+          "description": "Switch the images taken out of tools' results on or off for the project; an admin of it only.",
+          "operationId": "put_settings_v1_projects__project__output_settings_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputSettingsIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OutputSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/outputs": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "List Outputs",
+          "description": "The run's outputs, oldest first, each with the URL of its bytes.",
+          "operationId": "list_outputs_v1_projects__project__runs__run_id__outputs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "sent",
+                    "tool",
+                    "outputs"
+                  ],
+                  "type": "string"
+                },
+                "description": "only these sources; repeat it",
+                "default": [],
+                "title": "Source"
+              },
+              "description": "only these sources; repeat it"
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "only the outputs after this id",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "only the outputs after this id"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunOutputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Show Output",
+          "operationId": "show_output_v1_projects__project__runs__run_id__outputs__output_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunOutput"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Delete Output",
+          "description": "Delete an output of the run, from the questions and chat messages that carry it too, and its bytes when\nnothing else refers to them; the run's dispatcher or an admin of the project only. The answer is what it was.",
+          "operationId": "delete_output_v1_projects__project__runs__run_id__outputs__output_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunOutput"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/output-settings": {
+        "get": {
+          "tags": [
+            "run outputs",
+            "local runs"
+          ],
+          "summary": "Local Settings",
+          "description": "The switch of tool images of the project, the limits, and what the member's local run holds.",
+          "operationId": "local_settings_v1_projects__project__local_runs__run_id__output_settings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunOutputSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/output-uploads": {
+        "post": {
+          "tags": [
+            "run outputs",
+            "local runs"
+          ],
+          "summary": "Local Uploads",
+          "description": "Presigned PUTs for the bytes of outputs of the member's local run, those the project does not hold yet.",
+          "operationId": "local_uploads_v1_projects__project__local_runs__run_id__output_uploads_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputUploadRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Uploads"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/outputs": {
+        "post": {
+          "tags": [
+            "run outputs",
+            "local runs"
+          ],
+          "summary": "Local Outputs",
+          "description": "Commit the uploads of outputs of the member's local run and record the outputs.",
+          "operationId": "local_outputs_v1_projects__project__local_runs__run_id__outputs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputBatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecordedOutputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/output-settings": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Settings",
+          "description": "The switch of tool images of the run's project, the limits, and what the run holds, for its worker.",
+          "operationId": "worker_settings_v1_worker_runs__run_id__output_settings_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunOutputSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/output-uploads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Uploads",
+          "description": "Presigned PUTs for the bytes of outputs of a run this worker claimed, those its project does not hold yet.",
+          "operationId": "worker_uploads_v1_worker_runs__run_id__output_uploads_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputUploadRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Uploads"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/outputs": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Worker Outputs",
+          "description": "Commit the uploads of outputs of a run this worker claimed and record the outputs.",
+          "operationId": "worker_outputs_v1_worker_runs__run_id__outputs_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputBatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecordedOutputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}/content": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Run Content",
+          "description": "The bytes of an output of the run, for its readers.",
+          "operationId": "run_content_v1_projects__project__runs__run_id__outputs__output_id__content_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "answer it as an attachment, which a browser saves",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "answer it as an attachment, which a browser saves"
+            },
+            {
+              "name": "Range",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one byte range, bytes=first-last",
+                "title": "Range"
+              },
+              "description": "one byte range, bytes=first-last"
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the bytes the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the bytes the browser holds"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the output's bytes, in its own media type",
+              "content": {
+                "application/octet-stream": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "206": {
+              "content": {
+                "application/octet-stream": {}
+              },
+              "description": "the byte range asked for"
+            },
+            "304": {
+              "description": "the bytes the browser holds, named by If-None-Match, are the output's"
+            },
+            "416": {
+              "description": "the range asked for lies outside the output"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}/link": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Run Link",
+          "description": "A presigned GET of the bytes of an output of the run, as an attachment, for its readers.",
+          "operationId": "run_link_v1_projects__project__runs__run_id__outputs__output_id__link_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OutputLink"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/decisions/{decision_id}/outputs/{output_id}/content": {
+        "get": {
+          "tags": [
+            "run outputs"
+          ],
+          "summary": "Decision Content",
+          "description": "The bytes of an output the decision carries, for the decision's readers.",
+          "operationId": "decision_content_v1_projects__project__decisions__decision_id__outputs__output_id__content_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "decision_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Decision Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "answer it as an attachment, which a browser saves",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "answer it as an attachment, which a browser saves"
+            },
+            {
+              "name": "Range",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one byte range, bytes=first-last",
+                "title": "Range"
+              },
+              "description": "one byte range, bytes=first-last"
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the bytes the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the bytes the browser holds"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the output's bytes, in its own media type",
+              "content": {
+                "application/octet-stream": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "206": {
+              "content": {
+                "application/octet-stream": {}
+              },
+              "description": "the byte range asked for"
+            },
+            "304": {
+              "description": "the bytes the browser holds, named by If-None-Match, are the output's"
+            },
+            "416": {
+              "description": "the range asked for lies outside the output"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/outputs/{output_id}/content": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Chat Content",
+          "description": "The bytes of an output a message of the chat carries, for a member who reads that message.",
+          "operationId": "chat_content_v1_chats__chat_id__outputs__output_id__content_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "answer it as an attachment, which a browser saves",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "answer it as an attachment, which a browser saves"
+            },
+            {
+              "name": "Range",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one byte range, bytes=first-last",
+                "title": "Range"
+              },
+              "description": "one byte range, bytes=first-last"
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the bytes the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the bytes the browser holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the output's bytes, in its own media type",
+              "content": {
+                "application/octet-stream": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "206": {
+              "content": {
+                "application/octet-stream": {}
+              },
+              "description": "the byte range asked for"
+            },
+            "304": {
+              "description": "the bytes the browser holds, named by If-None-Match, are the output's"
+            },
+            "416": {
+              "description": "the range asked for lies outside the output"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -51919,6 +53955,17 @@
               "title": "Reply To",
               "description": "a message whose thread it goes in; null: the run's thread"
             },
+            "output_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Output Ids",
+              "description": "outputs of the run the message carries (POST .../runs/{id}/outputs), none of source tool"
+            },
             "handle": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
@@ -51968,6 +54015,17 @@
               ],
               "title": "Reply To",
               "description": "a message whose thread it goes in; null: the run's thread"
+            },
+            "output_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Output Ids",
+              "description": "outputs of the run the message carries (POST .../runs/{id}/outputs), none of source tool"
             }
           },
           "type": "object",
@@ -58035,7 +60093,8 @@
                 "reaction_removed",
                 "member_added",
                 "member_removed",
-                "image_changed"
+                "image_changed",
+                "message_changed"
               ],
               "title": "Kind"
             },
@@ -60038,6 +62097,14 @@
               ],
               "title": "Delivered At",
               "description": "when the worker handed the answer to the agent"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "the files of its run it carries, oldest first, each with the decision's URL of its bytes"
             }
           },
           "type": "object",
@@ -60139,6 +62206,17 @@
               ],
               "title": "Step Key",
               "description": "the step of the plan it is about"
+            },
+            "output_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Output Ids",
+              "description": "outputs of the run the question carries, such as the screenshot it is about"
             }
           },
           "type": "object",
@@ -62296,6 +64374,14 @@
               "type": "array",
               "title": "Progress",
               "description": "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "the files of its run it carries, oldest first, each with the chat's URL of its bytes"
             }
           },
           "type": "object",
@@ -64954,6 +67040,17 @@
               ],
               "title": "Step Key",
               "description": "the step of the plan it is about"
+            },
+            "output_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Output Ids",
+              "description": "outputs of the run the question carries, such as the screenshot it is about"
             }
           },
           "type": "object",
@@ -66895,6 +68992,27 @@
           ],
           "title": "NoticeIn"
         },
+        "NoticeSetting": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "run_outputs",
+              "title": "Kind",
+              "description": "a kind of notice a member may turn off"
+            },
+            "on": {
+              "type": "boolean",
+              "title": "On",
+              "description": "false: the member gets no notice of this kind, on any channel"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "on"
+          ],
+          "title": "NoticeSetting"
+        },
         "Notification": {
           "properties": {
             "id": {
@@ -66930,7 +69048,8 @@
                     "merge_paused",
                     "release",
                     "pm_daily",
-                    "pm_escalation"
+                    "pm_escalation",
+                    "run_outputs"
                   ]
                 },
                 {
@@ -67078,6 +69197,14 @@
                 }
               ],
               "title": "Read At"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from"
             }
           },
           "type": "object",
@@ -67156,6 +69283,42 @@
             "offset"
           ],
           "title": "NotificationList"
+        },
+        "NotificationSettings": {
+          "properties": {
+            "notices": {
+              "items": {
+                "$ref": "#/components/schemas/NoticeSetting"
+              },
+              "type": "array",
+              "title": "Notices",
+              "description": "each kind of notice a member may turn off, and whether it is on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notices"
+          ],
+          "title": "NotificationSettings"
+        },
+        "NotificationSettingsIn": {
+          "properties": {
+            "notices": {
+              "items": {
+                "$ref": "#/components/schemas/NoticeSetting"
+              },
+              "type": "array",
+              "maxItems": 1,
+              "minItems": 1,
+              "title": "Notices",
+              "description": "the kinds to set; the others stay"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notices"
+          ],
+          "title": "NotificationSettingsIn"
         },
         "OAuthTokens": {
           "properties": {
@@ -67305,6 +69468,248 @@
             "reasons"
           ],
           "title": "OtherProject"
+        },
+        "OutputBatch": {
+          "properties": {
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/OutputIn"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Outputs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outputs"
+          ],
+          "title": "OutputBatch"
+        },
+        "OutputIn": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "hex SHA-256 of the bytes"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Size",
+              "description": "bytes, at most 209715200"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "sent",
+                "tool",
+                "outputs"
+              ],
+              "title": "Source"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "description": "the file's name, or its path"
+            },
+            "media_type": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 3,
+              "title": "Media Type",
+              "description": "type/subtype, no parameters"
+            },
+            "caption": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Caption"
+            },
+            "tool_call_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tool Call Id",
+              "description": "the tool call of the run's trace it came from"
+            },
+            "upload_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid4"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Upload Id",
+              "description": "the upload of its bytes (POST .../output-uploads); null when the project holds them already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "source",
+            "name",
+            "media_type"
+          ],
+          "title": "OutputIn"
+        },
+        "OutputLink": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the output's own name, which a download keeps"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "a presigned GET of the bytes, working until expires_at"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "name",
+            "url",
+            "expires_at"
+          ],
+          "title": "OutputLink"
+        },
+        "OutputSettings": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "tool_images": {
+              "type": "boolean",
+              "title": "Tool Images",
+              "description": "the project takes images out of tools' results (outputs of source tool)"
+            },
+            "max_file_bytes": {
+              "type": "integer",
+              "title": "Max File Bytes",
+              "description": "the most bytes one output has"
+            },
+            "max_outputs": {
+              "type": "integer",
+              "title": "Max Outputs",
+              "description": "the most outputs a run holds"
+            },
+            "max_run_bytes": {
+              "type": "integer",
+              "title": "Max Run Bytes",
+              "description": "the most bytes of outputs a run holds, a SHA-256 counted once"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool_images",
+            "max_file_bytes",
+            "max_outputs",
+            "max_run_bytes"
+          ],
+          "title": "OutputSettings"
+        },
+        "OutputSettingsIn": {
+          "properties": {
+            "tool_images": {
+              "type": "boolean",
+              "title": "Tool Images",
+              "description": "take images out of tools' results: false refuses outputs of source tool"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "tool_images"
+          ],
+          "title": "OutputSettingsIn"
+        },
+        "OutputUploadItem": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "hex SHA-256 of the bytes"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Size",
+              "description": "bytes, at most 209715200"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "sent",
+                "tool",
+                "outputs"
+              ],
+              "title": "Source"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "source"
+          ],
+          "title": "OutputUploadItem"
+        },
+        "OutputUploadRequest": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/OutputUploadItem"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "title": "OutputUploadRequest"
         },
         "Overview": {
           "properties": {
@@ -73330,6 +75735,29 @@
           ],
           "title": "ReadySteps"
         },
+        "RecordedOutputs": {
+          "properties": {
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "in the order of the request; a file the run held is the one it is"
+            },
+            "added": {
+              "type": "integer",
+              "title": "Added",
+              "description": "outputs new to the run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "outputs",
+            "added"
+          ],
+          "title": "RecordedOutputs"
+        },
         "Registered": {
           "properties": {
             "name": {
@@ -77642,6 +80070,204 @@
           ],
           "title": "RunMount",
           "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
+        },
+        "RunOutput": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "sent",
+                "tool",
+                "outputs"
+              ],
+              "title": "Source",
+              "description": "sent: a file the agent sent; tool: an image taken out of a tool's result; outputs: a file of the run's .evo-run/outputs/"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the file's name, or its path below .evo-run/outputs/"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type",
+              "description": "type/subtype, as the machine that sent it named it"
+            },
+            "viewer": {
+              "type": "string",
+              "enum": [
+                "image",
+                "video",
+                "audio",
+                "pdf",
+                "text",
+                "html",
+                "none"
+              ],
+              "title": "Viewer",
+              "description": "what the web opens it with; none offers a download only"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "bytes"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "caption": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Caption"
+            },
+            "tool_call_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tool Call Id",
+              "description": "the tool call of the run's trace it came from, when one"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "where this hub answers its bytes to the reader of what listed it; ?download=true for a download"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "run_id",
+            "source",
+            "name",
+            "media_type",
+            "viewer",
+            "size",
+            "sha256",
+            "caption",
+            "tool_call_id",
+            "created_at",
+            "url"
+          ],
+          "title": "RunOutput"
+        },
+        "RunOutputSettings": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "tool_images": {
+              "type": "boolean",
+              "title": "Tool Images",
+              "description": "the project takes images out of tools' results (outputs of source tool)"
+            },
+            "max_file_bytes": {
+              "type": "integer",
+              "title": "Max File Bytes",
+              "description": "the most bytes one output has"
+            },
+            "max_outputs": {
+              "type": "integer",
+              "title": "Max Outputs",
+              "description": "the most outputs a run holds"
+            },
+            "max_run_bytes": {
+              "type": "integer",
+              "title": "Max Run Bytes",
+              "description": "the most bytes of outputs a run holds, a SHA-256 counted once"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "outputs": {
+              "type": "integer",
+              "title": "Outputs",
+              "description": "outputs the run holds"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "their bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool_images",
+            "max_file_bytes",
+            "max_outputs",
+            "max_run_bytes",
+            "run_id",
+            "outputs",
+            "bytes"
+          ],
+          "title": "RunOutputSettings"
+        },
+        "RunOutputs": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "oldest first, those the filters keep"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count",
+              "description": "every output the run holds"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "their bytes"
+            },
+            "tool_images": {
+              "type": "boolean",
+              "title": "Tool Images",
+              "description": "the project takes images out of tools' results"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "outputs",
+            "count",
+            "bytes",
+            "tool_images"
+          ],
+          "title": "RunOutputs"
         },
         "RunPack": {
           "properties": {
@@ -87850,6 +90476,7 @@
                 "run-log",
                 "run-diff",
                 "transcript",
+                "run-output",
                 "plugin-bundle"
               ],
               "title": "Kind"

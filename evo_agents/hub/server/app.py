@@ -262,10 +262,13 @@ def create_app(config: HubConfig) -> FastAPI:
         kg_worker,
         local_runs,
         notifications,
+        output_content,
+        output_notices,
         overview,
         proposals,
         release_claims,
         releases,
+        run_outputs,
     )
 
     for routes in (
@@ -276,12 +279,17 @@ def create_app(config: HubConfig) -> FastAPI:
         local_runs.batch_router,
         notifications.router,
         notifications.worker_router,
+        output_notices.router,  # the notices a member turned off
         overview.router,
         curator.router,
         proposals.router,
         proposals.worker_router,
         releases.router,  # the daily release of a project (evo_agents.hub.releases)
         release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
+        run_outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
+        run_outputs.worker_router,
+        output_content.router,  # their bytes
+        output_content.chat_router,
     ):
         app.include_router(routes)
 

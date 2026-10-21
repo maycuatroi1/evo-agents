@@ -27,6 +27,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
   the inbox waits for the turn after.
 - ``{"usage": {...}}``: the usage the turn ends with, such as Claude Code's ``total_cost_usd``.
 - ``{"cli": [args]}``: run ``evo-agents worker ARGS`` as the agent would, in its directory and environment.
+- ``{"tool_result": {"id": ID, "content": [block, ...]}}``: the result of tool call ID, as Claude Code's adapter maps
+  one (``claude_code.tool_result``): its images taken out as files of the event.
 - ``{"sh": "command"}``: run a shell command there.
 - ``{"spawn": [argv]}``: start a process in a session of its own, as a runtime is started, and name it as the leader
   of the agent's process group (``group_pid``); the adapter kills its group once the turn is over, so only a daemon
@@ -461,6 +463,11 @@ class FakeAdapter(Adapter):
                 elif "say" in action:
                     summary = str(action["say"])
                     await self._queue.put(AgentEvent("agent_message_chunk", {"content": text_block(summary)}))
+                elif "tool_result" in action:
+                    from evo_agents.worker.runtimes import claude_code
+
+                    found = action["tool_result"]
+                    await self._queue.put(claude_code.tool_result(found["id"], "completed", found["content"]))
                 elif "cli" in action:
                     await self._command([sys.executable, "-m", "evo_agents", "worker", *action["cli"]], action["cli"])
                 elif "sh" in action:

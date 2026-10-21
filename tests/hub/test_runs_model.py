@@ -28,6 +28,7 @@ from evo_agents.hub.runs import (
     EVENT_KINDS,
     HELD_STATES,
     MAX_PROMPT_BYTES,
+    OUTPUTS_RULE,
     RUN_STATES,
     TERMINAL_STATES,
     TRANSITIONS,
@@ -361,7 +362,9 @@ def test_decisions_and_notices_the_plan_names():
         "release",
         "pm_daily",
         "pm_escalation",
+        "run_outputs",
     )
+    assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")
     assert runs.DELIVERY_STATES == ("pending", "delivered", "failed")
@@ -574,11 +577,13 @@ def step_prompts() -> dict[str, str]:
 
 
 def test_the_prompt_of_a_step_run_is_the_one_0_3_0_gave():
+    """Byte for byte, but for the one line added since: the rule of the run's outputs (``runs.OUTPUTS_RULE``)."""
     golden = json.loads(STEP_PROMPTS_030.read_text(encoding="utf-8"))
     made = step_prompts()
     assert set(made) == set(golden)
     for name, prompt in golden.items():
-        assert made[name] == prompt, name
+        assert made[name].count(OUTPUTS_RULE + "\n") == 1, name
+        assert made[name].replace(OUTPUTS_RULE + "\n", "", 1) == prompt, name
 
 
 # The prompt of a plan run

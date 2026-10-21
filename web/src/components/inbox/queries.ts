@@ -43,6 +43,7 @@ export const NOTICE_KINDS = [
   "merge_paused",
   "pm_daily",
   "pm_escalation",
+  "run_outputs",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

@@ -67,6 +67,9 @@ RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another p
 RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
+# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
+# run's target, then " output:<id>", never its name or its bytes.
+RUN_OUTPUT_DELETE = "run.output_delete"
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
 RUN_FINISH = "run.finish"  # the owner ended the chat of an author run: "<project>/author run:<id>"
@@ -76,6 +79,8 @@ RUN_OPEN_REPO = "run.open_repo"
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
 NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
+# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.output_notices).
+NOTIFICATION_SETTINGS = "notification.settings"
 # The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser
@@ -132,6 +137,9 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
+# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.run_outputs):
+# "<project>/outputs tool_images=on|off".
+SETTINGS_OUTPUTS = "settings.outputs"
 # A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
 # "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
 # approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.

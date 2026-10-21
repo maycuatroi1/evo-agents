@@ -689,7 +689,7 @@ def test_the_pruning_drops_the_sealed_tokens_past_their_end(client, hub, github,
         ),
     )
     report_ = client.portal.call(run_state.prune_run_events, client.app.state.engine, 30)
-    assert report_ == {"deleted": 0, "days": 30, "tokens_dropped": 1}
+    assert report_ == {"deleted": 0, "days": 30, "tokens_dropped": 1, "tool_outputs": 0, "tool_output_bytes": 0}
     assert [(row[4], row[5]) for row in leases_of(hub_db, run_id)] == [(False, False)]
     assert report(client, worker, run_id, "failed", error="the agent gave up").status_code == 200
     assert revoked_at_github(github) == []  # a token past its end is not GitHub's to revoke any more

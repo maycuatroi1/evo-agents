@@ -87,8 +87,9 @@ class Reports:
             run.request_stop("gone")
 
     async def end(self, state: str, **fields) -> None:
-        """Send every event, then the report that ends the run."""
+        """Send the run's outputs (``Outputs.settle``) and every event, then the report that ends the run."""
         run = self.run
+        await run.outputs.settle()
         if not await run.sender.drained():
             log.warning("ending the run with events unsent", extra={"run_id": run.id, "why": run.sender.gave_up})
         adapter = run.agent.adapter
