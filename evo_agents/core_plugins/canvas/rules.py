@@ -1,5 +1,6 @@
 """The rules a claim's status follows, checked in code on every path that changes it (an edit on the web, the command
-line or the API, an import, an undo; later the tools of @strategist and the decisions on a baseline).
+line or the API, an import, an undo, a proposal and its acceptance, the tools of @strategist; later the decisions on a
+baseline). An agent never moves a claim to validated, whoever asked it to.
 
 A claim goes to validated only with at least one piece of real evidence that supports it. Real evidence is not
 synthetic, of a kind other than doc and simulation, not withdrawn, and added by a person; or added by an agent and
@@ -78,10 +79,17 @@ def _testing(number: int, content: Content) -> None:
         )
 
 
-def check(number: int, before: Content | None, after: Content, evidence: list[Evidence]) -> None:
+def check(number: int, before: Content | None, after: Content, evidence: list[Evidence], actor: str = "person") -> None:
     """Refuse moving claim ``number`` from ``before`` (None for a new claim) to ``after`` when its status breaks a
-    rule: validated without real supporting ``evidence``, testing without the test card it needs."""
+    rule: validated without real supporting ``evidence``, or by an agent (``actor``) at all, even when a member asked
+    for it; testing without the test card it needs."""
     moved = before is None or before.status != after.status
+    if after.status == "validated" and moved and actor == "agent":
+        raise CanvasError(
+            403,
+            f"an agent never moves {code(number)} to validated, even when a member asks: a writer does, on the web or "
+            "the command line, with real evidence that supports it",
+        )
     if after.status == "validated" and moved:
         _validated(number, evidence)
     card_changed = before is None or before.test_card != after.test_card

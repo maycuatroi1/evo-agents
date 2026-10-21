@@ -142,7 +142,8 @@ async def write_rev(
     *,
     undo_of: int | None = None,
 ) -> int:
-    """Move claim ``row`` to ``after`` as its next rev, while it is still at ``row.rev``; the new rev."""
+    """Move claim ``row`` to ``after`` as its next rev, while it is still at ``row.rev``; the new rev. The open
+    proposals of the claim go stale: they were made at a rev it no longer is at."""
     k, r = tables.canvas.claims, tables.canvas.revs
     archived_at = (row.archived_at or func.now()) if after.archived else None
     values = {
@@ -160,6 +161,8 @@ async def write_rev(
     rev = await conn.scalar(moved)
     if rev is None:
         raise CanvasError(409, f"{row.code} changed since rev {row.rev}: read it again")
+    p = tables.canvas.proposals  # a proposal made at an older rev can no longer be accepted
+    await conn.execute(update(p).where(p.c.claim_id == row.id, p.c.status == "open").values(status="stale"))
     await conn.execute(
         insert(r).values(
             claim_id=row.id,
@@ -247,7 +250,8 @@ async def insert_claim(
 # Edits and undos
 
 
-def _numbers(refs: list[str]) -> list[int]:
+def unique_numbers(refs: list[str]) -> list[int]:
+    """The numbers ``refs`` name, in their order; 422 when one is named twice."""
     numbers = [number_of(ref) for ref in refs]
     repeated = sorted({number for number in numbers if numbers.count(number) > 1})
     if repeated:
@@ -315,7 +319,7 @@ async def edit(
     if not changes or len(changes) > MAX_CHANGES:
         raise CanvasError(422, f"an edit takes 1 to {MAX_CHANGES} changes")
     named = [change for change in changes if change.claim is not None]
-    numbers = _numbers([change.claim for change in named])
+    numbers = unique_numbers([change.claim for change in named])
     held = await locked(conn, writer, canvas, numbers)
     await check_revs(conn, held, {n: change.base_rev for n, change in zip(numbers, named, strict=True)})
     await room(conn, canvas, len(changes) - len(named))
@@ -330,7 +334,7 @@ async def edit(
         if after == row.content():
             outcomes.append(Outcome(row.number, False))
             continue
-        rules.check(row.number, row.content(), after, evidence[row.id])
+        rules.check(row.number, row.content(), after, evidence[row.id], writer.author.actor)
         await write_rev(conn, writer, row, after, reason, kind)
         outcomes.append(Outcome(row.number, True))
     await touch(conn, canvas)
@@ -344,20 +348,22 @@ async def _create(
         raise CanvasError(422, "a new claim has no base_rev: name the claim a change is of")
     content = await new_content(conn, canvas, change.values)
     number = await _next_number(conn, writer.access.project_id)
-    rules.check(number, None, content, [])
+    rules.check(number, None, content, [], writer.author.actor)
     await insert_claim(conn, writer, canvas, content, reason, "create" if kind == "edit" else kind, number=number)
     return Outcome(number, True)
 
 
-async def _undone(conn: AsyncConnection, row: ClaimRow) -> Content:
-    """The content undoing the current rev of ``row`` gives: the rev before it, or the first archived."""
-    if row.rev == 1:
+async def undone(conn: AsyncConnection, row: ClaimRow, since: int | None = None) -> Content:
+    """The content taking back the revs of ``row`` from ``since`` (its current when None) gives: the rev before
+    them, or, from its first, the claim as it is now archived."""
+    since = row.rev if since is None else since
+    if since == 1:
         if row.archived_at is not None:
             raise CanvasError(409, f"{row.code} is at its first rev and archived already: there is nothing to undo")
         return replace(row.content(), archived=True)
-    before = await store.rev(conn, row.id, row.rev - 1)
+    before = await store.rev(conn, row.id, since - 1)
     if before is None:  # a rev is never deleted; this is a broken row
-        raise CanvasError(409, f"{row.code} has no rev {row.rev - 1} to go back to")
+        raise CanvasError(409, f"{row.code} has no rev {since - 1} to go back to")
     return before.content
 
 
@@ -370,15 +376,15 @@ async def undo(
     _check_reason(reason)
     if not targets or len(targets) > MAX_CHANGES:
         raise CanvasError(422, f"an undo takes 1 to {MAX_CHANGES} claims")
-    numbers = _numbers([ref for ref, _ in targets])
+    numbers = unique_numbers([ref for ref, _ in targets])
     held = await locked(conn, writer, canvas, numbers)
     await check_revs(conn, held, {n: rev for n, (_, rev) in zip(numbers, targets, strict=True)})
     evidence = await facts(conn, [row.id for row in held.values()])
     outcomes = []
     for number in numbers:
         row = held[number]
-        after = await _undone(conn, row)
-        rules.check(row.number, row.content(), after, evidence[row.id])
+        after = await undone(conn, row)
+        rules.check(row.number, row.content(), after, evidence[row.id], writer.author.actor)
         await write_rev(conn, writer, row, after, reason, "undo", undo_of=row.rev)
         outcomes.append(Outcome(number, True))
     await touch(conn, canvas)

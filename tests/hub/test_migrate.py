@@ -98,6 +98,7 @@ TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.CANVAS_TABLES  # migration 0067
 TABLES |= pg.SIGNAL_TABLES  # migration 0068
+TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0069
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -172,8 +173,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_nine_tables(hub_db):
-    assert len(TABLES) == 109  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_ten_tables(hub_db):
+    assert len(TABLES) == 110  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1356,6 +1357,42 @@ def test_0068_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_the
     move_to(hub_db, "0067", down=True)
     assert not pg.SIGNAL_TABLES & tables(hub_db)
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+
+
+def test_0069_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0069")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        made = {"canvas_id": canvas, "fields": {"cell": "problem"}, "reason": "brainstorm", "label": {}}
+        agent = {"actor": "agent", "user_id": ids["user"]}
+        conn.execute(insert(k.proposals).values(kind="create", **made, **agent))
+        conn.execute(insert(k.proposals).values(kind="change", claim_id=claim_id, base_rev=1, **made, **agent))
+        decided = {"decided_by": ids["user"], "decided_at": func.now()}
+        conn.execute(insert(k.proposals).values(kind="create", status="rejected", **made, **agent, **decided))
+        for bad in (
+            {"kind": "change", **agent},  # a change names its claim and base rev
+            {"kind": "create", "base_rev": 1, **agent},  # a new claim has no base rev
+            {"kind": "create", "actor": "agent"},  # an agent's proposal names the member it was for
+            {"kind": "create", "status": "accepted", **agent, **decided},  # accepted names the claim and the rev
+            {"kind": "create", "status": "rejected", **agent},  # rejected names who decided
+            {"kind": "create", "status": "done", **agent},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.proposals).values(**{**made, **bad}))
+        accepted = {"status": "accepted", "claim_id": claim_id, "rev": 1, **decided}
+        conn.execute(insert(k.proposals).values(kind="create", **made, **agent, **accepted))
+    move_to(hub_db, "0068", down=True)
+    assert not pg.CANVAS_PROPOSAL_TABLES & tables(hub_db)
+    assert pg.CANVAS_TABLES <= tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

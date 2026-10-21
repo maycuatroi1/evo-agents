@@ -1,6 +1,7 @@
-"""``evo-agents hub canvas list|show|create|edit|undo|evidence|export|import``: the Lean Canvases of a project that
-enabled the core plugin canvas, through its routes under /v1/x/canvas/<project>/ (``docs/plugins.md``, Core plugins).
-The plugin's code is ``evo_agents.core_plugins.canvas``, which this client never imports: it speaks HTTP only.
+"""``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import``: the Lean Canvases
+of a project that enabled the core plugin canvas, through its routes under /v1/x/canvas/<project>/
+(``docs/plugins.md``, Core plugins). The plugin's code is ``evo_agents.core_plugins.canvas``, which this client never
+imports: it speaks HTTP only.
 
 ``list`` prints the canvases, ``show SLUG`` a canvas by cell with each claim's code, status, confidence and rev, and
 ``show SLUG --claim CL-3`` a claim whole: its test card, its evidence (each piece real or why not) and every rev with
@@ -9,9 +10,12 @@ rev it was read at, ``--base-rev``) or makes one (no ``--claim``; ``--cell`` and
 JSON ``{"changes": [...], "reason": "..."}`` as the route takes it, all or nothing. A claim changed since the rev it was
 read at refuses the edit: the error lists, per claim, the rev it is at, who changed it and what differs. ``undo SLUG
 CL-3`` takes back the claim's current rev (``--rev`` names it; read from the hub when left out). ``evidence
-add|withdraw|confirm`` keeps a claim's evidence. ``export SLUG`` prints ``evo-canvas/1`` JSON (``--output`` writes a
-file) and ``import FILE`` reads it back (``-`` for stdin), keeping the claims' codes; ``--dry-run`` prints what it
-would do. ``--json`` prints what the hub answered. Standard library only, like the rest of the client.
+add|withdraw|confirm`` keeps a claim's evidence. ``proposal list SLUG`` prints what an agent or the hub proposed (the
+open ones unless ``--status`` names others), ``proposal accept SLUG ID`` writes one as the caller's rev and ``proposal
+reject SLUG ID`` closes it. ``brainstorm SLUG`` hands @strategist a brainstorm, a task run that only proposes.
+``export SLUG`` prints ``evo-canvas/1`` JSON (``--output`` writes a file) and ``import FILE`` reads it back (``-`` for
+stdin), keeping the claims' codes; ``--dry-run`` prints what it would do. ``--json`` prints what the hub answered.
+Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -93,6 +97,25 @@ EVIDENCE_KEYS = (
     "real",
     "not_real_because",
 )
+PROPOSAL_STATUSES = ("open", "accepted", "rejected", "stale")
+PROPOSAL_KEYS = (
+    "id",
+    "kind",
+    "claim",
+    "base_rev",
+    "fields",
+    "changes",
+    "reason",
+    "synthetic",
+    "provenance",
+    "created_at",
+    "status",
+    "rev",
+    "decided_by",
+    "decided_at",
+    "decided_reason",
+)
+BRAINSTORM_KEYS = ("run_id", "title")
 IMPORT_KEYS = ("dry_run", "canvas", "canvas_created", "created", "edited", "unchanged", "evidence", "problems")
 
 
@@ -330,6 +353,65 @@ def cmd_evidence_confirm(args) -> int:
     return _out(args, _call("POST", path), _print_evidence)
 
 
+def _proposal_line(item: dict) -> str:
+    what = f"{item['claim']} at rev {item['base_rev']}" if item["kind"] == "change" else "new claim"
+    if item["kind"] == "create" and item["claim"]:
+        what = f"new claim, now {item['claim']}"
+    who = item["provenance"]["login"] or item["provenance"]["actor"]
+    if item["provenance"]["actor"] == "agent":
+        who = f"an agent for {who} (run {item['provenance']['run_id']})"
+    synthetic = ", synthetic" if item["synthetic"] else ""
+    return f"#{item['id']} [{item['status']}{synthetic}] {what}, by {who}: {item['reason']}"
+
+
+def _print_proposal(item: dict) -> None:
+    print(_proposal_line(item))
+    for change in item["changes"]:
+        print(f"  {change['field']}: {change['before']!r} -> {change['after']!r}")
+    if item["status"] == "accepted":
+        print(f"  accepted by {item['decided_by']} as rev {item['rev']} of {item['claim']}")
+    elif item["status"] == "rejected":
+        why = f": {item['decided_reason']}" if item["decided_reason"] else ""
+        print(f"  rejected by {item['decided_by']}{why}")
+
+
+@client_command
+def cmd_proposal_list(args) -> int:
+    query = [("status", status) for status in args.status or ()]
+    path = _path(args.project, "canvases", args.slug, "proposals") + (f"?{urlencode(query)}" if query else "")
+    found = _call("GET", path)
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"No {' or '.join(args.status or ('open',))} proposal of canvas {args.slug}.")
+    for item in found:
+        _print_proposal(item)
+    return 0
+
+
+@client_command
+def cmd_proposal_accept(args) -> int:
+    path = _path(args.project, "canvases", args.slug, "proposals", args.id, "accept")
+    return _out(args, _call("POST", path), _print_proposal)
+
+
+@client_command
+def cmd_proposal_reject(args) -> int:
+    path = _path(args.project, "canvases", args.slug, "proposals", args.id, "reject")
+    return _out(args, _call("POST", path, {"reason": args.reason or ""}), _print_proposal)
+
+
+def _print_brainstorm(done: dict) -> None:
+    print(f"Run #{done['run_id']}: {done['title']}. It proposes; see `hub canvas proposal list` when it ends.")
+
+
+@client_command
+def cmd_brainstorm(args) -> int:
+    body = {"focus": args.focus or "", "cells": list(args.cell or ())}
+    return _out(args, _call("POST", _path(args.project, "canvases", args.slug, "brainstorm"), body), _print_brainstorm)
+
+
 @client_command
 def cmd_export(args) -> int:
     found = _call("GET", _path(args.project, "canvases", args.slug, "export"))
@@ -421,6 +503,38 @@ def _register_evidence(csub) -> None:
         parser.set_defaults(func=func)
 
 
+def _register_proposals(csub) -> None:
+    """``proposal list|accept|reject`` and ``brainstorm``: what @strategist and the hub propose."""
+    proposal = csub.add_parser("proposal", help="what an agent or the hub proposed: list, accept, reject")
+    psub = proposal.add_subparsers(dest="proposal_command", required=True)
+    listed = psub.add_parser("list", help="the proposals of a canvas, newest first; the open ones by default")
+    _slug(listed)
+    _project(listed)
+    listed.add_argument("--status", action="append", choices=PROPOSAL_STATUSES, help="these statuses; repeatable")
+    json_option(listed, returns_array(*PROPOSAL_KEYS, schema="CanvasProposal"))
+    listed.set_defaults(func=cmd_proposal_list)
+    for verb, func, help_text in (
+        ("accept", cmd_proposal_accept, "write an open proposal as your own rev"),
+        ("reject", cmd_proposal_reject, "close an open proposal without writing it"),
+    ):
+        parser = psub.add_parser(verb, help=help_text)
+        _slug(parser)
+        parser.add_argument("id", type=int, metavar="ID", help="the proposal's id, as proposal list prints it")
+        _project(parser)
+        if verb == "reject":
+            parser.add_argument("--reason", metavar="TEXT", help="why, kept with the proposal")
+        json_option(parser, returns_object(*PROPOSAL_KEYS, schema="CanvasProposal"))
+        parser.set_defaults(func=func)
+
+    brainstorm = csub.add_parser("brainstorm", help="hand @strategist a brainstorm of a canvas; it only proposes")
+    _slug(brainstorm)
+    _project(brainstorm)
+    brainstorm.add_argument("--focus", metavar="TEXT", help="what to think about")
+    brainstorm.add_argument("--cell", action="append", choices=CELLS, help="one cell to look at; repeatable")
+    json_option(brainstorm, returns_object(*BRAINSTORM_KEYS, schema="CanvasBrainstorm"))
+    brainstorm.set_defaults(func=cmd_brainstorm)
+
+
 def register_canvas(hsub) -> None:
     canvas = hsub.add_parser("canvas", help="Lean Canvases of a project: claims, revs, evidence (plugin canvas)")
     csub = canvas.add_subparsers(dest="canvas_command", required=True)
@@ -465,6 +579,7 @@ def register_canvas(hsub) -> None:
     undo.set_defaults(func=cmd_undo)
 
     _register_evidence(csub)
+    _register_proposals(csub)
 
     exported = csub.add_parser("export", help="a canvas as evo-canvas/1 JSON")
     _slug(exported)

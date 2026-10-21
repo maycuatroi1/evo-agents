@@ -1115,6 +1115,70 @@
         "schema": "Agent"
       }
     },
+    "hub canvas brainstorm": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--focus"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--cell"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "problem",
+            "customer_segments",
+            "unique_value_proposition",
+            "solution",
+            "channels",
+            "revenue_streams",
+            "cost_structure",
+            "key_metrics",
+            "unfair_advantage"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "title"
+        ],
+        "schema": "CanvasBrainstorm"
+      }
+    },
     "hub canvas create": {
       "positionals": [
         {
@@ -1721,6 +1785,192 @@
           "statuses"
         ],
         "schema": "CanvasSummary"
+      }
+    },
+    "hub canvas proposal accept": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "claim",
+          "base_rev",
+          "fields",
+          "changes",
+          "reason",
+          "synthetic",
+          "provenance",
+          "created_at",
+          "status",
+          "rev",
+          "decided_by",
+          "decided_at",
+          "decided_reason"
+        ],
+        "schema": "CanvasProposal"
+      }
+    },
+    "hub canvas proposal list": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "open",
+            "accepted",
+            "rejected",
+            "stale"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "kind",
+          "claim",
+          "base_rev",
+          "fields",
+          "changes",
+          "reason",
+          "synthetic",
+          "provenance",
+          "created_at",
+          "status",
+          "rev",
+          "decided_by",
+          "decided_at",
+          "decided_reason"
+        ],
+        "schema": "CanvasProposal"
+      }
+    },
+    "hub canvas proposal reject": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "claim",
+          "base_rev",
+          "fields",
+          "changes",
+          "reason",
+          "synthetic",
+          "provenance",
+          "created_at",
+          "status",
+          "rev",
+          "decided_by",
+          "decided_at",
+          "decided_reason"
+        ],
+        "schema": "CanvasProposal"
       }
     },
     "hub canvas show": {
@@ -29631,866 +29881,6 @@
           }
         }
       },
-      "/v1/signals/{project}": {
-        "post": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "Push Signals",
-          "description": "Store a batch of signals of the project, sent with one of its ingest keys or by a writer: each item checked on\nits own, the refused ones answered with why.",
-          "operationId": "push_signals_v1_signals__project__post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SignalBatchIn"
-                }
-              }
-            }
-          },
-          "responses": {
-            "202": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SignalBatchResult"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "413": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Request Entity Too Large"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            },
-            "429": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Too Many Requests"
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/signals": {
-        "get": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "List Signals",
-          "description": "The project's signals the member may read, newest first.",
-          "operationId": "list_signals_v1_projects__project__signals_get",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "key",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "maxLength": 200
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "one key; all when left out",
-                "title": "Key"
-              },
-              "description": "one key; all when left out"
-            },
-            {
-              "name": "since",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "measured at or after",
-                "title": "Since"
-              },
-              "description": "measured at or after"
-            },
-            {
-              "name": "until",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "measured before",
-                "title": "Until"
-              },
-              "description": "measured before"
-            },
-            {
-              "name": "tenant",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "maxLength": 100
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Tenant"
-              }
-            },
-            {
-              "name": "limit",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "type": "integer",
-                "maximum": 1000,
-                "minimum": 1,
-                "default": 100,
-                "title": "Limit"
-              }
-            },
-            {
-              "name": "X-Evo-Sink",
-              "in": "header",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "X-Evo-Sink"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/Signal"
-                    },
-                    "title": "Response List Signals V1 Projects  Project  Signals Get"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "422": {
-              "description": "Validation Error",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/signal-keys": {
-        "get": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "List Keys",
-          "description": "The keys of the project's registry, by name.",
-          "operationId": "list_keys_v1_projects__project__signal_keys_get",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "archived",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "type": "boolean",
-                "description": "archived keys too",
-                "default": false,
-                "title": "Archived"
-              },
-              "description": "archived keys too"
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/SignalKey"
-                    },
-                    "title": "Response List Keys V1 Projects  Project  Signal Keys Get"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        },
-        "post": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "Add Key",
-          "description": "Add a key to the project's registry: from now on the hub takes signals of it.",
-          "operationId": "add_key_v1_projects__project__signal_keys_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SignalKeyIn"
-                }
-              }
-            }
-          },
-          "responses": {
-            "201": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SignalKey"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/signal-keys/{name}/archive": {
-        "post": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "Archive Key",
-          "description": "Archive a key: it takes no new signal, and its signals stay. Archiving it again changes nothing.",
-          "operationId": "archive_key_v1_projects__project__signal_keys__name__archive_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "name",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "maxLength": 200,
-                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
-                "description": "the key, as kb.search.hits",
-                "title": "Name"
-              },
-              "description": "the key, as kb.search.hits"
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SignalKey"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/signal-ingest-keys": {
-        "get": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "List Ingest Keys",
-          "description": "The project's ingest keys, oldest first; never a token.",
-          "operationId": "list_ingest_keys_v1_projects__project__signal_ingest_keys_get",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "revoked",
-              "in": "query",
-              "required": false,
-              "schema": {
-                "type": "boolean",
-                "description": "revoked keys too",
-                "default": false,
-                "title": "Revoked"
-              },
-              "description": "revoked keys too"
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/SignalIngestKey"
-                    },
-                    "title": "Response List Ingest Keys V1 Projects  Project  Signal Ingest Keys Get"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        },
-        "post": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "Create Ingest Key",
-          "description": "A new ingest key for a service; its token is in this answer and nowhere else.",
-          "operationId": "create_ingest_key_v1_projects__project__signal_ingest_keys_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            }
-          ],
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SignalIngestKeyIn"
-                }
-              }
-            }
-          },
-          "responses": {
-            "201": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SignalIngestKeyIssued"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        }
-      },
-      "/v1/projects/{project}/signal-ingest-keys/{key_id}/revoke": {
-        "post": {
-          "tags": [
-            "signals"
-          ],
-          "summary": "Revoke Ingest Key",
-          "description": "Revoke an ingest key: the next batch sent with it gets 401. Revoking it again changes nothing.",
-          "operationId": "revoke_ingest_key_v1_projects__project__signal_ingest_keys__key_id__revoke_post",
-          "parameters": [
-            {
-              "name": "project",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
-                "title": "Project"
-              }
-            },
-            {
-              "name": "key_id",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "integer",
-                "maximum": 9223372036854775807,
-                "minimum": 1,
-                "title": "Key Id"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/SignalIngestKey"
-                  }
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "403": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Forbidden"
-            },
-            "404": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Not Found"
-            },
-            "409": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Conflict"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unprocessable Entity"
-            }
-          }
-        }
-      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -32557,6 +31947,565 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/CanvasEvidence"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/proposals": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Proposals",
+          "description": "The proposals of a canvas, newest first, each with what it changes from the rev it was made at.",
+          "operationId": "list_proposals_v1_x_canvas__project__canvases__slug__proposals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "open",
+                        "accepted",
+                        "rejected",
+                        "stale"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the statuses to list; open when left out",
+                "title": "Status"
+              },
+              "description": "the statuses to list; open when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CanvasProposal"
+                    },
+                    "title": "Response List Proposals V1 X Canvas  Project  Canvases  Slug  Proposals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/proposals/{proposal_id}/accept": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Accept Proposal",
+          "description": "Accept an open proposal: its change is written as the caller's rev, under the rules of every edit (a claim\ngoes to validated only with real evidence that supports it). A proposal whose claim changed since is stale.",
+          "operationId": "accept_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__accept_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/proposals/{proposal_id}/reject": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Reject Proposal",
+          "description": "Reject an open proposal, with why: nothing of it is written.",
+          "operationId": "reject_proposal_v1_x_canvas__project__canvases__slug__proposals__proposal_id__reject_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasRejectIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/canvas/{project}/canvases/{slug}/brainstorm": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Brainstorm",
+          "description": "Hand @strategist a brainstorm of the canvas as a task run, which proposes new claims, each an assumption\nwith a test card, and changes none. 409, with why, when the project has not enabled the agent type strategist,\nturned it off, or its runs spent their cap of the day.",
+          "operationId": "brainstorm_v1_x_canvas__project__canvases__slug__brainstorm_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasBrainstormIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CanvasBrainstorm"
                   }
                 }
               }
@@ -45508,6 +45457,866 @@
             }
           }
         }
+      },
+      "/v1/signals/{project}": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Push Signals",
+          "description": "Store a batch of signals of the project, sent with one of its ingest keys or by a writer: each item checked on\nits own, the refused ones answered with why.",
+          "operationId": "push_signals_v1_signals__project__post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalBatchIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "202": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalBatchResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signals": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Signals",
+          "description": "The project's signals the member may read, newest first.",
+          "operationId": "list_signals_v1_projects__project__signals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "key",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one key; all when left out",
+                "title": "Key"
+              },
+              "description": "one key; all when left out"
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "measured at or after",
+                "title": "Since"
+              },
+              "description": "measured at or after"
+            },
+            {
+              "name": "until",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "measured before",
+                "title": "Until"
+              },
+              "description": "measured before"
+            },
+            {
+              "name": "tenant",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tenant"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 100,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Signal"
+                    },
+                    "title": "Response List Signals V1 Projects  Project  Signals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-keys": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Keys",
+          "description": "The keys of the project's registry, by name.",
+          "operationId": "list_keys_v1_projects__project__signal_keys_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "archived",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "archived keys too",
+                "default": false,
+                "title": "Archived"
+              },
+              "description": "archived keys too"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SignalKey"
+                    },
+                    "title": "Response List Keys V1 Projects  Project  Signal Keys Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Add Key",
+          "description": "Add a key to the project's registry: from now on the hub takes signals of it.",
+          "operationId": "add_key_v1_projects__project__signal_keys_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalKeyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalKey"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-keys/{name}/archive": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Archive Key",
+          "description": "Archive a key: it takes no new signal, and its signals stay. Archiving it again changes nothing.",
+          "operationId": "archive_key_v1_projects__project__signal_keys__name__archive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){1,5}$",
+                "description": "the key, as kb.search.hits",
+                "title": "Name"
+              },
+              "description": "the key, as kb.search.hits"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalKey"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-ingest-keys": {
+        "get": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "List Ingest Keys",
+          "description": "The project's ingest keys, oldest first; never a token.",
+          "operationId": "list_ingest_keys_v1_projects__project__signal_ingest_keys_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "revoked",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "revoked keys too",
+                "default": false,
+                "title": "Revoked"
+              },
+              "description": "revoked keys too"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SignalIngestKey"
+                    },
+                    "title": "Response List Ingest Keys V1 Projects  Project  Signal Ingest Keys Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Create Ingest Key",
+          "description": "A new ingest key for a service; its token is in this answer and nowhere else.",
+          "operationId": "create_ingest_key_v1_projects__project__signal_ingest_keys_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalIngestKeyIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalIngestKeyIssued"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/signal-ingest-keys/{key_id}/revoke": {
+        "post": {
+          "tags": [
+            "signals"
+          ],
+          "summary": "Revoke Ingest Key",
+          "description": "Revoke an ingest key: the next batch sent with it gets 401. Revoking it again changes nothing.",
+          "operationId": "revoke_ingest_key_v1_projects__project__signal_ingest_keys__key_id__revoke_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "key_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Key Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignalIngestKey"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -48411,6 +49220,58 @@
           ],
           "title": "BundleTicket"
         },
+        "CanvasBrainstorm": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "title"
+          ],
+          "title": "CanvasBrainstorm",
+          "description": "The task run of @strategist's brainstorm, which proposes and changes nothing."
+        },
+        "CanvasBrainstormIn": {
+          "properties": {
+            "focus": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Focus",
+              "description": "what to think about, in the asker's words",
+              "default": ""
+            },
+            "cells": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "problem",
+                  "customer_segments",
+                  "unique_value_proposition",
+                  "solution",
+                  "channels",
+                  "revenue_streams",
+                  "cost_structure",
+                  "key_metrics",
+                  "unfair_advantage"
+                ]
+              },
+              "type": "array",
+              "maxItems": 9,
+              "title": "Cells",
+              "description": "every cell: none"
+            }
+          },
+          "type": "object",
+          "title": "CanvasBrainstormIn"
+        },
         "CanvasCell": {
           "properties": {
             "cell": {
@@ -49766,6 +50627,155 @@
           ],
           "title": "CanvasIn"
         },
+        "CanvasProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "create",
+                "change"
+              ],
+              "title": "Kind",
+              "description": "create: a new claim; change: a change of claim at base_rev"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claim",
+              "description": "the claim it changes, or the one accepting it made; None for a new one"
+            },
+            "base_rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Rev",
+              "description": "the rev of the claim it was made at"
+            },
+            "fields": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Fields",
+              "description": "the fields of the claim it sets, as an edit sets them"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/components/schemas/CanvasFieldChange"
+              },
+              "type": "array",
+              "title": "Changes",
+              "description": "what it changes, field by field, from its base rev"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "synthetic": {
+              "type": "boolean",
+              "title": "Synthetic",
+              "description": "it rests on simulated users"
+            },
+            "provenance": {
+              "$ref": "#/components/schemas/CanvasProvenance"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "accepted",
+                "rejected",
+                "stale"
+              ],
+              "title": "Status",
+              "description": "stale: its claim changed since its base rev"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "the rev accepting it wrote"
+            },
+            "decided_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided By"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "decided_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "claim",
+            "base_rev",
+            "fields",
+            "changes",
+            "reason",
+            "synthetic",
+            "provenance",
+            "created_at",
+            "status",
+            "rev",
+            "decided_by",
+            "decided_at",
+            "decided_reason"
+          ],
+          "title": "CanvasProposal",
+          "description": "A new claim, or a change of a claim at the rev it was read at, that an agent or the hub proposed, and what\nbecame of it."
+        },
         "CanvasProvenance": {
           "properties": {
             "actor": {
@@ -49848,6 +50858,19 @@
           ],
           "title": "CanvasProvenance",
           "description": "Who wrote a rev or a piece of evidence."
+        },
+        "CanvasRejectIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Reason",
+              "description": "why, kept with the proposal",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "title": "CanvasRejectIn"
         },
         "CanvasRev": {
           "properties": {

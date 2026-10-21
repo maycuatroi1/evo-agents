@@ -1,4 +1,4 @@
-"""The tables of the core plugin canvas (0067), which ``evo_agents.hub.tables`` adds to its metadata as
+"""The tables of the core plugin canvas (0067, 0069), which ``evo_agents.hub.tables`` adds to its metadata as
 ``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
 ``evo_agents.core_plugins.canvas``; the hub owns the tables because its one chain of migrations creates them
 (``docs/plugins.md``, Core plugins).
@@ -15,6 +15,10 @@
 - canvas_evidence: the evidence of a claim, only ever added: its kind, which way it points, a summary, a link, the day
   it was taken, whether it is synthetic (always, for a simulation), its provenance, the writer who confirmed what an
   agent added, and when and why it was withdrawn. Evidence is no part of a rev: adding some leaves the claim's rev.
+- canvas_proposals (0069): a change of a claim at the rev it was read at, or a new claim, that an agent or the hub
+  proposes instead of writing it (a task run of @strategist, later the value check and the Loop): the fields it sets,
+  why, whether it rests on simulated users, its provenance, and what became of it: open, accepted by a writer (the
+  claim and the rev that wrote it), rejected (by whom and why), or stale once the claim changed since its rev.
 """
 
 from __future__ import annotations
@@ -74,6 +78,8 @@ MAX_TEXT_CHARS = 2_000  # of a claim
 MAX_REASON_CHARS = 1_000  # of a rev, and of withdrawing evidence
 MAX_SUMMARY_CHARS = 4_000  # of evidence
 MAX_URL_CHARS = 2_000
+PROPOSAL_KINDS = ("create", "change")  # canvas_proposals.kind: a new claim, or a change of one at its base_rev
+PROPOSAL_STATUSES = ("open", "accepted", "rejected", "stale")  # canvas_proposals.status
 
 
 @dataclass(frozen=True)
@@ -84,6 +90,7 @@ class CanvasTables:
     claims: Table
     revs: Table
     evidence: Table
+    proposals: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
@@ -209,6 +216,44 @@ def _evidence(metadata: MetaData) -> Table:
     )
 
 
+def _proposals(metadata: MetaData) -> Table:
+    name = "canvas_proposals"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("canvas_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("claim_id", BigInteger),
+        Column("base_rev", Integer),
+        Column("fields", JSONB, nullable=False),
+        Column("reason", Text, nullable=False),
+        Column("synthetic", Boolean, nullable=False, server_default=false()),
+        Column("label", JSONB, nullable=False),
+        Column("actor", Text, nullable=False),
+        Column("user_id", BigInteger),
+        Column("run_id", BigInteger),
+        Column("runtime", Text),
+        Column("model", Text),
+        Column("chat_message_id", BigInteger),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("status", Text, nullable=False, server_default="open"),
+        Column("rev", Integer),
+        Column("decided_by", BigInteger),
+        Column("decided_at", DateTime(timezone=True)),
+        Column("decided_reason", Text),
+        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        _key(name, "user_id", "users", ondelete="RESTRICT"),
+        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
+        _key(name, "decided_by", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="canvas_proposals_pkey"),
+        Index("canvas_proposals_canvas_idx", "canvas_id", "status", "id"),
+        Index("canvas_proposals_claim_idx", "claim_id", "status"),
+    )
+
+
 def canvas_tables(metadata: MetaData) -> CanvasTables:
     """The tables of the core plugin canvas, added to ``metadata`` (which holds projects, users, runs and
     chat_messages already)."""
@@ -217,4 +262,5 @@ def canvas_tables(metadata: MetaData) -> CanvasTables:
         claims=_claims(metadata),
         revs=_revs(metadata),
         evidence=_evidence(metadata),
+        proposals=_proposals(metadata),
     )
