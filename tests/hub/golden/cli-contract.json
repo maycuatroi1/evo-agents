@@ -12136,7 +12136,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.27.0"
+      "version": "0.28.1"
     },
     "paths": {
       "/v1/health": {
@@ -36530,7 +36530,7 @@
             "plugins"
           ],
           "summary": "Review Version",
-          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running. Once a version is\napproved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a\nuse case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into\nchild tasks, in the same transaction.",
+          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running. An approval emits the\nevent srs.version.approved; once the hub delivers it, in a project that enables the plugin tasks, each use case new\nin the version gets a frame task, the open tasks of a use case that changed a comment and those of one it dropped\nare cancelled, and @ba splits the frame tasks into child tasks.",
           "operationId": "review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post",
           "parameters": [
             {
@@ -69215,7 +69215,7 @@
                 "minLength": 1
               },
               "type": "array",
-              "maxItems": 9,
+              "maxItems": 11,
               "title": "Permissions",
               "description": "the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it"
             }

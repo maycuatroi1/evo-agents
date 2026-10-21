@@ -1,5 +1,6 @@
 """The hub's own events of a project, which the Loop reads by cursor (plan living-lean-canvas, criterion a6; plan
-loop-engine adds its kinds to the same table).
+loop-engine, criterion a3, adds an approved version of an SRS document and a change of a task's status to the same
+table).
 
 The table hub_events (0077) is only ever added to: one row per event, its project, its kind, its payload and when it
 was written, with an id that only grows. ``record`` writes one in the caller's transaction, the transaction that made
@@ -32,7 +33,9 @@ from evo_agents.hub import tables
 CLAIM = "canvas.claim"  # a rev of a claim of a Lean Canvas (core plugin canvas)
 BASELINE = "canvas.baseline"  # a baseline of a canvas, approved
 SIGNALS = "signal.posted"  # a batch of a project's signals the hub took (``evo_agents.hub.signals``)
-KINDS = (CLAIM, BASELINE, SIGNALS)  # what this release writes; plan loop-engine adds its own
+SRS_APPROVED = "srs.version.approved"  # a version of an SRS document, approved (core plugin srs)
+TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
+KINDS = (CLAIM, BASELINE, SIGNALS, SRS_APPROVED, TASK_STATUS)  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 VERSION = 1  # the ``v`` of every payload this release writes
 LOCK_BASE = 0x6875626576000000  # "hubev" in ASCII, shifted: a project's lock is this plus its id
@@ -71,4 +74,4 @@ async def after(conn: AsyncConnection, project_id: int, cursor: int = 0, limit: 
     return [HubEvent(**row._mapping) for row in await conn.execute(query)]
 
 
-__all__ = ["BASELINE", "CLAIM", "KINDS", "SIGNALS", "HubEvent", "after", "record"]
+__all__ = ["BASELINE", "CLAIM", "KINDS", "SIGNALS", "SRS_APPROVED", "TASK_STATUS", "HubEvent", "after", "record"]

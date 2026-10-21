@@ -83,7 +83,9 @@
           "memories:read",
           "notifications:send",
           "canvas:read",
-          "signals:read"
+          "signals:read",
+          "srs:read",
+          "tasks:read"
         ]
       }
     },
@@ -433,7 +435,7 @@
           "minimum": 1
         },
         "on": {
-          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read, task.result with runs:dispatch: the end of a task run of one of the plugin's own agent types, canvas.claim and canvas.baseline with canvas:read: a rev of a claim of a Lean Canvas and an approved baseline of one, and signal.posted with signals:read: a batch of the project's signals).",
+          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read, task.result with runs:dispatch: the end of a task run of one of the plugin's own agent types, canvas.claim and canvas.baseline with canvas:read: a rev of a claim of a Lean Canvas and an approved baseline of one, signal.posted with signals:read: a batch of the project's signals, srs.version.approved with srs:read: a version of an SRS document approved, and tasks.status with tasks:read: a task's status set or changed; the core plugins srs and tasks take their own, srs.version.approved and tasks.status, ungranted).",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -444,7 +446,9 @@
               "task.result",
               "canvas.claim",
               "canvas.baseline",
-              "signal.posted"
+              "signal.posted",
+              "srs.version.approved",
+              "tasks.status"
             ]
           }
         }

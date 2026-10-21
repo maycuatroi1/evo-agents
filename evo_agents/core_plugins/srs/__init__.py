@@ -48,22 +48,28 @@ hub opens a settle chat for the version (``settle``, criterion a7, through the p
 ``reviews``): the people the rules name, @ba woken by every message, and anyone there settles; @ba records the
 settling on the finding and proposes the next version as the author of the version the chat is for.
 
-When a version is approved and the project enables the plugin tasks (``auto_tasks``, criterion a8), each use case new
-in it gets a frame task linked to it, the open tasks of a use case that changed get a comment, and those of a use case
-it dropped are cancelled; then @ba, in a task run, splits each frame task into child tasks with tasks__create, for the
-member who approved the version. A second call for the same version does nothing (srs_approval_tasks).
+An approved version emits the event ``srs.version.approved`` in the transaction of the approval (``events``, criterion
+a3 of plan loop-engine): the document, the version, the one approved before it, the approver and the codes of the
+items it added, changed and dropped, for plugins granted srs:read and for the hub's events the Loop reads. The plugin
+takes it itself, ungranted, through its events contribution ``approvals``: when the project enables the plugin tasks
+(``auto_tasks``, criterion a8 of plan srs-conflicts-and-tasks), each use case new in the version gets a frame task
+linked to it, the open tasks of a use case that changed get a comment, and those of a use case it dropped are
+cancelled; then @ba, in a task run, splits each frame task into child tasks with tasks__create, for the member who
+approved the version. A second delivery of the event does nothing (srs_approval_tasks).
 
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
 comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares two versions, ``models`` and
 ``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent``, ``auto_review`` and
-``settle`` are @ba's, ``auto_tasks`` keeps the tasks of an approved version.
+``settle`` are @ba's, ``events`` emits an approval and takes it, ``auto_tasks`` keeps the tasks of an approved
+version.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
 KG = "evo_agents.core_plugins.srs.kg"
 AGENT = "evo_agents.core_plugins.srs.agent"
 SETTLE = "evo_agents.core_plugins.srs.settle"
+EVENTS = "evo_agents.core_plugins.srs.events"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
@@ -428,7 +434,15 @@ MANIFEST = {
                 "description": "Opens the settle chat of a version whose review left findings of level decide open.",
                 "on": ["task.result"],
                 "python": f"{SETTLE}:review_ended",
-            }
+            },
+            {
+                "name": "approvals",
+                "title": "An approved version",
+                "description": "Keeps the project's tasks in step with a version approved, when it enables the plugin "
+                "tasks: a frame task of each new use case, comments, cancellations and @ba's split run.",
+                "on": ["srs.version.approved"],
+                "python": f"{EVENTS}:on_version_approved",
+            },
         ],
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],
         "kg_sources": [

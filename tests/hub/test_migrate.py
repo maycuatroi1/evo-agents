@@ -2030,6 +2030,41 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
 
 
+def test_0085_takes_deliveries_and_grants_of_srs_and_tasks_events_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0084")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="loop", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "enabled_by": ids["user"]}
+        granted |= {"granted_by": ids["user"], "permissions": ["runs:read"]}
+        conn.execute(insert(t.project_plugins).values(granted))
+        with pytest.raises(errors.CheckViolation):  # 0084 takes neither permission
+            conn.execute(update(t.project_plugins).values(permissions=["runs:read", "tasks:read"]))
+    delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "contribution": "loop", "payload": {"v": 1}}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # nor either kind
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "tasks.status"}))
+    move_to(hub_db, "0085")
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.project_plugins).values(permissions=["runs:read", "srs:read", "tasks:read"]))
+        for kind in ("srs.version.approved", "tasks.status", "run.state"):
+            conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": kind}))
+            conn.execute(insert(t.hub_events).values(project_id=ids["project"], kind=kind, payload={"v": 1}))
+        for bad in (
+            update(t.project_plugins).values(permissions=["tasks:write"]),
+            insert(t.plugin_deliveries).values({**delivery, "kind": "tasks.deleted"}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    # Going back deletes the deliveries and the hub's events of the two kinds and takes the two permissions back.
+    move_to(hub_db, "0084", down=True)
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.hub_events.c.kind)) == [("run.state",)]
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)
