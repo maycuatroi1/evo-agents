@@ -34,6 +34,8 @@ MAX_PROPOSED = 50  # proposals.MAX_PROPOSED
 VERDICTS = ("supports", "contradicts", "irrelevant")  # tables_canvas.VERDICTS
 MAX_JUDGED = 50  # judging.MAX_ITEMS
 MAX_SIGNAL_DAYS = 400  # the hub keeps signals 400 days by default (EVO_HUB_SIGNAL_DAYS)
+MAX_LINKS = 20  # content.MAX_LINKS
+MAX_CODE_CHARS = 100  # tables_srs.MAX_CODE_CHARS
 
 STRATEGIST_INSTRUCTIONS = (
     "You are @strategist, the agent of this project's Lean Canvases on the evo-agents hub. You read the canvases and "
@@ -84,6 +86,20 @@ _CLAIM_FIELDS = {
     "position": {"type": "integer", "minimum": 0, "description": "its place in the cell, 0 first"},
     "test_card": TEST_CARD,
     "archived": {"type": "boolean", "description": "true archives the claim, false brings it back"},
+    "use_cases": {
+        "type": "array",
+        "maxItems": MAX_LINKS,
+        "items": {"type": "string", "minLength": 1, "maxLength": MAX_CODE_CHARS},
+        "description": "the codes of the SRS use cases that realize the claim, as srs__search finds them (UC ORD-1): "
+        "the whole list, [] for none",
+    },
+    "signal_keys": {
+        "type": "array",
+        "maxItems": MAX_LINKS,
+        "items": _SIGNAL_KEY,
+        "description": "the signal keys that measure the claim, as canvas__signals lists them: the whole list, [] for "
+        "none",
+    },
 }
 _CHANGE = {"type": "object", "additionalProperties": False, "properties": _CLAIM_FIELDS}
 

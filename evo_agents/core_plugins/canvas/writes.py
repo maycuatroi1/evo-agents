@@ -6,7 +6,8 @@ each claim it changes with the rev it was read at (``base_rev``): the claim's re
 while the rev is still that one, in the transaction that writes the rev, and a claim changed since makes the whole
 edit a 409 whose detail holds, per claim, the rev asked for, the rev it is at, who changed it, both contents and what
 differs. An undo takes back the claim's current rev by writing the content of the rev before it; undoing a first rev
-archives the claim. The rules of ``rules`` hold on every path. Every rev emits the event ``canvas.claim``
+archives the claim. The rules of ``rules`` hold on every path, and a link an edit adds is checked against the project
+(``links``). Every rev emits the event ``canvas.claim``
 (``events``) in its transaction. Evidence is no part of a rev: it is only added, and withdrawn by marking it. The
 caller holds the transaction and the lock of the canvas (``store.canvas(lock=True)``) and has checked the role; a
 refusal raises CanvasError, and the transaction writes nothing.
@@ -20,7 +21,7 @@ from datetime import date
 from sqlalchemy import func, insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import events, rules, store
+from evo_agents.core_plugins.canvas import events, links, rules, store
 from evo_agents.core_plugins.canvas.content import CanvasError, Content, changed, code, diff, number_of
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow
 from evo_agents.hub import tables
@@ -157,6 +158,8 @@ async def write_rev(
         "confidence": after.confidence,
         "test_card": null() if after.test_card is None else after.test_card,
         "archived_at": archived_at,
+        "use_cases": list(after.use_cases),
+        "signal_keys": list(after.signal_keys),
         "rev": k.c.rev + 1,
         "updated_at": func.now(),
     }
@@ -253,6 +256,8 @@ async def insert_claim(
         "confidence": content.confidence,
         "test_card": null() if content.test_card is None else content.test_card,
         "archived_at": func.now() if content.archived else None,
+        "use_cases": list(content.use_cases),
+        "signal_keys": list(content.signal_keys),
         "label": canvas.label,
         "created_by": writer.author.user_id,
     }
@@ -349,7 +354,9 @@ async def edit(
             outcomes.append(await _create(conn, writer, canvas, change, reason, kind))
             continue
         row = held[number_of(change.claim)]
-        after = changed(row.content(), change.values)
+        after = await links.resolved(
+            conn, writer.access, writer.sink, row.content(), changed(row.content(), change.values)
+        )
         if after == row.content():
             outcomes.append(Outcome(row.number, False))
             continue
@@ -365,7 +372,9 @@ async def _create(
 ) -> Outcome:
     if change.base_rev is not None:
         raise CanvasError(422, "a new claim has no base_rev: name the claim a change is of")
-    content = await new_content(conn, canvas, change.values)
+    content = await links.resolved(
+        conn, writer.access, writer.sink, None, await new_content(conn, canvas, change.values)
+    )
     number = await _next_number(conn, writer.access.project_id)
     rules.check(number, None, content, [], writer.author.actor)
     await insert_claim(conn, writer, canvas, content, reason, "create" if kind == "edit" else kind, number=number)

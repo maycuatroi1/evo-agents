@@ -7,7 +7,8 @@ a claim the project does not hold is made with the code the file gives, or the p
 code another canvas of the project holds refuses the import. Evidence a claim holds already (by id) is left; other
 evidence is added as the member's, except what an agent added and nobody confirmed, which stays an agent's to
 confirm. The kinds signal and feedback are the hub's to write and are left out, as is withdrawn evidence; each such
-piece is a warning. A dry run does all of it in a savepoint it rolls back, so it reports exactly what the import
+piece is a warning. So is each link to a use case or a signal key the project does not hold (``links.kept``), which is
+left out. A dry run does all of it in a savepoint it rolls back, so it reports exactly what the import
 would do.
 """
 
@@ -20,7 +21,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import rules, store, writes
+from evo_agents.core_plugins.canvas import links, rules, store, writes
 from evo_agents.core_plugins.canvas.content import CanvasError, changed, code, number_of
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow, EvidenceRow
 from evo_agents.core_plugins.canvas.writes import Author, EvidenceInput, Writer
@@ -67,6 +68,8 @@ class FileClaim(BaseModel):
     confidence: str = "medium"
     test_card: dict | None = None
     archived: bool = False
+    use_cases: list = Field(default_factory=list, description="the codes of the use cases it links")
+    signal_keys: list = Field(default_factory=list, description="the signal keys it links")
     evidence: list[FileEvidence] = Field(default_factory=list, max_length=store.MAX_EVIDENCE)
 
 
@@ -213,6 +216,8 @@ def _values(claim: FileClaim) -> dict:
         "confidence": claim.confidence,
         "test_card": claim.test_card,
         "archived": claim.archived,
+        "use_cases": claim.use_cases,
+        "signal_keys": claim.signal_keys,
     }
     if claim.position is not None:
         values["position"] = claim.position
@@ -240,6 +245,9 @@ async def _change(conn: AsyncConnection, writer: Writer, place: Placed, report: 
     row = place.existing
     await _add_evidence(conn, writer, row, place.claim, report)
     after = changed(row.content(), _values(place.claim))
+    after, left_out = await links.kept(conn, writer.access, writer.sink, row.content(), after)
+    for why in left_out:
+        report.warn(row.code, why)
     if after == row.content():
         report.unchanged.append(row.code)
         return
@@ -251,10 +259,13 @@ async def _change(conn: AsyncConnection, writer: Writer, place: Placed, report: 
 
 async def _make(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, place: Placed, report: Report) -> None:
     content = await writes.new_content(conn, canvas, _values(place.claim), archived_ok=True)
+    content, left_out = await links.kept(conn, writer.access, writer.sink, None, content)
     claim_id, number = await writes.insert_claim(
         conn, writer, canvas, content, "imported", "import", number=place.number
     )
     row = await store.claim(conn, writer.access, canvas, number, lock=True)
+    for why in left_out:
+        report.warn(row.code, why)
     await _add_evidence(conn, writer, row, place.claim, report)
     evidence = await writes.facts(conn, [claim_id])
     rules.check(number, None, content, evidence[claim_id])

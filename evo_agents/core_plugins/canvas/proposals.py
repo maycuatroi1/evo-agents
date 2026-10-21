@@ -4,7 +4,8 @@ reads (``proposals``), and a writer's decision on one (``accept``, ``reject``).
 A run that no member commanded, a task run of @strategist (its brainstorm), the value check (naming the evidence it
 proposes a change of status on) and later the Loop, only proposes: a new claim, which starts as an assumption, or a change of a claim named at the rev it was read at
 (``base_rev``, else a 409 as for an edit). The rules of ``rules`` are checked when it is made and again when it is
-accepted, so an agent's proposal never moves a claim to validated. A proposal keeps the fields it sets, why, whether
+accepted, so an agent's proposal never moves a claim to validated, and so are the links it adds (``links``). A proposal
+keeps the fields it sets, why, whether
 it rests on simulated users (``synthetic``) and its provenance. A writer accepts it, which writes the rev as that
 writer's own (kind ``proposal``; the proposal names the claim and the rev), or rejects it, with why. Once its claim
 changes, an open proposal goes stale (``writes.write_rev``) and is accepted no more. The caller holds the transaction
@@ -19,7 +20,7 @@ from datetime import datetime
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import rules, store, writes
+from evo_agents.core_plugins.canvas import links, rules, store, writes
 from evo_agents.core_plugins.canvas.content import CanvasError, Content, changed, code, diff, number_of
 from evo_agents.core_plugins.canvas.store import CanvasRow, Provenance, provenance_of
 from evo_agents.hub import tables
@@ -27,7 +28,15 @@ from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
 
 MAX_PROPOSED = 50  # proposals one call makes
 MAX_OPEN = 200  # open proposals of a canvas
-NEW_CLAIM_FIELDS = ("cell", "text", "confidence", "position", "test_card")  # what a proposed new claim may set
+NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
+    "cell",
+    "text",
+    "confidence",
+    "position",
+    "test_card",
+    "use_cases",
+    "signal_keys",
+)
 
 
 @dataclass(frozen=True)
@@ -70,7 +79,7 @@ async def _room(conn: AsyncConnection, canvas: CanvasRow, adding: int) -> None:
         )
 
 
-async def _new_values(conn: AsyncConnection, canvas: CanvasRow, values: dict) -> dict:
+async def _new_values(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, values: dict) -> dict:
     """The fields a proposed new claim sets, checked as a new claim's: it starts as an assumption, not archived."""
     extra = sorted(set(values) - set(NEW_CLAIM_FIELDS))
     if extra:
@@ -78,6 +87,7 @@ async def _new_values(conn: AsyncConnection, canvas: CanvasRow, values: dict) ->
             422, f"a proposed claim starts as an assumption and sets {', '.join(NEW_CLAIM_FIELDS)} only, not {extra[0]}"
         )
     content = await writes.new_content(conn, canvas, values)
+    content = await links.resolved(conn, writer.access, writer.sink, None, content)
     shown = content.as_json()
     return {name: shown[name] for name in values}
 
@@ -116,10 +126,11 @@ async def propose(
         if change.claim is None:
             if change.base_rev is not None:
                 raise CanvasError(422, "a proposed new claim has no base_rev: name the claim a change is of")
-            row = {"kind": "create", "fields": await _new_values(conn, canvas, change.values)}
+            row = {"kind": "create", "fields": await _new_values(conn, writer, canvas, change.values)}
         else:
             claim = held[number_of(change.claim)]
             after = changed(claim.content(), change.values)
+            after = await links.resolved(conn, writer.access, writer.sink, claim.content(), after)
             if after == claim.content():
                 raise CanvasError(422, f"the proposal for {claim.code} leaves it as it is")
             rules.check(claim.number, claim.content(), after, evidence[claim.id], writer.author.actor)
@@ -244,6 +255,7 @@ async def accept(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow
     if row.kind == "create":
         await writes.room(conn, canvas, 1)  # a new claim is an assumption: no rule of its status holds it back
         content = await writes.new_content(conn, canvas, row.fields)
+        content = await links.resolved(conn, writer.access, writer.sink, None, content)
         claim_id, number = await writes.insert_claim(conn, writer, canvas, content, why, "proposal")
         rev = 1
         await _decided(conn, writer, row.id, status="accepted", claim_id=claim_id, rev=rev)
@@ -254,7 +266,9 @@ async def accept(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow
             raise CanvasError(
                 409, f"{claim.code} changed since rev {row.base_rev}, which proposal {row.id} was made at"
             )
-        after = changed(claim.content(), row.fields)
+        after = await links.resolved(
+            conn, writer.access, writer.sink, claim.content(), changed(claim.content(), row.fields)
+        )
         evidence = await writes.facts(conn, [claim.id])
         rules.check(number, claim.content(), after, evidence[claim.id], writer.author.actor)
         rev = await writes.write_rev(conn, writer, claim, after, why, "proposal")  # stale, as every open one of it

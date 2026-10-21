@@ -8,7 +8,8 @@ imports: it speaks HTTP only.
 who wrote it. ``create SLUG --name NAME`` makes a canvas. ``edit SLUG`` changes one claim (``--claim CL-3`` with the
 rev it was read at, ``--base-rev``) or makes one (no ``--claim``; ``--cell`` and ``--text``), or applies ``--file``,
 JSON ``{"changes": [...], "reason": "..."}`` as the route takes it, all or nothing. A claim changed since the rev it was
-read at refuses the edit: the error lists, per claim, the rev it is at, who changed it and what differs. ``undo SLUG
+read at refuses the edit: the error lists, per claim, the rev it is at, who changed it and what differs.
+``--use-cases`` and ``--signal-keys`` give the whole list of what the claim links, comma-separated. ``undo SLUG
 CL-3`` takes back the claim's current rev (``--rev`` names it; read from the hub when left out). ``evidence
 add|withdraw|confirm`` keeps a claim's evidence. ``proposal list SLUG`` prints what an agent or the hub proposed (the
 open ones unless ``--status`` names others), ``proposal accept SLUG ID`` writes one as the caller's rev and ``proposal
@@ -68,6 +69,8 @@ CLAIM_KEYS = (
     "confidence",
     "test_card",
     "archived",
+    "use_cases",
+    "signal_keys",
     "rev",
     "evidence_count",
     "real_support_count",
@@ -233,6 +236,8 @@ def _print_claim(claim: dict) -> None:
     print(f"  status {claim['status']}, confidence {claim['confidence']}, rev {claim['rev']}{archived}")
     for line in _card_lines(claim["test_card"]):
         print(line)
+    print(f"  use cases: {', '.join(claim['use_cases']) or '-'}")
+    print(f"  signal keys: {', '.join(claim['signal_keys']) or '-'}")
     print("Evidence:" if claim["evidence"] else "No evidence.")
     for item in claim["evidence"]:
         real = "real" if item["real"] else f"not real: {item['not_real_because']}"
@@ -290,9 +295,17 @@ def _test_card(args) -> tuple[bool, dict | None]:
     return True, card
 
 
+def _listed(given: str | None) -> list[str] | None:
+    """The comma-separated list an option gives, each item trimmed; None when the option is left out."""
+    if given is None:
+        return None
+    return [item.strip() for item in given.split(",") if item.strip()]
+
+
 def _change(args) -> dict:
     """The one change the options of ``edit`` give."""
     change = {name: getattr(args, name) for name in ("cell", "text", "status", "confidence", "position")}
+    change |= {"use_cases": _listed(args.use_cases), "signal_keys": _listed(args.signal_keys)}
     change = {name: value for name, value in change.items() if value is not None}
     given, card = _test_card(args)
     if given:
@@ -471,6 +484,14 @@ def _edit_options(edit) -> None:
     edit.add_argument("--position", type=int, metavar="N", help="its place in the cell, 0 first")
     edit.add_argument("--test-card", metavar="JSON", help="the whole test card, as a JSON object")
     edit.add_argument("--no-test-card", action="store_true", help="take the test card away")
+    edit.add_argument(
+        "--use-cases",
+        metavar="CODES",
+        help='the use cases of the SRS that realize it, comma-separated, as "UC ORD-1,UC ORD-2"; "" for none',
+    )
+    edit.add_argument(
+        "--signal-keys", metavar="KEYS", help='the signal keys that measure it, comma-separated; "" for none'
+    )
     edit.add_argument("--archive", action="store_true", help="archive the claim")
     edit.add_argument("--unarchive", action="store_true", help="bring an archived claim back")
     edit.add_argument("--reason", metavar="TEXT", help="why, kept with the rev")

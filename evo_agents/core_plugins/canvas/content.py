@@ -6,6 +6,11 @@ contents field by field, the fields of the test card each on its own. A test car
 (hypothesis, test, metric, threshold) and how a value check compares a signal with it deterministically (aggregate,
 window_days, comparator, min_samples, tenant), with a deadline. Every field of it may be left out; a claim goes to
 testing only with a hypothesis, a test and a deadline (``evo_agents.core_plugins.canvas.rules``).
+
+A claim also links the use cases of the plugin srs that realize it, by code (``use_cases``), and the keys of the
+project's registry of signals that measure it (``signal_keys``): each a set, kept sorted, at most MAX_LINKS. Here they
+are checked for their shape alone; ``links`` checks a link a write adds against the project's SRS and registry, and
+names a use case by its code as the SRS holds it. A rev written before links existed reads as linking nothing.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date
 
 from evo_agents.hub.tables_canvas import CELLS, CONFIDENCES, MAX_TEXT_CHARS, STATUSES
+from evo_agents.hub.tables_srs import MAX_CODE_CHARS, code_key
 
 CODE = re.compile(r"^(?:CL-)?([1-9][0-9]{0,8})$", re.IGNORECASE)  # CL-3, cl-3 or 3
 METRIC = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,5}$")  # a signal key, as the registry of signals names one
@@ -26,7 +32,9 @@ MAX_CARD_TEXT_CHARS = 2_000  # of a test card's hypothesis and test
 MAX_TENANT_CHARS = 100
 MAX_SAMPLES = 1_000_000
 MAX_WINDOW_DAYS = 90
-FIELDS = ("cell", "position", "text", "status", "confidence", "test_card", "archived")  # of a claim's content
+MAX_LINKS = 20  # use cases a claim links, and signal keys
+LINKS = ("use_cases", "signal_keys")  # the fields of a claim's content that link it, each a sorted tuple
+FIELDS = ("cell", "position", "text", "status", "confidence", "test_card", "archived", *LINKS)  # of a claim's content
 CARD_FIELDS = (
     "hypothesis",
     "test",
@@ -77,13 +85,16 @@ class Content:
     confidence: str = "medium"
     test_card: dict | None = None
     archived: bool = False
+    use_cases: tuple[str, ...] = ()
+    signal_keys: tuple[str, ...] = ()
 
     def as_json(self) -> dict:
-        return asdict(self)
+        return {**asdict(self), **{name: list(getattr(self, name)) for name in LINKS}}
 
     @classmethod
     def from_json(cls, value: dict) -> Content:
-        return cls(**{name: value[name] for name in FIELDS if name in value})
+        found = {name: value[name] for name in FIELDS if name in value}
+        return cls(**{**found, **{name: tuple(found[name] or ()) for name in LINKS if name in found}})
 
 
 def _text(name: str, value, high: int) -> str:
@@ -125,6 +136,43 @@ def _deadline(value) -> str:
         raise CanvasError(422, f"test_card.deadline takes a day as YYYY-MM-DD; {value!r} is not") from None
 
 
+def _links(name: str, value, one) -> tuple[str, ...]:
+    """The links ``value`` gives, each checked by ``one``, without repeats (as ``code_key`` compares them), sorted."""
+    if not isinstance(value, list | tuple) or len(value) > MAX_LINKS:
+        raise CanvasError(422, f"{name} takes a list of at most {MAX_LINKS}")
+    found: dict[str, str] = {}
+    for item in value:
+        checked = one(item)
+        found.setdefault(code_key(checked), checked)
+    return tuple(sorted(found.values(), key=code_key))
+
+
+def _use_case(value) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > MAX_CODE_CHARS:
+        raise CanvasError(
+            422, f"use_cases takes the codes of use cases, as UC ORD-1, of 1 to {MAX_CODE_CHARS} characters"
+        )
+    return " ".join(value.split())
+
+
+def _signal_key(value) -> str:
+    if not (isinstance(value, str) and METRIC.match(value)):
+        raise CanvasError(
+            422, f"signal_keys takes the keys of signals, as kb.search.zero_result_rate; {value!r} is not"
+        )
+    return value
+
+
+def checked_use_cases(value) -> tuple[str, ...]:
+    """The use case codes ``value`` gives, each with its whitespace runs as one space, sorted, without repeats."""
+    return _links("use_cases", value, _use_case)
+
+
+def checked_signal_keys(value) -> tuple[str, ...]:
+    """The signal keys ``value`` gives, sorted, without repeats."""
+    return _links("signal_keys", value, _signal_key)
+
+
 CARD_CHECKS = {  # field of a test card -> what checks it and gives the value kept
     "hypothesis": lambda v: _text("test_card.hypothesis", v, MAX_CARD_TEXT_CHARS),
     "test": lambda v: _text("test_card.test", v, MAX_CARD_TEXT_CHARS),
@@ -161,6 +209,8 @@ CHECKS = {  # field of a claim -> what checks it and gives the value kept
     "status": lambda v: _choice("status", v, STATUSES),
     "confidence": lambda v: _choice("confidence", v, CONFIDENCES),
     "test_card": checked_card,
+    "use_cases": checked_use_cases,
+    "signal_keys": checked_signal_keys,
 }
 
 
@@ -175,6 +225,8 @@ def changed(content: Content, values: dict) -> Content:
             if not isinstance(value, bool):
                 raise CanvasError(422, "archived takes true or false")
             checked[name] = value
+        elif name in LINKS:
+            checked[name] = CHECKS[name](value or [])  # null or [] links nothing
         elif name == "test_card" or value is not None:
             checked[name] = CHECKS[name](value)
         else:
@@ -186,6 +238,7 @@ def _flat(content: Content | None) -> dict:
     if content is None:
         return {}
     values = {name: getattr(content, name) for name in FIELDS if name != "test_card"}
+    values.update({name: list(getattr(content, name)) for name in LINKS})
     card = content.test_card or {}
     values.update({f"test_card.{name}": card.get(name) for name in CARD_FIELDS})
     return values

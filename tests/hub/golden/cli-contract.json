@@ -1365,6 +1365,22 @@
         },
         {
           "flags": [
+            "--use-cases"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--signal-keys"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--archive"
           ],
           "value": null,
@@ -2055,6 +2071,8 @@
               "confidence",
               "test_card",
               "archived",
+              "use_cases",
+              "signal_keys",
               "rev",
               "evidence_count",
               "real_support_count",
@@ -50700,11 +50718,43 @@
                 }
               ],
               "title": "Archived"
+            },
+            "use_cases": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Use Cases",
+              "description": "the codes of the use cases of the plugin srs that realize it, as UC ORD-1 or an alias: the whole list, [] for none"
+            },
+            "signal_keys": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal Keys",
+              "description": "the keys of the project's signals that measure it, as declared in its registry: the whole list, [] for none"
             }
           },
           "type": "object",
           "title": "CanvasChangeIn",
-          "description": "One change of an edit: the fields it sets on ``claim``, read at ``base_rev``; without ``claim``, a new claim\nwith at least a cell and a text. ``test_card`` null takes the card away."
+          "description": "One change of an edit: the fields it sets on ``claim``, read at ``base_rev``; without ``claim``, a new claim\nwith at least a cell and a text. ``test_card`` null takes the card away; ``use_cases`` and ``signal_keys`` give\nthe whole list of links, each one a change adds checked against the project's SRS and registry of signals."
         },
         "CanvasClaim": {
           "properties": {
@@ -50775,6 +50825,22 @@
               "type": "boolean",
               "title": "Archived"
             },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Use Cases",
+              "description": "the codes of the use cases of the plugin srs it links, sorted"
+            },
+            "signal_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Signal Keys",
+              "description": "the keys of the project's signals it links, sorted"
+            },
             "rev": {
               "type": "integer",
               "title": "Rev",
@@ -50833,6 +50899,8 @@
             "confidence",
             "test_card",
             "archived",
+            "use_cases",
+            "signal_keys",
             "rev",
             "evidence_count",
             "real_support_count",
@@ -50913,6 +50981,22 @@
             "archived": {
               "type": "boolean",
               "title": "Archived"
+            },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Use Cases",
+              "description": "the codes of the use cases of the plugin srs it links, sorted"
+            },
+            "signal_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Signal Keys",
+              "description": "the keys of the project's signals it links, sorted"
             },
             "rev": {
               "type": "integer",
@@ -50995,6 +51079,8 @@
             "confidence",
             "test_card",
             "archived",
+            "use_cases",
+            "signal_keys",
             "rev",
             "evidence_count",
             "real_support_count",
@@ -51069,6 +51155,22 @@
             "archived": {
               "type": "boolean",
               "title": "Archived"
+            },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Use Cases",
+              "description": "the codes of the use cases of the plugin srs it links, sorted"
+            },
+            "signal_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Signal Keys",
+              "description": "the keys of the project's signals it links, sorted"
             }
           },
           "type": "object",
@@ -51079,7 +51181,9 @@
             "status",
             "confidence",
             "test_card",
-            "archived"
+            "archived",
+            "use_cases",
+            "signal_keys"
           ],
           "title": "CanvasContent",
           "description": "A claim at one rev."
@@ -51638,6 +51742,22 @@
               "type": "boolean",
               "title": "Archived"
             },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Use Cases",
+              "description": "the codes of the use cases of the plugin srs it links, sorted"
+            },
+            "signal_keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Signal Keys",
+              "description": "the keys of the project's signals it links, sorted"
+            },
             "code": {
               "type": "string",
               "title": "Code"
@@ -51663,6 +51783,8 @@
             "confidence",
             "test_card",
             "archived",
+            "use_cases",
+            "signal_keys",
             "code",
             "rev",
             "evidence"

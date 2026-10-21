@@ -21,7 +21,7 @@ plugin: readers read, writers make canvases, edit, undo, add, withdraw and confi
 proposals, ask @strategist for a brainstorm and import, admins give a canvas a label of its own and archive it.
 ``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import`` is their client; a
 canvas exports as ``evo-canvas/1`` JSON and imports back keeping its claims' codes. The tables are the hub's
-(``evo_agents.hub.tables_canvas``, migrations 0067, 0069 and 0070), every row of a canvas carrying its label, the
+(``evo_agents.hub.tables_canvas``, migrations 0067 and 0069 to 0072), every row of a canvas carrying its label, the
 project's by default.
 
 The plugin contributes the agent type ``strategist`` (criterion a5): the profile @strategist with the pack
@@ -38,6 +38,13 @@ evidence the hub writes and proposals of a change of status, never the change it
 evidence that is no number go before @strategist in a judging run, a task run whose one tool, ``canvas__judge``,
 records a verdict with why on each item (``judging``).
 
+A claim links the use cases of the plugin srs that realize it and the signal keys that measure it (criterion a7): a
+link an edit adds names a use case of the project's SRS (by code or alias, kept as the SRS's code) or a key of its
+registry of signals (``links``). The plugin's source of the knowledge graph (``kg``) gives each canvas as a document
+whose claims are Claim nodes (``claim:CL-3``), each implemented by its use cases and measured by its signal keys, so
+kg_path goes from a claim to its use cases and the tasks and plan steps that implement them; a mention of ``CL-3``
+anywhere in the project links to the claim. A change of a claim queues a build of the project's graph.
+
 Baselines (criterion a6) make a claim's status take effect: the plugin's job ``baseline`` (``schedule``), every 15
 minutes, proposes each canvas's baseline once a week at the time of its config's ``baseline`` (16:00 on Friday by
 default, in ``baseline.timezone``, else the time zone of the project's Curator charter, else UTC): every change of
@@ -50,7 +57,8 @@ changes. A writer may also open a baseline of one claim at once, for another to 
 (``events``).
 
 The hub imports this package for the manifest only: ``content`` holds a claim's content, its checks and diff,
-``rules`` the rules of its status, ``store`` reads, ``writes`` keeps, ``proposals`` keeps what is proposed,
+``rules`` the rules of its status, ``links`` checks what a claim links, ``kg`` is the source of the knowledge
+graph, ``store`` reads, ``writes`` keeps, ``proposals`` keeps what is proposed,
 ``transfer`` exports and imports, ``models`` and ``server`` are the API; ``acting``, ``agent``, ``commands`` and
 ``brainstorm`` are @strategist's; ``value_check``, ``checks`` and ``judging`` are the value check's; ``baselines``,
 ``decisions``, ``schedule``, ``notices``, ``baseline_models`` and ``events`` are the baselines'.
@@ -60,6 +68,7 @@ from evo_agents.core_plugins.canvas.tools import STRATEGIST_INSTRUCTIONS, TOOLS
 
 SERVER = "evo_agents.core_plugins.canvas.server"
 AGENT = "evo_agents.core_plugins.canvas.agent"
+KG = "evo_agents.core_plugins.canvas.kg"
 VALUE_CHECK = "evo_agents.core_plugins.canvas.value_check"
 VALUE_CHECK_JOB = "value_check"  # also the job the hub runs on a batch of signals (plugin_jobs.SIGNAL_JOB)
 VALUE_CHECK_CRON = "11 * * * *"  # hourly, besides each batch
@@ -176,6 +185,9 @@ MANIFEST = {
             },
         ],
         "routes": [{"name": "canvas", "title": "The canvases of a project", "python": f"{SERVER}:router"}],
+        "kg_sources": [
+            {"name": "canvases", "title": "The canvases of a project and their claims", "python": f"{KG}:kg_source"}
+        ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
     },
 }

@@ -30,7 +30,7 @@ from sqlalchemy import select
 
 from evo_agents.core_plugins.canvas import content, proposals, tools, writes
 from evo_agents.core_plugins.canvas.tools import STRATEGIST_INSTRUCTIONS
-from evo_agents.hub import plugin_calls, tables, tables_canvas
+from evo_agents.hub import plugin_calls, tables, tables_canvas, tables_srs
 from evo_agents.hub.server.app import create_app
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
@@ -209,6 +209,7 @@ def test_strategist_tool_schemas_copy_the_plugins_names_and_leave_validated_out(
         tables_canvas.MAX_REASON_CHARS,
     )
     assert (tools.MAX_CHANGES, tools.MAX_PROPOSED) == (writes.MAX_CHANGES, proposals.MAX_PROPOSED)
+    assert (tools.MAX_LINKS, tools.MAX_CODE_CHARS) == (content.MAX_LINKS, tables_srs.MAX_CODE_CHARS)
     assert set(tools.TEST_CARD["properties"]) == set(content.CARD_FIELDS)
     for _, _, _, schema in tools.TOOLS:
         assert "validated" not in enums(schema), "no tool of @strategist takes the status validated"
