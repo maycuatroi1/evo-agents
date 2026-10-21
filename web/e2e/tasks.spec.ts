@@ -236,6 +236,64 @@ test("an SRS item's page creates a task linked to it, for a writer of a project 
   await expect(main(page).getByTestId("srs-item-create-task")).toHaveCount(0);
 });
 
+test("a writer blocks a task by hand and clears it; Blocked shows on the board, the backlog, My work and the task, and a reader only reads it", async ({ page, member, signInAs }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const [project] = me.projects;
+  const reader = newAccount("tasks-blocked-reader");
+  await new HubAdmin().grant(project, reader.login, "reader", "internal");
+  await enableTasks(me, project);
+  await createSprintByApi(me, project, "Sprint 7", "active");
+  await createTaskByApi(me, project, { title: "Payment retries", sprint: "Sprint 7", status: "todo", assignees: [me.login] });
+  await createTaskByApi(me, project, { title: "Cart API", sprint: "Sprint 7", status: "todo", assignees: [me.login] });
+
+  await page.goto(taskPath(project, "T-1"));
+  const panel = main(page).getByTestId("task-blockers");
+  await expect(panel.getByTestId("task-blockers-empty")).toBeVisible();
+  await expect(main(page).getByTestId("task-head").getByTestId("task-blocked")).toHaveCount(0);
+  await panel.getByTestId("task-blocker-reason-input").fill("Needs the cart API");
+  await panel.getByTestId("task-blocker-kind").selectOption("task");
+  await panel.getByTestId("task-blocker-value").fill("T-2");
+  await panel.getByTestId("task-blocker-add").click();
+  await expect(toast(page, "Blocked T-1")).toBeVisible();
+  const line = panel.getByTestId("task-blocker");
+  await expect(line.getByTestId("task-blocker-reason")).toHaveText("Needs the cart API");
+  await expect(line.getByTestId("task-blocker-task")).toHaveAttribute("href", taskPath(project, "T-2"));
+  await expect(line).toContainText(`set by ${me.login}`);
+  await expect(main(page).getByTestId("task-head").getByTestId("task-blocked")).toBeVisible();
+
+  // A task that is not another task of the project is refused, and the form says so.
+  await panel.getByTestId("task-blocker-reason-input").fill("Typo");
+  await panel.getByTestId("task-blocker-value").fill("T-99");
+  await panel.getByTestId("task-blocker-add").click();
+  await expect(panel.getByRole("alert")).toBeVisible();
+
+  await page.goto(tasksPath(project));
+  await expect(taskCard(page, "T-1").getByTestId("task-blocked")).toBeVisible();
+  await expect(taskCard(page, "T-2").getByTestId("task-blocked")).toHaveCount(0);
+  await page.goto(tasksPath(project, "backlog"));
+  await expect(main(page).getByTestId("task-blocked")).toHaveCount(1);
+  await page.goto(tasksPath(project, "mine"));
+  await expect(main(page).getByTestId("task-blocked")).toHaveCount(1);
+
+  await signOut(page);
+  await signInAs(reader);
+  await page.goto(taskPath(project, "T-1"));
+  await expect(main(page).getByTestId("task-blocker")).toContainText("Needs the cart API");
+  await expect(main(page).getByTestId("task-blocker-form")).toHaveCount(0);
+  await expect(main(page).getByTestId("task-blocker-clear")).toHaveCount(0);
+  await signOut(page);
+
+  await signInAs(me);
+  await page.goto(taskPath(project, "T-1"));
+  await main(page).getByTestId("task-blocker-clear").click();
+  await expect(toast(page, "Cleared a blocker of T-1")).toBeVisible();
+  await expect(main(page).getByTestId("task-blockers-empty")).toBeVisible();
+  await expect(main(page).getByTestId("task-blocked")).toHaveCount(0);
+  await page.goto(tasksPath(project));
+  await expect(taskCard(page, "T-1")).toBeVisible();
+  await expect(main(page).getByTestId("task-blocked")).toHaveCount(0);
+});
+
 test("a reader reads the board, the backlog and a task, with no control that writes; creating and importing are a writer's", async ({ page, signInAs }) => {
   const owner = newAccount("tasks-owner");
   const reader = newAccount("tasks-reader");
