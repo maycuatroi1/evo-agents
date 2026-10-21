@@ -251,7 +251,11 @@ def test_loop_rules_runs_end_a_build_with_its_plan_and_a_deliver_with_its_merge_
         failed=True,
     )
     lost = RULES.reconcile(running, view(tasks=tasks, runs={700: RunView(700, "author", "lost")}))
-    assert (lost.state, lost.failed, lost.detail) == ("queued", True, {"run_id": 700, "run_state": "lost", "failures": 1})
+    assert (lost.state, lost.failed, lost.detail) == (
+        "queued",
+        True,
+        {"run_id": 700, "run_state": "lost", "failures": 1},
+    )
     stopped = RULES.reconcile(running, view(tasks=tasks, runs={700: RunView(700, "author", "cancelled")}))
     assert (stopped.state, stopped.reason) == ("cancelled", "person")
 
