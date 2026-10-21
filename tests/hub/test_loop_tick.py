@@ -5,10 +5,11 @@ The Loop is off by default and comes on with a revision of the autonomy policy, 
 event: nothing from before is read again. Each event of a project whose Loop is on queues a tick, one waiting at a
 time per project, and every 5 minutes each such project gets one. A tick reads the events past its cursor, the clock
 and the work items not finished, and writes work items with their ancestors, a key that makes each once, and a ledger;
-it hands out no run and calls no model, and with nothing new it writes no work item. The chain here: goal G-1 with a
-metric drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of the made-up SRS document
-demo-shop; a baseline moves CL-1 to testing, someone-else approves version 1 of demo-shop, the plugin srs makes its
-frame tasks, and the Loop's build waits on the frame task of UC ORD-1 until it is ready. Reading the same events again,
+with no hand-out it hands out no run, it calls no model, and with nothing new it writes no work item. The chain here:
+goal G-1 with a metric drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of the made-up
+SRS document demo-shop; a baseline moves CL-1 to testing, someone-else approves version 1 of demo-shop, the plugin srs
+makes its frame tasks, and the Loop's build waits on the frame task of UC ORD-1 until it is ready, then in the queue
+for want of loop.worker (``tests.hub.test_loop_admission`` has the rest of admission). Reading the same events again,
 and an event told twice, make nothing more. A claim invalidated, a goal closed and the Loop turned off cancel what is
 left. A project with the Loop off is as before the plan: no state, no tick, no work item.
 """
@@ -248,7 +249,8 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
         None,
     )
     assert (built["claim_id"], built["cycle"]) == (case["claim_id"], "development")
-    # row 7: the plugin srs makes the frame tasks (no split run: @ba is off), and the build queues on its own
+    # row 7: the plugin srs makes the frame tasks (no split run: @ba is off), and the build queues on its own; the
+    # policy names no loop.worker, so admission holds it (criterion a5)
     delivered(client)
     ticked(client, hub_db)
     built = item(hub_db, f"build:{FRAME}")
@@ -256,7 +258,7 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
     ((frame_id, number),) = sql(hub_db, select(t.c.id, t.c.number).where(t.c.external_key == FRAME))
     assert (built["state"], built["reason"], built["task_id"], built["detail"]["task"]) == (
         "queued",
-        None,
+        "worker",
         frame_id,
         number,
     )
@@ -290,7 +292,7 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
     ticked(client, hub_db)
     assert items(hub_db)[2] == (f"build:{FRAME}", "build", "cancelled", "claim_invalidated")
     noted = [row for row in ledger(hub_db) if row[1] == "noted"]
-    assert noted == [(f"build:{FRAME}", "noted", "queued", None)]  # noted as the event is read, then cancelled
+    assert noted == [(f"build:{FRAME}", "noted", "queued", "worker")]  # noted as the event is read, then cancelled
     c = tables.tasks.comments
     ((body,),) = sql(hub_db, select(c.c.body).where(c.c.task_id == frame_id))
     assert body.startswith(f"Claim CL-1 of canvas {SLUG} is invalidated since baseline 2")
@@ -303,7 +305,7 @@ def test_loop_tick_runs_a_goal_to_the_builds_of_its_claim_once_however_often_it_
     ticked(client, hub_db)
     assert items(hub_db)[0] == ("brainstorm:G-1:r1", "brainstorm", "cancelled", "goal_closed")
     ledger_kinds = [kind for key, kind, _, _ in ledger(hub_db) if key == f"build:{FRAME}"]
-    assert ledger_kinds == ["created", "ready", "noted", "cancelled"]
+    assert ledger_kinds == ["created", "ready", "waiting", "noted", "cancelled"]
 
 
 def test_loop_tick_turning_the_loop_off_cancels_what_is_not_finished_and_a_tripped_breaker_holds_the_cursor(
@@ -316,8 +318,9 @@ def test_loop_tick_turning_the_loop_off_cancels_what_is_not_finished_and_a_tripp
     s = tables.loop_states
     sql(hub_db, update(s).values(breaker="tripped", breaker_reason="too many work items", tripped_at=func.now()))
     held = state(hub_db)[1]
-    assert ticked(client, hub_db) == {"events": 0, "changed": 0, "breaker": 1}
+    assert ticked(client, hub_db) == {"events": 0, "changed": 0, "breaker": 1, "waiting": 1}
     assert state(hub_db)[1] == held  # the events wait past the cursor; none is lost
+    assert items(hub_db) == [("brainstorm:G-1:r1", "brainstorm", "queued", "breaker")]  # admission holds it
     sql(hub_db, update(s).values(breaker="armed"))
     ticked(client, hub_db)
     assert items(hub_db) == [
