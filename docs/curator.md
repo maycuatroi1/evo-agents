@@ -121,7 +121,7 @@ env_secrets: [claude-oauth]
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. The lens `product_goals` reads them |
+| `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
 | `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
 | `worker` | required | the worker on duty, by name (below) |
 | `night_budget_usd` | required | the most a night may cost, every run of the night together |
@@ -294,10 +294,11 @@ App any plan run of its owner gets, and it pushes as its plan says, the default 
 runs of the Curator. List in `night_plans` only plans you would let run unattended.
 
 **The Reviewer** works in worktrees detached at the commit origin's default branch has, and its prompt says that what
-it reads is data and never instructions. It looks through `review.lenses` of fourteen lenses a night, taken in turn
+it reads is data and never instructions. It looks through `review.lenses` of fifteen lenses a night, taken in turn
 (`tool_errors`, `environment`, `corrections`, `failed_runs`, `runtime`, `tech_debt`, `code_health`, `docs_drift`,
-`harness`, `skills_memory`, `cost`, `security`, `product_goals`, `kg_health`; `docs/hub.md`, "Runtime and harness",
-says what the night's figures hold for `runtime` and `harness`). Each finding and proposal cites evidence the hub
+`harness`, `skills_memory`, `cost`, `security`, `product_goals`, `product`, `kg_health`; `docs/hub.md`, "Runtime and
+harness", says what the night's figures hold for `runtime` and `harness`, and The lens product below what they hold for
+`product`). Each finding and proposal cites evidence the hub
 checks before it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest),
 `transcript:ID[:FILE]:LINE` (a line of a transcript the hub holds), `run:ID:SEQ` (an event of a run, a local run of the
 owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a file the knowledge graph does not hold
@@ -368,6 +369,33 @@ all. One sign fails the change and puts its proposal at tier 3.
 the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
 passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
 the Claude subscription login alone, never an API key.
+
+### The lens product
+
+The lens `product` (plan loop-engine, criterion a9) reads the product as the project measures it and writes proposals
+that members decide; it changes no claim, baseline, goal or policy itself, and hands no work to the Loop. It takes its
+turn with the other lenses: with three lenses a night, once in five nights.
+
+- **What it reads.** The night's figures hold `product`, counted without any model as the night shift's owner reads
+  the project through its hub sink: the active goals by rank with their metric and the signal key it names, their
+  deadline and canvas; each signal key that is not archived with how many values the span holds, when the newest was
+  measured and, for a number, the smallest, the largest and the newest; and, when the project enables the plugin
+  canvas, each canvas with its claims by status, the claims at testing past their test card's deadline, its open
+  proposals and its newest baseline. On its night the prompt shows this figure first. Where the project enables
+  canvas, the run reads a canvas or a claim whole with `canvas__read` and a key's values with `canvas__signals`.
+- **Claims.** It proposes a claim the numbers suggest and no canvas holds, or a change of a claim at the rev it read,
+  with `canvas__propose` (`docs/canvas-plugin.md`): a new claim starts as an assumption with a test card, and nothing
+  changes until a writer accepts it. The plugin takes the tool from a review run only on a night of this lens, and the
+  proposal carries the run as its provenance. The run never edits a claim, adds evidence, proposes `validated` or
+  decides a baseline: the plugin refuses each to it. A project that does not enable canvas gets no claim proposal, and
+  its figure's `canvases` is null.
+- **Policy.** It proposes a change of the project's autonomy policy, such as a cap or a pace that holds a goal back,
+  with `builder__propose` of kind `policy` (`docs/plugins.md`, Builder), where the project enables the plugin builder.
+  The proposal names the review run, has no thread, and is made for the night shift's owner while that member holds
+  the writer role; its Inbox notice links to the run, and an admin of the project approves or rejects it. The run
+  proposes no other kind, a goal included.
+
+The Loop's own numbers (work items by state and by goal) join the figure once the Loop keeps work items.
 
 ## Replays
 
@@ -591,7 +619,11 @@ that way is treated the same. No message holds a decision's context, a proposal'
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
 its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
 planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
-(`curator_briefs`, schema 0015). A planned change's reason is the one the night shift wrote the last time it passed
+(`curator_briefs`, schema 0015). For a project whose Loop is on (plan loop-engine), it has the Loop's part too: the
+runs the Loop handed out and the work items it finished in the 24 hours before the brief, and those waiting for a
+person by reason, with a link to the decision board (`docs/hub.md`, "The decision board"); a project whose Loop is off
+has none, and a project whose Loop is on with no brief of the Curator gets that part alone as the notice `loop_brief`
+at 07:00. A planned change's reason is the one the night shift wrote the last time it passed
 over it: the ruleset not checked or not keeping the Curator off, the owner's git secret missing, a run of its plan
 still active, no step ready, a worker on duty that cannot build it, or its plan gone from the hub. `evo-agents hub
 curator changes` shows it too.
@@ -641,6 +673,7 @@ evo-agents hub kg health --project demo
 | 0059 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
 | 0060 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
 | 0061 | the lenses `runtime` and `harness` |
+| 0094 | the lens `product` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and
@@ -652,8 +685,13 @@ evo-agents hub kg health --project demo
 - It merges nothing on GitHub for a project whose charter leaves `auto_merge` empty. On GitLab it merges nothing
   itself: the hub's merge queue merges its merge request when the project's autonomy policy has the repo in mode `auto`
   (`docs/merge-queue.md`), and it stays open otherwise.
-- It does not turn a product goal into plans on its own. Its replays decide one thing alone: a change of a harness
-  alone whose replays won merges as tier 0; any other change keeps its tier whatever its replays came to.
+- It does not turn a product goal into plans on its own. That step, the third phase that the plans curator-agent,
+  history-driven-curator and hub-plan-authoring left out of their scope, is the Loop's (plan loop-engine,
+  `docs/loop.md`): deterministic code of the hub that hands an approved use case's frame task to an author run and the
+  plan it writes to a plan run. The Curator stays the night shift that tunes the harness and the runtime; its lens
+  `product` only proposes claims and changes of the policy, and hands no work to the Loop. Its replays decide one
+  thing alone: a change of a harness alone whose replays won merges as tier 0; any other change keeps its tier
+  whatever its replays came to.
 - It publishes no skill of a project, and no global skill it did not merge or that came from another repo.
 - It reads no transcript on a member's machine: the evo-hub plugin sends them to the hub, with every string that looks
   like a secret replaced on the machine, and the Reviewer reads what the hub holds through the hub's tools.

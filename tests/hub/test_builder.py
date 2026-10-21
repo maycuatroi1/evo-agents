@@ -424,6 +424,104 @@ def test_builder_proposal_of_the_autonomy_policy_writes_its_next_revision_and_ro
     ]
 
 
+# Proposals of a goal
+
+
+def goal(client, headers, ref: str) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/goals/{ref}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_builder_proposal_of_a_goal_makes_it_writes_its_next_revision_and_rolls_back(client, hub, hub_db):
+    run = started(client, hub, "@builder add a goal for the search")
+    for arguments, said in (
+        ({"set": {"statement": "x", "budget_usd": 5}}, "budget_usd: a goal has no such field; nothing changed"),
+        ({"set": {"rank": 2}}, "statement: Field required; nothing changed"),  # a new goal needs a statement
+        ({"set": {"rank": 2}, "unset": ["statement"]}, "statement: a goal always has one"),
+        ({"target": {"goal": "G-4"}, "set": {"statement": "x"}}, f"project {PROJECT} has no goal G-4; a new goal"),
+        ({"target": {"goal": "Search"}, "set": {"statement": "x"}}, "bad arguments for builder__propose: target.goal"),
+        (
+            {"set": {"statement": "x", "owner": READER}},
+            f"owner: {READER} holds reader on project {PROJECT}; a goal's owner holds the writer role or above",
+        ),
+    ):
+        text = proposed(client, run["agent"], kind="goal", summary="A goal for the search", **arguments)
+        assert text.startswith(f"error: {said}"), text
+    sets = {"statement": "Fewer searches find nothing", "deadline": "2026-12-31", "owner": OTHER}
+    first = made_proposal(client, run["agent"], kind="goal", summary="A goal for the search", set=sets)
+    pending = shown(client, hub["reader"], first)
+    assert (pending["state"], pending["kind"], pending["base_version"], pending["approver"], pending["target"]) == (
+        "pending",
+        "goal",
+        0,
+        "project_admin",
+        {"goal": "G-1"},  # the code the hub picked for the new goal
+    )
+    assert client.get(f"/v1/projects/{PROJECT}/goals", headers=hub["reader"]).json() == [], "nothing is applied yet"
+    assert notices(hub_db) == [(OWNER, first, "goal")]
+    # a writer does not decide it; the project's admin approves it as the goal's first revision
+    assert "needs the admin role on project" in message(answer(client, hub["other"], first, "approve"), 403)
+    approved = answer(client, hub["owner"], first, "approve")
+    assert (approved.json()["state"], approved.json()["applied_version"]) == ("applied", 1), approved.text
+    made = goal(client, hub["reader"], "G-1")
+    assert (made["statement"], made["deadline"], made["owner"], made["rank"], made["created_by"]) == (
+        "Fewer searches find nothing",
+        "2026-12-31",
+        OTHER,
+        1,
+        OWNER,
+    )
+    assert made["note"] == f"proposal {first} of @builder: A goal for the search"
+    # a change of it, applied and rolled back to a copy of the revision before
+    second = made_proposal(
+        client,
+        run["agent"],
+        kind="goal",
+        summary="Pause the search goal",
+        target={"goal": "G-1"},
+        set={"status": "paused", "rank": 3},
+        unset=["deadline"],
+    )
+    assert shown(client, hub["owner"], second)["base_version"] == 1
+    assert answer(client, hub["owner"], second, "approve").json()["applied_version"] == 2
+    paused = goal(client, hub["reader"], "G-1")
+    assert (paused["status"], paused["rank"], paused["deadline"]) == ("paused", 3, None)
+    same = proposed(client, run["agent"], kind="goal", summary="Pause", target={"goal": "G-1"}, set={"rank": 3})
+    assert same.startswith(f"error: goal G-1 of project {PROJECT} has these values already"), same
+    back = rollback(client, hub["owner"], second)
+    assert (back.json()["state"], back.json()["rollback_version"]) == ("rolled_back", 3), back.text
+    again = goal(client, hub["reader"], "G-1")
+    assert (again["revision"], again["status"], again["rank"], again["deadline"]) == (3, "active", 1, "2026-12-31")
+    assert again["note"] == f"rollback of proposal {second} of @builder: a copy of revision 1"
+    assert "it changed since the proposal was applied" in message(rollback(client, hub["owner"], first), 409)
+    # a new goal the proposal made is closed when it rolls back
+    third = made_proposal(client, run["agent"], kind="goal", summary="Tickets", set={"statement": "Answer in a day"})
+    assert answer(client, hub["owner"], third, "approve").json()["applied_version"] == 1
+    assert rollback(client, hub["owner"], third).json()["rollback_version"] == 2
+    dropped = goal(client, hub["reader"], "G-2")
+    assert (dropped["status"], dropped["close_reason"]) == ("closed", "dropped")
+    assert audit_rows(hub_db, "goal") == [
+        ("goal.set", f"{PROJECT}/goal G-1 revision=1 fields=statement,deadline,rank,owner,status proposal={first}")
+        + (OWNER, PROJECT),
+        ("goal.set", f"{PROJECT}/goal G-1 revision=2 fields=deadline,rank,status proposal={second}", OWNER, PROJECT),
+        (
+            "goal.set",
+            f"{PROJECT}/goal G-1 revision=3 fields=deadline,rank,status proposal={second} copy-of=1",
+            OWNER,
+            PROJECT,
+        ),
+        ("goal.set", f"{PROJECT}/goal G-2 revision=1 fields=statement,rank,owner,status proposal={third}")
+        + (OWNER, PROJECT),
+        (
+            "goal.set",
+            f"{PROJECT}/goal G-2 revision=2 fields=status,close_reason proposal={third} copy-of=0",
+            OWNER,
+            PROJECT,
+        ),
+    ]
+
+
 # Proposals of a hub admin, answered in the thread
 
 

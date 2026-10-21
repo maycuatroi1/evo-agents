@@ -10,10 +10,11 @@ The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli_plugins``, ``srs`` by ``cli_srs``, ``task`` by ``cli_tasks``, ``pm`` by ``cli_pm``, ``canvas`` by ``cli_canvas``,
-``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by ``release_cli``,
-``policy`` by ``cli_policy`` and ``merge`` by ``cli_merge``; they need nothing beyond the core package, so they work on
-a core install. ``hub openapi`` (``openapi``) and ``hub contract
-print`` (``contract``) need the extra for the API document; ``hub contract check`` does not.
+``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
+``release_cli``, ``policy`` by ``cli_policy``, ``goal`` by ``cli_goals``, ``merge`` by ``cli_merge`` and ``loop`` by
+``cli_loop``; they need nothing beyond the core package, so they work on a core install. ``hub openapi``
+(``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document; ``hub contract check``
+does not.
 """
 
 from __future__ import annotations
@@ -108,11 +109,11 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry, release_pass
+        from evo_agents.hub.server.app import init_sentry, loop_tick, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency, release_pass=release_pass)
+    return worker.main(config, args.concurrency, release_pass=release_pass, loop_tick=loop_tick)
 
 
 @_server_command
@@ -220,9 +221,17 @@ def _register_client_commands(hsub) -> None:
 
     register_policy(hsub)
 
+    from evo_agents.hub.cli_goals import register_goals
+
+    register_goals(hsub)
+
     from evo_agents.hub.cli_merge import register_merge
 
     register_merge(hsub)
+
+    from evo_agents.hub.cli_loop import register_loop
+
+    register_loop(hsub)
 
 
 def register(sub) -> None:

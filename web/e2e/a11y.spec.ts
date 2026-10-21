@@ -67,6 +67,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, seedLoopProject } from "./support/loop";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -1511,6 +1512,84 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("merge-notice")).toHaveCount(3);
       await page.locator("#main").getByTestId("merge-notice-faulty-open").click();
       await expect(page.locator("#main").getByTestId("merge-notice-note")).toBeVisible();
+    },
+  },
+  {
+    name: "the Loop stopped by its breaker with its work items by state and by chain, and the switch's dialog, for an admin",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project, { tripped: true });
+      await open(page, loopPath(project));
+      await expect(page.locator("#main").getByTestId("loop-breaker-banner")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("loop-items-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "the Loop by state");
+      await open(page, loopPath(project, "?view=chain"));
+      await expect(page.locator("#main").getByTestId("loop-chain").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "the Loop by chain");
+      await page.locator("#main").getByTestId("loop-turn-off").click();
+      await expect(page.getByTestId("loop-switch-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "a work item's chain from its goal to its release, and one that waits for a person",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      const seeded = await seedLoop(project);
+      await open(page, loopItemPath(project, seeded.items.build));
+      await expect(page.locator("#main").getByTestId("chain-rail")).toBeVisible();
+      await expectNoSeriousViolations(page, "a released chain");
+      await open(page, loopItemPath(project, seeded.items.held));
+      await expect(page.locator("#main").getByTestId("chain-waiting")).toBeVisible();
+    },
+  },
+  {
+    name: "the goals with their metric against the target, then a goal's page",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project);
+      await open(page, goalsPath(project));
+      await expect(page.locator("#main").getByTestId("goals-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "goals");
+      await open(page, goalsPath(project, "G-1"));
+      await expect(page.locator("#main").getByTestId("goal-items-table")).toBeVisible();
+    },
+  },
+  {
+    name: "the Decisions page with each gate and the Loop's exceptions",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project, { tripped: true });
+      await open(page, decidePath(project));
+      await expect(page.locator("#main").locator('[data-testid="board-item"][data-kind="loop_breaker"]')).toBeVisible();
+    },
+  },
+  {
+    name: "the Loop, a chain, the goals and the Decisions page on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      const seeded = await seedLoop(project, { tripped: true });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, loopPath(project));
+      await expect(page.locator("#main").getByTestId("loop-items-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "the Loop at 375 px");
+      await open(page, loopItemPath(project, seeded.items.build));
+      await expect(page.locator("#main").getByTestId("chain-rail")).toBeVisible();
+      await expectNoSeriousViolations(page, "a chain at 375 px");
+      await open(page, goalsPath(project));
+      await expect(page.locator("#main").getByTestId("goals-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "goals at 375 px");
+      await open(page, decidePath(project));
+      await expect(page.locator("#main").getByTestId("board-summary")).toBeVisible();
     },
   },
   {

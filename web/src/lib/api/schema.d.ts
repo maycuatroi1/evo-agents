@@ -4622,10 +4622,10 @@ export interface paths {
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
          *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
-         *     decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
-         *     approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
-         *     use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
-         *     child tasks, in the same transaction.
+         *     decide, naming each, or while @ba's review of the version's round is queued or running. An approval emits the
+         *     event srs.version.approved; once the hub delivers it, in a project that enables the plugin tasks, each use case new
+         *     in the version gets a frame task, the open tasks of a use case that changed a comment and those of one it dropped
+         *     are cancelled, and @ba splits the frame tasks into child tasks.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
         delete?: never;
@@ -6950,6 +6950,213 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Goals
+         * @description The project's goals as they are now, by rank, then by code.
+         */
+        get: operations["list_goals_v1_projects__project__goals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Goal
+         * @description One goal of the project, at its newest revision or at ``revision``.
+         */
+        get: operations["show_goal_v1_projects__project__goals__ref__get"];
+        /**
+         * Write Goal
+         * @description Write a goal whole as its next revision, made when the project has none of code ``ref``; an admin of the
+         *     project alone may.
+         */
+        put: operations["write_goal_v1_projects__project__goals__ref__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Goal Revisions
+         * @description Every revision of a goal, the newest first, each with the fields whose value it changed.
+         */
+        get: operations["goal_revisions_v1_projects__project__goals__ref__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Goal
+         * @description Close a goal for a reason, as its next revision; an admin of the project alone may.
+         */
+        post: operations["close_goal_v1_projects__project__goals__ref__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Loop
+         * @description The project's Loop: on or off, its breaker, its cursor and its work items by state.
+         */
+        get: operations["show_loop_v1_projects__project__loop_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Loop
+         * @description Reset the tripped breaker of the project's Loop (the admin role on the project).
+         */
+        post: operations["resume_loop_v1_projects__project__loop_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Items
+         * @description The work items of the project's Loop, the newest first: where each stands and why, and its ancestors.
+         */
+        get: operations["loop_items_v1_projects__project__loop_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Item
+         * @description A work item of the project's Loop with its chain from the goal to the release, and what happened to it.
+         */
+        get: operations["loop_item_v1_projects__project__loop_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Goals
+         * @description Each goal of the project with its metric measured now against its target, and its work items by state.
+         */
+        get: operations["loop_goals_v1_projects__project__loop_goals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/decision-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decision Board
+         * @description Everything of the project that waits for a person: the goals, the canvases and the policy (the three gates),
+         *     then the Loop's exceptions and the SRS versions and settle chats its chain waits on; each with since when, who may
+         *     decide it and the page where it is decided.
+         */
+        get: operations["decision_board_v1_projects__project__decision_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/merge-queue": {
         parameters: {
             query?: never;
@@ -8145,6 +8352,61 @@ export interface components {
             sha256: string[];
         };
         /**
+         * BoardItem
+         * @description One thing of the project that waits for a person.
+         */
+        BoardItem: {
+            /**
+             * Group
+             * @description goal, canvas and policy are the three gates; exception and srs what the Loop's chain waits on
+             * @enum {string}
+             */
+            group: "goal" | "canvas" | "policy" | "exception" | "srs";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            /**
+             * Title
+             * @description what waits, in one line
+             */
+            title: string;
+            /**
+             * Since
+             * @description when it began to wait
+             */
+            since: string | null;
+            /**
+             * Decided By
+             * @description who may decide it, as a rule
+             * @enum {string}
+             */
+            decided_by: "admin" | "writer" | "run_owner" | "srs_reviewer" | "chat_member";
+            /**
+             * Deciders
+             * @description the logins of the members who may decide it now
+             */
+            deciders: string[];
+            /**
+             * Link
+             * @description the page of the hub's web where it is decided
+             */
+            link: string | null;
+            /**
+             * Work Item
+             * @description the Loop's work item that waits on it
+             */
+            work_item?: number | null;
+            /**
+             * Refs
+             * @description the ids of what waits: decision, run, proposal, baseline, plan, goal...
+             */
+            refs?: {
+                [key: string]: number | string;
+            };
+        };
+        /**
          * Branding
          * @description The branding as the web applies it; what is unset is null or empty, and the web keeps its own there.
          */
@@ -8356,10 +8618,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "goal";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which the hub picks for a new one); nothing for policy
              */
             target: {
                 [key: string]: string;
@@ -8391,7 +8653,7 @@ export interface components {
             approver: "hub_admin" | "project_admin";
             /**
              * Proposed By
-             * @description the admin who asked @builder, the run's dispatcher
+             * @description the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night shift for a proposal of its review run
              */
             proposed_by: string;
             /**
@@ -8418,11 +8680,14 @@ export interface components {
              * @description why the hub could not apply it, for a failed one
              */
             error: string | null;
-            /** Run Id */
+            /**
+             * Run Id
+             * @description the chat run of @builder, or the Curator's review run, it came from
+             */
             run_id: number | null;
             /**
              * Link
-             * @description the hub's message that shows it in its thread
+             * @description the hub's message that shows it in its thread; none for a review run's
              */
             link: string | null;
         };
@@ -11058,7 +11323,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
             /** Question */
             question: string;
             /**
@@ -11144,6 +11409,28 @@ export interface components {
              * @description outputs of the run the question carries, such as the screenshot it is about
              */
             output_ids?: number[];
+        };
+        /**
+         * DecisionBoard
+         * @description Everything of a project that waits for a person, the three gates first, the oldest first in each group.
+         */
+        DecisionBoard: {
+            /** Project */
+            project: string;
+            /**
+             * Loop
+             * @description the policy's loop.enabled: the Loop makes work items
+             */
+            loop: boolean;
+            /**
+             * Counts
+             * @description the items of each group
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["BoardItem"][];
         };
         /** DecisionList */
         DecisionList: {
@@ -11806,7 +12093,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
             /**
              * Severity
              * @default medium
@@ -11911,6 +12198,64 @@ export interface components {
             id: string;
             /** What */
             what: string;
+        };
+        /**
+         * GoalMetric
+         * @description How to tell a goal is reached: a key of the project's signals summed up over a window, compared with a target,
+         *     as a test card of the plugin canvas compares one.
+         */
+        GoalMetric: {
+            /**
+             * Key
+             * @description a key of kind number of the project's registry of signals
+             */
+            key: string;
+            /**
+             * Aggregate
+             * @enum {string}
+             */
+            aggregate: "last" | "mean" | "sum" | "count" | "p50" | "p90";
+            /**
+             * Window Days
+             * @description null: 90
+             */
+            window_days?: number | null;
+            /**
+             * Comparator
+             * @enum {string}
+             */
+            comparator: ">=" | ">" | "<=" | "<";
+            /** Target */
+            target: number;
+            /**
+             * Tenant
+             * @description one tenant's alone
+             */
+            tenant?: string | null;
+        };
+        /** GoalRevision */
+        GoalRevision: {
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description the fields whose value differs from the revision before
+             */
+            changed: string[];
         };
         /** Grant */
         Grant: {
@@ -13290,6 +13635,352 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** LoopChainClaim */
+        LoopChainClaim: {
+            /** Canvas */
+            canvas: string;
+            /** Code */
+            code: string;
+            /**
+             * Status
+             * @description the claim's status now
+             */
+            status: string;
+        };
+        /** LoopChainGoal */
+        LoopChainGoal: {
+            /** Code */
+            code: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+        };
+        /** LoopChainMerge */
+        LoopChainMerge: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Iid */
+            iid: number | null;
+            /** State */
+            state: string;
+            /** Web Url */
+            web_url: string | null;
+            /** Merged At */
+            merged_at: string | null;
+        };
+        /** LoopChainPlan */
+        LoopChainPlan: {
+            /** Id */
+            id: string;
+            /**
+             * Goal
+             * @description the plan's goal, on one line
+             */
+            goal: string | null;
+        };
+        /** LoopChainRun */
+        LoopChainRun: {
+            /**
+             * Id
+             * @description the newest run that goes on from the one handed out (resumed, retried)
+             */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+            /** Work Item */
+            work_item: number;
+        };
+        /**
+         * LoopChainStages
+         * @description The path of a chain from its goal to its release.
+         */
+        LoopChainStages: {
+            goal: components["schemas"]["LoopChainGoal"] | null;
+            /**
+             * Proposals
+             * @description the claims a brainstorm proposed
+             */
+            proposals: number | null;
+            claim: components["schemas"]["LoopChainClaim"] | null;
+            use_case: components["schemas"]["LoopChainUseCase"] | null;
+            task: components["schemas"]["LoopChainTask"] | null;
+            plan: components["schemas"]["LoopChainPlan"] | null;
+            /** Runs */
+            runs: components["schemas"]["LoopChainRun"][];
+            /** Merges */
+            merges: components["schemas"]["LoopChainMerge"][];
+            /**
+             * Released At
+             * @description when the last merge request of the delivered plan merged
+             */
+            released_at: string | null;
+            /**
+             * After Sha
+             * @description the commits the release merged
+             */
+            after_sha: string[];
+            /**
+             * Hidden
+             * @description the stages the reader may not read
+             */
+            hidden: ("claim" | "use_case" | "task" | "plan" | "runs" | "merges")[];
+        };
+        /** LoopChainTask */
+        LoopChainTask: {
+            /** Number */
+            number: number;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @description the task's status, a key of the plugin tasks' config
+             */
+            status: string;
+            /**
+             * Group
+             * @description its group: todo, doing, done or cancelled
+             */
+            group: string | null;
+        };
+        /** LoopChainUseCase */
+        LoopChainUseCase: {
+            /** Document */
+            document: string;
+            /** Code */
+            code: string | null;
+            /** Version */
+            version: number | null;
+            /**
+             * State
+             * @description the state of that version of the document
+             */
+            state: string | null;
+        };
+        /** LoopClaimRef */
+        LoopClaimRef: {
+            /**
+             * Canvas
+             * @description the slug of the claim's canvas
+             */
+            canvas: string;
+            /**
+             * Code
+             * @description CL-<number>
+             */
+            code: string;
+        };
+        /**
+         * LoopGoal
+         * @description A goal as the Loop measures it now.
+         */
+        LoopGoal: {
+            /** Code */
+            code: string;
+            /**
+             * Value
+             * @description its metric's value now; null without a metric or a signal in its window
+             */
+            value: number | null;
+            /**
+             * Reached
+             * @description whether that value meets its target; null without a value
+             */
+            reached: boolean | null;
+            /**
+             * Items
+             * @description its work items by state
+             */
+            items: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * LoopItem
+         * @description A work item of the Loop, as a member of the project reads it.
+         */
+        LoopItem: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "brainstorm" | "use_case" | "build" | "deliver";
+            /**
+             * Cycle
+             * @enum {string}
+             */
+            cycle: "business" | "development";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled";
+            /**
+             * Reason
+             * @description why it stands where it does; done has none
+             */
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            /**
+             * Waiting
+             * @description the figures of its reason: the cap and the count for concurrency or rate, the worker and why...
+             */
+            waiting: {
+                [key: string]: number | string | string[];
+            };
+            /**
+             * Attempts
+             * @description how often a run was handed out for it
+             */
+            attempts: number;
+            /**
+             * Failures
+             * @description its failures since a person last let it go on
+             */
+            failures: number;
+            /**
+             * Owner
+             * @description the agent type or the member it stands for
+             */
+            owner: string | null;
+            /**
+             * Goal
+             * @description the code of its goal
+             */
+            goal: string | null;
+            claim: components["schemas"]["LoopClaimRef"] | null;
+            use_case: components["schemas"]["LoopUseCaseRef"] | null;
+            /**
+             * Task
+             * @description the number of its frame task in the plugin tasks
+             */
+            task: number | null;
+            /** Plan */
+            plan: string | null;
+            /**
+             * Run
+             * @description the run handed out for it last
+             */
+            run: number | null;
+            /**
+             * Parent
+             * @description the work item it came of
+             */
+            parent: number | null;
+            /**
+             * Root
+             * @description the first work item of its chain: itself when it came of none
+             */
+            root: number;
+            /**
+             * Hidden
+             * @description the ancestors it has that the reader may not read
+             */
+            hidden: ("claim" | "use_case" | "task" | "plan" | "run")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** LoopItemChain */
+        LoopItemChain: {
+            /** Project */
+            project: string;
+            item: components["schemas"]["LoopItem"];
+            /**
+             * Chain
+             * @description every work item of its chain, each after the one it came of
+             */
+            chain: components["schemas"]["LoopItem"][];
+            /**
+             * Path
+             * @description the ids of the chain's work items from its first to the end of this one's
+             */
+            path: number[];
+            stages: components["schemas"]["LoopChainStages"];
+            /**
+             * Events
+             * @description what happened to this work item, oldest first
+             */
+            events: components["schemas"]["LoopItemEvent"][];
+        };
+        /** LoopItemEvent */
+        LoopItemEvent: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "ready" | "admitted" | "dispatched" | "waiting" | "failed" | "triaged" | "asked" | "done" | "cancelled" | "noted";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled";
+            /** Reason */
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            /** Run */
+            run: number | null;
+            /** Figures */
+            figures: {
+                [key: string]: number | string | string[];
+            };
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** LoopItems */
+        LoopItems: {
+            /** Project */
+            project: string;
+            /**
+             * Items
+             * @description the newest first
+             */
+            items: components["schemas"]["LoopItem"][];
+            /**
+             * More
+             * @description true when more work items match than were listed
+             */
+            more: boolean;
+        };
+        /** LoopUseCaseRef */
+        LoopUseCaseRef: {
+            /**
+             * Document
+             * @description the slug of the SRS document
+             */
+            document: string;
+            /**
+             * Code
+             * @description the use case's code; null before the document has one for it
+             */
+            code: string | null;
+            /**
+             * Version
+             * @description the version of the document it was read from
+             */
+            version: number | null;
+        };
         /** MemberCounts */
         MemberCounts: {
             /**
@@ -14102,7 +14793,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -14546,7 +15237,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
             /** Question */
             question: string;
             /**
@@ -15291,7 +15982,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
             /**
              * Text
              * @description add: the lesson
@@ -16176,7 +16867,7 @@ export interface components {
         PolicyWrite: {
             /**
              * Policy
-             * @description sections repos, merge, judge, breaker, audit; a key left out reads as its default
+             * @description sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default
              */
             policy: {
                 [key: string]: unknown;
@@ -16341,6 +17032,203 @@ export interface components {
                 [key: string]: boolean;
             };
         };
+        /**
+         * ProjectGoal
+         * @description A goal of a project at one revision.
+         */
+        ProjectGoal: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description G-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Alias
+             * @description the id of the charter's goal the hub made it from, which names it too
+             */
+            alias: string | null;
+            /** Revision */
+            revision: number;
+            /** Statement */
+            statement: string;
+            /** @description null: no metric, so the Curator reads it and nothing else is done */
+            metric: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Canvas
+             * @description the slug of the canvas whose product it drives
+             */
+            canvas: string | null;
+            /**
+             * Rank
+             * @description its place among the project's goals, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description why it is closed; null unless it is
+             */
+            close_reason: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ProjectGoalClose */
+        ProjectGoalClose: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "achieved" | "dropped" | "expired";
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the goal is at this revision now
+             */
+            if_revision?: number | null;
+        };
+        /**
+         * ProjectGoalWrite
+         * @description The next revision of a goal: the whole of it, as its writer wants it.
+         */
+        ProjectGoalWrite: {
+            /** Statement */
+            statement: string;
+            metric?: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline?: string | null;
+            /**
+             * Canvas
+             * @description the slug of a canvas of the project
+             */
+            canvas?: string | null;
+            /**
+             * Rank
+             * @description null: kept, or after the project's other goals for a new one
+             */
+            rank?: number | null;
+            /**
+             * Owner
+             * @description a member with the writer role or above; null: kept, or the writer for a new goal
+             */
+            owner?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description for a closed goal, and only for one
+             */
+            close_reason?: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the goal is at this revision now; 0: new only
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectGoalWritten */
+        ProjectGoalWritten: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description G-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Alias
+             * @description the id of the charter's goal the hub made it from, which names it too
+             */
+            alias: string | null;
+            /** Revision */
+            revision: number;
+            /** Statement */
+            statement: string;
+            /** @description null: no metric, so the Curator reads it and nothing else is done */
+            metric: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Canvas
+             * @description the slug of the canvas whose product it drives
+             */
+            canvas: string | null;
+            /**
+             * Rank
+             * @description its place among the project's goals, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description why it is closed; null unless it is
+             */
+            close_reason: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description false when the newest revision is this goal already: nothing was written
+             */
+            changed: boolean;
+        };
         /** ProjectGrantCounts */
         ProjectGrantCounts: {
             /** Project */
@@ -16351,6 +17239,53 @@ export interface components {
             writers: number;
             /** Readers */
             readers: number;
+        };
+        /**
+         * ProjectLoop
+         * @description A project's Loop as it stands.
+         */
+        ProjectLoop: {
+            /** Project */
+            project: string;
+            /**
+             * Enabled
+             * @description the policy's loop.enabled: the Loop ticks and makes work items
+             */
+            enabled: boolean;
+            /**
+             * Breaker
+             * @description tripped: too many work items in an hour; the Loop reads no event and hands out no run
+             * @enum {string}
+             */
+            breaker: "armed" | "tripped";
+            /** Breaker Reason */
+            breaker_reason: string | null;
+            /** Tripped At */
+            tripped_at: string | null;
+            /**
+             * Resumed By
+             * @description the admin who reset the breaker last
+             */
+            resumed_by: string | null;
+            /**
+             * Resumed At
+             * @description the work items of the hour are counted from then
+             */
+            resumed_at: string | null;
+            /**
+             * Cursor
+             * @description the last row of the project's hub_events the Loop read
+             */
+            cursor: number;
+            /** Ticked At */
+            ticked_at: string | null;
+            /**
+             * Items
+             * @description its work items by state
+             */
+            items: {
+                [key: string]: number;
+            };
         };
         /**
          * ProjectPlugin
@@ -16619,7 +17554,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -33632,7 +34567,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -33761,7 +34696,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -37727,7 +38662,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -37792,7 +38727,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };
@@ -50285,6 +51220,708 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicyComparison"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_goals_v1_projects__project__goals_get: {
+        parameters: {
+            query?: {
+                /** @description those of this status alone */
+                status?: ("active" | "paused" | "closed") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_goal_v1_projects__project__goals__ref__get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_goal_v1_projects__project__goals__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectGoalWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoalWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    goal_revisions_v1_projects__project__goals__ref__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_goal_v1_projects__project__goals__ref__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectGoalClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoalWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_loop_v1_projects__project__loop_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLoop"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_loop_v1_projects__project__loop_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLoop"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_items_v1_projects__project__loop_items_get: {
+        parameters: {
+            query?: {
+                state?: ("queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled") | null;
+                kind?: ("brainstorm" | "use_case" | "build" | "deliver") | null;
+                /** @description a goal's code or alias */
+                goal?: string | null;
+                /** @description only the work items not done or cancelled */
+                open?: boolean;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopItems"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_item_v1_projects__project__loop_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopItemChain"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_goals_v1_projects__project__loop_goals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopGoal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decision_board_v1_projects__project__decision_board_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionBoard"];
                 };
             };
             /** @description Unauthorized */

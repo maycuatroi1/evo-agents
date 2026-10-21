@@ -287,7 +287,11 @@ CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run as
 ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
 # what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
 RELEASE_DECISION_CATEGORY = "release"
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, RELEASE_DECISION_CATEGORY)
+# what the hub alone asks the person a work item of the Loop stands for after its third failure, on its last run
+# (``server.loop.stall``)
+LOOP_DECISION_CATEGORY = "loop"
+HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)  # the hub does what the answer chooses
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -308,6 +312,9 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
 # pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
+# loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
+# goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
+# loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
 # sends to the run's owner (``server.output_notices``)
 OUTPUT_NOTICE = "run_outputs"
@@ -326,6 +333,9 @@ NOTICE_KINDS = (
     "pm_daily",
     "pm_escalation",
     OUTPUT_NOTICE,
+    "loop_paused",
+    "goal_review",
+    "loop_brief",
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
