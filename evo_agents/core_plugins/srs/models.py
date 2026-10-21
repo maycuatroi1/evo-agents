@@ -4,6 +4,7 @@ an item become an answer. Every model is named ``Srs...`` in the hub's OpenAPI d
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -16,6 +17,8 @@ from evo_agents.core_plugins.srs.findings import FindingRow
 from evo_agents.core_plugins.srs.imports import MAX_MARKDOWN_BYTES, Preview
 from evo_agents.core_plugins.srs.reviews import CommentRow
 from evo_agents.core_plugins.srs.store import DocumentRow, ReviewRow, VersionRow
+from evo_agents.core_plugins.srs.template import code_key
+from evo_agents.hub.runs import RUN_STATES
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_srs import (
     DOCUMENT_KINDS,
@@ -66,6 +69,13 @@ class SrsReview(BaseModel):
     created_at: datetime
 
 
+class SrsReviewRun(BaseModel):
+    """@ba's review of a version's current round: the task run the hub handed when the version entered review."""
+
+    id: int
+    state: Literal[RUN_STATES] = Field(description="approving the version waits while it is queued or running")
+
+
 class SrsVersion(BaseModel):
     """A version of a document, never changed after it was saved, and the reviews of each round."""
 
@@ -79,6 +89,9 @@ class SrsVersion(BaseModel):
     created_at: datetime
     submitted_at: datetime | None
     decided_at: datetime | None
+    review_run: SrsReviewRun | None = Field(
+        description="@ba's review of the current round, when the hub handed one; none in a project without @ba"
+    )
     reviews: list[SrsReview]
 
 
@@ -322,6 +335,9 @@ class SrsFindingSource(BaseModel):
     )
     ref: str
     note: str | None = None
+    document: str | None = Field(
+        None, description="of a code: the slug of the document whose item holds it, when the reader sees that document"
+    )
 
 
 class SrsFinding(BaseModel):
@@ -377,8 +393,11 @@ def review_model(row: ReviewRow) -> SrsReview:
 
 
 def version_model(row: VersionRow) -> SrsVersion:
-    values = {name: getattr(row, name) for name in SrsVersion.model_fields if name != "reviews"}
-    return SrsVersion(**values, reviews=[review_model(review) for review in row.reviews])
+    values = {name: getattr(row, name) for name in SrsVersion.model_fields if name not in ("reviews", "review_run")}
+    run = None
+    if row.review_run_id is not None and row.review_run_state is not None:
+        run = SrsReviewRun(id=row.review_run_id, state=row.review_run_state)
+    return SrsVersion(**values, review_run=run, reviews=[review_model(review) for review in row.reviews])
 
 
 def problem_model(problem: Problem) -> SrsProblem:
@@ -447,5 +466,15 @@ def comment_model(row: CommentRow) -> SrsComment:
     return SrsComment(**row.__dict__)
 
 
-def finding_model(row: FindingRow) -> SrsFinding:
-    return SrsFinding(**row.__dict__)
+def finding_model(row: FindingRow, documents: Mapping[str, str] | None = None) -> SrsFinding:
+    """``row`` as an answer, each code among its sources with the slug ``documents`` maps the code's key to."""
+    held = documents or {}
+
+    def sources(listed: list[dict]) -> list[SrsFindingSource]:
+        return [
+            SrsFindingSource(**source, document=held.get(code_key(source["ref"])) if source["kind"] == "code" else None)
+            for source in listed
+        ]
+
+    values = row.__dict__ | {"sources": sources(row.sources), "resolution_sources": sources(row.resolution_sources)}
+    return SrsFinding(**values)

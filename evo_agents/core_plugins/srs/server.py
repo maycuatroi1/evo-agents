@@ -347,7 +347,8 @@ async def submit_version(
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
         sent = await reviews.submit(conn, access, doc, number, await store.settings(conn, access))
-        await review_entered(conn, access, doc, sent)
+        if await review_entered(conn, access, doc, sent) is not None:
+            sent = await store.version(conn, doc, number)  # with @ba's review run of the round
         return version_model(sent)
 
     return await _answer(request, work)
@@ -496,12 +497,15 @@ async def list_findings(
     status: Annotated[Literal[FINDING_STATUSES] | None, Query(description="only the findings in this status")] = None,
     sink: Sink = None,
 ):
-    """The conflicts @ba found in a document, oldest first, each with its sources and how it was settled."""
+    """The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among
+    them names the document whose item holds it, when the member sees that document."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink)
-        return [finding_model(row) for row in await findings.findings(conn, doc, status)]
+        rows = await findings.findings(conn, doc, status)
+        held = await findings.code_documents(conn, access, sink, rows)
+        return [finding_model(row, held) for row in rows]
 
     return await _answer(request, work)
 
@@ -524,7 +528,8 @@ async def waive_finding(
         reviews.admin(access, user, "waives a finding")
         doc = await store.document(conn, access, slug, sink, lock=True)
         waived = findings.Settling(findings.WAIVED, body.reason, user.user_id)
-        return finding_model(await findings.settle(conn, access, doc, finding_id, waived))
+        row = await findings.settle(conn, access, doc, finding_id, waived)
+        return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
 
     return await _answer(request, work)
 

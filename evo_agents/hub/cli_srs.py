@@ -80,6 +80,7 @@ VERSION_KEYS = (
     "created_at",
     "submitted_at",
     "decided_at",
+    "review_run",
     "reviews",
 )
 

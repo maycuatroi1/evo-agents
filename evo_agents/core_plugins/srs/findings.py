@@ -143,6 +143,28 @@ async def findings(conn: AsyncConnection, doc: DocumentRow, status: str | None =
     return [FindingRow(**row._mapping) for row in await conn.execute(query.order_by(f.c.id))]
 
 
+async def code_documents(
+    conn: AsyncConnection, access: ProjectAccess, sink: str | None, rows: list[FindingRow]
+) -> dict[str, str]:
+    """The slug of the document whose item holds each code the sources of ``rows`` name, by the code's key, for the
+    documents the member sees through ``sink`` as ``store.document`` reads them; a code of another document is left
+    out, so its slug is not told."""
+    named = [source for row in rows for source in (*row.sources, *row.resolution_sources)]
+    keys = sorted({code_key(source["ref"]) for source in named if source.get("kind") == "code"})
+    through = store.sink_of(access, sink)
+    if not keys or through is None:
+        return {}
+    s = tables.srs
+    c, i, d = s.codes, s.items, s.documents
+    query = (
+        select(c.c.code_key, d.c.slug, d.c.label)
+        .join_from(c, i, i.c.id == c.c.item_id)
+        .join(d, d.c.id == i.c.document_id)
+        .where(c.c.project_id == access.project_id, c.c.code_key.in_(keys))
+    )
+    return {row.code_key: row.slug for row in await conn.execute(query) if access.visible(row.label, through)}
+
+
 async def finding(conn: AsyncConnection, doc: DocumentRow, finding_id: int) -> FindingRow:
     """Finding ``finding_id`` of ``doc``; 404 when the document has none such."""
     row = (await conn.execute(_query(doc.id).where(tables.srs.findings.c.id == finding_id))).first()
@@ -413,6 +435,7 @@ __all__ = [
     "approval_hold",
     "chat_link",
     "checked_args",
+    "code_documents",
     "finding",
     "findings",
     "graph_problems",

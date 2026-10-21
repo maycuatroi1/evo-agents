@@ -3809,7 +3809,8 @@ export interface paths {
         };
         /**
          * List Findings
-         * @description The conflicts @ba found in a document, oldest first, each with its sources and how it was settled.
+         * @description The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among
+         *     them names the document whose item holds it, when the member sees that document.
          */
         get: operations["list_findings_v1_x_srs__project__documents__slug__findings_get"];
         put?: never;
@@ -15955,6 +15956,11 @@ export interface components {
             ref: string;
             /** Note */
             note?: string | null;
+            /**
+             * Document
+             * @description of a code: the slug of the document whose item holds it, when the reader sees that document
+             */
+            document?: string | null;
         };
         /** SrsImport */
         SrsImport: {
@@ -16305,6 +16311,20 @@ export interface components {
              */
             body: string;
         };
+        /**
+         * SrsReviewRun
+         * @description @ba's review of a version's current round: the task run the hub handed when the version entered review.
+         */
+        SrsReviewRun: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @description approving the version waits while it is queued or running
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+        };
         /** SrsSave */
         SrsSave: {
             /**
@@ -16362,6 +16382,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
         };
@@ -16405,6 +16427,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
             /** Document */
