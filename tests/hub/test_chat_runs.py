@@ -853,10 +853,22 @@ def test_a_lazy_chat_run_opens_a_repo_its_leases_pulls_and_next_turn_take(client
     assert unknown.json()["message"] == (
         f"project {PROJECT} has no repo nope: its repos are {HARNESS}, evo-agents, lumen-identity, lumen-kb-docs, notes"
     )
+    studio["features"] = [name for name in runs.WORKER_FEATURES if name != runs.CLONES_CHECKOUTS]
+    beat(client, studio, held=[first])  # a daemon that does not clone what it lacks
     unheld = opened(client, studio, first, "notes")
     assert unheld.status_code == 409
     assert unheld.json()["message"] == (
         f"worker studio has no checkout of notes of project {PROJECT}: the run cannot open it here"
+    )
+    studio["features"] = list(runs.WORKER_FEATURES)
+    beat(client, studio, held=[first])  # one that does, for a repo no project lists an origin for
+    without = update(tables.project_repos).values(origin=None).where(tables.project_repos.c.name == "notes")
+    sql(hub_db, without)
+    unknown_origin = opened(client, studio, first, "notes")
+    assert unknown_origin.status_code == 409
+    assert unknown_origin.json()["message"] == (
+        f"worker studio has no checkout of notes of project {PROJECT}: and no project of the run's owner lists an "
+        "origin to clone it from"
     )
     laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
     assert opened(client, laptop, first, "lumen-identity").status_code == 404  # not its run

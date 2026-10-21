@@ -55,6 +55,7 @@ import asyncio
 import contextlib
 import os
 import re
+import secrets
 import shutil
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
@@ -64,6 +65,7 @@ from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESUL
 
 TIMEOUT = 120.0
 NETWORK_TIMEOUT = 600.0  # fetch and push
+CLONE_TIMEOUT = 1800.0  # a clone of a repo a run needs and the worker has no checkout of
 MAX_MESSAGE = 2000
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 SIDE_BRANCH = "evo-run/{id}"  # the remote branch a plan run's commits go to when they do not go on top of its default
@@ -294,6 +296,19 @@ async def has_remote(cwd: Path, name: str = "origin") -> bool:
 
 async def fetch(cwd: Path, remote: str = "origin", *, env: Mapping[str, str] | None = None) -> None:
     await git(cwd, "fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT, env=env)
+
+
+async def clone(origin: str, path: Path, *, env: Mapping[str, str] | None = None) -> None:
+    """Clone ``origin`` into ``path``, which must not exist yet; its parent is made. The clone is made beside it first
+    and moved into place once whole, so a clone cut off midway never leaves a checkout that looks whole behind."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.parent / f".{path.name}.clone-{os.getpid()}-{secrets.token_hex(4)}"
+    try:
+        await git(path.parent, "clone", "--quiet", "--", origin, partial.name, timeout=CLONE_TIMEOUT, env=env)
+        partial.rename(path)
+    finally:
+        if partial.exists():
+            shutil.rmtree(partial, ignore_errors=True)
 
 
 async def remote_urls(cwd: Path, remote: str = "origin") -> list[str]:
