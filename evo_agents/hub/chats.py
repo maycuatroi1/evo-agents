@@ -53,7 +53,7 @@ ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profil
 # settle: no @ of the agent, a settle chat
 VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE)
 IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
-MESSAGE_CHANGED = "message_changed"  # a message reads otherwise now: outputs of its run went under it (0085)
+MESSAGE_CHANGED = "message_changed"  # a message reads otherwise now: outputs of its run went under it (0089)
 EVENT_KINDS = (
     "message",
     "reaction_added",

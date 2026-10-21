@@ -1,4 +1,4 @@
-"""The tables of the outputs of runs (0085), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
+"""The tables of the outputs of runs (0089), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own
 attributes (``tables.run_outputs``, ``tables.run_output_links``): queries name them there.
 
 run_outputs holds each file a run's agent made that the hub keeps (``evo_agents.hub.outputs``): its run and the run's
@@ -9,7 +9,7 @@ or to a chat message its run's agent wrote, one of the two per row, so the quest
 ``projects.output_tool_images`` is a project's switch of the images its machines take out of tools' results: off, the
 hub refuses outputs of source tool and the machines send none.
 
-notification_mutes (0086) holds the notices each member turned off, one row a member and kind: the notice of a run's
+notification_mutes (0090) holds the notices each member turned off, one row a member and kind: the notice of a run's
 files (``runs.OUTPUT_NOTICE``) is the one kind a member may turn off today (``runs.MUTABLE_NOTICE_KINDS``).
 """
 

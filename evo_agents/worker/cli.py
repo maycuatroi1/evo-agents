@@ -36,7 +36,7 @@
   holds no socket here.
 
 The worker token goes to ``~/.evo/worker/token`` (0600) and is never printed. A failure is one ``error:`` line on
-stderr and exit status 1; a command that needs the worker extra and lacks it says how to install it (status 2).
+stderr and exit status 69, 75 or 1 (``client.exit_status``); a command lacking the worker extra says how to get it (2).
 ``run`` on a machine that is not a worker, such as one revoked with ``revoke``, exits ``home.EXIT_REVOKED`` (3, or
 what EVO_WORKER_REVOKED_EXIT says), so a service does not start it again and again. ``run`` needs the extra (aiohttp)
 and so does ``join``; the others need the core package only.
@@ -51,22 +51,22 @@ import json
 import logging
 import os
 import platform
-import shutil
 import sys
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents import __version__
 from evo_agents.hub import runs
-from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
+from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker import chat_cli, output_cli, playbook_cli, triage_cli
 from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
+from evo_agents.worker.step_verify import push_conflict as _push_conflict
+from evo_agents.worker.step_verify import verify as _verify
+from evo_agents.worker.step_verify import verify_env as _verify_env
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -93,7 +93,7 @@ def _worker_command(func):
             return EXIT_USAGE
         except (HubError, WorkerStateError) as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
+            return exit_status(exc) if isinstance(exc, HubError) else EXIT_FAILED
 
     return run
 
@@ -231,8 +231,8 @@ def cmd_join(args) -> int:
         answer = asyncio.run(join())
     except hubapi.HubProblem as exc:
         if exc.status == 429 and exc.retry_after is not None:
-            raise HubError(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
-        raise HubError(str(exc)) from None
+            raise exc.hub_error(f"{exc} (the hub says to wait {int(exc.retry_after)} seconds)") from None
+        raise exc.hub_error() from None
     config, token = _config_of(url, answer)
     _joined(home, config, token, "Joined")
     return 0
@@ -486,7 +486,6 @@ AGENT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch")  # the hub 
 MAX_VERIFY_COMMANDS = 50
 MAX_VERIFY_CHARS = 2000
 MAX_EVIDENCE_CHARS = 16 * 1024  # a step report's evidence, as the hub takes it
-OUTPUT_TAIL = 4000  # characters of a failed verify command's output printed
 # The parsers of a run's agent in group chats, of `repo open` of a chat run's, of a triage thread's for a failed run, of
 # a review run's on the playbook, and of any run's outputs
 AGENT_PARSERS = (chat_cli.register_chat, chat_cli.register_repo, triage_cli.register_triage)
@@ -540,7 +539,7 @@ def _with_hub(agent: _AgentRun, work):
     try:
         return asyncio.run(go())
     except hubapi.HubProblem as exc:
-        raise HubError(str(exc), exc.status, exc.code) from None
+        raise exc.hub_error() from None
     except gitops.GitError as exc:
         raise WorkerStateError(str(exc)) from None
 
@@ -580,87 +579,8 @@ def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
     return next(iter(workspaces)) if len(workspaces) == 1 else None
 
 
-async def _verify_env(agent: _AgentRun, name: str, path: Path) -> dict[str, str] | None:
-    """The environment of the verify of a done step in repo ``name``, whose worktree is ``path``: when the daemon made
-    the repo's Python environment (``evo_agents.worker.venvs``), it is made again, so what the step changed in
-    pyproject.toml is in it, and its bin directory goes first on PATH; else None, the agent's own environment."""
-    from evo_agents.worker import venvs
-
-    made = agent.record.get("venvs")
-    bin_dir = made.get(name) if isinstance(made, dict) else None
-    if not isinstance(bin_dir, str) or not bin_dir:
-        return None
-    env = venvs.uv_env(os.environ)
-    try:
-        want = venvs.wanted(path)
-    except ValueError as exc:
-        raise WorkerStateError(f"{name}: {exc}") from None
-    uv = shutil.which("uv", path=env.get("PATH"))
-    if want is not None and uv is None:
-        print(f"warning: uv is not on PATH: the Python environment of {name} is not made again", file=sys.stderr)
-    elif want is not None:
-        command, code, output = await venvs.make(path, want, uv, env)
-        if code != 0:
-            tail = output.rstrip()[-OUTPUT_TAIL:]
-            raise WorkerStateError(
-                f"`{venvs.shown(command)}` in {name} exited {code}, so the verify did not run:\n{tail}"
-            )
-        said = ", ".join(f"`{venvs.shown(command)}`" for command in want.commands())
-        print(f"Made the Python environment of {name} again: {said}.")
-    env["PATH"] = venvs.front(env.get("PATH"), [bin_dir])
-    return env
-
-
-async def _verify(path: Path, commands: list[str], env: dict[str, str] | None = None) -> list[dict]:
-    """Run each command with /bin/sh in ``path``, in ``env`` (this process's when None), every one even after a
-    failure; each one's exit code."""
-    results = []
-    for command in commands:
-        started = time.monotonic()
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(path),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=env,
-        )
-        output, _ = await proc.communicate()
-        duration_ms = int((time.monotonic() - started) * 1000)
-        results.append({"command": command, "exit_code": proc.returncode, "duration_ms": duration_ms})
-        print(f"verify: `{command}` exited {proc.returncode} after {duration_ms} ms")
-        if proc.returncode != 0:
-            tail = output.decode(errors="replace")[-OUTPUT_TAIL:].rstrip()
-            if tail:
-                print("\n".join(f"  | {line}" for line in tail.splitlines()))
-    return results
-
-
-async def _push_conflict(hub, agent: _AgentRun, name: str, conflict) -> None:
-    """A push of ``worker step`` went to the run's side branch (``gitops.PushConflict``): tell the run's owner, and
-    leave the daemon the word to fail the run once the agent's turn ends."""
-    from evo_agents.worker import gitops
-    from evo_agents.worker.hubapi import HubProblem
-
-    agent.home.save_conflict(
-        agent.run_id,
-        {
-            "error": f"{name}: {conflict}",
-            "repo": name,
-            "branch": conflict.branch,
-            "side_branch": conflict.side_branch,
-            "head": conflict.head,
-        },
-    )
-    try:
-        await hub.notice(agent.run_id, gitops.conflict_notice(agent.run_id, name, conflict))
-        print(f"Notified the run's owner that the commits of {name} are on {conflict.side_branch}.", file=sys.stderr)
-    except HubProblem as exc:
-        print(f"warning: the notice of {conflict.side_branch} was not sent ({exc})", file=sys.stderr)
-
-
-def _step_verify(args) -> list[str]:
-    """The verify commands of ``worker step``, once its arguments are checked."""
+def _step_verify_commands(args) -> list[str]:
+    """The verify commands of ``worker step``, once the status and the commands agree."""
     verify = list(args.verify or [])
     if args.status == "done" and not verify:
         raise WorkerStateError(
@@ -678,20 +598,49 @@ def _step_verify(args) -> list[str]:
     return verify
 
 
-@_worker_command
-def cmd_step(args) -> int:
-    agent = _agent_run("step")
-    verify = _step_verify(args)
-    output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
+def _step_workspaces(agent: _AgentRun, repo: str | None) -> dict:
+    """The run's worktrees by repo, once ``--repo``, when given, names one of them."""
     workspaces = _workspaces(agent)
-    if args.repo is not None and args.repo not in workspaces:
-        raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {args.repo}")
+    if repo is not None and repo not in workspaces:
+        raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {repo}")
+    return workspaces
+
+
+def _refuse_done_after_conflict(agent: _AgentRun, status: str) -> None:
+    """A run whose push went to its side branch reports nothing done any more."""
     conflict = agent.home.load_conflict(agent.run_id)
-    if args.status == "done" and conflict is not None:
+    if status == "done" and conflict is not None:
         raise WorkerStateError(
             f"run {agent.run_id} ends failed (push_conflict) once this turn ends: {conflict['error']}. Nothing more is "
             "pushed or reported done; end your turn now"
         )
+
+
+async def _notify_push(hub, agent: _AgentRun, name: str, pushed) -> None:
+    """Tell the run's owner of a change pushed to a default branch; the push happened, so a failed notice only warns."""
+    from evo_agents.worker import gitops
+    from evo_agents.worker.hubapi import HubProblem
+
+    if not (pushed.default and pushed.changed):
+        return
+    try:
+        await hub.notice(agent.run_id, gitops.push_notice(agent.run_id, name, pushed))
+        print(f"Notified the run's owner of the push to {pushed.branch}, a default branch.")
+    except HubProblem as exc:
+        print(
+            f"warning: the notice of the push to {pushed.branch} was not sent ({exc}); send it with "
+            "`evo-agents worker notify --kind push_default_branch`",
+            file=sys.stderr,
+        )
+
+
+@_worker_command
+def cmd_step(args) -> int:
+    agent = _agent_run("step")
+    verify = _step_verify_commands(args)
+    output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
+    workspaces = _step_workspaces(agent, args.repo)
+    _refuse_done_after_conflict(agent, args.status)
     from evo_agents.worker import gitops
 
     async def work(hub) -> int:
@@ -801,18 +750,7 @@ def cmd_step(args) -> int:
                         f"since then are on top of it at {pushed.head[:12]}, and their verify passed there."
                     )
                     results = again or results
-            if pushed.default and pushed.changed:
-                from evo_agents.worker.hubapi import HubProblem
-
-                try:
-                    await hub.notice(agent.run_id, gitops.push_notice(agent.run_id, name, pushed))
-                    print(f"Notified the run's owner of the push to {pushed.branch}, a default branch.")
-                except HubProblem as exc:  # the push happened: the step is reported all the same
-                    print(
-                        f"warning: the notice of the push to {pushed.branch} was not sent ({exc}); send it with "
-                        "`evo-agents worker notify --kind push_default_branch`",
-                        file=sys.stderr,
-                    )
+            await _notify_push(hub, agent, name, pushed)
             report["verify"] = results
             report["commit_sha"] = pushed.head
         answer = await hub.step(agent.run_id, args.key, report)

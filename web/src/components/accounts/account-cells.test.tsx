@@ -12,6 +12,8 @@ const NOW = Date.parse("2026-10-14T04:09:00Z");
 const ACCOUNT: Account = {
   name: "oauth-a",
   env_var: "CLAUDE_CODE_OAUTH_TOKEN",
+  provider: "claude",
+  category: "model",
   auth: "oauth",
   projects: ["demo"],
   workers: [],

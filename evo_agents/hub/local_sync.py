@@ -13,7 +13,8 @@ current:
   the event holding a reference to each image instead of its base64, and go to the hub from a sender in the
   background (``evo_agents.hub.local_outputs``, ``evo_agents.hub.local_send``);
 - ``stop`` (the Stop hook of ``evo_agents.hub.hooks`` calls ``on_stop``): the last words, then ``idle``;
-- ``session-end`` (SessionEnd): ``ended``;
+- ``session-end`` (the SessionEnd hook of ``evo_agents.hub.hooks`` calls ``on_session_end`` once it pushed the
+  session's digest): ``ended``;
 - ``local-ask`` (PreToolUse of AskUserQuestion): each question of the dialog is put to the hub as a decision of the
   run (category ``question``, its options keyed 1, 2, .., carrying the files the session sent since the person's last
   message: ``local_outputs.for_question``), so the member can answer it on the web, in Telegram or
@@ -119,9 +120,8 @@ LIMITS = {
 BUDGET = {
     "user-prompt": 12.0,
     "tool": 8.0,
-    "session-end": 4.0,
     "ask": 10.0,
-}  # of the commands that are a hook of their own
+}  # of the commands that are a hook of their own; Stop and SessionEnd run within the budget of ``hooks``
 STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-end": "ended", "ask": "running"}
 ENDS = ("idle", "ended")  # what a turn or a session ends in: no later hook of that session sends it again
 SWEEP = 3  # other sessions whose waiting events and end of turn one Stop sends at most, after its own
@@ -884,13 +884,16 @@ def on_stop(payload: dict) -> None:
     hook_run("stop", payload)
 
 
+def on_session_end(payload: dict) -> None:
+    """The SessionEnd hook's share: ``ended``."""
+    hook_run("session-end", payload)
+
+
 def _command(hook: str) -> Callable:
     def command(args) -> int:
         try:
             with hooks.budget(BUDGET[hook]):
                 payload = local_outputs.read_payload() if hook == "tool" else hooks.read_payload()
-                if hook == "session-end" and hooks.worker_run() is None:
-                    hooks.queue_transcript(payload, ended=True)  # the transcripts' own switch, not this one's
                 notes = hook_run(hook, payload)
                 if notes:
                     out = {
@@ -913,5 +916,4 @@ def _command(hook: str) -> Callable:
 
 cmd_hook_user_prompt = _command("user-prompt")
 cmd_hook_local_tool = _command("tool")
-cmd_hook_session_end = _command("session-end")
 cmd_hook_local_ask = _command("ask")

@@ -12,13 +12,14 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { sprintsQuery, type TaskDetail, taskQuery, tasksPeopleQuery, type TasksSettings, tasksSettingsQuery } from "./api";
-import { PriorityTag, TaskRef, TaskStatusBadge, TypeTag } from "./badges";
+import { BlockedBadge, PriorityTag, TaskRef, TaskStatusBadge, TypeTag } from "./badges";
 import { ReaderNote } from "./chrome";
 import { useTaskEdit, useTasksViewer } from "./hooks";
 import { boardHref, taskHref } from "./links";
 import { canWrite, statusOf } from "./model";
 import { TaskActivity } from "./task-activity";
 import { StatusSelect } from "./task-controls";
+import { TaskBlockers } from "./task-blockers";
 import { TaskDescription } from "./task-description";
 import { TaskDetails } from "./task-details";
 import { TaskLinks } from "./task-links";
@@ -88,7 +89,12 @@ function TaskView({ project, task, settings }: { project: string; task: TaskDeta
       <PageHeader
         leading={<TaskRef refName={task.ref} testId="task-ref" />}
         title={task.title}
-        status={<TaskStatusBadge name={status?.name ?? task.status} group={task.status_group} size="lg" />}
+        status={
+          <>
+            <TaskStatusBadge name={status?.name ?? task.status} group={task.status_group} size="lg" />
+            {task.blockers.length ? <BlockedBadge size="lg" /> : null}
+          </>
+        }
         tags={
           <>
             <TypeTag type={task.type} />
@@ -103,6 +109,7 @@ function TaskView({ project, task, settings }: { project: string; task: TaskDeta
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-6">
           <TaskDescription project={project} task={task} writer={writer} />
+          <TaskBlockers project={project} task={task} people={people.data ?? []} writer={writer} />
           <TaskLinks project={project} task={task} settings={settings} writer={writer} />
           <TaskActivity project={project} task={task} settings={settings} writer={writer} />
         </div>

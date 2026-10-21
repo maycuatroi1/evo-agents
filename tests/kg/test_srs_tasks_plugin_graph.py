@@ -181,6 +181,7 @@ def task(number: int, title: str, status: str = "in_progress", label: dict | Non
         type="story",
         title=title,
         description_md="Hold the stock as BR ORD1-2 says.",
+        outcome_md="",
         status=status,
         priority="high",
         due_on=date(2026, 11, 1),

@@ -45,6 +45,8 @@ function useEventSentence(settings: TasksSettings) {
         return t("created");
       case "description":
         return t("description");
+      case "outcome":
+        return t("outcome");
       case "status":
         return words.from ? t("status", { from: status(words.from), to: status(words.to) }) : t("statusSet", { to: status(words.to) });
       case "set":

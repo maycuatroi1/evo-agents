@@ -40,6 +40,8 @@ TOP = 30
 SAMPLES = 5
 SAMPLE_CHARS = 200
 LISTS = ("tools", "bash", "errors", "repeated_commands", "commands", "command_at", "user_turns", "kg")
+# The fields a digest counts its own way (friction.SkillTally): the facet's ``skills`` are the Skill calls it read.
+DIGEST_FIRST = frozenset({"skills"})
 # The parts of a facet the runtime and the harness of the figures read (evo_agents.hub.runtime_metrics).
 RUNTIME_PARTS = ("usage", "cost_usd", "context", "compactions", "compaction", "hooks", "sources", "loaded")
 PARTS = (*LISTS, *RUNTIME_PARTS)
@@ -215,15 +217,22 @@ async def sessions_of(
     return found[:MAX_SESSIONS]
 
 
-async def lists_of(conn: AsyncConnection, project_id: int, session_id: str) -> tuple[str, dict] | None:
+async def lists_of(
+    conn: AsyncConnection, project_id: int, session_id: str, field: str | None = None
+) -> tuple[str, dict] | None:
     """Where the entries of session ``session_id`` that evidence names are: ("facet", its facet) when the hub made one,
-    else ("digest", its digest); None when the project holds neither."""
+    else ("digest", its digest); None when the project holds neither. Evidence of a field of DIGEST_FIRST names the
+    digest's list, which the facet's list of that name does not mirror, so its digest comes first."""
     d, f = tables.session_digests, tables.session_facets
+    pushed = select(d.c.body).where(d.c.project_id == project_id, d.c.session_id == session_id)
+    if field in DIGEST_FIRST:
+        body = (await conn.execute(pushed)).scalar_one_or_none()
+        if body is not None:
+            return "digest", body
     made = select(f.c.body).where(f.c.kind == "session", f.c.project_id == project_id, f.c.session_id == session_id)
     body = (await conn.execute(made.where(f.c.body.is_not(None)))).scalar_one_or_none()
     if body is not None:
         return "facet", body
-    pushed = select(d.c.body).where(d.c.project_id == project_id, d.c.session_id == session_id)
     body = (await conn.execute(pushed)).scalar_one_or_none()
     return None if body is None else ("digest", body)
 

@@ -629,8 +629,9 @@ async def _run_profile(conn: AsyncConnection, run_id: int) -> Profile:
     return await by_id(conn, profile_id)
 
 
-async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int, text: str) -> int:
-    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``; its id."""
+async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, text: str) -> int:
+    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``, or, with no root, one that
+    starts none; its id."""
     projects = await agent_projects(conn, chat_id)
     c, u = tables.chats, tables.users
     row = (

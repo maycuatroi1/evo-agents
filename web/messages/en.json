@@ -2761,7 +2761,7 @@
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
     "caption": "Your accounts",
-    "listSummary": "Your env secrets that runs take in turn for the same variable. Yours alone, and no value is ever shown.",
+    "listSummary": "Your env secrets, by what they sign in to. Yours alone, and no value is ever shown.",
     "secrets": "Secrets",
     "add": "Add Claude account",
     "columns": {
@@ -2772,7 +2772,8 @@
       "runs": "Runs 24 h / 7 d",
       "cost": "Cost 24 h / 7 d",
       "heldBy": "Held by",
-      "actions": "Actions"
+      "actions": "Actions",
+      "lastUsed": "Last used"
     },
     "anyWorker": "Any of yours",
     "state": {
@@ -2821,7 +2822,6 @@
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
     "costTitle": "Estimated from the usage of its runs: {day} in 24 hours, {week} in 7 days",
-    "notHeld": "No run",
     "heldLabel": "Open run #{id} of {project}",
     "edit": "Edit",
     "editLabel": "Edit the weight and priority of {name}",
@@ -3004,7 +3004,35 @@
       "saved": "Policy for {project} saved",
       "savedText": "Runs dispatched from now on follow it.",
       "failed": "Couldn't save the policy for {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Other"
+    },
+    "groups": {
+      "model": {
+        "title": "Model accounts",
+        "description": "The sign-in of the model a run talks to. Runs take them in turn, and their cost is counted here.",
+        "none": "No model account. Add a Claude account to give runs a model."
+      },
+      "service": {
+        "title": "Service credentials",
+        "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
+        "none": "No service credential. Add one as a secret bound to a project."
+      }
+    },
+    "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
+    "variablesLabel": "Variables of {provider}",
+    "apiValue": "API value",
+    "costLabel": "Cost",
+    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run."
   },
   "runs": {
     "title": "Runs",
@@ -4894,6 +4922,8 @@
       "canvas_baseline": "A Lean Canvas baseline waits for your review",
       "merge_paused": "The merge queue of a repo stopped",
       "release": "Daily release",
+      "pm_daily": "Daily digest of a project",
+      "pm_escalation": "A blocked task waits to be escalated",
       "run_outputs": "Files from a run"
     },
     "item": {
@@ -7514,6 +7544,10 @@
       "bodyHint": "Markdown. A code such as UC ORD-3 in it is linked in the knowledge graph.",
       "cancel": "Cancel",
       "save": "Save",
+      "outcomeHeading": "Outcome",
+      "outcomeNone": "No outcome stated: the daily report uses a section headed Outcome or Kết quả in the description.",
+      "outcome": "Outcome",
+      "outcomeHint": "Markdown. What the task came to; the daily report reads it before the description.",
       "saved": "Saved {ref}"
     },
     "links": {
@@ -7543,6 +7577,33 @@
       "hint": "SRS codes, plan#step, a run as #431, or a pull request URL; part several with commas.",
       "bad": "Not a link: {refs}",
       "added": "{count, plural, one {Linked # item} other {Linked # items}} to {ref}"
+    },
+    "blockers": {
+      "blocked": "Blocked",
+      "heading": "Blockers",
+      "none": "Nothing blocks this task.",
+      "waitingMember": "Waiting on",
+      "waitingTask": "Waiting on task",
+      "waitingText": "Waiting on",
+      "since": "since",
+      "setBy": "set by {login}",
+      "openDecision": "Open decision #{id}",
+      "decisionHint": "It ends when the decision is answered.",
+      "clearButton": "Clear",
+      "clear": "Clear the blocker: {reason}",
+      "cleared": "Cleared a blocker of {ref}",
+      "clearFailed": "Couldn't clear the blocker of {ref}",
+      "added": "Blocked {ref}",
+      "reason": "Why it is blocked",
+      "reasonPlaceholder": "Waiting for the payment sandbox",
+      "waitsOn": "Waits on",
+      "kindText": "Someone or something else",
+      "kindMember": "A member",
+      "kindTask": "Another task",
+      "memberPlaceholder": "Choose a member",
+      "taskPlaceholder": "T-12",
+      "textPlaceholder": "The payment vendor",
+      "addButton": "Block this task"
     },
     "details": {
       "heading": "Details",
@@ -7577,6 +7638,7 @@
       "hub": "Evo Agent Hub",
       "created": "created the task",
       "description": "changed the description",
+      "outcome": "changed the outcome",
       "status": "moved it from {from} to {to}",
       "statusSet": "set its status to {to}",
       "changed": "changed {field} from {from} to {to}",
@@ -7655,6 +7717,78 @@
       "noPreviewText": "Paste or read a file, then Preview: the hub reads it against the project and writes nothing.",
       "readerTitle": "Importing tasks into {project} takes the writer role",
       "backToBoard": "Back to the board"
+    }
+  },
+  "pm": {
+    "meta": {
+      "daily": "PM daily of {project}"
+    },
+    "sub": "Report for {date}. What was done is the working day before: {previous}.",
+    "day": "Day",
+    "today": "Today",
+    "count": "{count, plural, one {# item} other {# items}}",
+    "hidden": "{count, plural, one {# more item you may not see is counted here.} other {# more items you may not see are counted here.}}",
+    "bareTitle": "This project has no task to report yet",
+    "bareText": "The report fills in once tasks exist, and once a sprint is active. Add a task or start a sprint on the board.",
+    "openBoard": "Open the board",
+    "notReady": {
+      "title": "The daily report is not ready",
+      "text": "It reads the project's tasks and its pm config. Enable the Tasks plugin, or fix the pm config named below.",
+      "tasks": "Tasks plugin",
+      "config": "pm config"
+    },
+    "done": {
+      "title": "Done on {day}",
+      "empty": "Nothing moved to done that day."
+    },
+    "sprint": {
+      "title": "Active sprint",
+      "empty": "No sprint is active.",
+      "done": "Done",
+      "time": "Time gone",
+      "scope": "Tasks at opening",
+      "changed": "Since opening",
+      "changedValue": "+{added} added, -{removed} removed",
+      "useCases": "Use cases of the sprint",
+      "ratio": "{done} of {total} done"
+    },
+    "late": {
+      "title": "Late and at risk",
+      "empty": "Nothing is late.",
+      "overdue": "Due {due}, {days, plural, one {# working day} other {# working days}} late",
+      "atRisk": "Due {due}, {days, plural, one {# working day} other {# working days}} left"
+    },
+    "review": {
+      "title": "In review",
+      "empty": "Nothing waits for review.",
+      "age": "{days, plural, =0 {since today} one {# working day in review} other {# working days in review}}",
+      "qa": "QA {who}"
+    },
+    "stale": {
+      "title": "Stale",
+      "empty": "No task in progress has gone quiet.",
+      "idle": "No activity for {days, plural, one {# working day} other {# working days}}"
+    },
+    "blocked": {
+      "title": "Blocked",
+      "empty": "Nothing is blocked.",
+      "byDecision": "Open decision",
+      "byHand": "Set by hand",
+      "waitingMember": "Waiting on",
+      "waitingTask": "Waiting on task",
+      "waitingText": "Waiting on",
+      "age": "{days, plural, =0 {since today} one {# working day} other {# working days}}"
+    },
+    "escalate": {
+      "title": "To escalate",
+      "empty": "No blocker is old enough to escalate."
+    },
+    "load": {
+      "title": "Load per member",
+      "empty": "No member has write access.",
+      "overloaded": "Overloaded",
+      "free": "Free",
+      "counts": "{doing} in progress of {limit}, {review} to review as QA, {late} late"
     }
   },
   "canvas": {

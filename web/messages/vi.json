@@ -2761,7 +2761,7 @@
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
     "caption": "Tài khoản của bạn",
-    "listSummary": "Các env secret của bạn mà các run lần lượt dùng cho cùng một biến. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
+    "listSummary": "Các env secret của bạn, theo nơi chúng đăng nhập. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
     "secrets": "Secret",
     "add": "Thêm tài khoản Claude",
     "columns": {
@@ -2772,7 +2772,8 @@
       "runs": "Run 24 giờ / 7 ngày",
       "cost": "Chi phí 24 giờ / 7 ngày",
       "heldBy": "Đang dùng bởi",
-      "actions": "Thao tác"
+      "actions": "Thao tác",
+      "lastUsed": "Dùng lần cuối"
     },
     "anyWorker": "Mọi worker của bạn",
     "state": {
@@ -2821,7 +2822,6 @@
     },
     "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
     "costTitle": "Ước tính từ mức dùng của các run: {day} trong 24 giờ, {week} trong 7 ngày",
-    "notHeld": "Không run nào",
     "heldLabel": "Mở run #{id} của {project}",
     "edit": "Sửa",
     "editLabel": "Sửa trọng số và ưu tiên của {name}",
@@ -3004,7 +3004,35 @@
       "saved": "Đã lưu policy cho {project}",
       "savedText": "Các run được giao từ giờ sẽ theo policy này.",
       "failed": "Không lưu được policy cho {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Khác"
+    },
+    "groups": {
+      "model": {
+        "title": "Tài khoản model",
+        "description": "Đăng nhập của model mà run nói chuyện cùng. Các run lần lượt dùng chúng, và chi phí được tính ở đây.",
+        "none": "Chưa có tài khoản model. Thêm tài khoản Claude để run có model."
+      },
+      "service": {
+        "title": "Thông tin đăng nhập dịch vụ",
+        "description": "Token và key mà run dùng cho việc khác: một repository, một workspace, một máy chủ. Chúng không có chi phí.",
+        "none": "Chưa có thông tin đăng nhập dịch vụ. Thêm một secret gắn với dự án."
+      }
+    },
+    "variables": "{provider}, {count, plural, other {# biến}}",
+    "variablesLabel": "Các biến của {provider}",
+    "apiValue": "Giá trị API",
+    "costLabel": "Chi phí",
+    "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run."
   },
   "runs": {
     "title": "Run",
@@ -4894,6 +4922,8 @@
       "canvas_baseline": "Một baseline của Lean Canvas chờ bạn duyệt",
       "merge_paused": "Hàng đợi merge của một repo đã dừng",
       "release": "Phát hành hằng ngày",
+      "pm_daily": "Bản tin buổi sáng của dự án",
+      "pm_escalation": "Một task bị chặn cần được báo lên",
       "run_outputs": "File từ một run"
     },
     "item": {
@@ -7514,6 +7544,10 @@
       "bodyHint": "Markdown. Một mã như UC ORD-3 trong đó được nối trong knowledge graph.",
       "cancel": "Huỷ",
       "save": "Lưu",
+      "outcomeHeading": "Kết quả",
+      "outcomeNone": "Chưa nêu kết quả: báo cáo hằng ngày dùng mục Kết quả hay Outcome trong mô tả.",
+      "outcome": "Kết quả",
+      "outcomeHint": "Markdown. Task đi tới đâu; báo cáo hằng ngày đọc mục này trước mô tả.",
       "saved": "Đã lưu {ref}"
     },
     "links": {
@@ -7543,6 +7577,33 @@
       "hint": "Mã SRS, plan#step, run dạng #431, hay URL của pull request; nhiều mục thì cách nhau bằng dấu phẩy.",
       "bad": "Không phải liên kết: {refs}",
       "added": "{count, plural, other {Đã nối # mục}} vào {ref}"
+    },
+    "blockers": {
+      "blocked": "Bị chặn",
+      "heading": "Blocker",
+      "none": "Không gì đang chặn task này.",
+      "waitingMember": "Chờ",
+      "waitingTask": "Chờ task",
+      "waitingText": "Chờ",
+      "since": "từ",
+      "setBy": "do {login} đặt",
+      "openDecision": "Mở decision #{id}",
+      "decisionHint": "Blocker hết khi decision được trả lời.",
+      "clearButton": "Gỡ",
+      "clear": "Gỡ blocker: {reason}",
+      "cleared": "Đã gỡ một blocker của {ref}",
+      "clearFailed": "Không gỡ được blocker của {ref}",
+      "added": "Đã chặn {ref}",
+      "reason": "Lý do bị chặn",
+      "reasonPlaceholder": "Chờ sandbox thanh toán",
+      "waitsOn": "Chờ ai",
+      "kindText": "Người hoặc việc khác",
+      "kindMember": "Một thành viên",
+      "kindTask": "Task khác",
+      "memberPlaceholder": "Chọn thành viên",
+      "taskPlaceholder": "T-12",
+      "textPlaceholder": "Nhà cung cấp thanh toán",
+      "addButton": "Chặn task này"
     },
     "details": {
       "heading": "Chi tiết",
@@ -7577,6 +7638,7 @@
       "hub": "Evo Agent Hub",
       "created": "đã tạo task",
       "description": "đã sửa mô tả",
+      "outcome": "đã sửa kết quả",
       "status": "đã chuyển từ {from} sang {to}",
       "statusSet": "đã đặt trạng thái {to}",
       "changed": "đã đổi {field} từ {from} sang {to}",
@@ -7655,6 +7717,78 @@
       "noPreviewText": "Dán hay đọc một file, rồi bấm Xem trước: hub đọc nó theo dự án và không ghi gì.",
       "readerTitle": "Nhập task vào {project} cần vai trò ghi",
       "backToBoard": "Quay lại bảng"
+    }
+  },
+  "pm": {
+    "meta": {
+      "daily": "PM daily của {project}"
+    },
+    "sub": "Báo cáo ngày {date}. Việc đã xong tính theo ngày làm việc trước đó: {previous}.",
+    "day": "Ngày",
+    "today": "Hôm nay",
+    "count": "{count, plural, other {# mục}}",
+    "hidden": "{count, plural, other {Còn # mục bạn không được xem, chỉ tính vào số đếm.}}",
+    "bareTitle": "Dự án chưa có task nào để báo cáo",
+    "bareText": "Báo cáo sẽ có nội dung khi dự án có task và có sprint đang chạy. Thêm task hoặc bắt đầu sprint trên bảng.",
+    "openBoard": "Mở bảng task",
+    "notReady": {
+      "title": "Báo cáo daily chưa sẵn sàng",
+      "text": "Báo cáo đọc task của dự án và cấu hình pm. Hãy bật plugin Tasks, hoặc sửa cấu hình pm nêu dưới đây.",
+      "tasks": "Plugin Tasks",
+      "config": "Cấu hình pm"
+    },
+    "done": {
+      "title": "Đã xong ngày {day}",
+      "empty": "Không có gì chuyển sang xong trong ngày đó."
+    },
+    "sprint": {
+      "title": "Sprint đang chạy",
+      "empty": "Chưa có sprint nào đang chạy.",
+      "done": "Đã xong",
+      "time": "Thời gian đã qua",
+      "scope": "Task lúc mở",
+      "changed": "Từ lúc mở",
+      "changedValue": "thêm {added}, bớt {removed}",
+      "useCases": "Use case của sprint",
+      "ratio": "xong {done} trên {total}"
+    },
+    "late": {
+      "title": "Trễ và nguy cơ trễ",
+      "empty": "Không có task nào trễ.",
+      "overdue": "Hạn {due}, trễ {days} ngày làm việc",
+      "atRisk": "Hạn {due}, còn {days} ngày làm việc"
+    },
+    "review": {
+      "title": "Đang review",
+      "empty": "Không có task nào chờ review.",
+      "age": "{days, plural, =0 {từ hôm nay} other {đã review # ngày làm việc}}",
+      "qa": "QA {who}"
+    },
+    "stale": {
+      "title": "Im lặng quá lâu",
+      "empty": "Không có task đang làm nào im lặng.",
+      "idle": "Không có hoạt động {days} ngày làm việc"
+    },
+    "blocked": {
+      "title": "Bị chặn",
+      "empty": "Không có gì bị chặn.",
+      "byDecision": "Decision đang mở",
+      "byHand": "Đặt bằng tay",
+      "waitingMember": "Đang chờ",
+      "waitingTask": "Đang chờ task",
+      "waitingText": "Đang chờ",
+      "age": "{days, plural, =0 {từ hôm nay} other {# ngày làm việc}}"
+    },
+    "escalate": {
+      "title": "Cần escalate",
+      "empty": "Chưa có blocker nào đủ lâu để escalate."
+    },
+    "load": {
+      "title": "Tải theo thành viên",
+      "empty": "Chưa có thành viên nào có quyền ghi.",
+      "overloaded": "Quá tải",
+      "free": "Trống",
+      "counts": "đang làm {doing} trên {limit}, review với vai QA {review}, trễ {late}"
     }
   },
   "canvas": {

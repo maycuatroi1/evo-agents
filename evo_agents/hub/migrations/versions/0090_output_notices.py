@@ -1,7 +1,7 @@
 """The notice run_outputs of the files a run's agent sent, and the notices members turned off.
 
-Revision ID: 0086
-Revises: 0085
+Revision ID: 0090
+Revises: 0089
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.runs`` and ``evo_agents.hub.tables_outputs`` as of this revision, never
@@ -13,18 +13,18 @@ the hub gathers a minute a run into one notice to the run's owner (plan run-outp
 notification_mutes holds the notices each member turned off, one row a member and kind, and takes only the kinds a
 member may turn off (MUTABLE_NOTICE_KINDS). No column of an older table changes.
 
-Going back deletes the run_outputs notices, drops the table and puts the check of 0084 back.
+Going back deletes the run_outputs notices, drops the table and puts the check of 0086 back.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0086"
-down_revision = "0085"
+revision = "0090"
+down_revision = "0089"
 branch_labels = None
 depends_on = None
 
-NOTICE_KINDS_0084 = (  # notifications_notice_kind_check as 0084 set it
+NOTICE_KINDS_0086 = (  # notifications_notice_kind_check as 0086 set it
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -39,9 +39,11 @@ NOTICE_KINDS_0084 = (  # notifications_notice_kind_check as 0084 set it
     "release",
     "canvas_baseline",
     "merge_paused",
+    "pm_daily",
+    "pm_escalation",
 )
 NOTICE = "run_outputs"  # evo_agents.hub.runs.OUTPUT_NOTICE
-NOTICE_KINDS = (*NOTICE_KINDS_0084, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
+NOTICE_KINDS = (*NOTICE_KINDS_0086, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
 MUTABLE_NOTICE_KINDS = (NOTICE,)  # evo_agents.hub.runs.MUTABLE_NOTICE_KINDS
 
 col = sa.column
@@ -68,5 +70,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     notifications = sa.table("notifications", col("notice_kind"))
     op.execute(notifications.delete().where(notifications.c.notice_kind == NOTICE))
-    _notice_kinds(NOTICE_KINDS_0084)
+    _notice_kinds(NOTICE_KINDS_0086)
     op.drop_table("notification_mutes")

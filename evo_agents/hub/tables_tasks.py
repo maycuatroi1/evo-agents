@@ -3,7 +3,8 @@ queries name them there (``tables.tasks.items``). The plugin's code is ``evo_age
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
 - tasks_sprints: a sprint of a project: its name (unique in the project), goal, dates and state (planned, active,
-  closed); a project has at most one active sprint.
+  closed); a project has at most one active sprint. ``activated_at`` is when it turned active (0085; NULL for a
+  sprint that was active before, or is not yet).
 - tasks_items: a task of a project: its number (1 and up within the project, shown with the config's prefix, ``T-42``),
   type, title, description, status (a key of the config's statuses), priority, due date, sprint, parent, the label it
   carries (the project's by default), and where an import took it from (``external_key``, unique in the project, and
@@ -15,6 +16,10 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - tasks_events: the history of a task: a field changed, by whom (NULL: the hub), from what to what and why; an event
   the hub wrote for a plugin delivery names it, so a delivery tried twice writes it once.
 - tasks_comments: comments on a task.
+- tasks_blockers: what a task waits on (0085), a flag beside its status: why (``reason``), and who or what it waits
+  for in one of three forms (a member with a grant on the project, another task of the project, or a text for
+  someone outside), since when, who set it, and, once cleared, when and by whom. A task with a blocker that is not
+  cleared is blocked. An open decision of a run that belongs to the task is a blocker too, but it is read, never a row.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -36,6 +42,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    or_,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -43,6 +50,9 @@ SPRINT_STATES = ("planned", "active", "closed")  # tasks_sprints.state
 PRIORITIES = ("urgent", "high", "medium", "low")  # tasks_items.priority
 PEOPLE_ROLES = ("assignee", "ba", "qa", "dev")  # tasks_people.role
 LINK_KINDS = ("srs_item", "plan_step", "run", "pull")  # tasks_links.kind
+BLOCKER_WAITING = ("waiting_user_id", "waiting_task_id", "waiting_text")  # tasks_blockers: exactly one is set
+MAX_WAITING_CHARS = 300  # of a waiting_text
+MAX_REASON_CHARS = 1_000  # of a blocker
 KEY = r"^[a-z][a-z0-9_]{0,39}$"  # tasks_items.status and type: a key of the plugin's config
 MAX_TITLE_CHARS = 300  # of a task
 MAX_DESCRIPTION_CHARS = 100_000
@@ -68,6 +78,7 @@ class TasksTables:
     links: Table
     events: Table
     comments: Table
+    blockers: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
@@ -89,6 +100,7 @@ def _sprints(metadata: MetaData) -> Table:
         Column("created_by", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("closed_at", DateTime(timezone=True)),
+        Column("activated_at", DateTime(timezone=True)),
         _key(name, "project_id", "projects", ondelete="RESTRICT"),
         _key(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_sprints_pkey"),
@@ -110,6 +122,7 @@ def _items(metadata: MetaData) -> Table:
         Column("type", Text, nullable=False, server_default="task"),
         Column("title", Text, nullable=False),
         Column("description_md", Text, nullable=False, server_default=""),
+        Column("outcome_md", Text, nullable=False, server_default=""),
         Column("status", Text, nullable=False),
         Column("priority", Text, nullable=False, server_default="medium"),
         Column("due_on", Date),
@@ -213,6 +226,49 @@ def _comments(metadata: MetaData) -> Table:
     )
 
 
+def _blockers(metadata: MetaData) -> Table:
+    name = "tasks_blockers"
+    blockers = Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("task_id", BigInteger, nullable=False),
+        Column("reason", Text, nullable=False),
+        Column("waiting_user_id", BigInteger),
+        Column("waiting_task_id", BigInteger),
+        Column("waiting_text", Text),
+        Column("since", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("created_by", BigInteger, nullable=False),
+        Column("cleared_at", DateTime(timezone=True)),
+        Column("cleared_by", BigInteger),
+        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        _key(name, "waiting_user_id", "users", ondelete="RESTRICT"),
+        _key(name, "waiting_task_id", "tasks_items", ondelete="CASCADE"),
+        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        _key(name, "cleared_by", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="tasks_blockers_pkey"),
+    )
+    c = blockers.c
+    blockers.append_constraint(
+        CheckConstraint(
+            func.num_nonnulls(c.waiting_user_id, c.waiting_task_id, c.waiting_text) == 1,
+            name="tasks_blockers_waiting_check",
+        )
+    )
+    blockers.append_constraint(
+        CheckConstraint(
+            or_(c.waiting_task_id.is_(None), c.waiting_task_id != c.task_id), name="tasks_blockers_self_check"
+        )
+    )
+    reason = func.char_length(c.reason).between(1, MAX_REASON_CHARS)
+    blockers.append_constraint(CheckConstraint(reason, name="tasks_blockers_reason_check"))
+    cleared = c.cleared_at.is_(None) == c.cleared_by.is_(None)
+    blockers.append_constraint(CheckConstraint(cleared, name="tasks_blockers_cleared_check"))
+    Index("tasks_blockers_task_idx", c.task_id, c.id)
+    Index("tasks_blockers_open_idx", c.task_id, postgresql_where=c.cleared_at.is_(None))
+    return blockers
+
+
 def tasks_tables(metadata: MetaData) -> TasksTables:
     """The tables of the core plugin tasks, added to ``metadata`` (which holds projects, users, runs and the tables of
     the plugin srs already)."""
@@ -223,4 +279,5 @@ def tasks_tables(metadata: MetaData) -> TasksTables:
         links=_links(metadata),
         events=_events(metadata),
         comments=_comments(metadata),
+        blockers=_blockers(metadata),
     )

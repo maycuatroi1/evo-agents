@@ -347,3 +347,30 @@ def test_a_prompt_with_figures_too_long_for_it_is_cut():
     big = {"tools": [{"tool": "x" * 2000, "calls": n} for n in range(200)], "notes": "y" * 100_000}
     prompt = review.build_review_prompt("p", None, ["cost"], [], big, [{"id": "g", "what": "z" * 50_000}])
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES and "[cut by the hub" in prompt
+
+
+def test_the_review_prompt_says_which_tier_of_the_skill_figures_has_data():
+    """Through tool_errors and skills_memory the Reviewer reads the skill figures in three tiers: called, snags, work
+    done; the prompt names the tiers that have no data instead of letting a zero read as a measure."""
+    empty = review.skill_tiers({"sessions": {"digests": 3, "with_skills": 0}})
+    assert [line.split(":")[0] for line in empty] == ["- Called", "- Snags", "- Work done"]
+    assert all("no data" in line for line in empty)
+    figures = {
+        "sessions": {"digests": 3, "with_skills": 2},
+        "skills": [
+            {"skill": "execute-plan", "calls": 4, "typed": 1, "failed": 0, "runs": 2},
+            {"skill": "stop-slop", "calls": 1, "typed": 0, "failed": 1, "runs": 0},
+        ],
+    }
+    called, snags, done = review.skill_tiers(figures)
+    assert called == "- Called: 2 skills, 5 loads (1 typed as /name), 1 that failed."
+    assert snags.startswith("- Snags: 2 of 3 session digests count the friction")
+    assert done == "- Work done: 1 skills loaded in 2 runs; read each skill's run_outcomes."
+
+    night = date(2026, 10, 8)
+    for lenses, shown in ((["tool_errors"], True), (["skills_memory", "cost"], True), (["cost", "security"], False)):
+        prompt = review.build_review_prompt("p", night, lenses, [], figures)
+        assert ("# Skills and commands by tier" in prompt) is shown, lenses
+        assert '"skills"' in prompt, "the figures shown hold the skills"
+    assert "skills" in review.FIGURE_KEYS and "skills" in review.DIGEST_FIELDS
+    assert review.parse_evidence("session:abc:skills:0")["field"] == "skills"
