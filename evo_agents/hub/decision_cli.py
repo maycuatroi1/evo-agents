@@ -56,6 +56,7 @@ DECISION_KEYS = (
     "asked_at",
     "answered_at",
     "delivered_at",
+    "outputs",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
 NOTIFICATION_LIST_KEYS = ("notifications", "total", "limit", "offset")

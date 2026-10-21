@@ -53,7 +53,16 @@ ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profil
 # settle: no @ of the agent, a settle chat
 VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE)
 IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
-EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed", IMAGE_CHANGED)
+MESSAGE_CHANGED = "message_changed"  # a message reads otherwise now: outputs of its run went under it (0085)
+EVENT_KINDS = (
+    "message",
+    "reaction_added",
+    "reaction_removed",
+    "member_added",
+    "member_removed",
+    IMAGE_CHANGED,
+    MESSAGE_CHANGED,
+)
 NOTICE_MENTION, NOTICE_ADDED = "chat_mention", "chat_added"  # the kinds of notice a chat sends (``runs.NOTICE_KINDS``)
 
 GITHUB_AVATARS = "https://avatars.githubusercontent.com"  # the web's CSP img-src names this origin and no other

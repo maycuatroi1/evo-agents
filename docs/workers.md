@@ -705,6 +705,7 @@ the member's own token (a writer of the project); `{run_id}` is the run's id.
 | `GET .../local-runs/{run_id}/decisions/{id}?wait_s=0..25` | the decision, long-polling until it is answered; asking again returns the answer |
 | `POST .../local-runs/{run_id}/decisions/{id}/answered` | the machine reports it was answered on the spot; the first answer wins, a later one gets 409 |
 | `POST .../local-runs/{run_id}/inbox` | the answers not yet taken (`ack` marks them) |
+| `POST .../local-runs/{run_id}/output-uploads`, `.../outputs`, `GET .../output-settings` | the outputs of the session, as a worker's ([Outputs](#outputs)); a decision carries some with `output_ids` |
 
 A plan write (`PUT` or `PATCH` of a plan) may name `run_id`: `plan_revisions.run_id` then points at the local run.
 
@@ -1028,6 +1029,32 @@ a presigned PUT per blob the project does not hold yet. The worker PUTs the byte
 upload of another kind is unknown, 422) and records them on the run (`log_sha256`, `diff_sha256`). Only the worker
 that claimed the run uploads for it.
 
+### Outputs
+
+An output of a run is a file its agent made that the hub keeps for the run's readers (`evo_agents.hub.outputs`): one
+it sent on purpose (source `sent`), an image taken out of a tool's result (`tool`), or a file it left in the run's
+`.evo-run/outputs/` (`outputs`). Its bytes are a blob of kind `run-output`. The worker that claimed the run sends them
+in two calls, while it holds the run and after, as its log goes:
+
+1. `POST /v1/worker/runs/{id}/output-uploads` with `{"items": [{sha256, size, source}]}` (at most 100) answers as `POST
+   /v1/blobs/uploads`: a presigned PUT per file the project does not hold yet, the others under `present`.
+2. The worker PUTs the bytes, then `POST /v1/worker/runs/{id}/outputs` with `{"outputs": [{sha256, size, source, name,
+   media_type, caption, tool_call_id, upload_id}]}` commits the uploads and records the outputs: `name` is the file's
+   name or its path below `.evo-run/outputs/`, `media_type` one `type/subtype`, `tool_call_id` the tool call of the
+   trace it came from, `upload_id` null for a file the project held already. The answer lists the outputs in the
+   order sent; a file the run holds already (the same SHA-256) is the output it is, keeping the source of the two that
+   is kept longer (`sent` over `outputs` over `tool`) and its caption and tool call, or these when it had none. The
+   run's log gets a `system` event naming the outputs added or changed (`outputs`: their ids).
+
+`GET /v1/worker/runs/{id}/output-settings` says whether the project takes tool images (`tool_images`), the limits and
+what the run holds (`outputs`, `bytes`). A file is at most 200 MiB, a run holds at most 500 outputs and 1 GiB (a
+SHA-256 counted once): past one, both calls answer 413 with the limit in `detail` (`file_bytes`, `outputs_per_run`,
+`bytes_per_run`) and take nothing. An output of source `tool` while the project's admin turned tool images off is 409.
+A question (`POST .../decisions`) and a chat message of the agent (`POST .../chat/messages`, `.../chat/mentions`) carry
+outputs of the run with `output_ids` (at most 20; 422 for an output of another run, and in a chat for one of source
+`tool`). A chat run's outputs of source `sent` or `outputs` that no message carries go under its next message, and
+once the run ended under its last one. `docs/hub.md`, "Outputs of runs", says who reads them and how long they stay.
+
 ### When the hub does not answer
 
 The run keeps going. The daemon writes events to a spool on disk (at most 256 MiB) and sends them later by `seq`;
@@ -1054,6 +1081,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
+| `POST /v1/worker/runs/{id}/output-uploads`, `/outputs` | uploads files of the run's agent and records them as outputs of the run ([Outputs](#outputs)) |
+| `GET /v1/worker/runs/{id}/output-settings` | the project's switch of tool images, the limits of outputs and what the run holds |
 | `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run, or that the account failed to authenticate (`unauthorized`); on a limit hit or a refused token, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
@@ -1082,6 +1111,8 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
+| `GET .../runs/{id}/outputs`, `.../outputs/{oid}`, `.../outputs/{oid}/content`, `.../outputs/{oid}/link` | reader | the run's outputs, one of them, its bytes (Range, `?download=true`) and a presigned GET of them ([Outputs](#outputs)) |
+| `DELETE .../runs/{id}/outputs/{oid}` | owner, or an admin of the project | delete an output; its bytes go once nothing refers to them |
 | `GET .../runs/{id}/accounts` | the member who dispatched it | the account the run has for each variable, how it came by it, and each usage limit it hit and failed over from ([credentials.md](credentials.md), Accounts) |
 | `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB; a reply in an author run's chat |
 | `GET .../runs/{id}/chat` | reader | the chat of an author run, and whose turn it is |
@@ -1352,6 +1383,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | message to the agent | 8 KiB |
 | inbox per read | 100 messages |
 | run log, diff | 64 MiB, 8 MiB in the blob store |
+| outputs | 200 MiB a file, 500 and 1 GiB a run, 100 a request, 20 a question or chat message |
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
