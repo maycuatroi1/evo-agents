@@ -27,6 +27,9 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
   list, 409 for one the worker has no checkout of, or past ``runs.MAX_RUN_REPOS``); one the run works in already is
   answered as it is (``added`` false).
 
+The text of an agent's message, and of a mention, goes through ``agent_account_mask.mask_values``: the values of the
+accounts of its profile are replaced by ``***`` before it is stored.
+
 The agent's messages are audited as chat.message, and a chat it creates as chat.create, as the run's dispatcher with
 the worker's token; a repo opened as run.open_repo, as the worker, in the run's project.
 """
@@ -46,6 +49,7 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pulls
+from evo_agents.hub.server.agent_account_mask import mask_values
 from evo_agents.hub.server.chat_access import ChatAccess, label_reader, projects_by_id, uncleared
 from evo_agents.hub.server.chat_members import LOGIN_PATTERN, person, refuse_clash, refuse_uncleared
 from evo_agents.hub.server.chat_notices import notice_added
@@ -297,7 +301,8 @@ async def post_message(request: Request, run_id: RunId, body: AgentMessageIn, us
         run = await agent_run(conn, user, run_id)
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
-        message_id, _ = await post_agent(conn, chat, run.profile, run_id, body.body, root)
+        text = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
+        message_id, _ = await post_agent(conn, chat, run.profile, run_id, text, root)
         await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
         view = await _view(conn, chat, message_id)
     log.info("chat message of an agent", extra={"run_id": run_id, "chat_id": chat.chat_id, "message_id": message_id})
@@ -333,8 +338,9 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         run = await agent_run(conn, user, run_id)
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
-        text = body.body if body.handle in chats.mention_names(body.body) else f"@{body.handle} {body.body}"
-        text = text if len(text.encode()) <= chats.MAX_MESSAGE_BYTES else body.body
+        said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
+        text = said if body.handle in chats.mention_names(said) else f"@{body.handle} {said}"
+        text = text if len(text.encode()) <= chats.MAX_MESSAGE_BYTES else said
         origin = run.principal
         author = f"@{run.profile.handle}"
         hand = Hand(chat, 0, 0, run.profile, origin.user_id, origin.login, run.via, run.hop + 1, author, text)
