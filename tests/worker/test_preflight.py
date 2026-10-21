@@ -80,6 +80,12 @@ RUN_9 = "fatal: could not read Username for 'https://github.com': terminal promp
         ("export PATH=$HOME/bin:$PATH; mytool", []),
         ("$TOOL --check", []),
         ("echo 'open quote", []),
+        ("command -v uvx >/dev/null && time -p cargo test && exec -a x node y.js", ["cargo", "node"]),
+        ("git diff --exit-code $(git merge-base origin/main HEAD) -- plan.schema.json", ["git"]),
+        ('test "$(python3 -c "print(open(\'a\').read())")" = x && $(which rg) -q y', ["python3", "which"]),
+        ("diff <(sort a) <(sort b) && test $((1 + 2)) -eq 3", ["diff", "sort"]),
+        ("python3 - <<'EOF'\nimport sys\nif sys.argv[0].startswith('---'): pass\nEOF\nrg -q x f", ["python3", "rg"]),
+        ("pytest -q # it's fine\nruff check . \\\n  --fix", ["pytest", "ruff"]),
     ],
 )
 def test_preflight_reads_the_programs_a_verify_command_calls(command, found):

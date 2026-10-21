@@ -20,6 +20,7 @@ import {
   Server,
   Shield,
   Sparkles,
+  Tags,
   UserRoundCog,
 } from "lucide-react";
 import type { Route } from "next";
@@ -45,6 +46,7 @@ export type NavLabel =
   | "mergeQueue"
   | "insights"
   | "curator"
+  | "releases"
   | "agents"
   | "chats"
   | "memories"
@@ -99,6 +101,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "mergeQueue", icon: GitMerge, segment: "merge-queue" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },
+  { label: "releases", icon: Tags, segment: "releases" },
   { label: "agents", icon: Bot, segment: "agents" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },

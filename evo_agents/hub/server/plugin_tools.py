@@ -13,7 +13,8 @@ Its description and input schema are those its installed version's manifest give
 signed; a backend cannot change them at run time, only a new version, signed and upgraded to by a hub admin, can.
 Arguments are checked against the schema before the plugin sees them; the plugin gets the tool's name, the arguments
 and the caller (login, project, role there) as plugin/1's ``tool`` params, and its result, checked against plugin/1,
-becomes the tool's result.
+becomes the tool's result. A core plugin's tool may look node ids and paths up in the project's knowledge graph on the
+hub as the caller reads it (``CoreContext.graph_refs``).
 """
 
 from __future__ import annotations
@@ -102,6 +103,17 @@ async def listed(state, user: Principal, project: str | None) -> list[dict]:
     return [described(row.name, item) for row, item in found]
 
 
+def graph_refs(state, user: Principal, project: str, sink: str | None):
+    """``CoreContext.graph_refs`` of a call of ``user`` in ``project`` through ``sink``."""
+
+    async def lookup(ids: list[str], paths: list[str]):
+        from evo_agents.hub.server import kg  # its routes import the plans and runs modules
+
+        return await kg.unknown_refs(state, user, project, sink, list(ids), list(paths))
+
+    return lookup
+
+
 def _error(message: str) -> dict:
     return {"content": [{"type": "text", "text": f"error: {message}"}], "isError": True}
 
@@ -132,7 +144,8 @@ async def answer(
     params = {"tool": tool, "arguments": arguments, "caller": {"login": user.login, "project": project, "role": role}}
     run_id = user.scope.run_id if user.scope is not None else None
     jobs = getattr(state, "jobs", None)
-    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id, sink, jobs)
+    refs = graph_refs(state, user, project, sink)
+    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id, sink, jobs, refs)
     try:
         result = await call(state.plugin_host, plugin, row.tier, "mcp_tools", item, params, context, TOOL_TIMEOUT)
     except PluginHostUnavailable as exc:

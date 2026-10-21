@@ -12,15 +12,15 @@ and how, or why it reached none. chat_reactions holds one row per emoji of a per
 chat_events holds what happened in a chat in order, which its stream sends: a message, a reaction put or taken off, a
 member added or removed.
 
-Revision 0032 gives chats ``budget_usd``, what its chat runs may cost in 24 hours, and runs the columns of a chat
-run (``evo_agents.hub.chat_runs``): ``chat_id``, ``chat_message_id`` (the message that started it) and ``hop``;
-``chat_tables`` adds them, their foreign keys and the index of a chat's runs to the runs table it is given, so that
-``evo_agents.hub.tables`` describes runs whole. Revision 0049 gives runs ``seen_audience``, the principals of what the
+Revision 0032 gives runs the columns of a chat run (``evo_agents.hub.chat_runs``): ``chat_id``, ``chat_message_id``
+(the message that started it) and ``hop``; ``chat_tables`` adds them, their foreign keys and the index of a chat's runs
+to the runs table it is given, so that ``evo_agents.hub.tables`` describes runs whole. Revision 0049 gives runs ``seen_audience``, the principals of what the
 hub returned to the run's agent with an audience (``evo_agents.hub.server.run_audience``), which ``chat_tables`` adds too.
 Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and, for a direct chat, its person
 (``direct_user_id``) and its agent (``direct_profile_id``), one direct chat per pair (chats_direct_key). Revision 0051
 gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
 which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
+Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    Double,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -67,7 +66,6 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("created_by", BigInteger, nullable=False),
         _stamp("created_at"),
         Column("event_seq", BigInteger, nullable=False, server_default="0"),
-        Column("budget_usd", Double, nullable=False, server_default="5"),  # 0032
         Column("kind", Text, nullable=False, server_default="group"),  # 0050
         Column("direct_user_id", BigInteger),  # 0050
         Column("direct_profile_id", BigInteger),  # 0050

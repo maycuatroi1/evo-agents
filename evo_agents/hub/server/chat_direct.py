@@ -105,11 +105,12 @@ async def open_direct(request: Request, response: Response, handle: HandlePath, 
 
 
 async def direct_mention(conn: AsyncConnection, chat: ChatAccess, kept: list[dict]) -> list[dict]:
-    """The mention, ``via`` direct, of the agent of direct chat ``chat`` for a message whose mentions ``kept`` do not
-    reach it; none when they do, so that a message makes one run of it at most."""
+    """The mention of the agent of ``chat``, a direct or a settle chat (``chats.ATTENDED``), ``via`` the chat's kind,
+    for a message whose mentions ``kept`` do not reach it; none when they do, so that a message makes one run of it at
+    most."""
     c, ap = tables.chats, tables.agent_profiles
     query = select(ap.c.id, ap.c.handle).join_from(c, ap, ap.c.id == c.c.direct_profile_id)
     row = (await conn.execute(query.where(c.c.id == chat.chat_id))).one()
     if any(mention["profile_id"] == row.id for mention in kept):
         return []
-    return [{"name": row.handle, "via": chats.DIRECT, "user_id": None, "profile_id": row.id, "refusal": None}]
+    return [{"name": row.handle, "via": chat.kind, "user_id": None, "profile_id": row.id, "refusal": None}]

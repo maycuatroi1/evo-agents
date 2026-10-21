@@ -39,7 +39,7 @@ from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (a fixtur
 from tests.hub.test_curator import PROJECT
 from tests.hub.test_curator_changes import review_run, world  # noqa: F401 (world is a fixture)
 from tests.hub.test_kg import InProcessHub, hub, run_jobs  # noqa: F401 (hub is a fixture)
-from tests.hub.test_migrate import move_to
+from tests.hub.test_migrate import ALL, move_to
 from tests.hub.test_review_runs import finding, proposed
 from tests.kg.projects import commit, git, write
 
@@ -409,25 +409,7 @@ def test_schema_0055_takes_the_lens_kg_health_and_going_back_deletes_what_it_wro
     assert sql(world.db, select(func.to_regclass("public.kg_health"), func.to_regclass("public.kg_source_files"))) == [
         (None, None)
     ]
-    assert migrate(world.db.dsn).applied == (
-        "0055",
-        "0056",
-        "0057",
-        "0058",
-        "0059",
-        "0060",
-        "0061",
-        "0062",
-        "0063",
-        "0064",
-        "0065",
-        "0066",
-        "0067",
-        "0068",
-        "0069",
-        "0070",
-        "0071",
-    )
+    assert migrate(world.db.dsn).applied == ALL[ALL.index("0055") :]
     b = tables.kg_builds
     assert sql(world.db, select(func.count(), func.count(b.c.coverage)))[0] == (3, 0)  # the column came back empty
     again = finding(

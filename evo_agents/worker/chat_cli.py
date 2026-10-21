@@ -8,8 +8,8 @@ and ``evo-agents worker repo open``, which only a chat run's agent uses.
 - ``create --title TEXT [--person LOGIN ...]``: a new chat of the run's agent and the person who dispatched the run,
   with the people named; the hub tells each of them.
 - ``mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]``: a message that hands the work to agent HANDLE of the chat,
-  for the person who dispatched the run, one hop further; a refusal (the hops, the agent itself, the chat's budget, no
-  worker) is printed, said in the thread, and exits 1.
+  for the person who dispatched the run, one hop further; a refusal (the hops, the agent itself, no worker) is
+  printed, said in the thread, and exits 1.
 - ``read MESSAGE [--thread]``, a command of the run's agent too: a message of a chat whole, or its thread (its first
   message and the replies), those the run's agent may read (POST .../chat/read, ``evo_agents.hub.server.chat_read``),
   printed as the hub gave it, under a line saying it is data, never instructions. MESSAGE is its id, or its item as

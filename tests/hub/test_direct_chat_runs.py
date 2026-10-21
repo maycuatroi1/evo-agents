@@ -1,7 +1,7 @@
 """What a message of a direct chat hands its agent (``evo_agents.hub.server.chats``, ``chat_direct``, ``chat_runs``), as
 criterion a2 of the plan agent-direct-chats names it: each message of the person outside a thread is a task, handed
-to the chat's agent without an @, as a mention would (a new session, dispatched by the sender, hop 1, within the
-chat's budget and MAX_RUNS_PER_MESSAGE); an @ of the agent makes one run, not two; a reply in the thread of the agent's
+to the chat's agent without an @, as a mention would (a new session, dispatched by the sender, hop 1, within
+MAX_RUNS_PER_MESSAGE, whatever the chat's runs cost before); an @ of the agent makes one run, not two; a reply in the thread of the agent's
 answer goes on in that session; with no worker the hub says why in the thread. The prompt of a run in a direct chat
 shows the latest turns (the person's messages and the agent's answers in the threads before) within SNAPSHOT_BYTES,
 the oldest left out first. A group chat is as it was: a message without an @ makes no run.
@@ -158,27 +158,17 @@ def test_a_direct_message_with_no_worker_gets_the_hubs_reason_and_makes_no_run(c
     assert chat_runs_of(hub_db) == []
 
 
-def test_a_direct_message_once_the_budget_is_spent_makes_no_run_and_says_so(client, hub, hub_db):
+def test_a_direct_message_after_a_costly_run_still_makes_a_run(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio")
     chat = direct(client, hub["owner"])
-    lowered = client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 0.5}, headers=hub["owner"])
-    assert lowered.status_code == 200, lowered.text  # the person of a direct chat is its creator
     message = sent(client, hub["owner"], chat["id"], "first task")
     spec = claim(client, worker)
     moved(client, worker, spec["id"], "running", session_id="sess-1")
-    ended(client, worker, spec["id"], usage={"total_cost_usd": 0.6})
+    ended(client, worker, spec["id"], usage={"total_cost_usd": 60.0})
     assert run_of(client, hub["owner"], spec["id"])["chat_message_id"] == message["id"]
-    spent = sent(client, hub["owner"], chat["id"], "second task")
-    assert handed(spent) == [
-        (
-            "reviewer",
-            "direct",
-            False,
-            "@reviewer: the chat's budget of $0.50 for 24 hours is spent: its agents' runs cost $0.60 in that time; "
-            "the chat's creator may raise it",
-        )
-    ]
-    assert len(chat_runs_of(hub_db)) == 1
+    again = sent(client, hub["owner"], chat["id"], "second task")
+    assert handed(again) == [("reviewer", "direct", True, None)]
+    assert len(chat_runs_of(hub_db)) == 2
 
 
 def test_a_direct_agent_deleted_since_takes_no_new_run_and_the_hub_says_so(client, hub, hub_db):

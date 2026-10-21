@@ -34,7 +34,7 @@ audit (``merge.merge``), and the hub comments once on a merge request its turn b
 
 One merge request of a target branch has the turn, whatever runs the queue: the job holds the procrastinate lock of
 its name, so one pass runs at a time on all the hub's job workers, and the unique index merge_queue_turn_key (schema
-0069) refuses a second merge request of the branch in a turn state. Each move is written to Postgres before the GitLab
+0076) refuses a second merge request of the branch in a turn state. Each move is written to Postgres before the GitLab
 call it leads to, and what GitLab did is read back at the next move, so a hub that restarts mid-turn goes on where it
 was. The forge secret's token stays in the GitLab client; no row, ledger line, audit line or log line holds it.
 """

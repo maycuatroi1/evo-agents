@@ -13,7 +13,7 @@ no run merges.
 
 a9: the agent of a run (chat, step, plan or author) posts, reacts, creates a chat with the person at the origin of the
 chain (who is told), and mentions another agent: a run for that same person, one hop further, never to itself, at most
-three hops, within the chat's budget a day, which its creator changes; a refusal is answered and said in the thread.
+three hops, with no cost cap of the chat; a refusal is answered and said in the thread.
 """
 
 from __future__ import annotations
@@ -207,7 +207,7 @@ def test_a_chat_mention_makes_one_run_on_the_senders_worker_with_the_most_repos(
     )
     assert [entry["repo"] for entry in run["repos"]] == ["evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
     assert {entry["branch"] for entry in run["repos"]} == {f"chat/{made}"}
-    assert run["budget"] == {"max_usd": chat_runs.DEFAULT_BUDGET_USD, "max_turns": None, "max_seconds": 1800}
+    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": 1800}
     assert run["title"] == "@reviewer in Release talk: @reviewer please fix the flaky wait test"
     listed = client.get(f"/v1/projects/{PROJECT}/runs", headers=hub["other"]).json()["runs"]
     assert [(item["id"], item["kind"], item["hop"]) for item in listed] == [(made, "chat", 1)]
@@ -273,10 +273,10 @@ def test_a_chat_run_claim_has_the_bounded_snapshot_and_its_moves_react_by_rule(c
     assert "## The thread" in prompt and "It hits tests/test_wait.py the most." in prompt
     assert prompt.index("The wait helper sleeps") < prompt.index("# The message to answer")
     assert prompt.rstrip().endswith("@reviewer replace the sleep with a poll, please")
-    assert "budget of $5.00 for 24 hours" in prompt and "at hop 2 of at most 3" in prompt
+    assert "at hop 2 of at most 3" in prompt and "budget" not in prompt
     assert (spec["branch"], spec["budget"]["max_usd"], spec["profile"]["handle"]) == (
         f"chat/{spec['id']}",
-        5.0,
+        None,
         "reviewer",
     )
     assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(EYES, ["reviewer"])]
@@ -346,7 +346,7 @@ def test_a_chat_reply_goes_to_the_running_inbox_and_then_resumes_the_session(cli
         f"chat/{spec['id']}",
         later["id"],
     )
-    assert run["budget"]["max_usd"] == pytest.approx(5.0 - 0.4 + 0.4)  # what is left, plus the session's cost
+    assert run["budget"]["max_usd"] is None
     goes_on = claim(client, worker)
     assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["session_id"]) == (next_id, spec["id"], "sess-1")
     assert goes_on["budget"]["spent_usd"] == pytest.approx(0.4)
@@ -410,7 +410,7 @@ def test_a_chat_run_whose_push_origin_declined_goes_on_in_its_session_and_anothe
         again["id"],
     )
     assert {entry["branch"] for entry in run["repos"]} == {f"chat/{first}"}
-    assert run["budget"]["max_usd"] == pytest.approx(5.0 - 0.4 + 0.4)  # what is left, plus the session's cost
+    assert run["budget"]["max_usd"] is None
     goes_on = claim(client, worker)
     assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["session_id"]) == (second, first, "sess-1")
     assert goes_on["budget"]["spent_usd"] == pytest.approx(0.4)
@@ -507,30 +507,17 @@ def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub,
     assert unknown["refusal"] == "no agent @nobody in this chat"
 
 
-def test_chat_budget_refuses_new_runs_once_spent_and_only_its_creator_changes_it(client, hub, hub_db):
+def test_a_chat_has_no_budget_and_its_runs_go_on_whatever_they_cost_under_a_time_cap(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio", slots=3)
     chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", "fixer"])
-    assert chat["budget_usd"] == chat_runs.DEFAULT_BUDGET_USD
+    assert "budget_usd" not in chat
     mention, spec = started(client, hub, worker, chat)
-    ended(client, worker, spec["id"], usage={"total_cost_usd": 5.2})
-    spent = sent(client, hub["owner"], chat["id"], "@fixer now you")
-    assert spent["mentions"][0]["run_id"] is None
-    assert spent["mentions"][0]["refusal"] == (
-        "@fixer: the chat's budget of $5.00 for 24 hours is spent: its agents' runs cost $5.20 in that time; the "
-        "chat's creator may raise it"
-    )
-    refused = client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 20}, headers=hub["other"])
-    assert refused.status_code == 403
-    assert client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 0}, headers=hub["owner"]).status_code == 422
-    raised = client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 20}, headers=hub["owner"])
-    assert raised.status_code == 200 and raised.json()["budget_usd"] == 20
+    ended(client, worker, spec["id"], usage={"total_cost_usd": 50.0})
     again = sent(client, hub["owner"], chat["id"], "@fixer now you")
+    assert again["mentions"][0]["refusal"] is None
     run = run_of(client, hub["owner"], again["mentions"][0]["run_id"])
-    assert run["budget"]["max_usd"] == pytest.approx(14.8)
-    rows = sql(
-        hub_db, select(tables.audit.c.action, tables.audit.c.target).where(tables.audit.c.action == "chat.budget")
-    )
-    assert rows == [("chat.budget", f"chat:{chat['id']} budget_usd=20")]
+    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": chat_runs.TIME_CAP_SECONDS}
+    assert client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 20}, headers=hub["owner"]).status_code == 405
 
 
 def test_an_agent_posts_reacts_and_create_makes_a_chat_with_the_origin_who_is_told(client, hub, hub_db):

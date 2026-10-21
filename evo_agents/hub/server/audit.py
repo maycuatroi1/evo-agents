@@ -22,6 +22,10 @@ from evo_agents.hub import tables
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
+# A member's emails belong to no project; a target names the row and the member, "email:<id> user=<login>", never the
+# address (evo_agents.hub.server.user_emails).
+EMAIL_ADD = "user_email.add"
+EMAIL_REMOVE = "user_email.remove"
 GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
@@ -99,7 +103,6 @@ CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agen
 CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
-CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is

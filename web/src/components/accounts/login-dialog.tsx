@@ -30,6 +30,7 @@ import {
   utcDay,
 } from "./login-model";
 import { MAX_SECRET_BYTES, MAX_SECRET_NAME_CHARS, secretNamesQuery, workersQuery } from "./login-queries";
+import { OAuthRenewBody } from "./oauth-renew";
 import { type Account, CLAUDE_TOKEN_VAR } from "./queries";
 
 type Props = {
@@ -67,7 +68,11 @@ export function LoginDialog({ open, onOpenChange, account, accounts }: Props) {
         onInteractOutside={guard}
         data-testid="login-dialog"
       >
-        <LoginFormBody account={account} accounts={accounts} write={write} onClose={() => onOpenChange(false)} />
+        {account?.auth === "oauth" ? (
+          <OAuthRenewBody account={account} />
+        ) : (
+          <LoginFormBody account={account} accounts={accounts} write={write} onClose={() => onOpenChange(false)} />
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -426,6 +426,80 @@ def test_git_history_caps_the_paths_of_a_sweep_and_counts_them_all(tmp_path, mon
     assert props["paths"] == ["app/server.py", "config.yaml"] and props["files"] == 4
 
 
+def commit_as(repo: Path, author: str, path: str, text: str) -> str:
+    """Commit ``text`` to ``path`` with ``author`` (``Name <email>``) as its author; its SHA."""
+    write(repo / path, text)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", f"edit {path}", "--author", author)
+    return git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_commit_author_email_is_read_from_the_history_and_kept_on_the_commit_node(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env, app_level="customer")
+    app = tmp_path / "demo-app"
+    init = git(app, "rev-parse", "HEAD").strip()
+    lumen = commit_as(app, "Lumen Writer <Lumen.Writer@Northwind.test>", "docs/notes.md", "# Notes\n")
+    nobody = commit_as(app, "Nobody <>", "docs/notes.md", "# Notes\n\nMore.\n")
+
+    msgs = run_git(app)
+    emails = {sha: item["props"].get("author_email") for sha, item in commits_of(msgs).items()}
+    # As the commit records it, case and all: the hub compares addresses without case.
+    assert emails == {init: "t@example.test", lumen: "Lumen.Writer@Northwind.test", nobody: None}
+
+    assert sync_project(project, ["app"])[0].ok
+    report = build_project(project)
+    assert report.ok, report.errors
+    store = Store.for_project(project)
+    node = store.node(f"app:commit:{lumen}", report.build_id)
+    assert node["kind"] == "Commit" and node["props"]["author_email"] == "Lumen.Writer@Northwind.test"
+    assert "author_email" not in store.node(f"app:commit:{nobody}", report.build_id)["props"]
+    # Labelled as its source, like every other prop: the level of the git source, the label of its files.
+    assert node["label"] == store.node("app:file:docs/notes.md", report.build_id)["label"]
+    assert node["label"][0] == 2  # customer, the third of the policy's levels
+    wide = Session(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
+    assert wide["structuredContent"]["node"]["props"]["author_email"] == "Lumen.Writer@Northwind.test"
+    narrow = Session(project, "agent").call("kg_node", {"id": f"app:commit:{lumen}"})
+    assert narrow.get("isError") and "Northwind" not in json.dumps(narrow)
+
+
+def test_commit_author_email_reaches_the_commits_in_the_corpus_at_the_first_sync_of_the_new_build(
+    tmp_path, kg_env, monkeypatch
+):
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    lumen = commit_as(app, "Lumen <lumen@northwind.test>", "docs/notes.md", "# Notes\n")
+    init = git(app, "rev-parse", "HEAD~1").strip()
+    read = _git.history
+
+    def history_before(*args):
+        return [{k: v for k, v in found.items() if k != "author_email"} for found in read(*args)]
+
+    with monkeypatch.context() as before:  # the build before this one: no author's email, and its own code digest
+        before.setattr(_git, "history", history_before)
+        before.setattr(git_connector, "_code", lambda: "sha256:the build before")
+        assert sync_project(project, ["app"])[0].ok
+        old = build_project(project)
+    assert old.ok, old.errors
+    commits = [r for r in project.corpus().items("app") if ":commit:" in r.item_id]
+    assert len(commits) == 2 and all("author_email" not in r.record["props"] for r in commits)
+    assert "author_email" not in Store.for_project(project).node(f"app:commit:{lumen}", old.build_id)["props"]
+
+    (result,) = sync_project(project, ["app"])  # the new build's code digest: the whole history again
+    assert result.ok and not result.unchanged and result.removals == 0 and result.held == [], result.issues
+    corpus = project.corpus()
+    emails = {sha: corpus.get(f"app:commit:{sha}").record["props"].get("author_email") for sha in (init, lumen)}
+    assert emails == {init: "t@example.test", lumen: "lumen@northwind.test"}
+    new = build_project(project, verify=True, cold=True)  # a cold rebuild of the same corpus gives the same hash
+    assert new.ok and new.verify["match"], new.verify
+    assert Store.for_project(project).node(f"app:commit:{lumen}", new.build_id)["props"]["author_email"] == (
+        "lumen@northwind.test"
+    )
+
+    assert sync_project(project, ["app"])[0].unchanged  # the cursor holds the new input: nothing read again
+    again = build_project(project, force=True)
+    assert again.ok and again.content_hash == new.content_hash
+
+
 def test_git_history_after_a_cursor_of_the_same_input_reads_only_the_new_commits(tmp_path):
     repo = make_repo(tmp_path / "app")
     source = {"id": "app", "connector": "git", "path": str(repo)}

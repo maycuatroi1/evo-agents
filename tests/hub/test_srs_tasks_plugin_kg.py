@@ -8,7 +8,9 @@ to the task, the plan step it links and the commit the step's evidence names; th
 label and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the
 build before, and ``kg build --verify`` on the worker's store gives its hash; a changed task is built again, and a
 plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
-archived document is out of the graph (criterion a1 of plan srs-document-lifecycle).
+archived document is out of the graph (criterion a1 of plan srs-document-lifecycle). The sources of a finding are
+looked up in that graph as the member reads it: node ids, and paths a file or document node carries (criterion a4 of
+plan srs-conflicts-and-tasks).
 
 The api and the worker run in this process and the blob store is moto's, as in ``tests.hub.test_kg``; the machine is a
 harness of project alpha that reads the hub's plans and pushes its runs.
@@ -31,6 +33,8 @@ from sqlalchemy import func, select
 
 from evo_agents.hub import kg_plans, plugin_calls, tables
 from evo_agents.hub.kg_build import worker_project
+from evo_agents.hub.server import kg
+from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.sync import sync_project
@@ -38,6 +42,7 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
 from tests.hub.test_kg import (
+    AGENT,
     HUB_HARNESS_KNOWLEDGE,
     PROJECT,
     InProcessHub,
@@ -73,7 +78,7 @@ PLAN = {
     ],
 }
 USE_CASE = "usecase:UC ORD-1"
-TICKET = "plugin.tasks:ticket:T-1"
+TICKET = "plugin.tasks:ticket:T-4"  # approving the sample made T-1 to T-3, its frame tasks (srs.auto_tasks)
 STEP = "plan:rollout/step:1"
 COMMIT = f"commit:alpha-app@{SHA}"
 
@@ -180,7 +185,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     checked = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
     assert checked.ok and checked.verify["match"] and checked.content_hash == built["content_hash"]
 
-    edited = hub.client.patch(f"/v1/x/tasks/{PROJECT}/tasks/T-1", json={"status": "done"}, headers=hub.alice)
+    edited = hub.client.patch(f"/v1/x/tasks/{PROJECT}/tasks/T-4", json={"status": "done"}, headers=hub.alice)
     assert edited.status_code == 200, edited.text
     assert queued(hub) == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
@@ -195,6 +200,8 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
 
 
 def test_srs_plugin_graph_leaves_out_an_archived_document_and_takes_it_back_once_unarchived(hub, tmp_path):
+    off = hub.client.post(f"/v1/projects/{PROJECT}/plugins/tasks/disable", headers=hub.owner)
+    assert off.status_code == 200, off.text  # no frame task of the approval mentions the use case (srs.auto_tasks)
     machine(hub, tmp_path)
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     approve_sample(hub)
@@ -213,3 +220,32 @@ def test_srs_plugin_graph_leaves_out_an_archived_document_and_takes_it_back_once
     assert queued(hub) == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert node(hub, USE_CASE)["status"] == "declared"
+
+
+def looked_up(hub, login: str, ids: list[str], paths: list[str]):
+    """``kg.unknown_refs`` as ``login`` reads the graph through the agent sink, on the app's own event loop."""
+    u = tables.users
+    ((user_id,),) = query(hub.db, select(u.c.id).where(u.c.login == login))
+    person = Principal(user_id, login, False, None, MACHINE, "")
+    state = hub.client.app.state
+    return hub.client.portal.call(kg.unknown_refs, state, person, PROJECT, AGENT, ids, paths)
+
+
+def test_srs_finding_sources_are_looked_up_in_the_graph_on_the_hub_as_the_member_reads_it(hub, tmp_path):
+    missing = looked_up(hub, "alice", [USE_CASE], ["docs/ordering.md"])
+    assert missing.why == f"project {PROJECT} has no knowledge graph on the hub yet"
+    assert (missing.ids, missing.paths) == ((USE_CASE,), ("docs/ordering.md",))
+    put_plan(hub, PLAN)
+    machine(hub, tmp_path)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    approve_sample(hub)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert build_rows(hub)[0]["status"] == "succeeded"
+    harness = "alpha-harness"  # the repo of the harness's files, as ``machine`` names its directory
+    paths = ["knowledge.yaml", f"{harness}:knowledge.yaml", "docs/ordering.md", f"{harness}:docs/ordering.md"]
+    found = looked_up(hub, "alice", [USE_CASE, STEP, "usecase:UC ORD-404"], paths)
+    assert found.why is None, found.why
+    assert found.ids == ("usecase:UC ORD-404",)
+    assert found.paths == ("docs/ordering.md", f"{harness}:docs/ordering.md")
+    hidden = looked_up(hub, "carol", [USE_CASE], [])  # carol's grant stops at public, below the project's label
+    assert hidden.ids == (USE_CASE,) and hidden.why is None

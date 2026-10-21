@@ -1,7 +1,7 @@
 """The breaker of each repo of the hub's merge queue, and its notice merge_paused.
 
-Revision ID: 0071
-Revises: 0070
+Revision ID: 0078
+Revises: 0077
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_merge``, ``evo_agents.hub.merge_breaker`` and
@@ -17,18 +17,18 @@ target branch red. A tripped breaker names its cause, its reason and when it tri
 table changes.
 
 Going back deletes the merge_paused notices, puts the merge requests the breaker paused back in line (``ready``),
-drops the table and puts the check of 0043 back.
+drops the table and puts the check of 0067 back.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0071"
-down_revision = "0070"
+revision = "0078"
+down_revision = "0077"
 branch_labels = None
 depends_on = None
 
-NOTICE_KINDS_0043 = (
+NOTICE_KINDS_0067 = (  # notifications_notice_kind_check as 0067 set it
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -40,9 +40,10 @@ NOTICE_KINDS_0043 = (
     "chat_added",
     "plugin_disabled",
     "builder_proposal",
+    "release",
 )
 NOTICE = "merge_paused"
-NOTICE_KINDS = (*NOTICE_KINDS_0043, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
+NOTICE_KINDS = (*NOTICE_KINDS_0067, NOTICE)  # evo_agents.hub.runs.NOTICE_KINDS
 STATES = ("armed", "tripped")  # evo_agents.hub.merge_breaker.STATES
 CAUSES = (  # evo_agents.hub.merge_breaker.CAUSES
     "uat_check",
@@ -113,7 +114,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     notifications = sa.table("notifications", col("notice_kind"))
     op.execute(notifications.delete().where(notifications.c.notice_kind == NOTICE))
-    _notice_kinds(NOTICE_KINDS_0043)
+    _notice_kinds(NOTICE_KINDS_0067)
     queue = sa.table("merge_queue", col("state"), col("reason"))
     op.execute(queue.update().values(state="ready", reason=None).where(queue.c.state == "paused"))
     op.drop_table("merge_breakers")

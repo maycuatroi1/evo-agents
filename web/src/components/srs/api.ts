@@ -30,6 +30,9 @@ export type SrsChange = Schemas["SrsChange"];
 export type SrsReviewIn = Schemas["SrsReviewIn"];
 export type SrsCommentIn = Schemas["SrsCommentIn"];
 export type SrsImport = Schemas["SrsImport"];
+export type SrsFinding = Schemas["SrsFinding"];
+export type SrsFindingSource = Schemas["SrsFindingSource"];
+export type SrsReviewRun = Schemas["SrsReviewRun"];
 export type VersionState = SrsVersion["state"];
 export type ItemKind = SrsItem["kind"];
 export type DocumentKind = SrsDocumentSummary["kind"];
@@ -46,6 +49,7 @@ export const srsKeys = {
   diff: (project: string, slug: string, from: number, to: number) =>
     [...srsKeys.document(project, slug), "diff", from, to] as const,
   comments: (project: string, slug: string) => [...srsKeys.document(project, slug), "comments"] as const,
+  findings: (project: string, slug: string) => [...srsKeys.document(project, slug), "findings"] as const,
 };
 
 export const srsDocumentsQuery = (api: ApiSource, project: string) =>
@@ -85,6 +89,14 @@ export const srsCommentsQuery = (api: ApiSource, project: string, slug: string) 
     queryKey: srsKeys.comments(project, slug),
     queryFn: ({ signal }) =>
       call(api().GET("/v1/x/srs/{project}/documents/{slug}/comments", { params: { path: { project, slug } }, signal })),
+  });
+
+/** The conflicts @ba found in a document, oldest first, with their sources and how each was settled. */
+export const srsFindingsQuery = (api: ApiSource, project: string, slug: string) =>
+  queryOptions({
+    queryKey: srsKeys.findings(project, slug),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/x/srs/{project}/documents/{slug}/findings", { params: { path: { project, slug } }, signal })),
   });
 
 /** The config the plugin gets in the project (roles and approval policy), which every member reads. */

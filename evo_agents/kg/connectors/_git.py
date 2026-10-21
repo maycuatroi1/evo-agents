@@ -106,19 +106,22 @@ def last_change_times(repo: Path, commit: str) -> dict[str, str]:
 
 
 def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
-    """The commits reachable from ``commit`` and not from ``since``, newest first, each ``{sha, parents, time, paths}``:
-    the committer time, and the paths it changed, a merge's against its first parent, a rename as a delete and an add.
+    """The commits reachable from ``commit`` and not from ``since``, newest first, each
+    ``{sha, parents, time, author_email, paths}``: the committer time, the author's email as the commit object holds
+    it (``%ae``, never mapped through a ``.mailmap``, which the working tree may hold half-edited; ``""`` when the
+    commit names none), and the paths it changed, a merge's against its first parent, a rename as a delete and an add.
     GitError when ``since`` is not a commit of the clone."""
-    args = ["-c", "core.quotePath=false", "log", "--format=%x01%H %P%x01%cI", "--name-only", "--no-renames"]
+    args = ["-c", "core.quotePath=false", "log", "--format=%x01%H %P%x01%cI%x01%ae", "--name-only", "--no-renames"]
     args += ["--diff-merges=first-parent", commit]
     if since:
         args.append(f"^{since}")
     found: list[dict] = []
     for line in git(repo, *args).splitlines():
         if line.startswith("\x01"):
-            shas, _, time = line[1:].partition("\x01")
+            shas, _, rest = line[1:].partition("\x01")
+            time, _, email = rest.partition("\x01")
             sha, *parents = shas.split()
-            found.append({"sha": sha, "parents": parents, "time": time, "paths": []})
+            found.append({"sha": sha, "parents": parents, "time": time, "author_email": email.strip(), "paths": []})
         elif line and found:
             found[-1]["paths"].append(line)
     return found

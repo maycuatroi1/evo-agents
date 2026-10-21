@@ -6,7 +6,8 @@ Each call asks the App's installation on the repo for a token of that repo alone
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
 write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
-a comparison with contents read), uses it, and revokes it.
+a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
+its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
 The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
 no redirect, one log line without the token): GitHub failing raises ``GitHubUnavailable``, which the job takes as "try
 again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
@@ -17,7 +18,10 @@ as it may not be for a moment after the push; any other refusal is final.
 
 For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health``) the workers' App reads, with
 ``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
-(``tree``), and how many commits of the branch a commit lacks (``compare``); for the tier of a change of knowledge.yaml
+(``tree``), and how many commits of the branch a commit lacks (``compare``); for the range of a release
+(``evo_agents.hub.server.release_github``), the commits a commit has that the newest release tag lacks
+(``compare_commits``), and for landing it (``evo_agents.hub.server.release_land``), the tag made on its merge commit
+(``create_ref``, with the merge's token); for the tier of a change of knowledge.yaml
 (``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
 (``file_text``); for a global skill the hub publishes from a merge commit (``evo_agents.hub.server.skill_release``),
 the files of the skill's directory at that commit, its tree and then each file's blob (``directory_files``).
@@ -58,6 +62,8 @@ SERVER_PERMISSIONS = {
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
     "tree": {"contents": "read", "metadata": "read"},
+    "ci": {"actions": "read", "metadata": "read"},
+    "rerun": {"actions": "write", "metadata": "read"},
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
@@ -242,6 +248,43 @@ async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, 
     }
 
 
+async def compare_commits(
+    app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str, *, page: int, pages: int
+) -> tuple[list[dict], int | None]:
+    """The commits ``head`` of owner/repo has that ``base`` lacks, oldest first, as GitHub's comparison lists them
+    ``page`` at a time over at most ``pages`` pages (GitHub lists 250 at most), and how many there are in all
+    (``total_commits``; None when GitHub does not say)."""
+    doing = f"listing the commits from {base[:12]} to {head[:12]} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    found: list[dict] = []
+    total = None
+    for number in range(1, pages + 1):
+        response = await _api(app, token, "GET", path, doing, params={"per_page": page, "page": number})
+        if response.status_code != 200:
+            raise _refused(response, doing)
+        data = app._json(response, doing)
+        listed = data.get("commits") if isinstance(data.get("commits"), list) else []
+        found += [item for item in listed if isinstance(item, dict)]
+        total = data.get("total_commits") if type(data.get("total_commits")) is int else total
+        if len(listed) < page or (total is not None and len(found) >= total):
+            break
+    return found, total
+
+
+async def create_ref(app: GitHubApp, token: str, owner: str, repo: str, ref: str, sha: str) -> bool:
+    """Make the ref ``ref`` (refs/tags/<tag>) of owner/repo point at commit ``sha``: True when it was made now, False
+    when GitHub says it exists already; ``Refused`` for any other refusal."""
+    doing = f"making {ref} of {owner}/{repo} at {sha[:12]}"
+    payload = {"ref": ref, "sha": sha}
+    response = await _api(app, token, "POST", _path("repos", owner, repo, "git", "refs"), doing, json=payload)
+    if response.status_code == 201:
+        return True
+    refusal = _refused(response, doing)
+    if response.status_code == 422 and "already exists" in str(refusal).lower():
+        return False
+    raise refusal
+
+
 async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str, ref: str) -> str | None:
     """The text of file ``path`` of owner/repo at commit ``ref``; None when the commit has no such file. A file GitHub
     does not answer whole (over 1 MB), or that is not UTF-8, is a ``Refused``: it is never read in part."""
@@ -303,10 +346,14 @@ async def directory_files(
     return found
 
 
-async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:
-    """The open pull request of ``branch`` (of owner/repo itself), or None."""
+async def find_pull(
+    app: GitHubApp, token: str, owner: str, repo: str, branch: str, base: str | None = None
+) -> dict | None:
+    """The open pull request of ``branch`` (of owner/repo itself), into ``base`` when it is given, or None."""
     doing = f"looking for the pull request of {branch} on {owner}/{repo}"
     params = {"head": f"{owner}:{branch}", "state": "open", "per_page": 1}
+    if base is not None:
+        params["base"] = base
     response = await _api(app, token, "GET", _path("repos", owner, repo, "pulls"), doing, params=params)
     if response.status_code != 200:
         raise _refused(response, doing)
@@ -326,8 +373,9 @@ async def open_pull(
     body: str,
     draft: bool = False,
 ) -> dict:
-    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already.
-    Tried again after each of HEAD_WAITS while GitHub says the head is not there; ``Refused`` otherwise."""
+    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already into
+    that same base (one into another base is never it). Tried again after each of HEAD_WAITS while GitHub says the head
+    is not there; ``Refused`` otherwise."""
     doing = f"opening a pull request of {branch} on {owner}/{repo}"
     payload = {"title": title, "head": branch, "base": base, "body": body, "maintainer_can_modify": False}
     if draft:
@@ -340,7 +388,7 @@ async def open_pull(
         refusal = _refused(response, doing)
         if response.status_code != 422:
             raise refusal
-        found = await find_pull(app, token, owner, repo, branch)
+        found = await find_pull(app, token, owner, repo, branch, base)
         if found is not None:
             return found
         if not (waits and head_missing(refusal.errors)):

@@ -51,6 +51,7 @@
       "error": "Không đọc được danh sách worker"
     },
     "curator": "Curator",
+    "releases": "Phát hành",
     "agents": "Agent",
     "chats": "Chat",
     "curatorProposals": "Đề xuất",
@@ -2665,15 +2666,13 @@
       "leave": "Rời chat",
       "leaving": "Đang rời",
       "removePerson": "Đưa {login} ra khỏi chat",
-      "budget": "Ngân sách",
       "restricted": "Một dự án có agent trong chat này bị hạn chế, nên thông báo của chat chỉ ghi tên chat và đường dẫn tới chat.",
       "left": "Bạn đã rời {title}",
       "done": {
         "addAgent": "Đã thêm {name} vào chat",
         "removeAgent": "Đã đưa {name} ra khỏi chat",
         "addPerson": "Đã thêm {name} vào chat",
-        "removePerson": "Đã đưa {name} ra khỏi chat",
-        "budget": "Đã đổi ngân sách"
+        "removePerson": "Đã đưa {name} ra khỏi chat"
       },
       "leaveTitle": "Rời {title}?",
       "leaveBody": "Bạn sẽ không còn đọc hay viết trong chat này, và không nhận thông báo của chat nữa. Một thành viên có thể thêm bạn lại.",
@@ -2692,12 +2691,6 @@
       "addPerson": "Thêm người",
       "peopleFull": "Một chat có tối đa {max} người.",
       "personHint": "Người chung dự án hay chung chat với bạn; gõ login để thêm người khác đã đăng nhập hub. Mỗi người cần grant đủ cho các dự án của agent trong chat này.",
-      "budgetRead": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ. {creator}, người tạo chat, đổi được mức này.",
-      "budgetLabel": "Hạn mức chi trong 24 giờ, tính bằng USD",
-      "saving": "Đang lưu",
-      "save": "Lưu",
-      "badBudget": "Một số lớn hơn 0, tối đa {max}.",
-      "budgetHint": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ, theo usage của run; vượt mức thì hub không giao việc nữa.",
       "detailsTitle": "Chi tiết",
       "directDescription": "Chat riêng của bạn với {name}.",
       "directNote": "Chat riêng chỉ có bạn và một agent, không đổi được. Muốn có thêm người hay agent khác, hãy bấm Chat mới để tạo group chat."
@@ -2773,7 +2766,14 @@
       "ready": "Sẵn sàng",
       "cooling": "Đang nghỉ",
       "paused": "Tạm dừng",
-      "expired": "Hết hạn"
+      "expired": "Hết hạn",
+      "needs-relogin": "Cần đăng nhập lại"
+    },
+    "oauthEnds": "OAuth, access token đến <time></time>",
+    "oauthRenew": {
+      "title": "Đăng nhập lại cho {name}",
+      "description": "Chạy <code>evo-agents hub account oauth-login</code> trong terminal để thay bộ token. Tài khoản giữ nguyên.",
+      "descriptionRelogin": "Refresh token bị từ chối. Chạy <code>evo-agents hub account oauth-login</code> trong terminal để đăng nhập lại."
     },
     "until": "đến <time></time>",
     "rank": "trọng số {weight}, ưu tiên {priority}",
@@ -4831,7 +4831,8 @@
       "architecture": "Kiến trúc",
       "scope": "Phạm vi",
       "question": "Câu hỏi",
-      "triage": "Run lỗi"
+      "triage": "Run lỗi",
+      "release": "Phát hành"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -4845,7 +4846,8 @@
       "chat_added": "Có người thêm bạn vào một chat",
       "plugin_disabled": "Hub đã tắt một plugin",
       "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
-      "merge_paused": "Hàng đợi merge của một repo đã dừng"
+      "merge_paused": "Hàng đợi merge của một repo đã dừng",
+      "release": "Phát hành hằng ngày"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -6114,6 +6116,264 @@
       }
     }
   },
+  "releases": {
+    "metaTitle": "Phát hành của {project}",
+    "title": "Phát hành",
+    "newTab": "(mở trong thẻ mới)",
+    "sub": {
+      "daily": "Kiểm <repo></repo> mỗi ngày lúc {at} {timezone}, với tư cách {owner}. Lần kiểm kế tiếp <next></next>.",
+      "paused": "{login} đã tạm dừng <ago></ago>. Không lần kiểm nào chạy cho tới khi admin bật lại.",
+      "pausedByHub": "Đã tạm dừng <ago></ago>. Không lần kiểm nào chạy cho tới khi admin bật lại.",
+      "repoLink": "{repo} trên GitHub (mở trong thẻ mới)",
+      "noNext": "chưa có lịch"
+    },
+    "state": {
+      "paused": "Tạm dừng"
+    },
+    "runNow": "Kiểm ngay",
+    "checking": "Đang kiểm",
+    "runFailed": "Không chạy được lần kiểm",
+    "pause": "Tạm dừng",
+    "pausing": "Đang tạm dừng",
+    "resume": "Chạy tiếp",
+    "resuming": "Đang bật lại",
+    "paused": {
+      "title": "Đã tạm dừng lịch phát hành",
+      "text": "Không lần kiểm nào chạy và không chu kỳ nào mở cho tới khi bật lại. Các run phát hành còn xếp hàng đã bị huỷ."
+    },
+    "resumed": {
+      "title": "Đã bật lại lịch phát hành",
+      "text": "Lần kiểm hằng ngày kế tiếp chạy lúc {at} {timezone}."
+    },
+    "resumeFailed": "Không bật lại được lịch phát hành",
+    "confirmPause": {
+      "title": "Tạm dừng lịch phát hành?",
+      "text": "Không lần kiểm hằng ngày nào chạy cho {project} cho tới khi admin bật lại. Các run phát hành còn xếp hàng bị huỷ, và chu kỳ đang mở mà không còn run nào chạy sẽ đóng. Run đang chạy vẫn chạy cho xong. Ca đêm của Curator không bị ảnh hưởng.",
+      "confirm": "Tạm dừng lịch",
+      "cancel": "Để chạy tiếp"
+    },
+    "checked": {
+      "opened": {
+        "title": "Đã mở chu kỳ #{cycle}",
+        "text": "Run đầu tiên của chu kỳ, #{run}, đã xếp hàng chờ worker."
+      },
+      "openRun": "Mở run #{run}",
+      "unchanged": {
+        "title": "Không có gì để phát hành"
+      },
+      "busy": {
+        "title": "Không mở chu kỳ mới"
+      },
+      "paused": {
+        "title": "Chưa kiểm: lịch đang tạm dừng"
+      },
+      "owner": {
+        "title": "Chưa kiểm: chủ lịch không còn quyền admin"
+      },
+      "error": {
+        "title": "Lần kiểm bị lỗi"
+      }
+    },
+    "errors": {
+      "forbidden": "Chỉ admin của dự án mới tạm dừng, bật lại hay chạy lần kiểm phát hành.",
+      "notFound": "Dự án không còn, hoặc bạn không còn quyền đọc.",
+      "conflict": "Dự án không còn lịch phát hành.",
+      "apiMessage": "Hub trả lời: {message}"
+    },
+    "empty": {
+      "title": "Chưa có lịch phát hành",
+      "description": "Lịch phát hành mỗi ngày kiểm xem code đóng gói có đổi từ tag phát hành mới nhất hay không. Có đổi thì một agent cắt bản kế tiếp, hub merge và gắn tag, theo dõi CI, và sửa forward tag đỏ cho tới khi bản đó được phát hành.",
+      "command": "Admin của dự án đặt lịch bằng <command></command>."
+    },
+    "problems": {
+      "stopped": {
+        "title": "Chu kỳ #{id} đã dừng: {cause}",
+        "decision": "Trả lời quyết định",
+        "thread": "Mở thread triage",
+        "noCause": "xem lý do bên dưới",
+        "noReason": "Hub không giữ lý do.",
+        "waits": "Chu kỳ không đi tiếp cho tới khi {owner} trả lời: tiếp tục với thêm một trần, đóng chu kỳ, hay tạm dừng lịch."
+      },
+      "actions": {
+        "title": "Hub không đọc được CI của {workflow}",
+        "text": "Installation của GitHub App trên {repo} không cấp quyền Actions, nên hub không theo dõi CI và không sửa tag đỏ. Một thành viên của tổ chức GitHub chấp nhận quyền mới trên trang installation của App."
+      }
+    },
+    "cause": {
+      "run_failed": "một run thất bại",
+      "run_cancelled": "một run bị huỷ",
+      "refused": "hub từ chối đưa một run vào",
+      "github": "GitHub lỗi liên tục",
+      "hacking": "một thay đổi có dấu hiệu lách test",
+      "budget": "đã tiêu hết trần",
+      "same_test": "cùng một test đỏ ở hai tag liên tiếp",
+      "timeout": "CI quá hạn",
+      "ci": "CI kết thúc theo cách không bản sửa nào trả lời được"
+    },
+    "ci": {
+      "pending": "Đang chờ",
+      "running": "Đang chạy",
+      "passed": "Đạt",
+      "failed": "Thất bại",
+      "timeout": "Quá hạn"
+    },
+    "cycleState": {
+      "open": "Đang mở",
+      "stopped": "Đã dừng",
+      "published": "Đã phát hành",
+      "closed": "Đã đóng"
+    },
+    "outcome": {
+      "opened": "Đã mở một chu kỳ",
+      "openedCycle": "Đã mở chu kỳ #{id}",
+      "unchanged": "Không có gì để phát hành",
+      "busy": "Đang có chu kỳ",
+      "paused": "Tạm dừng",
+      "owner": "Chủ lịch không còn quyền admin",
+      "error": "Lỗi"
+    },
+    "cycle": {
+      "title": "Chu kỳ #{id}",
+      "sub": "Mở bởi lần kiểm ngày {day}; các run của chu kỳ chạy với tư cách {owner}.",
+      "opened": "Mở lúc",
+      "start": "Bắt đầu bằng",
+      "startCut": "Cắt bản từ {ref}",
+      "startFix": "Sửa tag đỏ {tag}",
+      "range": "Khoảng",
+      "tagLink": "Tag {tag} trên GitHub (mở trong thẻ mới)",
+      "noBase": "Chưa có tag",
+      "to": "đến",
+      "commitLink": "Commit {commit} trên GitHub (mở trong thẻ mới)",
+      "changed": "Đường dẫn đã đổi",
+      "noChange": "Không có: chu kỳ sửa một tag đỏ",
+      "cost": "Chi phí",
+      "costValue": "{cost} trên {budget}, {share}%",
+      "costLabel": "Chi phí của chu kỳ #{id} so với trần",
+      "tags": "Tag",
+      "noTags": "Chưa có tag: hub gắn tag lên merge commit khi nhánh của run cắt bản được đưa vào.",
+      "runs": "Run",
+      "noRuns": "Chưa có run.",
+      "none": {
+        "title": "Không có chu kỳ nào đang mở.",
+        "paused": "Lịch đang tạm dừng: không lần kiểm nào mở chu kỳ.",
+        "next": "Lần kiểm kế tiếp <next></next>.",
+        "noNext": "Chưa có lần kiểm nào được lên lịch."
+      }
+    },
+    "tags": {
+      "failedTitle": "{count} test thất bại",
+      "failedMore": "và {count} test khác",
+      "infra": "Chỉ hạ tầng lỗi: hub đã chạy lại các job lỗi {reruns, plural, =0 {chưa lần nào} other {# lần}}.",
+      "problem": "Hub không đọc được CI: {problem}",
+      "columns": {
+        "tag": "Tag",
+        "ci": "CI",
+        "workflow": "Workflow",
+        "made": "Gắn tag bởi",
+        "checked": "Đọc lúc"
+      },
+      "failedCount": "{count} test thất bại",
+      "tagLink": "Tag {tag} trên GitHub (mở trong thẻ mới)",
+      "noWorkflow": "Chưa có run",
+      "workflow": "Run workflow",
+      "workflowAttempt": "Run workflow, lần {attempt}",
+      "byPerson": "Một người",
+      "byRun": "Run #{id}",
+      "openRun": "Mở run #{id}",
+      "notChecked": "Chưa đọc",
+      "caption": "Các tag chu kỳ #{id} theo dõi"
+    },
+    "runs": {
+      "tagged": "Đã gắn tag {tag}",
+      "pull": "Pull request",
+      "refused": "Bị từ chối: {reason}",
+      "failed": "GitHub lỗi: {reason}",
+      "waitingLand": "Đã push {version}, chờ đưa vào",
+      "notPushed": "Chưa push gì",
+      "columns": {
+        "run": "Run",
+        "state": "Trạng thái",
+        "landing": "Đưa vào",
+        "cost": "Chi phí"
+      },
+      "version": "Phiên bản {version}",
+      "openRun": "Mở run #{id}",
+      "fixOf": "Sửa {tag}",
+      "mode": {
+        "cut": "Cắt bản",
+        "fix": "Sửa"
+      },
+      "caption": "Các run của chu kỳ #{id}"
+    },
+    "schedule": {
+      "title": "Lịch",
+      "repo": "Repo",
+      "repoLink": "{repo} trên GitHub (mở trong thẻ mới)",
+      "daily": "Kiểm hằng ngày",
+      "dailyValue": "{at} {timezone}",
+      "next": "Lần kiểm kế tiếp",
+      "nextPaused": "Không có khi đang tạm dừng",
+      "ships": "Phát hành",
+      "shipsValue": "Commit của {ref}, tag theo mẫu {pattern}",
+      "workflow": "Workflow",
+      "paths": "Đường dẫn đóng gói",
+      "cap": "Trần mỗi chu kỳ",
+      "capValue": "{budget}",
+      "owner": "Chạy với tư cách",
+      "updated": "Đặt lần cuối",
+      "updatedValue": "Bởi {login} <ago></ago>"
+    },
+    "check": {
+      "title": "Lần kiểm gần nhất",
+      "outcome": "Kết quả",
+      "when": "Lúc",
+      "by": "Do ai",
+      "since": "Tag mới nhất",
+      "tagLink": "Tag {tag} trên GitHub (mở trong thẻ mới)",
+      "target": "Đích",
+      "commitLink": "Commit {commit} trên GitHub (mở trong thẻ mới)",
+      "changed": "Đường dẫn đã đổi",
+      "noChange": "Không có",
+      "reason": "Lý do",
+      "none": "Chưa có lần kiểm nào. Lần đầu chạy lúc {at} {timezone}, hoặc khi admin bấm Kiểm ngay.",
+      "manual": "{login} bấm Kiểm ngay",
+      "daily": "Lần kiểm hằng ngày của ngày {day}"
+    },
+    "checks": {
+      "title": "Các lần kiểm trước",
+      "caption": "Các lần kiểm phát hành của {project} trước lần gần nhất",
+      "columns": {
+        "when": "Lúc",
+        "outcome": "Kết quả",
+        "reason": "Lý do"
+      }
+    },
+    "past": {
+      "title": "Các chu kỳ trước",
+      "none": "Chưa có chu kỳ nào kết thúc.",
+      "published": "Đã phát hành {tag}",
+      "closedWhy": "Đã đóng: {reason}",
+      "closed": "Đã đóng",
+      "noTags": "Không có tag",
+      "tagLink": "Tag {tag} trên GitHub (mở trong thẻ mới)",
+      "columns": {
+        "cycle": "Chu kỳ",
+        "state": "Trạng thái",
+        "tags": "Tag",
+        "runs": "Run",
+        "cost": "Chi phí",
+        "ended": "Kết thúc"
+      },
+      "costOf": "Trên trần {budget}",
+      "mobileMeta": "{ending}, {runs} run, {cost}",
+      "mobileTitle": "Chu kỳ #{id}, {day}",
+      "caption": "Các chu kỳ phát hành đã kết thúc của {project}",
+      "pager": "Các trang chu kỳ trước",
+      "range": "{first} đến {last} trên {total}",
+      "newer": "Mới hơn",
+      "older": "Cũ hơn"
+    }
+  },
   "monitor": {
     "title": "Monitor",
     "following": "Đang theo dõi mọi run đang diễn ra: run nào bắt đầu sẽ vào lưới.",
@@ -6801,6 +7061,8 @@
       "approvalsTitle": "Phê duyệt",
       "approvalsCaption": "Phê duyệt v{version} theo vai trò",
       "policyNone": "Một lượt duyệt của người có vai trò ghi chưa viết version nào kể từ {since} là đủ.",
+      "policyNoneSelf": "Một lượt duyệt của người có vai trò ghi là đủ, kể cả lượt của chính người viết.",
+      "selfApproval": "Dự án {project} đã bật tự duyệt: người viết một version cũng duyệt được version đó.",
       "policy": "Bắt buộc: {required}. Không bắt buộc: {optional}.",
       "nobody": "không có",
       "noApprovals": "Vòng này chưa có lượt duyệt nào.",
@@ -6837,7 +7099,68 @@
       "submit": "Gửi lượt duyệt",
       "approvedToast": "Đã duyệt v{version}",
       "approvalToast": "Đã ghi lượt duyệt cho v{version}",
-      "returnedToast": "Đã trả v{version} về nháp"
+      "returnedToast": "Đã trả v{version} về nháp",
+      "lock": {
+        "findingsTitle": "Chưa duyệt được: còn {count, plural, other {# phát hiện cần quyết định}} đang mở",
+        "findingsText": "Chốt từng phát hiện trong chat với @ba, hoặc một quản trị viên của dự án bỏ qua nó. Bạn vẫn yêu cầu sửa được.",
+        "openChat": "Mở chat chốt",
+        "reviewTitle": "Duyệt chờ @ba rà soát xong vòng {round}",
+        "reviewText": "Duyệt mở lại khi run kết thúc. Bạn vẫn yêu cầu sửa được."
+      }
+    },
+    "findings": {
+      "title": "Phát hiện",
+      "description": "Các xung đột @ba tìm thấy giữa tài liệu này, các tài liệu khác của dự án và knowledge graph của dự án. Một phát hiện cần quyết định còn mở thì chặn việc duyệt.",
+      "counts": "{decide} cần quyết định, {open} mở khác, {settled} đã chốt",
+      "groups": {
+        "decide": "Cần quyết định",
+        "open": "Đang mở khác",
+        "settled": "Đã chốt"
+      },
+      "reviewing": "@ba đang rà soát vòng {round}",
+      "reviewingText": "Phát hiện hiện ở đây khi @ba ghi lại. Danh sách tự đọc lại cho tới khi run kết thúc.",
+      "reviewBroke": "@ba chưa rà soát xong vòng {round}",
+      "reviewBrokeText": "Việc duyệt không chờ run này nữa, nhưng danh sách có thể thiếu xung đột mà nó chưa ghi.",
+      "emptyTitle": "Không thấy xung đột nào",
+      "emptyText": "Khi @ba rà soát một version, các xung đột nó tìm thấy với tài liệu khác và knowledge graph hiện ở đây.",
+      "emptyReviewing": "@ba chưa ghi phát hiện nào.",
+      "failed": "Không đọc được các phát hiện.",
+      "retry": "Thử lại",
+      "openRun": "Mở run #{id}",
+      "foundOn": "#{id}, thấy ở v{version}",
+      "about": "Về",
+      "wholeDocument": "Cả tài liệu",
+      "sources": "Nguồn",
+      "settledWith": "Chốt dựa trên",
+      "openChat": "Mở chat chốt",
+      "settledMessage": "Mở tin đã chốt",
+      "resolvedBy": "{login} đã chốt",
+      "waivedBy": "{login} đã bỏ qua",
+      "resolvedFromGraph": "Đã chốt từ knowledge graph",
+      "waivedByAgent": "@ba đã bỏ qua",
+      "newTab": "(mở trong tab mới)",
+      "level": {
+        "info": "Thông tin",
+        "advisory": "Lưu ý",
+        "decide": "Cần quyết định"
+      },
+      "kind": {
+        "duplicate": "Trùng lặp",
+        "contradiction": "Mâu thuẫn",
+        "kg_conflict": "Xung đột với graph",
+        "overlap": "Chồng lấn"
+      },
+      "status": {
+        "open": "Đang mở",
+        "resolved": "Đã chốt",
+        "waived": "Đã bỏ qua"
+      },
+      "sourceKind": {
+        "node": "Node của graph",
+        "code": "Mục",
+        "path": "Tệp",
+        "version": "Version"
+      }
     },
     "comments": {
       "added": "Đã thêm bình luận",

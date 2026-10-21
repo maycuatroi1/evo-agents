@@ -5,8 +5,8 @@ When a run of kind step, plan or author ends ``failed``, ``open_thread`` finds o
 agent in it, and writes the first message of the thread: what the hub knows of the failure (state, cause and whether the
 hub guessed it, error, plan and step, repo and branch, the last verify, links to the run's page, log and diff, and who
 could run it again: ``runs.service.candidates``) and, last, the mention of the agent, which starts a chat run for the
-owner at hop 1 (``chat_runs.hand_work``: the chat's budget, the writer role and a worker of the owner decide, and a
-refusal is said in the thread). A run has one thread: ``run_triage`` holds it, so a second call finds it. Review, judge,
+owner at hop 1 (``chat_runs.hand_work``: the writer role and a worker of the owner decide, and a refusal is said in
+the thread). A run has one thread: ``run_triage`` holds it, so a second call finds it. Review, judge,
 chat and local runs open none, so the failure of a chat run of triage starts no triage. The switch of a project is
 ``projects.triage_enabled``; the hub's ``chats`` feature must be on. The first message names the plan and the step, so
 each thread says which plan it is about.
@@ -17,8 +17,7 @@ by grant what is labelled at or below it, as the project's runs on no plan are. 
 keeps a chat of its own, "Triage: <plan>", as every plan had before (``_apart``): there its failures reach the owners of
 its runs, who could read the plan when they dispatched them. So does a run whose owner the project's chat cannot take
 (an agent of another project invited into it brings a label they do not clear, or the chat is full); a run with no plan
-then opens no thread. All the threads of the project's chat share its one budget. The triage chats each plan had before
-stay as they are, with their threads.
+then opens no thread. The triage chats each plan had before stay as they are, with their threads.
 
 A run the hub stopped on a usage limit or a refused login (cause ``rate_limit`` or ``account_auth``, an ``account_event``
 stop in its log) while no account of its owner for that variable is ready for the project gets the thread and the facts,
@@ -27,6 +26,10 @@ says when the first of them is ready again.
 
 ``on_failed`` does it in a savepoint of the caller's transaction: whatever goes wrong inside (a label the owner does
 not clear, a full chat, a database error) rolls back to it and leaves the run failed with the notice it always had.
+
+``project_thread`` is the hub's thread of something that is no failed run, a release cycle that stopped
+(``release_cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
+since the owner decides.
 """
 
 from __future__ import annotations
@@ -68,6 +71,16 @@ class Thread:
     chat_id: int
     root_id: int
     link: str
+
+
+@dataclass(frozen=True)
+class About:
+    """What the chat helpers read of what a thread is about, when it is no run: its project."""
+
+    project_id: int
+    project: str
+    plan_id: str | None = None
+    run_id: int | None = None
 
 
 def _thread(chat_id: int, root_id: int) -> Thread:
@@ -126,7 +139,7 @@ async def _no_account(conn: AsyncConnection, found: RunStep) -> str | None:
     now = datetime.now(UTC)
     for env_var in sorted({name for name in (await conn.execute(names)).scalars() if name}):
         rows = await conn.execute(
-            select(s.c.expires_at, a.c.paused_at, a.c.cooldown_until)
+            select(s.c.expires_at, a.c.oauth_sealed, a.c.paused_at, a.c.cooldown_until)
             .outerjoin_from(s, a, a.c.secret_id == s.c.id)
             .where(
                 s.c.owner_id == found.dispatcher_id,
@@ -136,7 +149,18 @@ async def _no_account(conn: AsyncConnection, found: RunStep) -> str | None:
                 bound,
             )
         )
-        states = [(account_state(r.paused_at, r.cooldown_until, r.expires_at, now), r.cooldown_until) for r in rows]
+        states = [
+            (
+                account_state(
+                    r.paused_at,
+                    r.cooldown_until,
+                    None if r.oauth_sealed is not None else r.expires_at,  # an OAuth token is renewed at lease time
+                    now,
+                ),
+                r.cooldown_until,
+            )
+            for r in rows
+        ]
         if not states or any(state == "ready" for state, _ in states):
             continue
         cooling = [until for state, until in states if state == "cooling"]
@@ -166,7 +190,7 @@ async def _apart(conn: AsyncConnection, found: RunStep) -> bool:
     return plan is None or default is None or not plan.below(replace(default, integrity=UNTRUSTED))
 
 
-async def _made(conn: AsyncConnection, found: RunStep, owner: Principal, plan_id: str | None) -> int:
+async def _made(conn: AsyncConnection, found: RunStep | About, owner: Principal, plan_id: str | None) -> int:
     """The id of the triage chat of ``plan_id`` (the project's for None) the hub makes now, with ``owner`` its creator."""
     title = f"Triage: {plan_id or found.project}"[: chats.MAX_TITLE_CHARS]
     c = tables.chats
@@ -206,7 +230,9 @@ async def _as_member(conn: AsyncConnection, chat_id: int) -> tuple[ChatAccess, P
     raise refused
 
 
-async def _joined(conn: AsyncConnection, found: RunStep, owner: Principal, profile, plan_id: str | None) -> ChatAccess:
+async def _joined(
+    conn: AsyncConnection, found: RunStep | About, owner: Principal, profile, plan_id: str | None
+) -> ChatAccess:
     """The triage chat of ``plan_id`` (the project's for None) as ``owner`` sees it: made when there is none; the owner
     and agent ``profile`` put in it, as the group chat's rules let them (``put_person``, ``put_agent``)."""
     tc = tables.triage_chats
@@ -221,13 +247,36 @@ async def _joined(conn: AsyncConnection, found: RunStep, owner: Principal, profi
     return await chat_access(conn, owner, row)
 
 
+def _lock(project_id: int):
+    return select(func.pg_advisory_xact_lock(func.hashtextextended(f"triage:{project_id}", 0)))
+
+
+async def project_thread(
+    conn: AsyncConnection, project_id: int, project: str, owner_id: int, body: str
+) -> Thread | None:
+    """A thread of the hub's in the project's triage chat whose first message is ``body``, the member ``owner_id``
+    put in the chat, no agent mentioned; None while the project's triage, or the hub's chats, are off. The caller
+    holds a savepoint: a chat that cannot take the owner raises."""
+    if not await _due(conn, project_id):
+        return None
+    owner = await _person(conn, owner_id)
+    await conn.execute(_lock(project_id))
+    profile = await ensure_default(conn, project_id)
+    chat = await _joined(conn, About(project_id, project), owner, profile, None)
+    message_id, _ = await insert_message(
+        conn, chat, runs.clip(body, chats.MAX_MESSAGE_BYTES - 200), thread_root_id=None
+    )
+    log.info("triage thread opened", extra={"project": project, "chat_id": chat.chat_id, "message_id": message_id})
+    return _thread(chat.chat_id, message_id)
+
+
 async def _chat(conn: AsyncConnection, found: RunStep, owner: Principal):
     """(the triage chat of the run as ``owner`` sees it, the project's default agent): the project's (``plan_id``
     NULL), the owner and the agent put in it. A run of a plan kept apart (``_apart``) goes to the chat of its plan
     instead, and so does one whose owner the project's chat cannot take (the refusal of its checks, rolled back to a
     savepoint); for a run with no plan that refusal stands. One lock per project, taken before the savepoint so its
     rollback keeps it: two failures at once make one chat of each key."""
-    await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"triage:{found.project_id}", 0))))
+    await conn.execute(_lock(found.project_id))
     profile = await ensure_default(conn, found.project_id)
     if found.plan_id is not None and await _apart(conn, found):
         return await _joined(conn, found, owner, profile, found.plan_id), profile
@@ -381,7 +430,7 @@ async def _ask_agent(
     body: str,
 ) -> int | None:
     """Hand the first message of the thread to ``profile`` for the owner (hop 1); the chat run it made, if any. A
-    refusal (the budget, a worker) is said in the thread."""
+    refusal (the writer role, a worker) is said in the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
     via = (

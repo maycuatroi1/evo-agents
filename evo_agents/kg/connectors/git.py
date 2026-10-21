@@ -44,17 +44,18 @@ its kind, ``[redacted:password]``; the rest of the text stays, so the file's str
 item's ``props.redactions`` counts the markers by kind, and the sync's audit line repeats those counts by item id.
 
 Besides the files, a run reads the history of the ref: an item ``<source>:commit:<sha>`` (kind ``commit``) for each
-commit reachable from the commit read, with its parents, its committer time and the paths it changed that the source
-does not exclude (a merge's against its first parent, at most MAX_COMMIT_PATHS of them, ``files`` counting them all);
-never its message. For a repo whose origin is on GitHub it also reads the pull requests (``github``): an item
-``<source>:pr:<number>`` (kind ``pr``) with the title, the state (open, closed or merged), the head and base branches
-and the merge commit, labelled integrity U; ``pulls: false`` on the source turns that off. A run whose cursor has the
-input of this run reads only the commits since the cursor's commit and the pull requests updated since the newest one
-it saw (``pulls.since`` in the cursor); their listings are then not complete, so nothing read before goes. Any other
-run reads the whole history, and its complete listing of commits removes those the ref no longer reaches. So does a
-run whose ref no longer reaches the cursor's commit (a force-push or a rewrite of the history, ``rewritten``), with a
-warning that says so; the deletion guard holds its removals as any others, so a rewrite of much of the history waits
-for ``kg sync --accept-removals``. A pull request is never removed.
+commit reachable from the commit read, with its parents, its committer time, its author's email (``author_email``, as
+the commit records it; the build keeps it on the Commit node, labelled as the source like every other prop) and the
+paths it changed that the source does not exclude (a merge's against its first parent, at most MAX_COMMIT_PATHS of
+them, ``files`` counting them all); never its message. For a repo whose origin is on GitHub it also reads the pull
+requests (``github``): an item ``<source>:pr:<number>`` (kind ``pr``) with the title, the state (open, closed or
+merged), the head and base branches and the merge commit, labelled integrity U; ``pulls: false`` on the source turns
+that off. A run whose cursor has the input of this run reads only the commits since the cursor's commit and the pull
+requests updated since the newest one it saw (``pulls.since`` in the cursor); their listings are then not complete,
+so nothing read before goes. Any other run reads the whole history, and its complete listing of commits removes those
+the ref no longer reaches. So does a run whose ref no longer reaches the cursor's commit (a force-push or a rewrite
+of the history, ``rewritten``), with a warning that says so; the deletion guard holds its removals as any others, so
+a rewrite of much of the history waits for ``kg sync --accept-removals``. A pull request is never removed.
 """
 
 from __future__ import annotations
@@ -113,7 +114,9 @@ def _repo_entry(ctx) -> dict:
 @functools.cache
 def _code() -> str:
     """Digest of the code that makes the items of a commit: this module, the file selection and the redaction. A
-    build of evo-agents that changes how files are read or redacted reads every commit again, whatever its version."""
+    build of evo-agents that changes how files or the history are read, or how they are redacted, reads every commit
+    again, whatever its version: its first sync reads the whole history, so a prop a commit item gained (such as
+    ``author_email``) reaches the commits already in the corpus too."""
     from evo_agents.kg import redact
 
     digest = hashlib.sha256(__version__.encode())
@@ -206,7 +209,8 @@ def prior_cursor(ctx) -> dict:
 
 
 def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, allow) -> dict:
-    """The item of one commit of the history: what it changed, by path, and no word of its message."""
+    """The item of one commit of the history: what it changed, by path, and its author's email when it names one; no
+    word of its message."""
     paths = sorted(path for path in commit["paths"] if not excluded(path, exclude, allow))
     props = {
         "repo": repo_name,
@@ -215,6 +219,8 @@ def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, al
         "files": len(paths),
         "paths": paths[:MAX_COMMIT_PATHS],
     }
+    if commit.get("author_email"):
+        props["author_email"] = commit["author_email"]
     if len(commit["parents"]) > 1:
         props["merge"] = True
     item = {

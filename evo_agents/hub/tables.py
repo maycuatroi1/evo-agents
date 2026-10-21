@@ -1,8 +1,11 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
-migration from (``migrations/env.py``). Modules ``tables_<area>`` hold them by area; ``tables.srs`` and ``tables.tasks``
-are core plugins'. The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py``
-keeps the two equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations
-name them (CHECK constraints and triggers live in the migrations only). A table is an attribute of its name."""
+migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
+``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage``, ``tables_workers``, ``tables_curator``,
+``tables_release`` and ``tables_merge`` hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
+
+The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
+equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
+(CHECK constraints and triggers live in the migrations only). A table is an attribute of its name."""
 
 from __future__ import annotations
 
@@ -40,6 +43,7 @@ from evo_agents.hub import (
     tables_merge,
     tables_plugins,
     tables_profiles,
+    tables_release,
     tables_sessions,
     tables_settings,
     tables_triage,
@@ -940,27 +944,7 @@ Index(
     postgresql_where=proposals.c.inbox_at.is_not(None),
 )
 
-# The Curator's morning briefs (0015)
-
-curator_briefs = Table(
-    "curator_briefs",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("day", Date, nullable=False),
-    Column("night", Date, nullable=False),
-    Column("user_id", BigInteger, nullable=False),
-    Column("body", JSONB, nullable=False),
-    Column("notification_id", BigInteger),
-    _stamp("created_at"),
-    ForeignKeyConstraint(
-        ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_briefs_project_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="curator_briefs_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="curator_briefs_pkey"),
-    UniqueConstraint("project_id", "day", name="curator_briefs_project_id_day_key"),
-)
+curator_briefs = tables_curator.briefs_table(metadata)  # the Curator's morning briefs (0015)
 
 channel_link_codes = Table(  # the one-time codes that link a member's channel: telegram_links until 0063
     "channel_link_codes",
@@ -980,12 +964,12 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
     Index("channel_link_codes_user_idx", "user_id"),
 )
 
-accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
+accounts, account_policies, run_accounts, user_emails = tables_accounts.account_tables(metadata)  # 0027, 0066, 0068
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
-hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0066
+hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_tables(metadata)  # 0037, 0043, 0073
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
@@ -995,5 +979,8 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
-merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0068-0071
+merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0075-0078
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
+release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
+    metadata, runs, RUN_ACTIVE
+)

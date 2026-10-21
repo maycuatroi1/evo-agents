@@ -96,10 +96,15 @@ TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
-TABLES |= pg.POLICY_TABLES  # migration 0066
-TABLES |= pg.MERGE_TABLES  # migration 0068
-TABLES |= pg.SAMPLE_TABLES  # migration 0070
-TABLES |= pg.BREAKER_TABLES  # migration 0071
+TABLES |= pg.RELEASE_TABLES  # migration 0067
+TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
+TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
+TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
+TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
+TABLES |= pg.POLICY_TABLES  # migration 0073
+TABLES |= pg.MERGE_TABLES  # migration 0075
+TABLES |= pg.SAMPLE_TABLES  # migration 0077
+TABLES |= pg.BREAKER_TABLES  # migration 0078
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -174,18 +179,20 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seven_tables(hub_db):
-    assert len(TABLES) == 107  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_sixteen_tables(hub_db):
+    assert len(TABLES) == 116  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces
+    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
+        ("accounts", "oauth_nonce"),
+        ("accounts", "oauth_sealed"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("secrets", "nonce"),
@@ -538,6 +545,9 @@ def _chat_run(ids, chat_id: int, message_id: int | None, **extra):
     return insert(runs).values(row | extra).returning(runs.c.id)
 
 
+CHATS_0032 = table("chats", column("id"), column("budget_usd"))  # the chat's budget, from 0032 until 0072
+
+
 def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_db):
     move_to(hub_db, "0031")
     t = hub_tables
@@ -574,11 +584,11 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
                 approval="auto",
             ),
             update(runs).values(chat_id=chat_id, chat_message_id=message_id, hop=1).where(runs.c.id == author),
-            update(t.chats).values(budget_usd=0).where(t.chats.c.id == chat_id),
+            update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id),
         ):
             with pytest.raises(errors.CheckViolation):
                 conn.execute(bad)
-    assert query(hub_db, select(t.chats.c.budget_usd)) == [(5.0,)]
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]
 
     # Going back deletes the chat runs, the one going on in another's session and the retry included; the rest stays.
     move_to(hub_db, "0031", down=True)
@@ -1260,8 +1270,208 @@ def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
 
 
-def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
+def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
     move_to(hub_db, "0065")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0066")
+    accounts = hub_tables.accounts
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        secret = insert(hub_tables.secrets).values(
+            owner_id=ids["user"],
+            name="claude-o",
+            kind="env",
+            env_var="CLAUDE_CODE_OAUTH_TOKEN",
+            sealed=b"s" * 20,
+            nonce=b"n" * 12,
+            key_id="0123abcd",
+        )
+        secret_id = conn.execute(secret.returning(hub_tables.secrets.c.id)).scalar_one()
+        conn.execute(insert(accounts).values(secret_id=secret_id))  # no tokens: every account that exists
+        conn.execute(
+            update(accounts)
+            .values(oauth_sealed=b"x", oauth_nonce=b"n", oauth_key_id="k")
+            .where(accounts.c.secret_id == secret_id)
+        )
+        with pytest.raises(errors.CheckViolation):  # a set is whole or absent
+            conn.execute(update(accounts).values(oauth_sealed=None).where(accounts.c.secret_id == secret_id))
+    move_to(hub_db, "0065", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+
+
+def test_0068_keeps_user_emails_one_member_an_address_whatever_its_case_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0067")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0068")
+    emails, users = hub_tables.user_emails, hub_tables.users
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        other = one(conn, insert(users).values(login="lumen-dev", github_id=2).returning(users.c.id))
+        conn.execute(insert(emails).values(user_id=ids["user"], email="Octo@Northwind.example"))
+        with pytest.raises(errors.UniqueViolation):  # an address is one member's, whatever its case
+            conn.execute(insert(emails).values(user_id=other, email="octo@northwind.EXAMPLE"))
+        for wrong in (
+            "octo",
+            "octo@northwind",
+            "oc to@northwind.example",
+            "a@b@northwind.example",
+            "x" * 250 + "@a.bc",
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(emails).values(user_id=other, email=wrong))
+        conn.execute(insert(emails).values(user_id=other, email="dev@lumen.example"))
+        conn.execute(delete(users).where(users.c.id == other))  # a member's emails go with the member
+    assert query(hub_db, select(emails.c.email)) == [("Octo@Northwind.example",)]
+    move_to(hub_db, "0067", down=True)
+    assert "user_emails" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+
+
+def test_0069_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_and_the_review_run(hub_db):
+    move_to(hub_db, "0068")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0069")
+    s = hub_tables.srs
+    f = s.findings
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "number": 1, "author_id": ids["user"], "content_sha256": "a" * 64}
+        version_id = one(conn, insert(s.versions).values(**version).returning(s.versions.c.id))
+        shown = [{"kind": "code", "ref": "UC PAY-1"}]
+        found = {"document_id": doc, "version_id": version_id, "kind": "contradiction", "level": "decide"}
+        found |= {"summary": "Two limits of retries", "label": {"level": "internal"}}
+        conn.execute(insert(f).values(**found, sources=shown))
+        for wrong in (
+            {"sources": []},  # no source, no conflict
+            {"sources": {"kind": "code"}},
+            {"sources": shown, "kind": "typo"},
+            {"sources": shown, "level": "urgent"},
+            {"sources": shown, "summary": ""},
+            {"sources": shown, "resolution": "settled"},  # an open finding carries nothing of a settling
+            {"sources": shown, "status": "resolved", "resolution": "settled"},  # a settled one carries its moment
+            {"sources": shown, "status": "gone", "resolution": "x", "settled_at": func.now()},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(f).values({**found, **wrong}))
+        conn.execute(insert(f).values(**found, sources=shown, status="waived", resolution="x", settled_at=func.now()))
+    assert query(hub_db, select(f.c.status, f.c.resolution_sources).order_by(f.c.id)) == [
+        ("open", []),
+        ("waived", []),
+    ]
+    assert "review_run_id" in columns(hub_db, "srs_versions")
+    move_to(hub_db, "0068", down=True)
+    assert "srs_findings" not in tables(hub_db)
+    assert "review_run_id" not in columns(hub_db, "srs_versions")
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+
+
+def test_0070_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_group_chats(hub_db):
+    move_to(hub_db, "0069")
+    before = query(hub_db, SNAPSHOT)
+    t, s = hub_tables, hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        profile = {"project_id": ids["project"], "handle": "ba", "name": "BA", "color": "#336699"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        profile_id = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+        settle = {"title": "Conflicts of demo-shop v1", "created_by": ids["user"], "kind": "settle"}
+        with pytest.raises(errors.CheckViolation):  # 0050 knows group and direct chats alone
+            conn.execute(insert(t.chats).values(**settle, direct_profile_id=profile_id))
+    move_to(hub_db, "0070")
+    with live.connect(hub_db) as conn:
+        pairs = ({"direct_profile_id": None}, {"direct_profile_id": profile_id, "direct_user_id": ids["user"]})
+        for wrong in pairs:  # a settle chat names its agent, and no person
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.chats).values(**settle, **wrong))
+        chat = one(conn, insert(t.chats).values(**settle, direct_profile_id=profile_id).returning(t.chats.c.id))
+        twin = one(conn, insert(t.chats).values(**settle, direct_profile_id=profile_id).returning(t.chats.c.id))
+        message = {"chat_id": chat, "seq": 1, "author_user_id": ids["user"], "body": "keep 3", "label": []}
+        message_id = one(conn, insert(t.chat_messages).values(message).returning(t.chat_messages.c.id))
+        mention = {"message_id": message_id, "ordinal": 0, "name": "ba", "profile_id": profile_id}
+        conn.execute(insert(t.chat_mentions).values(**mention, via="settle"))
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "number": 1, "author_id": ids["user"], "content_sha256": "a" * 64}
+        version_id = one(conn, insert(s.versions).values(**version).returning(s.versions.c.id))
+        opened = {"version_id": version_id, "chat_id": chat, "root_message_id": message_id}
+        conn.execute(insert(s.settle_chats).values(opened))
+        with pytest.raises(errors.UniqueViolation):  # one chat a version
+            conn.execute(insert(s.settle_chats).values({**opened, "chat_id": twin}))
+        found = {"document_id": doc, "version_id": version_id, "kind": "contradiction", "level": "decide"}
+        found |= {"summary": "Two limits", "label": {"level": "internal"}, "sources": [{"kind": "code", "ref": "X"}]}
+        conn.execute(insert(s.findings).values(**found))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(s.findings).values(**found, commit_authors={"a": "b"}))
+    assert query(hub_db, select(s.findings.c.commit_authors)) == [([],)]
+    move_to(hub_db, "0069", down=True)
+    c, m = t.chats, t.chat_mentions
+    kinds = query(hub_db, select(c.c.kind, c.c.direct_profile_id).where(c.c.id.in_([chat, twin])))
+    assert kinds == [("group", None), ("group", None)]
+    assert query(hub_db, select(m.c.via)) == [("thread",)]
+    assert "srs_settle_chats" not in tables(hub_db)
+    assert "commit_authors" not in columns(hub_db, "srs_findings")
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+
+
+def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0070")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0071")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        versions = [
+            one(
+                conn,
+                insert(s.versions)
+                .values(document_id=doc, number=number, author_id=ids["user"], content_sha256="a" * 64)
+                .returning(s.versions.c.id),
+            )
+            for number in (1, 2)
+        ]
+        done = {"version_id": versions[0], "approved_by": ids["user"]}
+        conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.UniqueViolation):  # one row a version
+            conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.CheckViolation):  # its outcome is an object
+            conn.execute(insert(s.approval_tasks).values(version_id=versions[1], approved_by=ids["user"], outcome=[]))
+    a = s.approval_tasks
+    assert query(hub_db, select(a.c.previous_version, a.c.split_run_id, a.c.outcome)) == [(None, None, {})]
+    move_to(hub_db, "0070", down=True)
+    assert "srs_approval_tasks" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
+
+
+def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
+    move_to(hub_db, "0071")
+    before = query(hub_db, SNAPSHOT)
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Ops", created_by=ids["user"]).returning(t.chats.c.id))
+        conn.execute(update(CHATS_0032).values(budget_usd=20).where(CHATS_0032.c.id == chat_id))
+    move_to(hub_db, "0072")
+    assert "budget_usd" not in columns(hub_db, "chats")
+    assert query(hub_db, select(t.chats.c.title)) == [("Ops",)]
+    move_to(hub_db, "0071", down=True)
+    assert query(hub_db, select(CHATS_0032.c.budget_usd)) == [(5.0,)]  # what the creator set is gone
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
+
+
+def test_0073_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0072")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1270,7 +1480,7 @@ def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0043 knows no policy proposal
         conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0066")
+    move_to(hub_db, "0073")
     assert columns(hub_db, "autonomy_policies") == {
         "project_id",
         "revision",
@@ -1305,7 +1515,7 @@ def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
         (2,),
     ]
     # Going back drops the policies, and the proposals of a change of one with their notices.
-    move_to(hub_db, "0065", down=True)
+    move_to(hub_db, "0072", down=True)
     assert "autonomy_policies" not in tables(hub_db)
     assert query(hub_db, select(p.c.kind)) == [("agent",)]
     assert query(hub_db, select(n.c.details["kind"].as_string())) == [("agent",)]
@@ -1313,11 +1523,11 @@ def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
         conn.execute(delete(n))
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
 
 
-def test_0067_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0066")
+def test_0074_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0073")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1331,7 +1541,7 @@ def test_0067_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
         with pytest.raises(errors.CheckViolation):  # 0011 knows env and git alone
             conn.execute(insert(t.secrets).values(forge))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0067")
+    move_to(hub_db, "0074")
     with live.connect(hub_db) as conn:
         forge_id = one(conn, insert(t.secrets).values(forge).returning(t.secrets.c.id))
         conn.execute(insert(t.secret_bindings).values(secret_id=forge_id, project_id=ids["project"]))
@@ -1350,15 +1560,15 @@ def test_0067_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
         ("gitlab-push", "git"),
     ]
     # Going back deletes the forge secrets and their bindings, and the checks of 0011 hold again.
-    move_to(hub_db, "0066", down=True)
+    move_to(hub_db, "0073", down=True)
     assert query(hub_db, select(s.c.name, s.c.kind)) == [("gitlab-push", "git")]
     assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
 
 
-def test_0068_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0067")
+def test_0075_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0074")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1375,10 +1585,10 @@ def test_0068_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
         "repos": [{"repo": "lumen", "branch": "plan/report"}],
     }
     with live.connect(hub_db) as conn:
-        with pytest.raises(errors.CheckViolation):  # 0059 and 0017: a judge run is on a plan and a schedule
+        with pytest.raises(errors.CheckViolation):  # 0067 and 0017: a judge run is on a plan and a schedule
             conn.execute(insert(t.runs).values(judge_run))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0068")
+    move_to(hub_db, "0075")
     q, e = t.merge_queue, t.merge_events
     row = {
         "project_id": ids["project"],
@@ -1410,16 +1620,16 @@ def test_0068_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
             conn.execute(insert(q).values({**row, "iid": 6}))
         conn.execute(insert(q).values({**row, "iid": 7, "source": "label", "plan_id": None}))
     assert query(hub_db, select(func.count()).select_from(e)) == [(1,)]
-    # Going back drops the queue, deletes the judge runs on no plan and puts the checks of 0059 and 0017 back.
-    move_to(hub_db, "0067", down=True)
+    # Going back drops the queue, deletes the judge runs on no plan and puts the checks of 0067 and 0017 back.
+    move_to(hub_db, "0074", down=True)
     assert {"merge_queue", "merge_events"}.isdisjoint(tables(hub_db))
     assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "judge")) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
 
 
-def test_0069_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0068")
+def test_0076_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0075")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1429,7 +1639,7 @@ def test_0069_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "testing"}))
         conn.execute(insert(q).values({**row, "iid": 2, "source_branch": "fix/b", "state": "ready"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0069")
+    move_to(hub_db, "0076")
     rows = select(q.c.iid, q.c.state, q.c.rebases).order_by(q.c.iid)
     assert query(hub_db, rows) == [(1, "testing", 0), (2, "ready", 0)]
     second = q.c.iid == 2
@@ -1445,15 +1655,15 @@ def test_0069_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
         conn.execute(update(q).values(state="rebasing", rebases=1).where(second))  # !1 merged: the turn is !2's
     assert query(hub_db, rows) == [(1, "merged", 0), (2, "rebasing", 1), (3, "merging", 0)]
     # Going back drops the index and the column and keeps the rows.
-    move_to(hub_db, "0068", down=True)
+    move_to(hub_db, "0075", down=True)
     assert query(hub_db, SNAPSHOT) == before
     kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
     assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
 
 
-def test_0070_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0069")
+def test_0077_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0076")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1462,7 +1672,7 @@ def test_0070_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
     with live.connect(hub_db) as conn:
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "merged"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0070")
+    move_to(hub_db, "0077")
     rows = select(q.c.iid, q.c.state, q.c.uat_result, q.c.follow, q.c.reverts_id)
     assert query(hub_db, rows) == [(1, "merged", None, {}, None)]
     culprit = query(hub_db, select(q.c.id).where(q.c.iid == 1))[0][0]
@@ -1485,14 +1695,14 @@ def test_0070_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
         conn.execute(update(s).values(result="faulty", answered_at=func.now(), note="It drops the totals."))
     assert query(hub_db, select(s.c.result, s.c.note)) == [("faulty", "It drops the totals.")]
     # Going back drops the samples, the reverts the hub opened and the columns, and keeps the other rows.
-    move_to(hub_db, "0069", down=True)
+    move_to(hub_db, "0076", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
 
 
-def test_0071_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0070")
+def test_0078_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0077")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1501,7 +1711,7 @@ def test_0071_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     with live.connect(hub_db) as conn:
         conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "ready"}))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0071")
+    move_to(hub_db, "0078")
     breaker = {"project_id": ids["project"], "repo": "lumen"}
     with live.connect(hub_db) as conn:
         conn.execute(insert(b).values(breaker))
@@ -1511,6 +1721,7 @@ def test_0071_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
         conn.execute(update(q).values(state="paused", reason="the breaker of lumen tripped"))
         notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "merge_paused", "title": "Stopped"}
         conn.execute(insert(n).values({**notice, "project_id": ids["project"], "details": {"repo": "lumen"}}))
+        conn.execute(insert(n).values({**notice, "notice_kind": "release", "title": "Released"}))  # 0067's kind holds
         for bad in (
             insert(b).values(breaker),  # one breaker a repo
             update(b).values(state="open"),
@@ -1525,11 +1736,11 @@ def test_0071_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
         conn.execute(update(b).values(state="armed", resumed_by=ids["user"], resumed_at=func.now()))
     assert query(hub_db, select(b.c.state, b.c.cause, b.c.trips)) == [("armed", "uat_check", 1)]
     # Going back drops the breakers and the notices, and puts the merge request the breaker paused back in line.
-    move_to(hub_db, "0070", down=True)
+    move_to(hub_db, "0077", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

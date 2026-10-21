@@ -47,7 +47,6 @@ const CHAT = {
   restricted: false,
   last_seq: 3,
   last_read_seq: 3,
-  budget_usd: 5,
   kind: "group",
   image_url: null,
 } satisfies Chat;
