@@ -54,6 +54,11 @@ here.
   it.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
+- A tool's result keeps its text; each image block of it (a browser's screenshot, a Read of an image file, base64
+  in ``source``) becomes a file of the event, which its content links to instead (``tool_result``), and the run
+  sends it as an output of source tool. A subagent's tool results come through the stream too (as messages with its
+  ``parent_tool_use_id``; claude-agent-sdk 0.2.170 says so of ``forward_subagent_text``, and run #80 of evo-agents
+  logged the Bash and Read calls of a plan-step subagent), so their images are taken the same way.
 - The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
   ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
   cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``); and the
@@ -113,6 +118,7 @@ the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents 
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import contextlib
 import dataclasses
@@ -128,9 +134,17 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
-from evo_agents.hub import author, curator, digest, runs
+from evo_agents.hub import author, curator, digest, outputs, runs
 from evo_agents.worker import packs
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, ProfileRefused, RunContext, command_output
+from evo_agents.worker.adapter import (
+    AgentEvent,
+    Detection,
+    Outcome,
+    ProfileRefused,
+    RunContext,
+    ToolImage,
+    command_output,
+)
 from evo_agents.worker.runtimes import hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -348,7 +362,8 @@ def help_models(text: str | None) -> list[str] | None:
 
 
 def _text_of(content) -> str | None:
-    """The text of a tool result's content: a string, or a list of content blocks."""
+    """The text of a tool result's content: a string, or a list of content blocks, its images left out
+    (``tool_result`` takes them out as files)."""
     if content is None:
         return None
     if isinstance(content, str):
@@ -357,7 +372,42 @@ def _text_of(content) -> str | None:
         parts = [item.get("text") for item in content if isinstance(item, dict) and isinstance(item.get("text"), str)]
         if parts:
             return "\n".join(parts)
+        rest = [item for item in content if not (isinstance(item, dict) and item.get("type") == "image")]
+        return str(rest) if rest else None
     return str(content)
+
+
+def _image_of(block) -> ToolImage | None:
+    """The image of a block of a tool's result, ``{"type": "image", "source": {"type": "base64", "media_type",
+    "data"}}``, as Claude Code gives a browser's screenshot or a Read of an image file; None for any other block, and
+    for one whose type or bytes do not decode."""
+    source = block.get("source") if isinstance(block, dict) and block.get("type") == "image" else None
+    if not isinstance(source, dict) or source.get("type") != "base64" or not isinstance(source.get("data"), str):
+        return None
+    try:
+        media_type = outputs.check_media_type(str(source.get("media_type") or ""))
+        data = base64.b64decode(source["data"], validate=True)
+    except ValueError:  # binascii.Error is one
+        return None
+    return ToolImage.of(media_type, data) if data else None
+
+
+def tool_result(call_id: str, status: str, content) -> AgentEvent:
+    """The ``tool_call_update`` of a tool's result, headless (``events_of``) or from the transcript of a session a
+    person drives (``interactive.claude_transcript_events``): its text as before, and each image of it, once per
+    SHA-256, a file of the event (``AgentEvent.files``) that its content links to (``outputs.output_link``) instead of
+    holding the base64. The run sends those files as outputs of source tool (``runner.outputs``)."""
+    event = tool_update(call_id, status, _text_of(content))
+    found = (_image_of(block) for block in (content if isinstance(content, list) else []))
+    images = {image.sha256: image for image in found if image is not None}
+    if not images:
+        return event
+    links = [
+        {"type": "content", "content": outputs.output_link(i.sha256, i.name, i.media_type, len(i.data))}
+        for i in images.values()
+    ]
+    body = {**event.body, "content": [*event.body.get("content", []), *links]}
+    return AgentEvent(event.kind, body, event.at, tuple(images.values()))
 
 
 def _true(value) -> bool:
@@ -575,7 +625,7 @@ def events_of(message) -> list[AgentEvent]:
                     events.append(plan(entries))
             elif isinstance(block, (sdk.ToolResultBlock, sdk.ServerToolResultBlock)):
                 status = "failed" if getattr(block, "is_error", False) else "completed"
-                events.append(tool_update(block.tool_use_id, status, _text_of(block.content)))
+                events.append(tool_result(block.tool_use_id, status, block.content))
             else:
                 events.append(raw({"type": "assistant", "block": dataclasses.asdict(block)}))
         if message.error:
@@ -588,7 +638,7 @@ def events_of(message) -> list[AgentEvent]:
             for block in message.content:
                 if isinstance(block, sdk.ToolResultBlock):
                     status = "failed" if block.is_error else "completed"
-                    events.append(tool_update(block.tool_use_id, status, _text_of(block.content)))
+                    events.append(tool_result(block.tool_use_id, status, block.content))
         return events
     if isinstance(message, sdk.ResultMessage):
         extra = {"numTurns": message.num_turns, "durationMs": message.duration_ms}

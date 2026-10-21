@@ -14,6 +14,9 @@ adapter in this order:
    has ended. The kinds are those of ``evo_agents.hub.runs.WORKER_EVENT_KINDS``: ``agent_message_chunk``,
    ``agent_thought_chunk``, ``tool_call``, ``tool_call_update``, ``plan``, ``usage_update``, and ``output`` for a
    runtime event the adapter does not map, kept raw. ``system`` is the daemon's own; an adapter does not emit it.
+   An event may carry files the adapter took out of it (``AgentEvent.files``, the images of a tool's result as
+   ``ToolImage``): its body links to each (``evo_agents.hub.outputs.output_link``) instead of holding the bytes, and
+   the daemon sends them as outputs of the run (``evo_agents.worker.runner.outputs``).
 4. Meanwhile, any number of times: ``await adapter.send(text)`` with a message of the owner, which the agent gets in
    this turn or the next (an adapter of a runtime that cannot take a message mid-turn queues it and delivers it
    when the turn ends); ``await adapter.stop_at_turn_boundary()``, which lets the turn finish and then ends the
@@ -83,6 +86,7 @@ beside the core's; a run of one is started with the declaration its claim carrie
 from __future__ import annotations
 
 import abc
+import hashlib
 import importlib
 import json
 import logging
@@ -98,7 +102,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from evo_agents import __version__
-from evo_agents.hub import profiles, runs
+from evo_agents.hub import outputs, profiles, runs
 from evo_agents.plugins.core import python_contributions
 from evo_agents.worker import packs
 from evo_agents.worker.environments import HOST_ENVIRONMENT, Environment
@@ -179,12 +183,32 @@ def _now() -> datetime:
 
 
 @dataclass(frozen=True)
+class ToolImage:
+    """An image an adapter took out of a tool's result, which the run sends as an output of source tool."""
+
+    media_type: str
+    data: bytes = field(repr=False)
+    sha256: str = ""
+
+    @classmethod
+    def of(cls, media_type: str, data: bytes) -> ToolImage:
+        return cls(media_type, data, hashlib.sha256(data).hexdigest())
+
+    @property
+    def name(self) -> str:
+        """The output's name: ``image-<12 hex of its SHA-256>`` and the extension of its type."""
+        return f"image-{self.sha256[:12]}{outputs.suffix(self.media_type)}"
+
+
+@dataclass(frozen=True)
 class AgentEvent:
-    """One event of the agent, in one of the worker's event kinds, with a JSON object as its body."""
+    """One event of the agent, in one of the worker's event kinds, with a JSON object as its body, and the files the
+    adapter took out of it (``files``), which its body links to."""
 
     kind: str
     body: dict
     at: datetime = field(default_factory=_now)
+    files: tuple[ToolImage, ...] = ()
 
     def __post_init__(self):
         if self.kind not in runs.WORKER_EVENT_KINDS or self.kind == "system":

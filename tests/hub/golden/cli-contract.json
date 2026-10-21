@@ -11386,6 +11386,14 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--attach"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null
@@ -11475,6 +11483,14 @@
           "value": "integer",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--attach"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null
@@ -11652,6 +11668,28 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker output": {
+      "positionals": [
+        {
+          "name": "files",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--caption"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
