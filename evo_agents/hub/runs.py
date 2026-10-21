@@ -302,6 +302,9 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
+# run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
+# sends to the run's owner (``server.output_notices``)
+OUTPUT_NOTICE = "run_outputs"
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -314,7 +317,10 @@ NOTICE_KINDS = (
     "canvas_baseline",
     "merge_paused",
     "release",
+    OUTPUT_NOTICE,
 )
+MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
+OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5

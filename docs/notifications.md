@@ -152,10 +152,11 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
+| `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention` and `chat_added`, and the
-`merge_default_branch` of its merge queue. A release run that fails sends no
+`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention`, `chat_added` and `run_outputs`, and
+the `merge_default_branch` of its merge queue. A release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
 it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
@@ -166,6 +167,33 @@ The hub sends no `author_waiting` when an author run moves to `waiting` with a d
 decision's notification told the owner already, and Home lists the run in Needs you through its decision, not again
 among the author runs waiting for a reply. An author run that waits with no decision open sends `author_waiting` as
 before.
+
+### The files of a run
+
+The hub sends `run_outputs` itself (`evo_agents/hub/server/output_notices.py`), in the transaction that records a
+run's outputs, to the member who dispatched the run, for the files of source `sent` and `outputs`; an image taken out
+of a tool's result (source `tool`) never makes or joins one. It gathers a minute a run (`runs.OUTPUT_NOTICE_SECONDS`):
+
+- the first files store the notification, with every delivery of it due a minute later, so the Inbox shows it at once
+  and the channels wait for more;
+- the files that come before any channel tried it join it: its `details.outputs`, title (`Run #N sent report.md`,
+  `Local run #N sent 3 files`) and body (each file's name, size and caption, 20 at most, then how many more) are
+  written again, and it is unread again;
+- once a channel took it, or is sending it (its delivery is locked by the job's pass), the next files start a new
+  notice, due a minute after they came. So no channel gets two notices of one run within a minute, a delivery that
+  failed and is tried again aside.
+
+A file that a question carries goes with the question: once a decision names it in `output_ids`, it leaves the run's
+notice no channel has tried yet, and a notice left with no file goes, its deliveries with it. A chat run sends no
+`run_outputs`: its files go under its messages in the thread. The Inbox lists the files a notification carries in
+`outputs` (`RunOutput`, as `docs/hub.md` describes it): the files of a `run_outputs` still there, with the run's URLs
+of their bytes, and the files of a decision, with the decision's.
+
+A member turns `run_outputs` off for themselves (`runs.MUTABLE_NOTICE_KINDS`, schema 0086's `notification_mutes`):
+the hub then stores no such notice for them, on any channel, and their decisions and every other notice still come.
+`GET /v1/me/notification-settings` answers each kind a member may turn off with whether it is on, and `PUT` with
+`{"notices": [{"kind": "run_outputs", "on": false}]}` sets the kinds it names, audited `notification.settings` with
+the kinds and no text.
 
 ## Notifications, channels and deliveries
 
@@ -246,6 +274,8 @@ For members, with a web session or a machine token:
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
+| `GET /v1/me/notification-settings` | the member | each kind of notice they may turn off (`run_outputs`), and whether it is on |
+| `PUT /v1/me/notification-settings` | the member | `{"notices": [{"kind": "run_outputs", "on": false}]}`; turns the kinds it names on or off, the others stay |
 
 The answer takes the plan's dispatch lock (for a decision with a plan) and the run's row, then: the decision is `answered`, its notification read,
 and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
@@ -326,6 +356,15 @@ title and body as plain text and the web's button. A decision or proposal that n
 time its message goes out (answered on the web meanwhile, say) goes out as the project, its number, that it no longer
 waits and the link, never with its question or summary.
 
+The files of a decision and of a `run_outputs` notice reach the channel in what the hub prepares for it
+(`core_plugin_api.prepare`, `docs/plugins.md`): `extra.outputs`, at most 10 files (a media group of Telegram holds 10),
+oldest first, each with its id, name, media type, viewer, size, caption and `url`, a presigned GET of its bytes that
+works 5 minutes and is made at each try, and `extra.outputs_count`, how many files there are; both keys are left out
+when there is no file to send. A file of source `tool` is never among them, not even one a question carries. The
+channel sends the images as photos and the other files as documents, gathered, with the run's link, from the release
+of the core plugin telegram that reads `extra.outputs`; evo-agents-core-plugins 1.0.0 does not read it and sends the
+notice's kind, title, body and link as text, and a decision's question and buttons without its files.
+
 A message is HTML within Telegram's 4,096 characters. A part that may run long is cut before it is escaped, or between
 the tags and entities of its HTML, never inside one; the question of a decision gives way first, and the link, and the
 outcome of an answered message, stay whole.
@@ -377,9 +416,13 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
 - for a project whose hub sink is cleared at or above the level `customer` or the location `domestic-only` on the
   project's own ladder, read as `evo_agents.kg.policy` reads a clearance (a sink that names no location may receive
   any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
-  else: no question, title, option, context, diff or file name, and no answer button. It fails closed: a project with no
-  hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
+  else: no question, title, option, context, diff, file or file name, and no answer button. Its channel's `extra` is
+  `{"restricted": true}` alone, so a `run_outputs` notice goes out as the project, the words of its kind (the hub's
+  are `Files from a run`; evo-agents-core-plugins 1.0.0 says `A notice`) and the link. It fails closed: a project with
+  no hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
   `domestic-only`) and a clearance above its lowest rung, is restricted too;
+- no image taken out of a tool's result (an output of source `tool`), whatever the project, even when a question
+  carries it: the web shows it;
 - no token, pairing code or link code, ever;
 - no command beyond answering a decision or a proposal: cancelling, approving, dispatching and messages to the agent stay
   on the web and the command line.

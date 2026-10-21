@@ -243,7 +243,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.server.notifications import deliver_notifications as deliver
 
     found = hub(context)
-    return await deliver(found.engine, config=found.config)
+    return await deliver(found.engine, config=found.config, blobs=found.blobs)
 
 
 @queue.periodic(cron="* * * * *")
