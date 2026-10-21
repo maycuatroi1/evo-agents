@@ -2,6 +2,7 @@
 
 import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Lightbulb, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type MouseEvent, useId, useState } from "react";
@@ -16,8 +17,11 @@ import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
 import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
-import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, noticeFacts, shortCommit } from "./model";
+import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, mergeAsk, noticeFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
+
+/** The answer a notice of the merge queue asks of an admin: loaded only with such a notice, so the Inbox stays light. */
+const MergeNoticeActions = dynamic(() => import("./merge-notice").then((module) => module.MergeNoticeActions));
 
 /** A body longer than this, or of more lines, folds to three lines with a button to show the rest. */
 const FOLD_CHARS = 240;
@@ -237,6 +241,7 @@ export function NotificationItem({
         )}
         {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
         {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
+        {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
           {decision && href && notification.decision_id !== null ? (
             <Button asChild size="sm" variant={open ? "default" : "outline"}>

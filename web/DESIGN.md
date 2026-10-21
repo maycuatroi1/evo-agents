@@ -269,6 +269,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
 | An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
+| Merge queue, a merge request merging or merged; its Policy; its Figures | `GitMerge`; `SlidersHorizontal`; `ChartNoAxesColumn` |
+| A repo's breaker armed, tripped, Reset; an audit sample, Faulty; approve a PROD release; revert a merge; rolling back | `Power`, `PowerOff`, `Power`; `SearchCheck`, `Bug`; `Rocket`; `Undo2`; `Rewind` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
@@ -452,7 +454,7 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
+  (Overview, Plans, Runs, Merge queue, Insights, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
   and Plugins; section Plugins below), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
@@ -756,7 +758,41 @@ Shared pieces built on them:
   goes out while a field is wrong, and adding a name the visitor uses already is refused rather than replacing it; a
   refusal of the hub stays in the dialog, the saved secret is a toast. Delete asks first (`ConfirmAction`) and says
   that the leases still out are revoked and that the token should be revoked where it was made too; the result is a
-  toast.
+  toast. A third kind, GitLab token for the hub (`forge`, `GitMerge`), is the token the merge queue drives merge
+  requests with: its form asks for the URL prefix alone (never github.com), lists only the projects the visitor
+  administers, names no worker (the row says "The hub alone"), needs an end day and takes one line.
+- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, in the sidebar's project
+  group after Runs, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
+  Policy, the Queue tab counting what waits for an admin. Its queries live in `lib/merge-queue.ts` and its writes in
+  `lib/use-merge-actions.ts`, since the Inbox answers the queue's notices too. The Queue (read every 15 seconds, the
+  page's LiveIndicator query) puts an `attention` banner first for each repo whose breaker tripped (what tripped it,
+  why, when, and Reset for an admin behind a `ConfirmAction`), then a reader's note, the MetricStrip (In queue, Merging
+  now in `running`, Blocked in `attention`, After merge), then two columns from xl: the merge requests in a `DataCard`
+  (filter chips by where they stand: waiting, merging, blocked, after merge, finished, and a repo select; the title
+  with its `!iid` over why it waits, in `danger` when it is blocked or undone; the repo and target branch; where it
+  comes from as a tag with the agent profile; its state as a pill; when it moved) and a 22 rem column with the breaker
+  of each repo and the audit samples, those waiting first (OK at once, Faulty through a dialog with a note). A title
+  opens the merge request over the list in a sheet (`?mr=ID`): its state, source and `!iid`, its GitLab link, an
+  admin's Approve release (only while it waits in releasing with its UAT passed and the policy releases its repo by
+  hand) and Revert (only after its merge, never a revert's, behind a `ConfirmAction`), why it stands where it does,
+  its facts (branches, run, plan and steps, agent and model, head, the commit it was rebased onto and its rebases in
+  a row, the commit it merged as, its UAT and PROD checks), the Judges' verdicts dimension by dimension with the
+  risk, and its ledger newest first. The merge states are a map of their own (`badges.tsx`, `StatusPill`): running
+  while the hub or a Judge works on it, `review` once merged and followed to its checks, `success` done, `danger`
+  rolling back or reverting, `attention` blocked or paused, neutral waiting, outline reverted or closed. Figures (`?days=`
+  7, 30 or 90 by a `Segmented`) sums the merges, reverts, rollbacks and Judge misses in a strip over a table by repo,
+  agent and model with the wait in the queue and the time to UAT and to PROD. Policy shows the policy at its newest
+  revision or `?revision=N` (each repo in auto or off with its target branch, PROD release and jobs, then the merge,
+  Judge, breaker and audit keys, a key at its default tagged so), who wrote the revision and why in the head's sub
+  line, the revisions with the keys each changed, and a comparison of two (`?from=N&to=M`, revision 0 being no
+  policy). An admin writes the next revision through the form (`?edit=1`, `policy-form.tsx`): a field per key with
+  its hint and default, the hub's checks repeated (`policy-model.ts`), auto not offered for a repo on github.com, a
+  note, and `if_revision` so a revision saved meanwhile is never overwritten; the body keeps what the policy set and
+  the admin left, and what differs from its default. A reader reads every page and gets no control that writes. In
+  the Inbox, a notice of the queue (`merge_default_branch` with `details.ask` sample, release or revert, and
+  `merge_paused`, `PowerOff`) carries its answer (`inbox/merge-notice.tsx`): OK or Faulty with a note, Approve release,
+  Revert one of the suspects, Reset breaker, and the queue's link; once the queue says the question is answered, the
+  notice says so instead.
 - `components/agents`, a project's Agents (`/p/{project}/agents`, in the sidebar's project group after Curator;
   docs/hub.md, Agent profiles). An agent is drawn by `components/data/agent-avatar.tsx` (`AgentAvatar`): its uploaded
   image, or until there is one (and while it loads) the first letter of its name on its colour, in white or ink,

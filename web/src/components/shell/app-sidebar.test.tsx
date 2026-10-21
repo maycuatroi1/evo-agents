@@ -112,6 +112,7 @@ describe("AppSidebar", () => {
       "nav-overview",
       "nav-plans",
       "nav-runs",
+      "nav-mergeQueue",
       "nav-insights",
       "nav-curator",
       "nav-agents",

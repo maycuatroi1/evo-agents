@@ -61023,6 +61023,24 @@
               "title": "Events",
               "description": "its ledger, the newest 100 first"
             },
+            "before_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Sha",
+              "description": "the head of the target branch its last turn rebased it onto"
+            },
+            "rebases": {
+              "type": "integer",
+              "title": "Rebases",
+              "description": "its rebases again in a row since its gates last passed",
+              "default": 0
+            },
             "after_sha": {
               "anyOf": [
                 {

@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
+  PowerOff,
   Rocket,
   Send,
   Sunrise,
@@ -66,6 +67,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   chat_added: { icon: UserPlus },
   plugin_disabled: { icon: Unplug },
   builder_proposal: { icon: Hammer },
+  merge_paused: { icon: PowerOff },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

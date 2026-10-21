@@ -18,7 +18,7 @@ export type SecretWritten = Schemas["SecretWritten"];
 export type SecretKind = Secret["kind"];
 
 /** `credentials.SECRET_KINDS` of the API, in its order. */
-export const SECRET_KINDS = ["env", "git"] as const satisfies readonly SecretKind[];
+export const SECRET_KINDS = ["env", "git", "forge"] as const satisfies readonly SecretKind[];
 /** `credentials.SECRET_NAME`: unique among the owner's secrets. */
 export const SECRET_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export const MAX_SECRET_NAME_CHARS = 64;

@@ -17,7 +17,8 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 /skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
-(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+(``kg_seed.py``). POST /merge-queue/seed writes a project's merge queue on GitLab as the hub's job would leave it
+(``merge_seed.py``), since no GitLab answers the stack. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
 self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
 ``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
@@ -92,6 +93,7 @@ from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
 from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
 from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
+from merge_seed import seed as seed_merge_queue  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
@@ -611,6 +613,11 @@ def control_server(
             elif self.path == "/curator/collect":
                 try:
                     self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/merge-queue/seed":
+                try:
+                    self._reply(200, seed_merge_queue(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):
