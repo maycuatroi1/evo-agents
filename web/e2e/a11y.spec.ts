@@ -3,6 +3,19 @@ import type { Page } from "@playwright/test";
 import { expectNoSeriousViolations } from "./support/a11y";
 import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAvatarByApi } from "./support/agents";
 import {
+  baselinePath,
+  canvasesPath,
+  canvasPath,
+  claimPath,
+  editByApi,
+  METRIC,
+  openBaselineByApi,
+  pushConversions,
+  seedCanvas,
+  signalsPath,
+  valueCheck,
+} from "./support/canvas";
+import {
   agentAnswers,
   chatPageOf,
   chatPath,
@@ -1609,6 +1622,84 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "task page at 375 px");
       await open(page, tasksPath(project, "backlog"));
       await expect(page.locator("#main").getByTestId("tasks-table").first()).toHaveAttribute("data-layout", "list");
+    },
+  },
+  {
+    name: "Lean Canvas: the canvases, a canvas with a proposal and a baseline waiting, and the new claim dialog",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedCanvas(me, project);
+      await pushConversions(me, project);
+      await valueCheck(project);
+      await openBaselineByApi(me, project, "CL-2");
+      await open(page, canvasesPath(project));
+      await expect(page.locator("#main").getByTestId("canvases-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "Lean Canvases");
+      await open(page, canvasPath(project));
+      await expect(page.locator("#main").getByTestId("canvas-proposals")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("canvas-baseline-waiting")).toBeVisible();
+      await expectNoSeriousViolations(page, "Lean Canvas");
+      await page.locator("#main").locator('[data-testid="canvas-cell"][data-cell="problem"]').getByTestId("cell-add").click();
+      await expect(page.getByTestId("claim-new-form")).toBeVisible();
+    },
+  },
+  {
+    name: "a claim's page with its evidence, history and compared revs, and its editor",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedCanvas(me, project);
+      await pushConversions(me, project);
+      await valueCheck(project);
+      await editByApi(me, project, [{ claim: "CL-1", base_rev: 1, confidence: "high" }], "More shops asked for it");
+      await open(page, claimPath(project, "CL-1"));
+      await expect(page.locator("#main").getByTestId("evidence-basis")).toBeVisible();
+      await page.locator("#main").getByTestId("claim-compare-toggle").click();
+      await expect(page.locator("#main").getByTestId("claim-compare-changes")).toBeVisible();
+      await expectNoSeriousViolations(page, "claim page");
+      await page.locator("#main").getByTestId("claim-edit").click();
+      await expect(page.locator("#main").getByTestId("claim-editor")).toBeVisible();
+    },
+  },
+  {
+    name: "a baseline's review with an overdue test card, and the Signals page with a key's series",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const owner = newAccount("canvas-owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "customer");
+      await seedCanvas(owner, project);
+      await pushConversions(owner, project);
+      const number = await openBaselineByApi(owner, project, "CL-2");
+      await open(page, baselinePath(project, number));
+      await expect(page.locator("#main").getByTestId("baseline-decide")).toBeVisible();
+      await expectNoSeriousViolations(page, "baseline review");
+      await open(page, signalsPath(project, `?key=${METRIC}`));
+      await expect(page.locator("#main").getByTestId("series-chart")).toBeVisible();
+    },
+  },
+  {
+    name: "Lean Canvas and Signals on a small screen, read as a reader",
+    open: async ({ page, me }) => {
+      const project = me.projects[1];
+      const owner = newAccount("canvas-owner");
+      const hub = new HubAdmin();
+      await hub.grant(project, owner.login, "admin", "customer");
+      await hub.grant(project, me.login, "reader", "customer");
+      await seedCanvas(owner, project);
+      await pushConversions(owner, project);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, canvasesPath(project));
+      await expect(page.locator("#main").getByTestId("canvases-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "Lean Canvases at 375 px");
+      await open(page, canvasPath(project));
+      await expect(page.locator("#main").getByTestId("canvas-read-only")).toBeVisible();
+      await expectNoSeriousViolations(page, "Lean Canvas at 375 px");
+      await open(page, claimPath(project, "CL-1"));
+      await expect(page.locator("#main").getByTestId("claim-history")).toBeVisible();
+      await expectNoSeriousViolations(page, "claim page at 375 px");
+      await open(page, signalsPath(project, `?key=${METRIC}`));
+      await expect(page.locator("#main").getByTestId("signal-keys-table")).toHaveAttribute("data-layout", "list");
     },
   },
   {

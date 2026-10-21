@@ -269,6 +269,11 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
 | An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
+| Lean Canvas, a project's canvases (its menu item); a claim's status: assumption, testing, validated, invalidated, retired | `Table`; `CircleDashed`, `FlaskConical`, `CircleCheck`, `CircleX`, `Archive` |
+| A baseline: waiting for review (and Ask for review now), approved, expired; its frozen snapshot; a proposal waiting | `ClipboardCheck`, `CircleCheck`, `TimerOff`; `Lock`; `Lightbulb` |
+| Evidence: signal, feedback, interview, experiment, market, document, simulation; real; synthetic; supports, contradicts, neutral | `RadioTower`, `MessageSquareQuote`, `Mic`, `FlaskConical`, `Store`, `FileText`, `Bot`; `ShieldCheck`; `Sparkles`; `ThumbsUp`, `ThumbsDown`, `Minus` |
+| A claim's edit, undo of a rev, compared revs, a conflict at an old rev; @strategist's judgings | `PencilLine`, `Undo2`, `GitCompareArrows`, `GitMerge`; `Scale` |
+| Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
@@ -452,7 +457,7 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
+  (Overview, Plans, Runs, Insights, Signals, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
   and Plugins; section Plugins below), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
@@ -1512,6 +1517,52 @@ Shared pieces built on them:
   (pasted or from a file), says when it is not JSON, previews the hub's dry run (counts, the tasks imported before and
   skipped, problems with their task's key) and imports once no error stands, then opens the backlog. Readers see a note
   that they only read, and no control that writes; a card does not drag for them.
+- `components/canvas`, the native pages of the core plugin canvas (plan living-lean-canvas; docs/canvas-plugin.md), under
+  `app/(app)/p/[project]/x/canvas/` with a layout that calls `requirePlugin("canvas", project, "canvases")`: Lean Canvas
+  in the menu (`Table`) is the manifest's page `canvases`; a canvas, a claim and a baseline are pages below it. Its
+  words are the `canvas` namespace of both message files. A claim's status is a pill drawn here (`badges.tsx`), not in
+  `STATUS_LOOKS`: assumption neutral, testing violet (being checked), validated green, invalidated red, retired outline;
+  amber stays for what needs a person (a baseline waiting for review, a test card past its deadline). The canvases
+  (`/canvases`) are one `DataCard` table: name over slug, claims, their statuses as one bar of segments (an image named
+  by its counts), who made it, when it changed; New canvas (a dialog: product name, a slug made from it, description)
+  is a writer's, Signals and Settings sit beside it. A canvas (`/canvases/{slug}`, `?archived=1` with archived claims)
+  heads with the product's name and slug, Export JSON (`evo-canvas/1`, which the browser saves) and a writer's Add
+  claim; then the banner of a baseline that waits for review, the claims by status in one `MetricStrip`, the proposals
+  that wait (new claims and changes from @strategist, changes of status from the value check, each with its fields
+  before and after, Accept or Reject with a reason), the grid, and the baselines before. The grid is the printed Lean
+  Canvas from xl (ten tracks: Problem, Solution over Key metrics, the value proposition, Unfair advantage over Channels,
+  Customer segments, then Cost structure beside Revenue streams), two columns from md, one on a phone; the cells come in
+  the order Lean Canvas numbers them, which the keyboard and a screen reader follow, and each shows its number. A cell
+  is a well of `surface-sunken` with its name, what goes in it, and a writer's Add (a dialog of the claim's fields); a
+  claim's card is its code, its status, its text linking to its page (four lines at most), its confidence, its real
+  supporting evidence over all its evidence (`1/3`, green once one is real) and its test card's deadline (amber once
+  past without real evidence). A claim (`/claims/CL-3`) heads with its code before the h1, its status, cell and
+  confidence, and a writer's Edit and Ask for review now (a baseline of that claim at once, for another writer); the
+  editor starts from the rev the page read, and a 409 keeps the writer's fields, says who wrote which rev and what they
+  changed, and carries the writer's own changes over to the newest rev or starts again from it. Beside the evidence
+  pane (each piece's kind, direction, synthetic tag, whether it is real and why not, its summary, link and who added it,
+  and for what the hub wrote the check it rests on, value against threshold, met in green and not met in red; a writer
+  adds, confirms what an agent added, and withdraws with why), @strategist's judgings with each verdict and why, and the
+  history (each rev, newest first, with its kind, who wrote it, why and its fields before and after; Compare revs reads
+  the hub's diff of any two; Undo on the current rev), a 22 rem column holds the test card (as Strategyzer's: we believe,
+  we will test, we measure, we are right if) and the links (use cases as chips, signal keys opening their series). A
+  baseline (`/baselines/{n}`, the link of the notice canvas_baseline, which the Inbox shows as Review the baseline) heads
+  with its number, state and week, a banner with what waits and when it was proposed for, in the baseline's own time
+  zone; each item is a card: the claim, what it asks (from one status to another, or the deadline an overdue test card
+  passed), its evidence, who may not decide it, then the decision made or the reviewer's form (a reason, and Accept,
+  Reject or Defer; for an overdue card a new deadline after today with Extend, or Retire); once approved, the snapshot
+  lists each claim at its rev and status in effect with its hash. Readers see a note that they only read, and no
+  control that writes.
+- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, in the sidebar's project group
+  after Insights, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
+  words are the `signals` namespace; the reads both it and the canvas pages make are `lib/signal-queries.ts`. The keys
+  of the registry are one `DataCard` table: the key in mono opening its series, kind, source, what it measures and the
+  latest value with its unit and time (one read of each key, its newest signal). A key's series heads with the key and
+  its kind, a tenant field that applies on Enter (with a button that clears it) and the span (7, 30 or 90 days or a
+  year, a `Segmented`, 90 by default, the value check's window); numbers draw as one 2 px `chart-1` line through a dot
+  at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
+  the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
+  nothing.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

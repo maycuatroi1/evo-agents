@@ -131,6 +131,9 @@ describe("graph model", () => {
     expect(kindStyle("Requirement")).toEqual({ tone: 2, shape: "diamond" });
     expect(kindStyle("Document").shape).not.toBe(kindStyle("Section").shape);
     expect(kindStyle("SomethingNew")).toEqual({ tone: 5, shape: "ellipse" });
+    // A canvas's claims beside requirements and tickets, a signal key among the measures from outside.
+    expect(kindStyle("Claim")).toEqual({ tone: 2, shape: "hexagon" });
+    expect(kindStyle("SignalKey")).toEqual({ tone: 5, shape: "diamond" });
   });
 });
 

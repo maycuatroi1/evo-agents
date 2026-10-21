@@ -39,6 +39,7 @@ export const NOTICE_KINDS = [
   "chat_added",
   "plugin_disabled",
   "builder_proposal",
+  "canvas_baseline",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [
