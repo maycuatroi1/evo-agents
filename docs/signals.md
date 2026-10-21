@@ -7,7 +7,8 @@ not a plugin's: the canvas plugin's value check (section Value check), the Loop 
 
 The code is `evo_agents/hub/signals.py` (taking batches, reading, the retention), `evo_agents/hub/server/signals.py`
 and `evo_agents/hub/server/signal_keys.py` (the routes), and `evo_agents/hub/cli_signals.py` (the command line). The
-tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0073).
+tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0073), and `hub_events` (migration 0076)
+keeps the events of a project the Loop reads.
 
 ## The registry of keys
 
@@ -127,6 +128,21 @@ evo-agents hub signal list --project <project> --key kb.search.zero_result_rate 
 `ingest` with the ingest key's name, `member` with the member's login, or `run` for the agent of a run pushing for its
 owner. A signal is read under its label through the sink `X-Evo-Sink` names, else the project's hub sink, as plans
 are: a member whose grant does not reach a signal's level does not see it.
+
+## On the web
+
+A project's Signals page (`/p/<project>/signals`, Signals in the project's menu after Insights) lists the keys of its
+registry, each with its kind, unit, source, description and the latest value or text a member may read. Choosing a key
+shows its signals over 7, 30 or 90 days or a year, of one tenant when one is chosen: a table, newest first, and for a
+number key a line chart too. The page reads `GET /v1/projects/{project}/signals` and adds no route. The evidence the
+value check writes links to that page with the key and the tenant (`/p/<project>/signals?key=...&tenant=...`). The
+page only shows values and their series over time; it is no dashboard of analytics.
+
+## Signal keys in the knowledge graph
+
+A claim of the core plugin canvas that links a signal key, or whose test card's metric names one, is `measured_by` a
+SignalKey node `signalkey:<key>` in the project's knowledge graph (`docs/canvas-plugin.md`, The knowledge graph). The
+node holds the key's name alone; no value of a signal goes into the graph.
 
 ## Value check
 
