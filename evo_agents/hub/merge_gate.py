@@ -39,6 +39,11 @@ others:
 There is no gate on the size of a diff: no merge request waits for its number of lines or files (the member's answer
 4 of 2026-10-21). A verdict holds for a patch, not a commit (``patch_fingerprint``: the lines each file adds and
 removes, without their numbers or context), so a rebase that keeps the patch keeps it.
+
+**The queue** (criterion a5; ``evo_agents.hub.server.merge_turn`` runs it). A merge request ``ready`` waits for its
+turn on its target branch; one of a branch has the turn at a time (TURN_STATES), and a merge request merged before it
+holds the next turn back until it reaches the policy's ``merge.hold_until`` (``holds_turn``). A turn sent back because
+the target branch moved keeps its place, MAX_REBASES times in a row at most.
 """
 
 from __future__ import annotations
@@ -76,6 +81,13 @@ STATES = (
 )
 GATING = ("gating", "judging")  # the states the gate moves on
 OPEN_STATES = ("gating", "judging", "ready", "blocked")  # a merge request the gate still reads on GitLab
+# The one merge request of a target branch whose turn it is: rebased, its pipeline at the new head, merged.
+TURN_STATES = ("rebasing", "testing", "merging")
+QUEUED_STATES = (*OPEN_STATES, *TURN_STATES)  # a merge request the queue still reads on GitLab
+# Merged, and what follows the merge not through: it may hold the next turn of its branch (merge.hold_until).
+HOLDING_STATES = ("merged", "verifying", "releasing", "rolling_back", "reverting")
+MAX_REBASES = 3  # rebases again in a row, the target branch moving under each; the next move blocks it
+WAITS = "waits: "  # the reason of a merge request that waits for something on GitLab starts so
 EVENT_KINDS = (
     "opened",  # the hub opened the merge request of a run
     "queued",  # the queue took it, or it passed every gate and waits for its turn
@@ -617,3 +629,19 @@ def comment(reason: str, *, waits: bool = False) -> str:
         else "The hub gates it again after a new push, or when an admin of the project asks it to."
     )
     return f"The evo-agents hub's merge queue: this merge request {what} at {reason}.\n\n{after}"
+
+
+def turn_reason(stage: str, why: str) -> str:
+    """The reason of a merge request its turn blocks or sends back, at ``stage`` (rebase, pipeline or merge)."""
+    return reason_line(f"its turn ({stage}): {why}")
+
+
+# The queue
+
+
+def holds_turn(hold_until: str, reached: Iterable[str]) -> bool:
+    """Whether a merge request merged into a target branch, whose checks after the merge passed ``reached`` (the kinds
+    ``uat_check`` and ``prod_check`` of its ledger), keeps the next merge request of the branch waiting under the
+    policy's ``merge.hold_until``: never with ``merged``; until its UAT check passed with ``uat_check``; until its PROD
+    check passed with ``prod_check``."""
+    return hold_until != "merged" and hold_until not in set(reached)

@@ -6,7 +6,9 @@ repo and the merge request's iid, where it comes from (``merge_gate.SOURCES``: t
 repo, the Curator's change, the Builder's agent profile and model), where it stands (``merge_gate.STATES``) and why,
 the head the gates last read and when the hub first saw it, the patch the Judge judged (``merge_gate.
 patch_fingerprint``), the Judges' verdicts, the risk, the judge run in flight and its own key (a SHA-256), and what the
-queue and what follows a merge fill in later (the time it became ready, the merge and the commits around it).
+queue and what follows a merge fill in later (the time it became ready, the merge and the commits around it, its
+rebases since its gates last passed, 0069). One merge request of a target branch has the turn at a time
+(merge_queue_turn_key, 0069).
 merge_events (0068) is its ledger, only ever added to: each gate passed or not with its reason, each verdict, and
 what the queue, the release and the breaker do later (``merge_gate.EVENT_KINDS``).
 """
@@ -82,6 +84,7 @@ def _queue(metadata: MetaData) -> Table:
         Column("after_sha", Text),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column("rebases", SmallInteger, nullable=False, server_default="0"),  # since its gates last passed (0069)
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_queue_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_queue_run_id_fkey"),
         ForeignKeyConstraint(
@@ -101,6 +104,14 @@ def _queue(metadata: MetaData) -> Table:
         table.c.plan_id,
         unique=True,
         postgresql_where=table.c.source == "plan",
+    )
+    Index(  # one merge request of a target branch has the turn (0069)
+        "merge_queue_turn_key",
+        table.c.project_id,
+        table.c.repo,
+        table.c.target_branch,
+        unique=True,
+        postgresql_where=table.c.state.in_(("rebasing", "testing", "merging")),
     )
     return table
 

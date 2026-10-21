@@ -20,6 +20,8 @@ the GitLab client, for as long as the pass needs it:
   first gate; in ``gating`` it runs gates 0 to 3 and computes the risk (gate 6) with the knowledge graph, read as the
   admin who wrote the policy; in ``judging`` it queues the next judge run (``merge_judge.queue_judge``) or, after
   JUDGE_ATTEMPTS runs without a verdict, blocks it.
+- moves the turn of the repo's target branch on: the merge requests ``ready`` are rebased, tested and merged one at a
+  time (``evo_agents.hub.server.merge_turn``).
 
 A gate that does not pass leaves the merge request ``gating`` with why when it waits for something on GitLab (its
 pipeline, the project's settings, the end of its draft), or ``blocked`` with why; a blocked one moves only after a
@@ -127,7 +129,7 @@ async def hold(conn: AsyncConnection, row, gate: int, why: str, *, blocked: bool
 
 async def wait(conn: AsyncConnection, row, why: str) -> None:
     """Keep ``row`` where it is, with why it waits for something on GitLab that is no gate (its draft, GitLab)."""
-    reason = merge_gate.reason_line(f"waits: {why}")
+    reason = merge_gate.reason_line(merge_gate.WAITS + why)
     if reason != row.reason:
         await set_row(conn, row.id, reason=reason)
 
@@ -140,8 +142,19 @@ async def close(conn: AsyncConnection, row, why: str) -> None:
 
 
 async def ready(conn: AsyncConnection, row, why: str) -> None:
-    """Every gate passed at the head of ``row``: it waits for its turn on the target branch (the queue's)."""
-    await set_row(conn, row.id, state="ready", reason=None, queued_at=func.now(), judge_run_id=None, judge_key=None)
+    """Every gate passed at the head of ``row``: it waits for its turn on the target branch (the queue's), at the place
+    it had when its turn sent it back to its gates (``queued_at`` kept), else last."""
+    q = tables.merge_queue
+    await set_row(
+        conn,
+        row.id,
+        state="ready",
+        reason=None,
+        queued_at=func.coalesce(q.c.queued_at, func.now()),
+        rebases=0,
+        judge_run_id=None,
+        judge_key=None,
+    )
     await record(conn, row, "queued", reason=why, sha=row.head_sha)
 
 
@@ -251,7 +264,7 @@ async def _project_ids(engine: AsyncEngine) -> list[int]:
     a, q = tables.autonomy_policies, tables.merge_queue
     async with engine.begin() as conn:
         with_policy = {row[0] for row in await conn.execute(select(a.c.project_id).distinct())}
-        queued = select(q.c.project_id).where(q.c.state.in_(merge_gate.OPEN_STATES)).distinct()
+        queued = select(q.c.project_id).where(q.c.state.in_(merge_gate.QUEUED_STATES)).distinct()
         with_rows = {row[0] for row in await conn.execute(queued)}
     return sorted(with_policy | with_rows)
 
@@ -304,7 +317,7 @@ async def _repo(engine, sealer, project: Project, repo: str, settings: dict, out
         q = tables.merge_queue
         async with engine.begin() as conn:
             query = select(q).where(
-                q.c.project_id == project.id, q.c.repo == repo, q.c.state.in_(merge_gate.OPEN_STATES)
+                q.c.project_id == project.id, q.c.repo == repo, q.c.state.in_(merge_gate.QUEUED_STATES)
             )
             for row in (await conn.execute(query.with_for_update())).all():
                 await close(conn, row, f"the policy has {repo} in mode {settings['mode']}: a person merges it")
@@ -367,14 +380,21 @@ class RepoPass:
             try:
                 await self.move(row_id)
             except GitLabRefused as exc:
-                log.warning("a merge request of the queue was refused", extra={"row": row_id, "why": str(exc)})
-                async with self.engine.begin() as conn:
-                    row = await row_of(conn, row_id, lock=True)
-                    if row is not None and exc.status == 404:
-                        await close(conn, row, f"GitLab no longer has it: {exc}")
-                    elif row is not None:
-                        await wait(conn, row, f"GitLab refused the hub: {exc}")
-                self.outcomes["refused"] += 1
+                await self.refused(row_id, exc)
+        from evo_agents.hub.server import merge_turn  # it moves the rows through this module
+
+        await merge_turn.take_turns(self)
+
+    async def refused(self, row_id: int, exc: GitLabRefused) -> None:
+        """GitLab refused a call for merge request ``row_id``: gone (404), it leaves the queue; else it waits."""
+        log.warning("a merge request of the queue was refused", extra={"row": row_id, "why": str(exc)})
+        async with self.engine.begin() as conn:
+            row = await row_of(conn, row_id, lock=True)
+            if row is not None and exc.status == 404:
+                await close(conn, row, f"GitLab no longer has it: {exc}")
+            elif row is not None:
+                await wait(conn, row, f"GitLab refused the hub: {exc}")
+        self.outcomes["refused"] += 1
 
     # Taking merge requests
 
@@ -421,7 +441,7 @@ class RepoPass:
                     )
                 )
             ).one_or_none()
-            if known is not None and (known.iid is not None or not await _older(conn, known.updated_at)):
+            if known is not None and (known.iid is not None or not await older(conn, known.updated_at)):
                 continue
             steps = merge_gate.steps_of(body, self.repo)
             goal = " ".join(str(body.get("goal") or "").split())
@@ -601,10 +621,8 @@ class RepoPass:
 
     # Moving a merge request on
 
-    async def move(self, row_id: int) -> None:
-        async with self.engine.begin() as conn:
-            row = await row_of(conn, row_id)
-        mr = await self.gl.merge_request(self.path, row.iid)
+    def scope_of(self, row, mr: MergeRequest) -> tuple[str, str | None]:
+        """Whether merge request ``mr`` of ``row`` is still the queue's (``merge_gate.scope``)."""
         facts = merge_gate.Scope(
             mode=autonomy.AUTO,
             forge=True,
@@ -616,7 +634,13 @@ class RepoPass:
             source=row.source if row.source != "label" or self.label in mr.labels else None,
             labeler_ok=True,  # checked when the queue took it (take_labeled)
         )
-        verdict, why = merge_gate.scope(facts)
+        return merge_gate.scope(facts)
+
+    async def move(self, row_id: int) -> None:
+        async with self.engine.begin() as conn:
+            row = await row_of(conn, row_id)
+        mr = await self.gl.merge_request(self.path, row.iid)
+        verdict, why = self.scope_of(row, mr)
         async with self.engine.begin() as conn:
             row = await row_of(conn, row_id, lock=True)
             if row is None or row.state not in merge_gate.OPEN_STATES:
@@ -626,19 +650,22 @@ class RepoPass:
                 self.outcomes["closed"] += 1
                 return
             if mr.sha and mr.sha != row.head_sha:
-                await self._new_head(conn, row, mr)
+                await self.new_head(conn, row, mr)
                 row = await row_of(conn, row_id)
             if verdict == "wait":
                 await wait(conn, row, why)
                 return
+            if row.state == "ready" and (row.reason or "").startswith(merge_gate.WAITS):
+                await set_row(conn, row.id, reason=None)  # what it waited for on GitLab is over: its turn may come
         if row.state == "gating":
             await self.gate(row_id, mr)
         elif row.state == "judging":
             await self.judging(row_id)
         await self.comment(row_id)
 
-    async def _new_head(self, conn: AsyncConnection, row, mr: MergeRequest) -> None:
-        """A head the gates have not read: they start again, and a judge run of the head before no longer counts."""
+    async def new_head(self, conn: AsyncConnection, row, mr: MergeRequest) -> None:
+        """A head the gates have not read, pushed by someone other than the queue: they start again, a judge run of
+        the head before no longer counts, and the merge request waits for a turn after those queued before it."""
         await set_row(
             conn,
             row.id,
@@ -646,6 +673,9 @@ class RepoPass:
             head_at=func.now(),
             state="gating",
             reason=None,
+            queued_at=None,
+            rebases=0,
+            before_sha=None,
             title=mr.title,
             description=merge_gate.kept_description(mr.description),
             web_url=mr.web_url,
@@ -672,12 +702,12 @@ class RepoPass:
             )
         return self._checked
 
-    async def _head_message(self, mr: MergeRequest) -> str | None:
+    async def head_message(self, mr: MergeRequest) -> str | None:
         commits = await self.gl.merge_request_commits(self.path, mr.iid)
         found = next((commit for commit in commits if commit.id == mr.sha), None)
         return (found.message or found.title) if found is not None else None
 
-    async def _expected_branch(self, conn: AsyncConnection, row) -> tuple[str | None, dict | None]:
+    async def expected_branch(self, conn: AsyncConnection, row) -> tuple[str | None, dict | None]:
         """(the branch the work of ``row`` is on, its plan's body)."""
         if row.source == "plan":
             body = await plan_body(conn, self.project.id, row.plan_id)
@@ -693,7 +723,7 @@ class RepoPass:
             async with self.engine.begin() as conn:
                 await hold(conn, await row_of(conn, row_id), 0, "the GitLab project " + "; ".join(missing))
             return
-        message = await self._head_message(mr)
+        message = await self.head_message(mr)
         pipeline = mr.head_pipeline
         state, why = merge_gate.pipeline_state(
             mr.sha, pipeline.sha if pipeline else None, pipeline.status if pipeline else None, message
@@ -702,7 +732,7 @@ class RepoPass:
             row = await row_of(conn, row_id, lock=True)
             if state == "pending":
                 minutes = self.project.policy["merge"]["pipeline_minutes"]
-                if row.head_at is not None and await _older(conn, row.head_at, timedelta(minutes=minutes)):
+                if row.head_at is not None and await older(conn, row.head_at, timedelta(minutes=minutes)):
                     await hold(conn, row, 1, f"{why} after {minutes} minutes", blocked=True)
                 else:
                     await hold(conn, row, 1, why)
@@ -710,7 +740,7 @@ class RepoPass:
             if state == "red":
                 await hold(conn, row, 1, why, blocked=True)
                 return
-            branch, body = await self._expected_branch(conn, row)
+            branch, body = await self.expected_branch(conn, row)
             mr_project = self.path if self._project_id in (None, mr.project_id) else f"project {mr.project_id}"
             problem = merge_gate.plan_repo_problem(
                 row.source, project=self.path, mr_project=mr_project, source_branch=mr.source_branch, branch=branch
@@ -719,24 +749,29 @@ class RepoPass:
                 await hold(conn, row, 2, problem, blocked=True)
                 return
         files = merge_gate.files_of(await self.gl.merge_request_diffs(self.path, mr.iid))
+        hacked = self.hacked(files, body)
+        if hacked is not None:
+            async with self.engine.begin() as conn:
+                row = await row_of(conn, row_id, lock=True)
+                await hold(conn, row, 3, hacked, blocked=True)
+            return
+        risk = await self.risk(judge.changed_paths(files))
+        await self.passed(row_id, mr, merge_gate.patch_fingerprint(files), risk)
+
+    def hacked(self, files: list[judge.FileDiff], body: dict | None) -> str | None:
+        """Gate 3: why the diff ``files`` of a merge request on plan ``body`` shows signs of score hacking; None when
+        it shows none."""
         signs = judge.hack_signs(
             files,
             repo=self.repo,
             protected=protected_of(self.project.charter),
             verify_commands=merge_gate.verify_of(body, self.repo),
         )
-        if signs:
-            kinds = ", ".join(sorted({item["kind"] for item in signs}))
-            first = signs[0]
-            where = first["path"] + (f":{first['line']}" if first.get("line") else "")
-            async with self.engine.begin() as conn:
-                row = await row_of(conn, row_id, lock=True)
-                await hold(
-                    conn, row, 3, f"the diff shows signs of score hacking ({kinds}), first at {where}", blocked=True
-                )
-            return
-        risk = await self.risk(judge.changed_paths(files))
-        await self.passed(row_id, mr, merge_gate.patch_fingerprint(files), risk)
+        if not signs:
+            return None
+        kinds = ", ".join(sorted({item["kind"] for item in signs}))
+        where = signs[0]["path"] + (f":{signs[0]['line']}" if signs[0].get("line") else "")
+        return f"the diff shows signs of score hacking ({kinds}), first at {where}"
 
     async def risk(self, paths: list[str]) -> dict:
         """Gate 6: the risk of the diff's ``paths``, with what the project's graph says they reach."""
@@ -851,6 +886,17 @@ async def hold_judging(conn: AsyncConnection, row, gate: int, why: str) -> None:
     await record(conn, row, "gate", gate=gate, passed=False, reason=reason, sha=row.head_sha, detail={"waits": True})
 
 
+async def judge_run_title(conn: AsyncConnection, run_id: int, plan_id: str | None) -> str:
+    """The title of the notice a failed judge run sends its owner: the Curator's names its plan, the queue's the merge
+    request it judged (``changes.judge_ended``)."""
+    if plan_id:
+        return f"Judge run #{run_id} of {plan_id} failed"
+    q = tables.merge_queue
+    found = (await conn.execute(select(q.c.repo, q.c.iid).where(q.c.judge_run_id == run_id))).first()
+    what = f"merge request !{found.iid} of {found.repo}" if found is not None else "a merge request of the merge queue"
+    return f"Judge run #{run_id} of {what} failed"
+
+
 def next_round(verdict: dict | None, risk: dict | None) -> str:
     """What the Judges' ``verdict`` for a patch whose risk is ``risk`` calls for next: ``first`` (the Judge),
     ``second`` (the second Judge, for a high risk), ``ready`` (both said what they had to), or ``failed``."""
@@ -866,5 +912,6 @@ def next_round(verdict: dict | None, risk: dict | None) -> str:
     return "ready" if second.get("passed") else "failed"
 
 
-async def _older(conn: AsyncConnection, moment: datetime, span: timedelta = OPEN_RETRY) -> bool:
+async def older(conn: AsyncConnection, moment: datetime, span: timedelta = OPEN_RETRY) -> bool:
+    """Whether ``moment`` is more than ``span`` ago, by the database's clock."""
     return bool((await conn.execute(select(func.now() - moment > span))).scalar_one())

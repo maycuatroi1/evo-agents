@@ -1,8 +1,8 @@
 """The hub's calls to GitLab, made with a project's forge secret (``evo_agents.hub.server.forge``): read a project's
-merge settings and protected branches, read a merge request, its diff and commits, who labeled it and the role of a
-member, and the pipelines and jobs of a commit, open and rebase a merge request, merge it with the sha the hub checked,
-comment on it, play or retry a job, and revert commits onto a branch of their own with a merge request of them (plan
-gitlab-merge-queue, criteria a3 and a4).
+merge settings and protected branches, the head of a branch, a merge request, its diff and commits, who labeled it and
+the role of a member, and the pipelines and jobs of a commit, open and rebase a merge request, merge it with the sha the
+hub checked, comment on it, play or retry a job, retry a pipeline, and revert commits onto a branch of their own with a
+merge request of them (plan gitlab-merge-queue, criteria a3 to a5).
 
 GitLab's REST API v4 is at ``https://<host>[:port]/api/v4`` of the origin's host (``project_of``), and a project is
 named by its path, URL-encoded (``group%2Frepo``). The token travels in the PRIVATE-TOKEN header of each request alone:
@@ -537,6 +537,21 @@ class GitLab:
         path = f"{self._project(project)}/pipelines/{pipeline_id}/jobs"
         return [Job.read(item) for item in await self._pages(path, f"listing the jobs of pipeline {pipeline_id}")]
 
+    async def branch_head(self, project: str, branch: str) -> str | None:
+        """The commit ``branch`` of ``project`` is at (GET .../repository/branches/:branch); None when it has none."""
+        doing = f"reading branch {branch} of {project}"
+        path = f"{self._project(project)}/repository/branches/{quote(branch, safe='')}"
+        try:
+            found = await self._object("GET", path, doing)
+        except GitLabRefused as exc:
+            if exc.status == 404:
+                return None
+            raise
+        commit = found.child("commit")
+        if commit is None:
+            raise GitLabUnavailable(f"GitLab answered without a usable commit while {doing}")
+        return commit.word("id")
+
     # Acting
 
     async def rebase(self, project: str, iid: int) -> None:
@@ -575,6 +590,12 @@ class GitLab:
         """Run job ``job_id`` again; the new job."""
         path = f"{self._project(project)}/jobs/{job_id}/retry"
         return Job.read(await self._object("POST", path, f"retrying job {job_id} of {project}", ok=(200, 201)))
+
+    async def retry_pipeline(self, project: str, pipeline_id: int) -> Pipeline:
+        """Run the failed and cancelled jobs of pipeline ``pipeline_id`` again; the pipeline."""
+        path = f"{self._project(project)}/pipelines/{pipeline_id}/retry"
+        doing = f"retrying pipeline {pipeline_id} of {project}"
+        return Pipeline.read(await self._object("POST", path, doing, ok=(200, 201)))
 
     async def create_branch(self, project: str, branch: str, ref: str) -> None:
         """Branch ``branch`` of ``project`` at ``ref``."""

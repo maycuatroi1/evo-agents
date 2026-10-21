@@ -309,7 +309,7 @@ def test_merge_gate_opens_a_plans_merge_request_and_takes_it_through_every_gate(
     actions = [row[0] for row in sql(world.db, select(audit.c.action).where(audit.c.action.like("merge.%")))]
     assert sorted(actions) == ["merge.judge", "merge.open"]
     assert world.token not in str(entry) and world.token not in str(spec)
-    assert gate_pass(world) == {}  # a merge request ready waits for the queue's turn (step 5): nothing moves
+    assert gate_pass(world) == {"merged": 1}  # ready, it takes its turn: tests/hub/test_merge_queue.py
 
 
 def test_merge_gate_a_reader_sees_the_queue_and_a_stranger_does_not(world, github):
@@ -543,9 +543,9 @@ def test_merge_gate_a_head_with_the_same_patch_keeps_the_verdict(world):
         {**item, "diff": item["diff"].replace("@@ -0,0 +1,2 @@", "@@ -0,0 +1,2 @@ class Kb:")} for item in CLEAN
     ]
     green(world, merge_request, moved_files)
-    assert gate_pass(world) == {"ready": 1}
+    assert gate_pass(world) == {"ready": 1, "merged": 1}  # ready again, it takes its turn at once
     entry = one(world)
-    assert entry["state"] == "ready" and entry["head_sha"] == merge_request.sha
+    assert entry["state"] == "merged" and entry["head_sha"] == merge_request.sha
     assert len(sql(world.db, select(tables.runs.c.id).where(tables.runs.c.kind == "judge"))) == 1
     kept = [event for event in entry["events"] if event["gate"] == 5 and event["reason"]]
     assert kept and "its verdict holds" in kept[0]["reason"]

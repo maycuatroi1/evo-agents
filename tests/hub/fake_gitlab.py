@@ -2,9 +2,13 @@
 the real GitLab is never called (``evo_agents.hub.server.gitlab``).
 
 A test adds projects (``add_project``: merge settings, branch heads, protected branches), their merge requests
-(``add_merge_request``: head, labels, files, commits, whether GitLab would merge it, the head a rebase gives it) and the
-pipelines of a commit with their jobs (``add_pipeline``), and reads back every request (``requests``), the comments
-(``notes``), the jobs played with their variables (``played``) and the reverts made (``reverted``). ``label`` records
+(``add_merge_request``: head, labels, files, commits, whether GitLab would merge it, the head a rebase gives it, the
+error a rebase of it ends with, how many reads a rebase of it lasts) and the pipelines of a commit with their jobs
+(``add_pipeline``), and reads back every request (``requests``), the comments (``notes``), the jobs played with their
+variables (``played``), the pipelines retried (``retried``), the merge requests rebased (``rebased``) and the reverts
+made (``reverted``). A merge request remembers the head of its target branch it sits on (``base``): in a project that
+merges fast-forward, one whose target branch moved since needs a rebase, as GitLab's detailed_merge_status says
+(``need_rebase``), and GitLab will not merge it. ``label`` records
 who added or removed a label of a merge request, and a project's ``members`` the role of each user. Every request needs
 the PRIVATE-TOKEN header ``token`` names, or the answer is 401, as GitLab answers. ``queue`` scripts the answers of the
 next requests, whatever they ask, one a request: a status with a body or headers, or an exception the transport raises
@@ -12,12 +16,15 @@ next requests, whatever they ask, one a request: a status with a body or headers
 
 It answers what the hub's client calls, as GitLab does: GET /projects/:id and .../protected_branches/:name; GET and POST
 .../merge_requests, GET .../merge_requests/:iid with .../diffs, .../commits and .../resource_label_events (paged by
-x-next-page), GET .../members/all/:user_id, PUT .../rebase (202, the head becomes ``rebase_to``), PUT .../merge (409 for
-a sha that is not the head, 405 when ``mergeable`` is false, else merged fast-forward: the target branch's head becomes
-the merge request's), POST .../notes; GET .../pipelines (by sha and ref, the newest first), .../pipelines/:id and
-.../pipelines/:id/jobs; POST .../jobs/:id/play (a manual job only, else 400) and .../jobs/:id/retry; POST
-.../repository/branches (400 for a branch that exists) and POST .../repository/commits/:sha/revert (400 with the
-error_code ``revert_refusals`` names for that sha).
+x-next-page), GET .../members/all/:user_id, PUT .../rebase (202: the head becomes ``rebase_to``, or a commit of its own
+when the target branch moved, the merge request then sitting on the target branch's head; with ``rebase_error`` the head
+stays and merge_error says why; ``rebase_reads`` reads of it answer rebase_in_progress first), PUT .../merge (409 for a
+sha that is not the head, 405 when ``mergeable`` is false, 406 when it needs a rebase, else merged fast-forward: the
+target branch's head becomes the merge request's), POST .../notes; GET .../pipelines (by sha and ref, the newest first),
+.../pipelines/:id and .../pipelines/:id/jobs; POST .../pipelines/:id/retry (the pipeline runs again); POST
+.../jobs/:id/play (a manual job only, else 400) and .../jobs/:id/retry; GET .../repository/branches/:name (404 for a
+branch that is not there), POST .../repository/branches (400 for a branch that exists) and POST
+.../repository/commits/:sha/revert (400 with the error_code ``revert_refusals`` names for that sha).
 """
 
 from __future__ import annotations
@@ -62,8 +69,12 @@ class FakeMergeRequest:
     merge_commit_sha: str | None = None
     pipeline: dict | None = None  # its head pipeline
     label_events: list[dict] = field(default_factory=list)  # as .../resource_label_events lists them
+    base: str | None = None  # the head of the target branch it sits on
+    rebase_error: str | None = None  # a rebase of it fails with this merge_error
+    rebase_reads: int = 0  # how many reads after a rebase still answer rebase_in_progress
+    rebasing: int = 0  # reads left that answer rebase_in_progress
 
-    def as_json(self) -> dict:
+    def as_json(self, *, behind: bool = False) -> dict:
         return {
             "id": 9000 + self.iid,
             "iid": self.iid,
@@ -82,8 +93,8 @@ class FakeMergeRequest:
             "author": {"id": 77, "username": self.author},
             "web_url": f"https://{HOST}/merge_requests/{self.iid}",
             "head_pipeline": self.pipeline,
-            "detailed_merge_status": "mergeable" if self.mergeable else "not_approved",
-            "rebase_in_progress": False,
+            "detailed_merge_status": "not_approved" if not self.mergeable else "need_rebase" if behind else "mergeable",
+            "rebase_in_progress": self.rebasing > 0,
             "merge_error": self.merge_error,
         }
 
@@ -105,6 +116,8 @@ class FakeProject:
     notes: list[tuple[int, str]] = field(default_factory=list)
     played: list[tuple[int, dict]] = field(default_factory=list)  # (job id, variables)
     reverted: list[tuple[str, str]] = field(default_factory=list)  # (sha, branch)
+    retried: list[int] = field(default_factory=list)  # the pipelines retried
+    rebased: list[int] = field(default_factory=list)  # the merge requests rebased, by iid
     members: dict[int, int] = field(default_factory=dict)  # user id: access level, inherited ones included
 
     def as_json(self) -> dict:
@@ -150,6 +163,7 @@ class FakeGitLab:
         iid = max(project.merge_requests, default=0) + 1
         sha = fields.pop("sha", sha_of(f"{project.path}!{iid}"))
         target = fields.pop("target_branch", project.default_branch)
+        fields.setdefault("base", project.branches.get(target))
         merge_request = FakeMergeRequest(iid, project.id, source_branch, target, sha, **fields)
         project.branches[source_branch] = sha
         project.merge_requests[iid] = merge_request
@@ -236,9 +250,11 @@ class FakeGitLab:
             (r"/pipelines", "GET", self._pipelines),
             (r"/pipelines/(\d+)", "GET", self._pipeline),
             (r"/pipelines/(\d+)/jobs", "GET", lambda p, q, b, pid: self._page(q, p.jobs.get(int(pid), []))),
+            (r"/pipelines/(\d+)/retry", "POST", self._retry_pipeline),
             (r"/jobs/(\d+)/play", "POST", self._play),
             (r"/jobs/(\d+)/retry", "POST", self._retry),
             (r"/repository/branches", "POST", self._branch),
+            (r"/repository/branches/([^/]+)", "GET", self._branch_head),
             (r"/repository/commits/([0-9a-f]+)/revert", "POST", self._revert),
         )
 
@@ -261,10 +277,17 @@ class FakeGitLab:
         body = {"name": unquote(name), "push_access_levels": levels["push"], "merge_access_levels": levels["merge"]}
         return _answer(200, body)
 
+    @staticmethod
+    def behind(project: FakeProject, mr: FakeMergeRequest) -> bool:
+        """Whether ``mr`` needs a rebase before GitLab merges it: its project merges fast-forward and its target branch
+        moved since the head it sits on."""
+        head = project.branches.get(mr.target_branch)
+        return project.merge_method == "ff" and mr.state == "opened" and mr.base is not None and mr.base != head
+
     def _list_merge_requests(self, project, query, body):
         wanted = set(filter(None, query.get("labels", "").split(",")))
         found = [
-            mr.as_json()
+            mr.as_json(behind=self.behind(project, mr))
             for mr in project.merge_requests.values()
             if mr.state == query.get("state", mr.state)
             and mr.target_branch == query.get("target_branch", mr.target_branch)
@@ -275,7 +298,10 @@ class FakeGitLab:
     def _merge_request(self, project, query, body, iid):
         if int(iid) not in project.merge_requests:
             return _refused(404, "404 Not found")
-        return _answer(200, self._mr(project, iid).as_json())
+        mr = self._mr(project, iid)
+        answer = mr.as_json(behind=self.behind(project, mr))
+        mr.rebasing = max(mr.rebasing - 1, 0)
+        return _answer(200, answer)
 
     def _open_merge_request(self, project, query, body):
         if body["source_branch"] not in project.branches:
@@ -284,15 +310,25 @@ class FakeGitLab:
         fields = {"title": body["title"], "description": body.get("description", ""), "labels": labels}
         iid = max(project.merge_requests, default=0) + 1
         sha = project.branches[body["source_branch"]]
+        fields["base"] = project.branches.get(body["target_branch"])
         mr = FakeMergeRequest(iid, project.id, body["source_branch"], body["target_branch"], sha, **fields)
         project.merge_requests[iid] = mr
         return _answer(201, mr.as_json())
 
     def _rebase(self, project, query, body, iid):
         mr = self._mr(project, iid)
-        if mr.rebase_to is not None:
-            mr.sha, mr.pipeline = mr.rebase_to, None
-            project.branches[mr.source_branch] = mr.sha
+        project.rebased.append(mr.iid)
+        mr.rebasing = mr.rebase_reads
+        if mr.rebase_error is not None:
+            mr.merge_error = mr.rebase_error
+            return _answer(202, {"rebase_in_progress": True})
+        head = project.branches.get(mr.target_branch)
+        new = mr.rebase_to or (sha_of(f"{mr.sha} onto {head}") if mr.base != head else mr.sha)
+        mr.rebase_to, mr.base = None, head
+        if new != mr.sha:
+            mr.commits = [{**commit, "id": new} if commit.get("id") == mr.sha else commit for commit in mr.commits]
+            mr.sha, mr.pipeline = new, None
+            project.branches[mr.source_branch] = new
         return _answer(202, {"rebase_in_progress": True})
 
     def _merge(self, project, query, body, iid):
@@ -301,6 +337,8 @@ class FakeGitLab:
             return _refused(409, "SHA does not match HEAD of source branch")
         if not mr.mergeable or mr.state != "opened":
             return _refused(405, "405 Method Not Allowed")
+        if self.behind(project, mr):
+            return _refused(406, "Branch cannot be merged")
         mr.state = "merged"
         project.branches[mr.target_branch] = mr.sha  # fast-forward
         if body.get("should_remove_source_branch"):
@@ -372,6 +410,25 @@ class FakeGitLab:
         again = {**job, "id": next(self._ids), "status": "pending"}
         project.jobs[pipeline_id].append(again)
         return _answer(201, again)
+
+    def _branch_head(self, project, query, body, name):
+        head = project.branches.get(unquote(name))
+        if head is None:
+            return _refused(404, "404 Branch Not Found")
+        return _answer(
+            200, {"name": unquote(name), "commit": {"id": head}, "protected": unquote(name) in project.protected}
+        )
+
+    def _retry_pipeline(self, project, query, body, pipeline_id):
+        found = [pipeline for pipeline in project.pipelines if pipeline["id"] == int(pipeline_id)]
+        if not found:
+            return _refused(404, "404 Not found")
+        pipeline = found[0]
+        project.retried.append(pipeline["id"])
+        pipeline["status"] = "running"
+        jobs = project.jobs.get(pipeline["id"], [])
+        jobs += [{**job, "id": next(self._ids), "status": "pending"} for job in jobs if job["status"] == "failed"]
+        return _answer(201, pipeline)
 
     def _branch(self, project, query, body):
         name, ref = body["branch"], body["ref"]

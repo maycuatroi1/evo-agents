@@ -327,7 +327,8 @@ async def _builder_commit(conn: AsyncConnection, run_id: int | None) -> str | No
 
 async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str, extra: dict | None = None) -> None:
     """The lines a move of change ``change_id`` from ``old`` to ``new`` adds, from the change as it is now and
-    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge)."""
+    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge; ``merge_request`` and ``into``, its iid
+    and target branch, of a merge of the queue on GitLab)."""
     extra = extra or {}
     c = tables.curator_changes
     row = (await conn.execute(select(c).where(c.c.id == change_id))).one()
@@ -383,6 +384,8 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
         actor = extra.get("actor") or "curator"
         who = "The hub" if actor == "curator" else (extra.get("login") or "A member")
         what = f"{who} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
+        if extra.get("merge_request"):  # its merge queue on GitLab merged it
+            what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
         details = {"github_login": extra["login"]} if extra.get("login") else {}
         if actor == "curator":
             details, what = await _replayed_merge(conn, row, details, what)
