@@ -41,9 +41,10 @@ PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), lab
 (unique among the owner's workers that are not revoked, 409 otherwise), plugins (the ids of at most
 ``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``), version_locked
 (true: its daemon stays on the evo-agents it runs; false, every worker's default: it updates itself to the tag nightly
-once idle) or shared (true: it takes the runs of the writers of its projects too; false, every worker's default), each
-field optional but at least one given. Only its owner changes them, from a web session with its CSRF
-header or with their machine token: a hub admin who does not own the worker gets 403, anyone else 404, and a revoked
+once idle), shared (true: it takes the runs of the writers of its projects too; false, every worker's default) or
+projects, the whole list of projects it serves (``worker_projects``: the writer role for one added, none dropped that
+a run or a night shift still needs it for), each field optional but at least one given. Only its owner changes them,
+from a web session with its CSRF header or with their machine token: a hub admin who does not own the worker gets 403, anyone else 404, and a revoked
 worker 409. Giving the values it has changes nothing and is not audited. The daemon learns the new settings from the
 answer to its next heartbeat (``settings``), and the hub's claim counts the runs a worker holds against its slots as
 they are now. A worker shows what its last heartbeat said of its daemon's install: agent_commit, the commit of
@@ -84,7 +85,6 @@ from evo_agents.hub.server import audit, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import release_runs
 from evo_agents.hub.server.runs.service.worker_fit import writes
 from evo_agents.hub.server.security import (
@@ -109,6 +109,8 @@ from evo_agents.hub.server.worker_models import (
     WorkerRegistration,
     WorkerUpdate,
 )
+from evo_agents.hub.server.worker_projects import serve, served
+from evo_agents.hub.server.worker_projects import writable as _writable
 
 log = logging.getLogger(__name__)
 
@@ -354,18 +356,6 @@ async def _owned(conn: AsyncConnection, user: Principal, worker_id: int, *, lock
 
 
 # Creating workers
-
-
-async def _writable(conn, user: Principal, names: list[str]) -> list[int]:
-    """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role."""
-    ids = []
-    for name in names:
-        access = await project_access(conn, user, name)
-        if not has_role(access.role, "writer"):
-            role = access.role or "no role"
-            raise HTTPException(403, f"a worker of project {name} needs the writer role on it; you hold {role}")
-        ids.append(access.project_id)
-    return ids
 
 
 async def _name_taken(conn: AsyncConnection, owner_id: int, name: str, *, besides: int | None = None) -> bool:
@@ -853,12 +843,14 @@ def _shown(value) -> str:
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a
-    web session or with their machine token."""
+    """Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
+    only, from a web session or with their machine token."""
     wanted = body.model_dump(exclude_none=True)
     for field in ("labels", "plugins"):
         if field in wanted:
             wanted[field] = _unique(wanted[field])
+    if "projects" in wanted:  # the projects a worker serves are a set: their order says nothing
+        wanted["projects"] = sorted(set(wanted["projects"]))
     async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if owner_id != user.user_id:
@@ -870,13 +862,18 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
             w.c.id == worker_id
         )
         row = (await conn.execute(held)).one()
-        now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins)}
+        projects = await served(conn, worker_id)
+        now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins), "projects": list(projects)}
         changed = {field: value for field, value in wanted.items() if value != now[field]}
         if changed:  # the values it has already: nothing changes, nothing is audited
             if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):
                 raise _name_conflict(changed["name"])
+            if "projects" in changed:
+                await serve(conn, user, worker_id, name, projects, changed["projects"])
+            columns = {field: value for field, value in changed.items() if field != "projects"}
             try:
-                await conn.execute(update(w).values(**changed).where(w.c.id == worker_id))
+                if columns:
+                    await conn.execute(update(w).values(**columns).where(w.c.id == worker_id))
             except sa_exc.IntegrityError as exc:  # another worker took the name meanwhile
                 if not isinstance(exc.orig, psycopg.errors.UniqueViolation):
                     raise
