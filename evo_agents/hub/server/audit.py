@@ -138,6 +138,12 @@ CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for it
 # Leases given back: "... run:<id> leases=<n> secrets=<names> github-app=<tokens> by=<worker|run-<state>|...>",
 # by the worker (its actor), or by the hub itself when the run left the held states or its worker was revoked.
 CREDENTIAL_REVOKE = "credential.revoke"
+# The signals of a project (evo_agents.hub.server.signal_keys), in the project: "<project> key=<name>" for its registry,
+# "<project> ingest:<id> name=<name>" for an ingest key; never a token.
+SIGNAL_KEY_ADD = "signal.key-add"  # an admin added a key to the registry
+SIGNAL_KEY_ARCHIVE = "signal.key-archive"  # an admin archived one: it takes no new signal
+SIGNAL_INGEST_CREATE = "signal.ingest-create"  # an admin created an ingest key for a service
+SIGNAL_INGEST_REVOKE = "signal.ingest-revoke"  # an admin revoked one
 
 NAMED_FAMILIES = frozenset({"grant", "project", "plan", "kg", "blob"})  # targets that start with the project's name
 _FIRST_NAME = re.compile(r"([a-z0-9][a-z0-9-]{0,99})(?:[/ @]|$)")

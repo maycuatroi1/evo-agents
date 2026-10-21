@@ -294,6 +294,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``);
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
+# canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
@@ -304,6 +305,7 @@ NOTICE_KINDS = (
     "chat_added",
     "plugin_disabled",
     "builder_proposal",
+    "canvas_baseline",
     "release",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox

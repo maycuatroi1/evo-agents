@@ -356,6 +356,7 @@ def test_decisions_and_notices_the_plan_names():
         "chat_added",
         "plugin_disabled",
         "builder_proposal",
+        "canvas_baseline",
         "release",
     )
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")

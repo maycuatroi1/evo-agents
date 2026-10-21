@@ -44,8 +44,17 @@ MAX_LINE = 4 * 1024 * 1024  # bytes of one message, its newline included
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
 POINT_METHODS = {"routes": "route", "mcp_tools": "tool", "jobs": "job", "events": "event", "channels": "channel"}
 BACKEND_POINTS = tuple(POINT_METHODS)  # the extension points an isolated plugin serves from its backend
-# what an events contribution may take (``on``); task.result goes only to the plugin of the task's agent type
-EVENT_KINDS = ("run.state", "chat.message", "plan.step", "task.result")
+# what an events contribution may take (``on``); task.result goes only to the plugin of the task's agent type; the
+# last three (plan living-lean-canvas) are a claim's rev, an approved baseline of a canvas, and a batch of signals
+EVENT_KINDS = (
+    "run.state",
+    "chat.message",
+    "plan.step",
+    "task.result",
+    "canvas.claim",
+    "canvas.baseline",
+    "signal.posted",
+)
 NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}
 CALLER = {
