@@ -2,24 +2,28 @@
 it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read the canvases, a canvas whole with its nine cells, a claim whole with every rev, its provenance and diff
-and its evidence, the diff of two revs, and the export. Writers make a canvas, edit its claims (each named with the
-rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and withdraw it,
-confirm evidence an agent added, and import ``evo-canvas/1``. Admins give a new canvas a label of its own, and
+and its evidence, the diff of two revs, the proposals, and the export. Writers make a canvas, edit its claims (each
+named with the rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and
+withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, and import
+``evo-canvas/1``. The agent of a run gets none of these routes: it works through the plugin's tools (``agent``). Admins give a new canvas a label of its own, and
 archive a canvas or unarchive it. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal
 is the hub's error body, with the claims of a conflict or the problems of an import in ``detail``; nothing is written.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import store, transfer, writes
+from evo_agents.core_plugins.canvas import proposals, store, transfer, writes
+from evo_agents.core_plugins.canvas.brainstorm import hand_brainstorm
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.models import (
+    CanvasBrainstorm,
+    CanvasBrainstormIn,
     CanvasClaim,
     CanvasClaimDetail,
     CanvasDetail,
@@ -32,6 +36,8 @@ from evo_agents.core_plugins.canvas.models import (
     CanvasImportIn,
     CanvasImportResult,
     CanvasIn,
+    CanvasProposal,
+    CanvasRejectIn,
     CanvasSummary,
     CanvasUndoIn,
     CanvasWithdrawIn,
@@ -41,6 +47,7 @@ from evo_agents.core_plugins.canvas.models import (
     detail_model,
     evidence_model,
     import_model,
+    proposal_model,
     rev_models,
     summary_values,
 )
@@ -50,7 +57,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.tables_canvas import SLUG
+from evo_agents.hub.tables_canvas import PROPOSAL_STATUSES, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 UNIQUE_VIOLATION = "23505"  # the SQLSTATE of a unique key two writes took at once
@@ -59,6 +66,7 @@ ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 Slug = Annotated[str, Path(pattern=SLUG, description="the canvas's slug")]
 Ref = Annotated[str, Path(min_length=1, max_length=20, description="the claim's code, as CL-3 or 3")]
 EvidenceId = Annotated[int, Path(ge=1)]
+ProposalId = Annotated[int, Path(ge=1)]
 Sink = Annotated[str | None, Header(alias=store.SINK_HEADER)]
 Archived = Annotated[bool, Query(description="archived ones too")]
 
@@ -372,6 +380,90 @@ async def confirm_evidence(
         await writes.confirm_evidence(conn, writer, row, evidence_id)
 
     return await _evidence_change(request, project, slug, ref, evidence_id, user, sink, act)
+
+
+# Proposals and brainstorms
+
+
+@router.get("/{project}/canvases/{slug}/proposals", response_model=list[CanvasProposal])
+async def list_proposals(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    status: Annotated[
+        list[Literal[PROPOSAL_STATUSES]] | None, Query(description="the statuses to list; open when left out")
+    ] = None,
+    sink: Sink = None,
+):
+    """The proposals of a canvas, newest first, each with what it changes from the rev it was made at."""
+
+    async def work(conn):
+        access = await _opened(conn, user, project)
+        canvas = await store.canvas(conn, access, slug, sink)
+        rows = await proposals.proposals(conn, canvas, tuple(status or ("open",)))
+        return [proposal_model(row, await proposals.changes_of(conn, row)) for row in rows]
+
+    return await _answer(request, work)
+
+
+async def _decide(request: Request, project: str, slug: str, proposal_id: int, user, sink, act):
+    async def work(conn):
+        _, canvas, writer = await _writing(conn, user, project, slug, sink, "deciding a proposal")
+        await act(conn, writer, canvas)
+        row = await proposals.proposal(conn, canvas, proposal_id)
+        return proposal_model(row, await proposals.changes_of(conn, row))
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/canvases/{slug}/proposals/{proposal_id}/accept", response_model=CanvasProposal)
+async def accept_proposal(
+    request: Request, project: ProjectName, slug: Slug, proposal_id: ProposalId, user: CurrentUser, sink: Sink = None
+):
+    """Accept an open proposal: its change is written as the caller's rev, under the rules of every edit (a claim
+    goes to validated only with real evidence that supports it). A proposal whose claim changed since is stale."""
+
+    async def act(conn, writer, canvas):
+        await proposals.accept(conn, writer, canvas, proposal_id)
+
+    return await _decide(request, project, slug, proposal_id, user, sink, act)
+
+
+@router.post("/{project}/canvases/{slug}/proposals/{proposal_id}/reject", response_model=CanvasProposal)
+async def reject_proposal(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    proposal_id: ProposalId,
+    body: CanvasRejectIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Reject an open proposal, with why: nothing of it is written."""
+
+    async def act(conn, writer, canvas):
+        await proposals.reject(conn, writer, canvas, proposal_id, body.reason)
+
+    return await _decide(request, project, slug, proposal_id, user, sink, act)
+
+
+@router.post("/{project}/canvases/{slug}/brainstorm", response_model=CanvasBrainstorm, status_code=202)
+async def brainstorm(
+    request: Request, project: ProjectName, slug: Slug, body: CanvasBrainstormIn, user: CurrentUser, sink: Sink = None
+):
+    """Hand @strategist a brainstorm of the canvas as a task run, which proposes new claims, each an assumption
+    with a test card, and changes none. 409, with why, when the project has not enabled the agent type strategist,
+    turned it off, or its runs spent their cap of the day."""
+
+    async def work(conn):
+        access, canvas, _ = await _writing(conn, user, project, slug, sink, "asking for a brainstorm")
+        run_id, why = await hand_brainstorm(conn, access, canvas, user.login, body.focus, tuple(body.cells))
+        if run_id is None:
+            raise CanvasError(409, f"no brainstorm of canvas {slug}: {why}")
+        return CanvasBrainstorm(run_id=run_id, title=f"@strategist brainstorms {slug}")
+
+    return await _answer(request, work)
 
 
 @router.post("/{project}/canvases/import", response_model=CanvasImportResult)

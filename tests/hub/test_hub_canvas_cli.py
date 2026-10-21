@@ -38,6 +38,10 @@ def test_hub_canvas_commands_are_in_the_contract():
         assert printed[f"hub canvas {verb}"]["json"]["schema"] == "CanvasEditResult"
     assert printed["hub canvas import"]["json"]["schema"] == "CanvasImportResult"
     assert printed["hub canvas export"]["json"] is None  # it prints evo-canvas/1 JSON always, with no --json
+    for verb in ("proposal list", "proposal accept", "proposal reject"):
+        assert printed[f"hub canvas {verb}"]["json"]["schema"] == "CanvasProposal"
+    assert printed["hub canvas proposal list"]["json"]["kind"] == "array"
+    assert printed["hub canvas brainstorm"]["json"]["schema"] == "CanvasBrainstorm"
     options = {o["flags"][0]: o for o in printed["hub canvas edit"]["options"]}
     assert options["--status"]["choices"] == ["assumption", "testing", "validated", "invalidated", "retired"]
     assert options["--project"]["required"] and not options["--base-rev"]["required"]

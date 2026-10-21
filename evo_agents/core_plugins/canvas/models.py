@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from evo_agents.core_plugins.canvas import rules
+from evo_agents.core_plugins.canvas.brainstorm import MAX_FOCUS_CHARS
 from evo_agents.core_plugins.canvas.content import (
     AGGREGATES,
     CARD_FIELDS,
@@ -21,6 +22,7 @@ from evo_agents.core_plugins.canvas.content import (
     Content,
     diff,
 )
+from evo_agents.core_plugins.canvas.proposals import ProposalRow
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow, EvidenceRow, Provenance, RevRow
 from evo_agents.core_plugins.canvas.transfer import Report
 from evo_agents.core_plugins.canvas.writes import ADDED_KINDS, MAX_CHANGES
@@ -38,6 +40,8 @@ from evo_agents.hub.tables_canvas import (
     MAX_SUMMARY_CHARS,
     MAX_TEXT_CHARS,
     MAX_URL_CHARS,
+    PROPOSAL_KINDS,
+    PROPOSAL_STATUSES,
     SLUG,
     STATUSES,
 )
@@ -221,6 +225,34 @@ class CanvasEditResult(BaseModel):
     written: list[str] = Field(description="the codes of the claims it wrote a rev of")
 
 
+class CanvasProposal(BaseModel):
+    """A new claim, or a change of a claim at the rev it was read at, that an agent or the hub proposed, and what
+    became of it."""
+
+    id: int
+    kind: Literal[PROPOSAL_KINDS] = Field(description="create: a new claim; change: a change of claim at base_rev")
+    claim: str | None = Field(description="the claim it changes, or the one accepting it made; None for a new one")
+    base_rev: int | None = Field(description="the rev of the claim it was made at")
+    fields: dict = Field(description="the fields of the claim it sets, as an edit sets them")
+    changes: list[CanvasFieldChange] = Field(description="what it changes, field by field, from its base rev")
+    reason: str
+    synthetic: bool = Field(description="it rests on simulated users")
+    provenance: CanvasProvenance
+    created_at: datetime
+    status: Literal[PROPOSAL_STATUSES] = Field(description="stale: its claim changed since its base rev")
+    rev: int | None = Field(description="the rev accepting it wrote")
+    decided_by: str | None
+    decided_at: datetime | None
+    decided_reason: str | None
+
+
+class CanvasBrainstorm(BaseModel):
+    """The task run of @strategist's brainstorm, which proposes and changes nothing."""
+
+    run_id: int
+    title: str
+
+
 class CanvasImportResult(BaseModel):
     dry_run: bool
     canvas: str
@@ -325,6 +357,15 @@ class CanvasEvidenceIn(BaseModel):
 
 class CanvasWithdrawIn(BaseModel):
     reason: str = Field(min_length=1, max_length=MAX_REASON_CHARS)
+
+
+class CanvasRejectIn(BaseModel):
+    reason: str = Field("", max_length=MAX_REASON_CHARS, description="why, kept with the proposal")
+
+
+class CanvasBrainstormIn(BaseModel):
+    focus: str = Field("", max_length=MAX_FOCUS_CHARS, description="what to think about, in the asker's words")
+    cells: list[Literal[CELLS]] = Field(default_factory=list, max_length=len(CELLS), description="every cell: none")
 
 
 class CanvasImportIn(BaseModel):
@@ -441,4 +482,24 @@ def import_model(report: Report, dry_run: bool) -> CanvasImportResult:
         unchanged=report.unchanged,
         evidence=report.evidence,
         problems=report.problems,
+    )
+
+
+def proposal_model(row: ProposalRow, changes: list[dict]) -> CanvasProposal:
+    return CanvasProposal(
+        id=row.id,
+        kind=row.kind,
+        claim=row.claim,
+        base_rev=row.base_rev,
+        fields=row.fields,
+        changes=[CanvasFieldChange(**item) for item in changes],
+        reason=row.reason,
+        synthetic=row.synthetic,
+        provenance=provenance_model(row.provenance),
+        created_at=row.created_at,
+        status=row.status,
+        rev=row.rev,
+        decided_by=row.decided_by,
+        decided_at=row.decided_at,
+        decided_reason=row.decided_reason,
     )
