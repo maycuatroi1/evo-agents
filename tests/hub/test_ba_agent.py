@@ -482,6 +482,10 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     assert held.status_code == 409 and f"(run #{review_run}) is running" in held.json()["message"], held.text
     moved(client, studio, review_run, "verifying", "done", summary="One finding.")
     assert review(client, hub["other"], 1).json()["state"] == "approved"
+    # with tasks on, the approval hands @ba the split of its frame tasks too (tests.hub.test_srs_auto_tasks)
+    split = running(client, studio, "task")
+    assert "Split the frame tasks of the SRS document demo-shop" in split["prompt"]
+    moved(client, studio, split["id"], "verifying", "done", summary="Nothing split.")
     # a version sent back and submitted again is reviewed again, in its new round
     cart = item(client, hub["chi"], "BR ORD1-1")
     saved(client, hub["other"], 1, {"key": cart["key"], "body": "- A cart holds at most 40 lines."})
@@ -492,6 +496,7 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     assert submitted(client, hub["other"], 2)["round"] == 2
     assert [row[4] for row in runs_of(hub_db, "task")] == [
         "@ba reviews demo-shop v1",
+        "@ba splits the tasks of demo-shop v1",
         "@ba reviews demo-shop v2",
         "@ba reviews demo-shop v2, round 2",
     ]
@@ -504,7 +509,7 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     saved(client, hub["other"], 2, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
     assert client.delete(TYPE, headers=hub["owner"]).status_code == 200
     assert submitted(client, hub["other"], 3)["state"] == "in_review"
-    assert len(runs_of(hub_db, "task")) == 3
+    assert len(runs_of(hub_db, "task")) == 5  # the approval of version 2 handed the split of the frames still waiting
 
 
 # Tasks of its use cases

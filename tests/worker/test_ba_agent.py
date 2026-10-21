@@ -82,7 +82,7 @@ def test_ba_agent_type_of_srs_is_mentioned_by_writers_and_runs_on_the_workers_of
     }
 
 
-def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_three_skills(plugins, tmp_path):
+def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_four_skills(plugins, tmp_path):
     held = core.image_bundle(plugins["srs"])
     assert core.image_bundle(plugins["srs"]).sha256 == held.sha256, "the same package packs to the same bundle"
     held_files = files(held)
@@ -91,13 +91,19 @@ def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_three_skil
         f"{PACK}/INSTRUCTIONS.md",
         f"{PACK}/skills/srs-review/SKILL.md",
         f"{PACK}/skills/srs-settle/SKILL.md",
+        f"{PACK}/skills/srs-tasks/SKILL.md",
         f"{PACK}/skills/srs-writing/SKILL.md",
     ]
     assert json.loads(held_files["evo-plugin.json"])["id"] == "srs"
     (pack,) = packs.build([ticket(held, "ba")], tmp_path / "run" / "packs", accepted=["srs"], fetch=fetch_from(held))
     assert pack.components.kinds() == ("skills", "instructions")
-    assert pack.skill_names("claude-code") == ["srs.ba:srs-review", "srs.ba:srs-settle", "srs.ba:srs-writing"]
-    assert pack.skill_names("codex") == ["srs-review", "srs-settle", "srs-writing"]
+    assert pack.skill_names("claude-code") == [
+        "srs.ba:srs-review",
+        "srs.ba:srs-settle",
+        "srs.ba:srs-tasks",
+        "srs.ba:srs-writing",
+    ]
+    assert pack.skill_names("codex") == ["srs-review", "srs-settle", "srs-tasks", "srs-writing"]
     instructions = (pack.root / "INSTRUCTIONS.md").read_text()
     for said in ("srs__propose", "srs__comment", "tasks__create", "Approve or return a version"):
         assert said in instructions, said
@@ -107,4 +113,6 @@ def test_ba_agent_pack_builds_on_the_worker_with_its_instructions_and_three_skil
     assert "Blocking:" in review and "with the glossary" in review and "non-functional requirements" in review
     settle = (pack.root / "skills" / "srs-settle" / "SKILL.md").read_text()
     assert "Đã chốt:" in settle and "action: reopen" in settle and "settled_by" in settle
+    split = (pack.root / "skills" / "srs-tasks" / "SKILL.md").read_text()
+    assert "tasks__create" in split and "`parent`" in split and "frame task" in split
     assert packs.summary([pack]) == "Agent packs built for the agent: srs/ba 1.0.0 (skills, instructions)."

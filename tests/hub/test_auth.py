@@ -80,6 +80,7 @@ HUB_TABLES |= pg.SEARCH_TABLES  # migration 0060
 HUB_TABLES |= pg.USER_EMAIL_TABLES  # migration 0065
 HUB_TABLES |= pg.SRS_FINDING_TABLES  # migration 0066
 HUB_TABLES |= pg.SRS_SETTLE_TABLES  # migration 0067
+HUB_TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0068
 
 
 @pytest.fixture

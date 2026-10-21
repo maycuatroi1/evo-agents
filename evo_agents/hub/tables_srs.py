@@ -1,6 +1,5 @@
-"""The tables of the core plugin srs (0046, 0064, 0066, 0067), which ``evo_agents.hub.tables`` adds to its metadata as
-``tables.srs``:
-queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
+"""The tables of the core plugin srs (0046, 0064, 0066, 0067, 0068), which ``evo_agents.hub.tables`` adds to its
+metadata as ``tables.srs``: queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
 - srs_documents: a BA document of a project, an SRS of a template or a free specification (``kind``), with its slug,
@@ -27,6 +26,10 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_settle_chats (0067): the settle chat of a version whose review by @ba ended with findings of level decide still
   open: one chat a version and one version a chat, its first message, the review run whose end opened it and the chat
   run its first message started.
+- srs_approval_tasks (0068): what the hub did to the project's tasks when a version was approved while the project
+  enabled the plugin tasks: one row a version, the version approved before it that it was compared with, the member
+  whose approval made it approved, the task run of @ba that splits the frame tasks (whom ``tasks__create`` of that
+  run acts for) and what was done (``outcome``). A second call for the same version finds the row and does nothing.
 """
 
 from __future__ import annotations
@@ -86,6 +89,7 @@ MAX_RESOLUTION_CHARS = 10_000
 MAX_CHAT_LINK_CHARS = 500
 LATEST_COMMITS = 3  # the newest commits of a source's file whose authors a finding keeps (evo_agents.hub.kg_graph)
 MAX_COMMIT_AUTHORS = MAX_SOURCES * LATEST_COMMITS  # of srs_findings.commit_authors
+FRAME_TASK_PREFIX = "srs:"  # of the external_key of a frame task an approval made (frame_task_key)
 
 
 # The node of the knowledge graph each kind of coded item is: the plugin srs declares them, the plugin tasks links
@@ -99,6 +103,13 @@ def kg_node_id(kind: str, code: str | None) -> str | None:
     ``requirement:BR ORD1-2``); None for a kind that is no node, or an item without a code."""
     node = KG_NODE_KINDS.get(kind)
     return f"{node.lower()}:{' '.join(code.split())}" if node and code and code.strip() else None
+
+
+def frame_task_key(slug: str, version: int, code: str) -> str:
+    """The external_key of the frame task of use case ``code``, new in version ``version`` of document ``slug``:
+    ``srs:order-flow:3:UC ORD-1``, whitespace runs of the code as one space. A second approval of the same version
+    finds the task by it, and the plugin tasks knows a frame task by its prefix (FRAME_TASK_PREFIX)."""
+    return f"{FRAME_TASK_PREFIX}{slug}:{version}:{' '.join(code.split())}"
 
 
 def code_key(code: str) -> str:
@@ -122,6 +133,7 @@ class SrsTables:
     comments: Table
     findings: Table
     settle_chats: Table
+    approval_tasks: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
@@ -373,6 +385,27 @@ def _settle_chats(metadata: MetaData) -> Table:
     )
 
 
+def _approval_tasks(metadata: MetaData) -> Table:
+    name = "srs_approval_tasks"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("previous_version", Integer),
+        Column("approved_by", BigInteger, nullable=False),
+        Column("split_run_id", BigInteger),
+        Column("outcome", JSONB, nullable=False, server_default="{}"),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "approved_by", "users", ondelete="RESTRICT"),
+        _key(name, "split_run_id", "runs", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="srs_approval_tasks_pkey"),
+        UniqueConstraint("version_id", name="srs_approval_tasks_version_id_key"),
+        UniqueConstraint("split_run_id", name="srs_approval_tasks_split_run_id_key"),
+    )
+
+
 def srs_tables(metadata: MetaData) -> SrsTables:
     """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users, runs and chats
     already)."""
@@ -388,4 +421,5 @@ def srs_tables(metadata: MetaData) -> SrsTables:
         comments=_comments(metadata),
         findings=_findings(metadata),
         settle_chats=_settle_chats(metadata),
+        approval_tasks=_approval_tasks(metadata),
     )

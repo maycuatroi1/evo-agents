@@ -332,8 +332,9 @@ plan whose revision did not change gives the same item either way, and no build 
 `<source>:commit:<sha>` per commit, a node of kind `Commit` with `changes` edges to the files and documents it
 added, edited or deleted that the graph still holds (a merge against its first parent, a rename as a delete and an
 add, at most 100 paths, `files` counting them all). Its message is not read. The node keeps the author's email as
-the commit records it, `author_email` in its props (no `.mailmap` applied), labelled as its source like every other
-prop. The first run, and any run after the connector or the source's config changed (a new version of the connector
+the commit records it, `author_email` in its props (no `.mailmap` applied), and its committer time, `time` in its
+props, as UTC text that sorts, both labelled as its source like every other prop: the hub reads the authors of a
+file's newest commits from them (`docs/srs-plugin.md`, Findings). The first run, and any run after the connector or the source's config changed (a new version of the connector
 included, so commits read before a prop was added get it too), reads the whole history and lists it complete, so a
 commit the ref no longer reaches goes, under the deletion guard; the runs after it read only the commits since the
 commit of the source's cursor. When the ref no longer reaches that commit (a force-push, a history rewritten with

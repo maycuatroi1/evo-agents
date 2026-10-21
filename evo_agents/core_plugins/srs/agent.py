@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from urllib.parse import quote
 
 from fastapi import HTTPException
 from pydantic import TypeAdapter, ValidationError
@@ -54,6 +53,7 @@ from evo_agents.core_plugins.srs.doc import Document, SrsError
 from evo_agents.core_plugins.srs.edits import edited
 from evo_agents.core_plugins.srs.models import SrsChange, edit_changes
 from evo_agents.core_plugins.srs.settle import proposer
+from evo_agents.core_plugins.srs.store import compare_path
 from evo_agents.core_plugins.srs.template import code_key
 from evo_agents.core_plugins.srs.writes import Writer, give_screen_codes, write_version
 from evo_agents.hub import tables
@@ -323,11 +323,6 @@ def _ba_run(who: Acting, tool: str, kinds: tuple[str, ...]) -> None:
     if who.run_id is None or not who.ba or who.run_kind not in kinds:
         runs = " or ".join(f"a {kind} run" for kind in kinds)
         raise SrsError(403, f"only the agent of {runs} of @{BA} in project {who.access.name} calls srs__{tool}")
-
-
-def compare_path(project: str, slug: str, low: int, high: int) -> str:
-    """The comparison of two versions on the hub's web (web/src/app/(app)/p/[project]/x/srs/documents/[slug])."""
-    return f"/p/{quote(project, safe='')}/x/srs/documents/{quote(slug, safe='')}/compare?from={low}&to={high}"
 
 
 async def _author(conn: AsyncConnection, who: Acting, doc: store.DocumentRow) -> tuple[Principal, ProjectAccess]:

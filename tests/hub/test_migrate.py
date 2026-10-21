@@ -98,6 +98,7 @@ TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.USER_EMAIL_TABLES  # migration 0065
 TABLES |= pg.SRS_FINDING_TABLES  # migration 0066
 TABLES |= pg.SRS_SETTLE_TABLES  # migration 0067
+TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0068
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -172,8 +173,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_four_tables(hub_db):
-    assert len(TABLES) == 104  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_five_tables(hub_db):
+    assert len(TABLES) == 105  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1331,6 +1332,38 @@ def test_0067_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_gr
     assert "commit_authors" not in columns(hub_db, "srs_findings")
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+
+
+def test_0068_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0067")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0068")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        versions = [
+            one(
+                conn,
+                insert(s.versions)
+                .values(document_id=doc, number=number, author_id=ids["user"], content_sha256="a" * 64)
+                .returning(s.versions.c.id),
+            )
+            for number in (1, 2)
+        ]
+        done = {"version_id": versions[0], "approved_by": ids["user"]}
+        conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.UniqueViolation):  # one row a version
+            conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.CheckViolation):  # its outcome is an object
+            conn.execute(insert(s.approval_tasks).values(version_id=versions[1], approved_by=ids["user"], outcome=[]))
+    a = s.approval_tasks
+    assert query(hub_db, select(a.c.previous_version, a.c.split_run_id, a.c.outcome)) == [(None, None, {})]
+    move_to(hub_db, "0067", down=True)
+    assert "srs_approval_tasks" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

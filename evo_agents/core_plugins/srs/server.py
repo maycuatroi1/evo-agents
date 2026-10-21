@@ -14,7 +14,9 @@ it queue a build of the project's knowledge graph, which reads the approved vers
 Readers read the conflicts @ba found in a document (GET .../documents/{slug}/findings, ``status`` to keep one status),
 and an admin waives an open one (POST .../findings/{id}/waive) with a reason. Approving a version answers 409 while the
 document has an open finding of level decide, or @ba's review of the version's round is queued or running
-(``findings.approval_hold``); a request for changes is never held.
+(``findings.approval_hold``); a request for changes is never held. A version approved in a project that enables the
+plugin tasks keeps its tasks in step, in the same transaction (``auto_tasks.approved``, with the version approved
+before it and the approver): frame tasks of its new use cases, comments and cancellations, and @ba's split run.
 Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with the
 problems that refused it (or a conflict's two texts) in ``detail``.
 """
@@ -27,7 +29,7 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import checks, edits, findings, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs import auto_tasks, checks, edits, findings, imports, markdown, reviews, store
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
@@ -363,7 +365,10 @@ async def review_version(
 ):
     """Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
-    decide, naming each, or while @ba's review of the version's round is queued or running."""
+    decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
+    approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
+    use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
+    child tasks, in the same transaction."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -372,6 +377,7 @@ async def review_version(
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
         decided = await reviews.review(conn, access, user, doc, number, asked, settings)
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
+            await auto_tasks.approved(conn, doc.id, number, doc.approved_version, user.user_id)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
         return version_model(decided)
 
