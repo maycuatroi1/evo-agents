@@ -48,6 +48,10 @@ status. Turning the plugin off deletes nothing.
 - **Its history**: every change is a row with the field, the old and the new value, and who made it, or the hub (no
   actor) and why.
 - **Its comments.**
+- **Frame tasks and child tasks.** When a version of an SRS document is approved, the plugin srs makes a frame task
+  for each use case new in it (section Tasks of an approved SRS version), and @ba splits each into child tasks: tasks
+  whose parent is the frame task, linked to the same use case. A frame task carries `external_key`
+  `srs:<slug>:<version>:<code>` and, in `external_ref`, the document, the version and the use case.
 
 A target the member cannot see (a document or a plan whose label is above the clearance of the session's sink) is not
 linked, and an existing link to one shows `hidden` and nothing of it.
@@ -72,6 +76,26 @@ every plan step a task links is done now, the task moves to that status, unless 
 `cancelled` already; the row of that move names the last step. The plan is never changed. The hub delivers an event
 at least once, with the same delivery id on every try, and a task that has the row of a delivery already gets nothing
 more, so a second try writes nothing.
+
+## Tasks of an approved SRS version
+
+When a version of a document of the plugin srs is approved in a project that enables both plugins, srs keeps the
+project's tasks in step with the version's use cases, comparing it with the version approved before
+(`docs/srs-plugin.md`, Tasks when a version is approved):
+
+- a use case new in the version gets a frame task, `UC ORD-1: Place an order`, linked to it, of type `story` when the
+  project has it (its first type otherwise), in the first status, made by the approver; its history names the hub
+  and why;
+- the open tasks linked to a use case that changed, itself or a business rule under it, get a comment of the approver
+  with the link of the comparison of the two versions;
+- the open tasks linked to a use case the version dropped move to the first status of group `cancelled`, their
+  history naming the hub and why; without such a status they keep theirs and get a comment.
+
+A task is open while its status's group is not `done` or `cancelled`. Then @ba gets a task run that splits each open
+frame task of the document with no child task yet: it makes the child tasks with `tasks__create` (section The tool
+tasks__create), for the approver. An approval of the same version again, such as an event delivered twice, makes no
+task, comment or run, and a frame task is found by its `external_key`. srs writes these rows through the hub's tables,
+as this plugin reads srs's items: neither imports the other.
 
 ## Commands
 
@@ -180,8 +204,24 @@ are left out.
 The plugin contributes the tool `tasks__create` to the hub's /mcp, listed in a session whose project enabled it. It
 makes a task for the member an agent works for, such as @ba of the plugin srs making a task of a use case: the agent of
 a chat run acts for the person who mentioned the agent, also when the run went to the worker of its agent type's
-`run_as` (`docs/plugins.md`, Agent types), and a member's own session for that member. The agent of any other kind of
-run is refused. The person must hold writer on the project when the tool runs. The task is theirs, carries the
-project's label, takes the config's first type and status unless the call names them, and links the SRS items it
-names by code (`links`) while the project enables srs. The tool's description tells the agent to name assignees only
-when the person asked for them.
+`run_as` (`docs/plugins.md`, Agent types), and a member's own session for that member. The task run of @ba that splits
+the frame tasks of an approved SRS version acts for the member who approved it, whom the hub keeps for that run
+(`srs_approval_tasks`), also in the next attempt of a lost run. The agent of any other task run, @ba's review
+included, and of any other kind of run is refused. The person must hold writer on the project when the tool runs. The
+task is theirs, carries the project's label, takes the config's first type and status unless the call names them, and
+links the SRS items it names by code (`links`) while the project enables srs. The tool's description tells the agent
+to name assignees only when the person asked for them.
+
+`parent` puts the task under another task of the project, as `T-12`. A child whose title another child of the same
+parent has, case and runs of spaces aside, is refused with 409 naming that child, so a split run tried again makes no
+twin. The split run must name a parent, and only a frame task; its child tasks also link the use cases the frame task
+links. Its schema:
+
+| Argument | What it holds |
+| --- | --- |
+| `title` | required, at most 300 characters |
+| `description_md` | Markdown |
+| `links` | codes of the SRS items it implements |
+| `parent` | the task it is part of, as `T-12` |
+| `type`, `status`, `priority`, `sprint` | as a task made with the API |
+| `assignees`, `ba`, `qa`, `dev` | logins, only when the person named them |

@@ -30468,7 +30468,7 @@
             "plugins"
           ],
           "summary": "Review Version",
-          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running.",
+          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running. Once a version is\napproved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a\nuse case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into\nchild tasks, in the same transaction.",
           "operationId": "review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post",
           "parameters": [
             {

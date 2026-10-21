@@ -127,6 +127,8 @@ USER_EMAIL_TABLES = frozenset({"user_emails"})
 SRS_FINDING_TABLES = frozenset({"srs_findings"})
 # migration 0067: the settle chat of each version of a BA document whose review left conflicts to settle
 SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
+# migration 0068: what the approval of a version did to the project's tasks, and @ba's run that splits them
+SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

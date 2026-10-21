@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import quote
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -150,6 +151,14 @@ async def approved_documents(conn: AsyncConnection, project_id: int) -> list[Doc
     d = tables.srs.documents
     query = _documents_query(project_id).where(d.c.approved_version.is_not(None), d.c.archived_at.is_(None))
     return [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
+
+
+async def document_by_id(conn: AsyncConnection, project_id: int, document_id: int) -> DocumentRow | None:
+    """Document ``document_id`` of project ``project_id`` whoever reads, archived or not, or None: for the hub's own
+    work on it, such as the tasks of an approval (``auto_tasks``), whose caller checked who may do it."""
+    d = tables.srs.documents
+    row = (await conn.execute(_documents_query(project_id).where(d.c.id == document_id))).first()
+    return None if row is None else DocumentRow(**row._mapping)
 
 
 async def documents(
@@ -380,6 +389,21 @@ async def snapshot(conn: AsyncConnection, row: VersionRow) -> Snapshot:
     return Snapshot(row, doc, {item.key: item.id for item in rows})
 
 
+def document_path(project: str, slug: str) -> str:
+    """A document on the hub's web (web/src/app/(app)/p/[project]/x/srs/documents/[slug])."""
+    return f"/p/{quote(project, safe='')}/x/srs/documents/{quote(slug, safe='')}"
+
+
+def compare_path(project: str, slug: str, low: int, high: int) -> str:
+    """The comparison of two versions of a document on the hub's web."""
+    return f"{document_path(project, slug)}/compare?from={low}&to={high}"
+
+
+def item_path(project: str, slug: str, ref: str) -> str:
+    """An item's page on the hub's web, by its code or key."""
+    return f"{document_path(project, slug)}/items/{quote(ref, safe='')}"
+
+
 async def settings(conn: AsyncConnection, access: ProjectAccess) -> Settings:
     """The plugin's effective config in the project; 409 when its code patterns do not compile."""
     return await project_settings(conn, access.project_id, access.name)
@@ -409,9 +433,13 @@ __all__ = [
     "Snapshot",
     "VersionRow",
     "approved_documents",
+    "compare_path",
     "document",
+    "document_by_id",
+    "document_path",
     "documents",
     "item_id",
+    "item_path",
     "missing",
     "project_settings",
     "reader",

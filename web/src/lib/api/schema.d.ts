@@ -3680,7 +3680,10 @@ export interface paths {
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
          *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
-         *     decide, naming each, or while @ba's review of the version's round is queued or running.
+         *     decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
+         *     approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
+         *     use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
+         *     child tasks, in the same transaction.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
         delete?: never;

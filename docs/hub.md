@@ -868,7 +868,12 @@ takes its owner's runs alone again. Schema 0063 makes `telegram_links` the hub's
 codes that link a member's channel of any kind (`docs/plugins.md`, The core plugin API), with the column `kind`, which
 is `telegram` for every code there was; going back to 0062 deletes the codes of other kinds and gives the table its old
 name. Schema 0064 lets a version of a BA document be `withdrawn` (`docs/srs-plugin.md`, Approval); going back to 0063
-makes every withdrawn version a draft again.
+makes every withdrawn version a draft again. Schema 0065 adds `user_emails`, the emails of each member (Signing in).
+Schema 0066 adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0067 the settle
+chats (Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0068 `srs_approval_tasks`, what the
+approval of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version
+is approved). Going back past each drops what it added; going back past 0067 makes every settle chat a group chat
+first.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

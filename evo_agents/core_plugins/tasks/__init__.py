@@ -21,7 +21,9 @@ is implemented by the plan steps it links to.
 
 The tool ``tasks__create`` of the hub's /mcp (``agent``) makes a task for the member an agent works for: the agent
 of a chat run, such as @ba of the plugin srs making a task of a use case, for the member who mentioned it, while that
-member holds writer.
+member holds writer; and the run of @ba that splits the frame tasks of an approved SRS version into child tasks
+(``parent``), for the member who approved it. The plugin srs makes those frame tasks itself, through the hub's tables,
+when a version is approved (``evo_agents.core_plugins.srs.auto_tasks``).
 
 The hub imports this package for the manifest only: ``settings`` reads the config, ``store`` reads tasks, ``links``
 resolves and shows what they link to, ``writes`` keeps them, ``imports`` reads a file, ``events`` takes the plan
@@ -113,6 +115,12 @@ CREATE_SCHEMA = {
         "status": {"type": "string", "pattern": KEY, "description": "one of the project's statuses; its first if not"},
         "priority": {"enum": list(PRIORITIES)},
         "sprint": {"type": "string", "minLength": 1, "maxLength": 100, "description": "a sprint's name"},
+        "parent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "description": "the task it is part of, as T-12: the frame task, for the run of @ba that splits frame tasks",
+        },
         "assignees": {**_LOGINS, "description": "members named by the person who asked, by login"},
         "ba": _LOGINS,
         "qa": _LOGINS,
@@ -157,8 +165,10 @@ MANIFEST = {
                 "name": "create",
                 "title": "Create a task",
                 "description": "Create a task of the project for the member the agent works for (the person who "
-                "mentioned it in a chat), linked to the SRS items it names by code. That member must be a writer of "
-                "the project; name assignees only when they asked for them.",
+                "mentioned it in a chat, or who approved the SRS version whose frame tasks @ba's run splits), linked "
+                "to the SRS items it names by code, under parent when named; a child whose title another child of "
+                "the same parent has is refused. That member must be a writer of the project; name assignees only "
+                "when they asked for them.",
                 "python": f"{AGENT}:create",
                 "input_schema": CREATE_SCHEMA,
             }

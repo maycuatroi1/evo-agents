@@ -19,13 +19,14 @@ unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``
 contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
 versions, the comparison of two versions, the review and the comments.
 ``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive`` is
-their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064, 0066 and 0067), every row of a
-document carrying its label, the project's by default. The version of each document approved last, of the documents not archived, is a
+their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064, 0066, 0067 and 0068),
+every row of a document carrying its label, the project's by default. The version of each document approved last, of the documents not archived, is a
 source of the project's knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the
 ids a mention of their codes gets.
 
 The plugin contributes the agent type ``ba`` (criterion a7): the profile @ba with the pack ``srs/ba`` (``packs/ba``:
-its instructions and the skills srs-writing and srs-review), which a project's writers mention in a group chat. Its
+its instructions and the skills srs-writing, srs-review, srs-settle and srs-tasks), which a project's writers mention
+in a group chat. Its
 agent reads, searches and compares documents and proposes and comments with the plugin's tools on the hub's /mcp
 (``agent``): a proposal is the document's next version, in review at once, written as the person who mentioned @ba,
 who therefore never approves it. The type declares ``chat_runs: run_as``: every run of @ba goes to a worker of the
@@ -46,11 +47,16 @@ hub opens a settle chat for the version (``settle``, criterion a7, through the p
 ``reviews``): the people the rules name, @ba woken by every message, and anyone there settles; @ba records the
 settling on the finding and proposes the next version as the author of the version the chat is for.
 
+When a version is approved and the project enables the plugin tasks (``auto_tasks``, criterion a8), each use case new
+in it gets a frame task linked to it, the open tasks of a use case that changed get a comment, and those of a use case
+it dropped are cancelled; then @ba, in a task run, splits each frame task into child tasks with tasks__create, for the
+member who approved the version. A second call for the same version does nothing (srs_approval_tasks).
+
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
 comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares two versions, ``models`` and
 ``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent``, ``auto_review`` and
-``settle`` are @ba's.
+``settle`` are @ba's, ``auto_tasks`` keeps the tasks of an approved version.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
@@ -331,6 +337,7 @@ TABLES = (
     ("srs_comments", "Comments on a document, a version or an item"),
     ("srs_findings", "The conflicts found in a document, their sources and how each was settled"),
     ("srs_settle_chats", "The chat where members settle the conflicts of a version with @ba"),
+    ("srs_approval_tasks", "What the approval of a version did to the project's tasks, and @ba's run that splits them"),
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,
