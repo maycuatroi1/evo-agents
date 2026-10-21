@@ -9,15 +9,16 @@
    (``origin``: from ``origin/<branch>`` when the remote has it, on ``evo-run/<run>`` when that branch is checked out
    elsewhere or has commits here that the start lacks, the push still going to the plan's branch). A plan without a
    branch for the repo, or whose branch is the default branch (the remote's HEAD, the hub's default_branch, main or
-   master), fails the run before the agent starts: the daemon never pushes the default branch.
+   master), fails the run before the agent starts: the daemon never pushes the default branch. A repo that asks for
+   a Python environment gets it in the worktree (``venv``), its ``.venv/bin`` first on the agent's PATH.
 2. ``running``: the runtime's adapter starts the agent on the run's prompt; its events go to the spool and on to
    the hub. The owner's messages reach the agent through ``send``; a cancel, the run's timeout (counted from the
    agent's start), or the hub no longer holding the run for this worker interrupt it. ``interactive``: after a
    takeover, or from the start in interactive mode, a person drives the agent's session in its runtime's terminal UI
    in tmux (``terminal``), and a handback, or the person leaving the UI, lets a new adapter go on headless in the
    same session (``running`` again).
-3. ``verifying``: the agent wrote ``.evo-run/result.json``; the daemon runs each of its ``verify_commands`` again in
-   the worktree (``verify``). A command that exits other than 0 fails the run, and nothing is pushed: the work stays
+3. ``verifying``: the agent wrote ``.evo-run/result.json``; the daemon makes the worktree's Python environment
+   again when the repo asks for one, then runs each of its ``verify_commands`` again in the worktree (``verify``). A command that exits other than 0 fails the run, and nothing is pushed: the work stays
    in the worktree.
 4. The daemon commits what the agent left uncommitted (``push.commit``); refuses to push a detached HEAD or a branch
    the agent switched to, pushes the plan's branch to origin (never forced, never merged), and reports ``done``
@@ -36,7 +37,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.runner import access, origin, push, verify
+from evo_agents.worker.runner import access, origin, push, venv, verify
 from evo_agents.worker.runner.common import RunFailed, push_cause
 from evo_agents.worker.runner.transitions import final_state, start_refs, verify_failure
 
@@ -81,9 +82,13 @@ class StepRun:
         run.check()
         await self.prepare(checkout)
         run.check()
+        await venv.prepare(run, [(run.repo, run.worktree)])
+        run.check()
         await self.run_agent(cls)
         commands = verify.read_result(run)
         await run.reports.report("verifying")
+        run.check()
+        await venv.refresh(run)
         run.check()
         run.verify = await verify.run_verify(run, commands)
         failure = verify_failure(run.verify, run.worktree)

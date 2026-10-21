@@ -51,10 +51,10 @@ from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_options import (
-    KIND_TEXTS,
     account_option,
     author_options,
     dispatch_options,
+    kind_text,
     list_options,
     plan_options,
     rerun_body,
@@ -539,7 +539,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
     if kind == "step":
         return [("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")), ("plan", plan)]
     each = "a new session for each step" if run.get("session_per_step") else "one session"
-    said = KIND_TEXTS.get(kind) or f"plan run: every step of the plan not done yet, in {each}"
+    said = kind_text(run) or f"plan run: every step of the plan not done yet, in {each}"
     lines = [("kind", said)] + ([("title", run["title"])] if run["title"] else [])
     if kind == "review":
         lines.append(("project", run["project"]))
@@ -547,7 +547,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
         link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
-    if kind not in ("review", "author", "chat", "task", "local") or run.get("plan_id"):
+    if kind not in ("review", "author", "chat", "task", "local", "judge") or run.get("plan_id"):
         lines.append(("plan", plan))
     return lines
 

@@ -39,6 +39,7 @@ def run(tmp_path: Path, runtime: str, env: dict[str, str]) -> SimpleNamespace:
         spec={"kind": "step", "plan_id": "p", "step_key": "1"},
         daemon=SimpleNamespace(env={"PATH": "/usr/bin", **env}, home=SimpleNamespace(root=tmp_path / "worker")),
         credentials=SimpleNamespace(agent_vars={}, withheld=frozenset()),
+        venvs={},
     )
 
 

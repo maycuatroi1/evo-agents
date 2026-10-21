@@ -88,17 +88,19 @@ async def run_verify(run: Run, commands: list[str]) -> list[dict]:
     return results
 
 
-async def shell(run: Run, command: str, seconds: float, cwd: Path | None = None) -> tuple[int, str]:
+async def shell(
+    run: Run, command: str, seconds: float, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     """(exit code, the end of its output) of ``command`` in the run's worktree (or ``cwd``), in the agent's
-    environment; Stopped when the run is asked to stop or runs out of time first, with the command's process group
-    killed."""
+    environment (or ``env``); Stopped when the run is asked to stop or runs out of time first, with the command's
+    process group killed."""
     proc = await asyncio.create_subprocess_shell(
         command,
         cwd=str(cwd or run.worktree),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        env=run.agent.env(),
+        env=env if env is not None else run.agent.env(),
         start_new_session=True,
     )
     tail = bytearray()
