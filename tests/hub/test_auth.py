@@ -93,6 +93,7 @@ HUB_TABLES |= pg.MERGE_TABLES  # migration 0081
 HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0083
 HUB_TABLES |= pg.BREAKER_TABLES  # migration 0084
 HUB_TABLES |= pg.GOAL_TABLES  # migration 0085
+HUB_TABLES |= pg.LOOP_TABLES  # migration 0087
 
 
 @pytest.fixture

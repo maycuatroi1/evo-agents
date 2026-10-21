@@ -153,6 +153,8 @@ SAMPLE_TABLES = frozenset({"merge_samples"})
 BREAKER_TABLES = frozenset({"merge_breakers"})
 # migration 0085: the goals of a project and their revisions (plan loop-engine)
 GOAL_TABLES = frozenset({"goals", "goal_revisions"})
+# migration 0087: the Loop of a project, its work items and their ledger (plan loop-engine)
+LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

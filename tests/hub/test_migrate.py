@@ -111,6 +111,7 @@ TABLES |= pg.MERGE_TABLES  # migration 0081
 TABLES |= pg.SAMPLE_TABLES  # migration 0083
 TABLES |= pg.BREAKER_TABLES  # migration 0084
 TABLES |= pg.GOAL_TABLES  # migration 0085
+TABLES |= pg.LOOP_TABLES  # migration 0087
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -185,8 +186,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_thirty_tables(hub_db):
-    assert len(TABLES) == 130  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_three_tables(hub_db):
+    assert len(TABLES) == 133  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2139,6 +2140,59 @@ def test_0086_takes_deliveries_and_grants_of_srs_and_tasks_events_and_going_back
     assert query(hub_db, select(t.hub_events.c.kind)) == [("run.state",)]
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0086") :]
+
+
+def test_0087_keeps_the_loop_of_a_project_its_work_items_and_their_ledger_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0086")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0087")
+    assert columns(hub_db, "loop_states") == {
+        "project_id",
+        "enabled",
+        "enabled_at",
+        "cursor",
+        "breaker",
+        "breaker_reason",
+        "tripped_at",
+        "resumed_by",
+        "resumed_at",
+        "ticked_at",
+        "updated_at",
+    }
+    s, i, e = hub_tables.loop_states, hub_tables.loop_items, hub_tables.loop_item_events
+    item = {"project_id": ids["project"], "kind": "brainstorm", "cycle": "business", "key": "brainstorm:G-1:r1"}
+    item |= {"engine": "rules/1", "owner": "@strategist"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(project_id=ids["project"], enabled=True, enabled_at=func.now(), cursor=7))
+        item_id = one(conn, insert(i).values(item).returning(i.c.id))
+        conn.execute(insert(e).values(item_id=item_id, kind="created", state="queued"))
+        done = {**item, "key": "deliver:p", "kind": "deliver", "cycle": "development", "state": "done"}
+        conn.execute(insert(i).values({**done, "finished_at": func.now()}))
+        for bad in (
+            insert(s).values(project_id=ids["project"]),  # one row a project
+            insert(i).values(item),  # one work item a key
+            insert(i).values({**item, "key": "x", "kind": "plan"}),
+            insert(i).values({**item, "key": "x", "cycle": "development"}),  # a brainstorm is of the business cycle
+            insert(i).values({**item, "key": ""}),
+            insert(i).values({**item, "key": "k" * 501}),
+            insert(i).values({**item, "key": "x", "state": "waiting"}),
+            insert(i).values({**item, "key": "x", "reason": "budget"}),  # no budget in loop/1
+            insert(i).values({**item, "key": "x", "detail": []}),
+            insert(i).values({**item, "key": "x", "attempts": -1}),
+            insert(i).values({**item, "key": "x", "state": "done"}),  # a finished one says when
+            insert(i).values({**item, "key": "x", "finished_at": func.now()}),  # and only a finished one
+            insert(e).values(item_id=item_id, kind="charged", state="queued"),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+    assert query(hub_db, select(i.c.key).order_by(i.c.id)) == [("brainstorm:G-1:r1",), ("deliver:p",)]
+    # Going back drops the three tables.
+    move_to(hub_db, "0086", down=True)
+    assert not pg.LOOP_TABLES & tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0087") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

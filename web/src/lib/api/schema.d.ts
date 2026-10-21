@@ -15219,7 +15219,7 @@ export interface components {
         PolicyWrite: {
             /**
              * Policy
-             * @description sections repos, merge, judge, breaker, audit; a key left out reads as its default
+             * @description sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default
              */
             policy: {
                 [key: string]: unknown;

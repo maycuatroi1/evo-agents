@@ -924,7 +924,10 @@ no plan and the merge_paused notices, and puts back the checks they widened. Sch
 and their notices and drops both tables. Schema 0086 adds the delivery kinds `srs.version.approved` and `tasks.status`
 and the permissions `srs:read` and `tasks:read` (`docs/plugins.md`, Extension points); `hub_events` takes both kinds as
 it is. Going back to 0085 deletes the deliveries and the rows of `hub_events` of the two kinds and takes the two
-permissions out of every grant.
+permissions out of every grant. Schema 0087 adds the Loop of a project (plan loop-engine): `loop_states` (on or off,
+the cursor on `hub_events`, the breaker), `loop_items` (each work item: kind, cycle, key unique in the project,
+ancestors, state and reason, tries and failures, the engine that made it) and `loop_item_events`, its ledger, only
+ever added to; no column of an older table changes, and going back to 0086 drops the three tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2394,6 +2397,12 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
   CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
   server's release pass to the job runner (`HubContext.release_pass`).
+- `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
+  autonomy policy), which each event of such a project also queues in its own transaction; one tick of a project runs
+  at a time and at most one waits (lock `loop:<project id>`). A tick reads the events past the project's cursor, its
+  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/1`;
+  it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
+  (`HubContext.loop_tick`).
 - `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched
