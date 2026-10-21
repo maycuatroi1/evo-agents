@@ -300,6 +300,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
@@ -313,6 +314,8 @@ NOTICE_KINDS = (
     "canvas_baseline",
     "merge_paused",
     "release",
+    "pm_daily",
+    "pm_escalation",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
