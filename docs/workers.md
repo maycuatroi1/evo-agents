@@ -282,6 +282,10 @@ depends on. The rules tell the agent to:
 - leave the plan alone: no `plan_step` tool of the hub, no `evo harness step`, no `evo-agents hub plan`, since the hub
   records the step from what the run reports;
 - commit in its checkout on the branch it is on, and not switch branches, merge or push (the daemon pushes);
+- send the files it made for the people who read the run (a screenshot, a video, a report) with `evo-agents worker
+  output FILE --caption TEXT`, or leave them in `.evo-run/outputs/` (see [Outputs of a run on the
+  machine](#outputs-of-a-run-on-the-machine)); the prompts of a plan run, of a step's session, of a chat run and of a
+  review run say the same, and those of a plan run and a step's session add `--attach FILE` of `worker ask`;
 - write `.evo-run/result.json` before it finishes, and keep `.evo-run/` out of its commits:
 
 ```json
@@ -616,7 +620,7 @@ otherwise):
 
 | Command | Route | What |
 | --- | --- | --- |
-| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`) |
+| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE] [--attach FILE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`); each `--attach` file goes to the run's outputs first and under the message (`output_ids`) |
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself; a refusal (201, `refusal`) is said in the thread and exits 1 |
@@ -1409,7 +1413,8 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
 | `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
-| `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; refuses in a step, review or judge run |
+| `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run |
+| `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
 | `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
@@ -1804,6 +1809,45 @@ codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a p
    when the hub has a blob store, and moves the worktree off the plan's branch, so the owner can check the branch
    out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
    looks every hour.
+
+### Outputs of a run on the machine
+
+The files a run's agent made reach the run's outputs on the hub ([Outputs](#outputs)) three ways, the second with
+Claude Code only:
+
+- **Sent.** `evo-agents worker output FILE ... [--caption TEXT]` sends files as outputs of source `sent`, each named by
+  its file name. The command checks each file (a regular file, a name the hub takes, at most 200 MiB) and asks the hub
+  how much the run may still take (`GET /v1/worker/runs/{id}/output-settings`): a file past a limit (200 MiB a file,
+  500 outputs or 1 GiB a run) is an `error:` line naming it and exit status 1, and nothing is sent; a hub that does not
+  answer then is no refusal. It then puts a copy of each file in the run's queue (`runs/<run>/outputs/` of the
+  worker's state, `evo_agents.worker.output_queue`) and returns: the daemon uploads them in the background.
+  `--attach FILE` of `worker ask` and `worker chat post` sends files the same way, waits (at most 110 seconds) until
+  the hub recorded them, and names them in the question or the message (`output_ids`, at most 20).
+- **Tool images.** With Claude Code, headless or driven in a terminal, every image block of a tool's result (a
+  browser's screenshot, a Read of an image file, the image of an MCP tool) becomes an output of source `tool`, of the
+  tool call it came from, once per SHA-256 in a run. A subagent's tool results come through the SDK's stream as the
+  main thread's do (claude-agent-sdk 0.2.170; run #80 of evo-agents logged a plan-step subagent's calls), so their
+  images too. The `tool_call_update` keeps the text of the result as before, and in place of the image an ACP
+  `resource_link`, `{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name": "image-<12 hex>.png",
+  "mimeType": "image/png", "size": N}` (`evo_agents.hub.outputs.output_link`): no event holds the image's base64.
+  With the project's switch off (`tool_images` false), or past a limit, the image is not sent and the link is a line
+  saying why; a limit is said once in a `system` event of the run. Codex and opencode send no tool images: their
+  agents use `worker output` and `.evo-run/outputs/`.
+- **The outputs directory.** The files the agent leaves in `.evo-run/outputs/` of the run's directory (in the run's
+  checkout, or above the worktrees of a plan run) become outputs of source `outputs`, named by their path below it,
+  when the agent reports a step (`worker step` asks the daemon to look) and when the run ends. Each file goes once:
+  `.evo-run/outputs-sent.json` keeps the size, time and SHA-256 of each file sent, so a file goes again only when its
+  bytes changed, and the run that resumes a parked one in the same directory sends only what is new. Links and hidden
+  files and folders are left out.
+
+The daemon sends the queue in batches of at most 100 files and 64 MiB, through `.../output-uploads`, the presigned
+PUTs and `.../outputs`. A file of text (Markdown, text, JSON, CSV, HTML, SVG, logs, code) goes through the redaction of
+the run's events first: every value of a lease the run holds is masked as `***`. A hub that does not answer holds
+nothing up: the files wait on disk and go with the worker's backoff. An upload that fails never fails the run: a batch
+the hub refuses is sent again one file at a time, a file it refuses is a `system` event of the run, and a hub that
+takes no outputs of the run (404, 403) stops them for the run. The end of a run waits up to 60 seconds for the queue
+before its last report, and 30 seconds more once the run is over here; what is still left then stays on this worker
+until the cleanup removes the run's state.
 
 ### The Python environment of a worktree
 

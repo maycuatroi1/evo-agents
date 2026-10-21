@@ -71,6 +71,7 @@ import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
@@ -364,6 +365,16 @@ MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps t
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
+
+OUTPUT_COMMAND = "evo-agents worker output"  # the agent of any run sends files to the run's outputs
+# Said to the agent of a run of one step, a plan run, a step's session, a chat run and a review run.
+OUTPUTS_RULE = (
+    "- To show the people who read this run a file you made (a screenshot, a video, a report), send it with "
+    f"`{OUTPUT_COMMAND} FILE --caption TEXT` (several files at once if you like), or leave it in {OUTPUTS_DIR}/ "
+    "under the current directory, which the worker sends at each step you report and when the run ends. The run's "
+    "page on the hub shows them; the images of your tools' results may get there by themselves."
+)
+ATTACH_RULE = "  Add `--attach FILE` for a screenshot or a file the owner should see with the question."
 
 TRUNCATION_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; the plan on the hub has the full text]"
 SHORT_BYTES = 200  # a plan id, step key, title, repo or branch in the prompt
@@ -666,6 +677,7 @@ def _rules(branch: str) -> list[str]:
         '  "summary": what you changed, how you checked it, and anything left undone.',
         "  The worker runs every verify command again in this directory, and the step counts as verified only when "
         "each one exits 0.",
+        OUTPUTS_RULE,
     ]
 
 
@@ -777,11 +789,13 @@ def _plan_rules() -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        ATTACH_RULE,
         "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
         "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
         "what the owner must do, with a way around the block among the options when there is one, and end your "
         "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
         "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
         f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
@@ -915,7 +929,9 @@ def _step_session_rules(key: str) -> list[str]:
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
         "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
         "time you wait does not count toward the run's timeout.",
+        ATTACH_RULE,
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because the step is done or because you cannot go "
         f'on, write {RESULT_FILE} as a JSON object whose "summary" says what you did of step {key}, what you decided '
         "yourself, and what is left and why. The worker runs no verify command at the end of the session: "
