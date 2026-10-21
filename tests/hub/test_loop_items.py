@@ -223,6 +223,12 @@ def test_loop_items_keep_from_a_reader_what_the_route_of_each_ancestor_keeps(cli
     assert (stages["claim"], stages["plan"], stages["merges"]) == (None, None, [])
     assert stages["hidden"] == ["claim", "plan", "merges"]
     assert stages["use_case"]["code"] == "UC ORD-1", "the document's label is the reader's"
+    i = tables.loop_items
+    gone = {"document": "demo-shop-old", "version": 1}
+    sql(hub_db, update(i).where(i.c.id == ids["use_case"]).values(detail=gone))
+    listed = {entry["id"]: entry for entry in client.get(f"{LOOP}/items", headers=hub["reader"]).json()["items"]}
+    assert listed[ids["use_case"]]["use_case"] is None, "a document the project no longer has is no ancestor"
+    assert listed[ids["use_case"]]["hidden"] == ["claim"]
 
 
 def test_loop_goals_measure_each_goal_against_its_target_with_its_work_items_by_state(client, hub, hub_db):
