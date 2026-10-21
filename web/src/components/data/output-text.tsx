@@ -6,12 +6,13 @@ import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { CSV_ROWS, extensionOf, parseCsv, prettyJson, type RunOutput, TEXT_PREVIEW_BYTES, textKind } from "@/lib/outputs";
+import { CSV_ROWS, parseCsv, prettyJson, TEXT_PREVIEW_BYTES } from "@/lib/output-text";
+import { extensionOf, type RunOutput, textKind } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { SafeMarkdown } from "./markdown";
 import { NoPreview } from "./output-frame";
-import { useByteSize } from "./output-tile";
+import { useByteSize } from "./byte-size";
 
 /**
  * A text output in the viewer: its bytes read from the hub's own origin (connect-src 'self'), the first

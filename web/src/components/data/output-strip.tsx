@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
 import type { RunOutput } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
@@ -21,8 +21,16 @@ export function useOutputViewer(outputs: readonly RunOutput[], actions?: OutputV
   const [openId, setOpenId] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   if (openId !== null && !loaded) setLoaded(true);
-  const viewer = loaded ? <LazyViewer outputs={outputs} openId={openId} onOpenChange={setOpenId} actions={actions} /> : null;
-  return { openId, open: setOpenId, viewer };
+  // The button that opened the viewer, which takes focus back when it closes (the dialog has no trigger of its own).
+  const opener = useRef<HTMLElement | null>(null);
+  const open = useCallback((id: number | null) => {
+    const active = document.activeElement;
+    if (id !== null && active instanceof HTMLElement && !active.closest('[data-testid="output-viewer"]')) opener.current = active;
+    setOpenId(id);
+  }, []);
+  const returnFocus = useCallback(() => opener.current, []);
+  const viewer = loaded ? <LazyViewer outputs={outputs} openId={openId} onOpenChange={open} actions={actions} returnFocus={returnFocus} /> : null;
+  return { openId, open, viewer };
 }
 
 /** At most this many chips show; the rest are one button that opens the viewer on the first of them. */

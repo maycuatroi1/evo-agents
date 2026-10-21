@@ -1,20 +1,18 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListTree, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ListTree } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useOutputViewer } from "@/components/data/output-strip";
-import { ConfirmAction } from "@/components/feedback/confirm-action";
-import { useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
-import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
-import { baseName, type RunOutput } from "@/lib/outputs";
+import type { RunOutput } from "@/lib/outputs";
 
 import { buildOutputIndex, type OutputIndex } from "./output-index";
-import { deleteRunOutput, outputsKey, type RunOutputs, runOutputsQuery } from "./output-queries";
+import { outputsKey, type RunOutputs, runOutputsQuery } from "./output-queries";
 import { isActiveState, type Run, type RunEvent } from "./queries";
 import type { RunViewer } from "./run-model";
 
@@ -44,63 +42,13 @@ function isOutputNote(event: Pick<RunEvent, "kind" | "body">): boolean {
 }
 
 /** The Trace's outputs (`OutputIndex`) and the page's viewer, for the rows of the Trace (trace-tools.tsx, agent-trace.tsx). */
+/** Delete with its confirmation, loaded with the viewer it sits in. */
+const DeleteOutput = dynamic(() => import("./output-delete").then((module) => module.DeleteOutput));
+
 export const TraceOutputsContext = createContext<Pick<RunOutputsState, "index" | "open"> | null>(null);
 
 export function useTraceOutputs() {
   return useContext(TraceOutputsContext);
-}
-
-function DeleteOutput({ output, run, onDeleted }: { output: RunOutput; run: Run; onDeleted: (output: RunOutput) => void }) {
-  const t = useTranslations("runs.detail.outputs");
-  const queryClient = useQueryClient();
-  const failure = useWriteFailure();
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<WriteFailure | null>(null);
-  const name = baseName(output.name);
-  const remove = useMutation({
-    mutationFn: () => deleteRunOutput(browserApi(), run.project, run.id, output.id),
-    onSuccess: () => {
-      queryClient.setQueryData<RunOutputs>(outputsKey(run.project, run.id), (held) =>
-        held ? { ...held, outputs: held.outputs.filter((item) => item.id !== output.id), count: held.count - 1, bytes: held.bytes - output.size } : held,
-      );
-      setConfirming(false);
-      onDeleted(output);
-      notify({ tone: "success", text: t("deleted", { name }) });
-    },
-    onError: (cause) => setError(failure(cause, { 403: t("deleteForbidden") })),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: outputsKey(run.project, run.id) }),
-  });
-  return (
-    <>
-      <Button
-        type="button"
-        variant="quiet-danger"
-        size="sm"
-        onClick={() => {
-          setError(null);
-          setConfirming(true);
-        }}
-        className="max-md:min-w-11"
-        data-testid="output-delete"
-      >
-        <Trash2 aria-hidden="true" />
-        <span className="max-md:sr-only">{t("delete")}</span>
-      </Button>
-      <ConfirmAction
-        open={confirming}
-        onOpenChange={setConfirming}
-        title={t("deleteTitle", { name })}
-        description={t("deleteDescription")}
-        confirmLabel={t("deleteConfirm")}
-        pendingLabel={t("deleting")}
-        cancelLabel={t("keep")}
-        pending={remove.isPending}
-        error={error}
-        onConfirm={() => remove.mutate()}
-        testId="output-delete-confirm"
-      />
-    </>
-  );
 }
 
 export function useRunOutputs({
@@ -147,7 +95,6 @@ export function useRunOutputs({
             type="button"
             variant="outline"
             size="sm"
-            className="max-md:min-w-11"
             onClick={() => {
               show(null);
               onShowInTrace({ call, seq });
@@ -155,7 +102,7 @@ export function useRunOutputs({
             data-testid="output-show-in-trace"
           >
             <ListTree aria-hidden="true" />
-            <span className="max-md:sr-only">{t("showInTrace")}</span>
+            {t("showInTrace")}
           </Button>
         ) : null}
         {canDelete ? (

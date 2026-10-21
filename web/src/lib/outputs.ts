@@ -18,11 +18,6 @@ export const OUTPUT_SOURCES = ["sent", "tool", "outputs"] as const satisfies rea
 /** The scheme of the ACP `resource_link` an event names an output with: `evo-output:sha256:<hex>`. */
 const LINK = /^evo-output:sha256:([0-9a-f]{64})$/;
 
-/** The most bytes of a text file the viewer reads; a longer one shows its start and offers the download. */
-export const TEXT_PREVIEW_BYTES = 1024 * 1024;
-/** Rows of a CSV the viewer draws as a table. */
-export const CSV_ROWS = 500;
-
 /** The URL of an output's bytes as an attachment, which the browser saves under the output's name. */
 export function downloadHref(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}download=true`;
@@ -91,60 +86,6 @@ export function textKind(output: Pick<RunOutput, "name" | "media_type">): TextKi
   if (type === "text/csv" || type === "text/tab-separated-values" || ext === "csv" || ext === "tsv") return "csv";
   if (CODE.has(ext) || type.startsWith("text/x-") || type === "application/javascript" || type === "application/x-sh") return "code";
   return "plain";
-}
-
-/** JSON indented by two spaces; JSON Lines one value a line, each indented; the text as it is when it does not parse. */
-export function prettyJson(text: string): string {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    const lines = text.split("\n").filter((line) => line.trim() !== "");
-    if (lines.length < 2) return text;
-    try {
-      return lines.map((line) => JSON.stringify(JSON.parse(line), null, 2)).join("\n");
-    } catch {
-      return text;
-    }
-  }
-}
-
-/**
- * The rows of a CSV (or, with a tab, TSV) text as RFC 4180 reads them: fields split by the delimiter, a quoted field
- * may hold the delimiter, line breaks and doubled quotes. At most `limit` rows; `more` says whether the text has others.
- */
-export function parseCsv(text: string, delimiter = ",", limit = CSV_ROWS): { rows: string[][]; more: boolean } {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-  let index = 0;
-  const endRow = () => {
-    row.push(field);
-    field = "";
-    if (row.length > 1 || row[0] !== "") rows.push(row);
-    row = [];
-  };
-  while (index < text.length) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"' && text[index + 1] === '"') {
-        field += '"';
-        index += 1;
-      } else if (char === '"') quoted = false;
-      else field += char;
-    } else if (char === '"' && field === "") quoted = true;
-    else if (char === delimiter) {
-      row.push(field);
-      field = "";
-    } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[index + 1] === "\n") index += 1;
-      endRow();
-      if (rows.length > limit) return { rows: rows.slice(0, limit), more: true };
-    } else field += char;
-    index += 1;
-  }
-  if (field !== "" || row.length) endRow();
-  return { rows: rows.slice(0, limit), more: rows.length > limit };
 }
 
 export type SizeUnit = "byte" | "kilobyte" | "megabyte" | "gigabyte";
