@@ -545,12 +545,16 @@ show no sign and no protected path; and CI is green. Green means each check the 
 require concluded success (as a check run of the App the rule names, when it names one), every other check run ended
 success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit
 whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while CI runs, and merges
-nothing while the night shift is paused. A tier 1 or 2 change, a refusal, and every GitLab merge request stay open for
-the owner with the reason.
+nothing while the night shift is paused. A tier 1 or 2 change and a refusal stay open for the owner with the reason, as
+does a GitLab merge request, unless the project's autonomy policy puts its repo in the merge queue (GitLab, below).
 
 **GitLab.** The charter's `git_secret` names the owner's git secret for the repo's origin, which should hold the
 Developer role: GitLab then keeps it off a protected default branch. A Builder pushes with push options that open the
-merge request; the hub merges nothing there.
+merge request, and the Judge judges it as on GitHub. The Curator never merges it itself. When the project's autonomy
+policy has the repo in mode `auto` and a forge secret of the project covers its origin, a merge request the Judge passed
+goes to the hub's merge queue, whatever its tier: the queue gates it again, merges it in its turn with the sha its
+pipeline passed on, and follows it after the merge, revert and rollback included (`docs/merge-queue.md`). Without a
+policy, or with the repo in mode `off`, it stays open for the owner with the reason, as before.
 
 ```sh
 evo-agents hub curator protection --project demo              # the project's repos and the last check of each
@@ -634,7 +638,9 @@ evo-agents hub kg health --project demo
 ## What the Curator does not do
 
 - It never pushes to, or merges into, a default branch with its own credentials, and it merges nothing above tier 0.
-- It merges nothing on GitLab, and nothing for a project whose charter leaves `auto_merge` empty.
+- It merges nothing on GitHub for a project whose charter leaves `auto_merge` empty. On GitLab it merges nothing
+  itself: the hub's merge queue merges its merge request when the project's autonomy policy has the repo in mode `auto`
+  (`docs/merge-queue.md`), and it stays open otherwise.
 - It does not turn a product goal into plans on its own. Its replays decide one thing alone: a change of a harness
   alone whose replays won merges as tier 0; any other change keeps its tier whatever its replays came to.
 - It publishes no skill of a project, and no global skill it did not merge or that came from another repo.
