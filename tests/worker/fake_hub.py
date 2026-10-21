@@ -60,6 +60,7 @@ class FakeHub:
         self.project_repos: list[str] | None = None
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
+        self.judge_routes: list[str] = []  # judge or merge-judge, of each read
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
         self.replays: list[dict] = []  # what the replay runs posted, with the run's id
@@ -143,6 +144,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/playbook", self._playbook),
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
+                get("/v1/worker/runs/{id}/merge-judge", self._judge),
+                post("/v1/worker/runs/{id}/merge-verdict", self._verdict),
                 post("/v1/worker/runs/{id}/replay", self._replay),
                 post("/v1/worker/runs/{id}/history/next", self._history_next),
                 post("/v1/worker/runs/{id}/history/report", self._history_report),
@@ -1049,6 +1052,7 @@ class FakeHub:
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
         self._judge_key(request, run_id, "judge")
         self.judge_reads.append(run_id)
+        self.judge_routes.append(request.path.rsplit("/", 1)[-1])
         return web.json_response(self.judge_inputs.get(run_id) or {})
 
     async def _replay(self, request: web.Request) -> web.Response:
@@ -1107,7 +1111,7 @@ class FakeHub:
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
         self._judge_key(request, run_id, "verdict")
         body = await request.json()
-        self.verdicts.append({"run_id": run_id, **body})
+        self.verdicts.append({"run_id": run_id, "route": request.path.rsplit("/", 1)[-1], **body})
         passed = body.get("verdict") == "pass" and not body.get("signs")
         return web.json_response({"id": 1, "state": "judged", "passed": passed})
 

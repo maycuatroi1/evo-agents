@@ -142,18 +142,20 @@ A notice needs no answer (`NOTICE_KINDS`):
 | Kind | Sent when | Holds |
 | --- | --- | --- |
 | `push_default_branch` | a plan run pushed to a repo's default branch, which the plan names for that repo | the repo, the branch, the commits |
-| `merge_default_branch` | a plan run merged into such a branch | the repo, the branch, the commits |
+| `merge_default_branch` | a plan run merged into such a branch; or the hub's merge queue on GitLab asks each admin of the project after a merge: an audit sample, the approval of a manual PROD release, or which suspect to revert (`details.ask` `sample`, `release` or `revert`; `docs/merge-queue.md`) | the repo, the branch, the commits; for the queue, what it asks and a link to the project's merge queue |
 | `plan_finished` | a plan run ended with every step of its plan done | the plan, the steps the run did |
 | `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause); the triage thread of the run when it opened one (a failed step, plan or author run opens a thread in the project's chat "Triage: PROJECT", or "Triage: PLAN" for a plan whose label is not at or below the project's default label, for the project's default agent to read; `projects.triage_enabled` false opens none) |
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 | `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
+| `merge_paused` | the breaker of a repo of the hub's merge queue on GitLab tripped, to each admin of the project: the queue of that repo waits until an admin resets it (`docs/merge-queue.md`, The breaker) | the repo, its target branch, the cause and its reason, the merge requests it paused, how to reset it, and a link to the project's merge queue |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `release`, `author_waiting`, `chat_mention` and `chat_added`. A release run that fails sends no
+`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention` and `chat_added`, and the
+`merge_default_branch` of its merge queue. A release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
 it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
@@ -259,7 +261,8 @@ A notification links to a page of the hub's web: a decision to `/inbox?decision=
 `/inbox?proposal=ID`, a notice of a run to the run's page (`/p/{p}/runs/{id}`; `author_waiting` to its chat,
 `/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
 `curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
-(`/p/{p}/releases`), and a chat's notice to the chat (`/chats/{id}`,
+(`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
+(`/p/{p}/merge-queue`), and a chat's notice to the chat (`/chats/{id}`,
 with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 

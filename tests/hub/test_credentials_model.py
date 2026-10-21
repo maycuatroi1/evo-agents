@@ -115,7 +115,8 @@ def test_github_lease_needs_refresh_near_its_end():
 
 
 def test_constants():
-    assert credentials.SECRET_KINDS == ("env", "git")
+    assert credentials.SECRET_KINDS == ("env", "git", "forge")
+    assert credentials.LEASED_KINDS == ("env", "git")  # a forge secret is the hub's own, never a run's
     assert credentials.PROVIDERS == ("secret", "github-app")
     assert credentials.GITHUB_PERMISSIONS == {"contents": "write", "metadata": "read"}
     assert credentials.MAX_SECRET_BYTES == 16384

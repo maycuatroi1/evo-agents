@@ -127,18 +127,26 @@ def _night_owner(project_id: int):
     )
 
 
+def _member(project_id: int, user_id: int):
+    p, u = tables.projects, tables.users
+    found = select(p.c.name.label("project"), u.c.id.label("owner_id"), u.c.login.label("owner"))
+    return found.where(p.c.id == project_id, u.c.id == user_id)
+
+
 async def impact_as_owner(
-    engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader
+    engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader, *, owner_id: int | None = None
 ) -> GraphView | None:
-    """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift through its hub
-    sink from ``reader``; None without a target, a night shift, a graph or a cache, or when the graph cannot be read."""
+    """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
+    ``owner_id``, as the merge queue reads it) through its hub sink from ``reader``; None without a target, a night
+    shift, a graph or a cache, or when the graph cannot be read."""
     if not targets or reader.cache is None:
         return None
     from evo_agents.hub.server import kg
     from evo_agents.hub.server.kg_health import owner_access
 
+    query = _night_owner(project_id) if owner_id is None else _member(project_id, owner_id)
     async with engine.begin() as conn:
-        row = (await conn.execute(_night_owner(project_id))).one_or_none()
+        row = (await conn.execute(query)).one_or_none()
         access = await owner_access(conn, row.owner_id, row.owner, row.project) if row is not None else None
         graphs = await kg.built_graphs(conn, project_id, kg.GRAPHS_TRIED) if access is not None else []
     if not graphs:

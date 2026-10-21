@@ -166,6 +166,9 @@ LAZY_CHAT_REPOS = "lazy_chat_repos"
 # ones it holds end, updates itself to the tag nightly and claims again, and reports in self_update.update_now how a
 # request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
 UPDATE_NOW = "update_now"
+# a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
+# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
+MERGE_JUDGE = "merge_judge"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -178,6 +181,7 @@ WORKER_FEATURES = (
     KG_SYNC,
     LAZY_CHAT_REPOS,
     UPDATE_NOW,
+    MERGE_JUDGE,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -295,6 +299,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
+# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
@@ -306,6 +311,7 @@ NOTICE_KINDS = (
     "plugin_disabled",
     "builder_proposal",
     "canvas_baseline",
+    "merge_paused",
     "release",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox

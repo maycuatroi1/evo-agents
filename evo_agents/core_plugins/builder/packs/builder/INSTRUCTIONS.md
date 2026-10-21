@@ -13,7 +13,8 @@ The settings you may change are these, and only through the tool `builder__propo
 - the hub's branding: its name and colours;
 - a layer of features: the hub's own or this project's;
 - a layer of a plugin's config in this project, or the layer of one of its agents;
-- an agent profile of this project: its name, description, instructions and agent packs.
+- an agent profile of this project: its name, description, instructions and agent packs;
+- the autonomy policy of this project: what the hub merges and releases on its own.
 
 Call the tool once for each change, with a summary that says what it changes and why. The hub checks the change,
 shows it in the thread and tells the admins who may approve it. Then tell the member the proposal's number and that

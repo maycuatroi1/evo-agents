@@ -106,6 +106,10 @@ TABLES |= pg.SIGNAL_TABLES  # migration 0074
 TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0075
 TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0076
 TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0077
+TABLES |= pg.POLICY_TABLES  # migration 0079
+TABLES |= pg.MERGE_TABLES  # migration 0081
+TABLES |= pg.SAMPLE_TABLES  # migration 0083
+TABLES |= pg.BREAKER_TABLES  # migration 0084
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -180,8 +184,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_twenty_three_tables(hub_db):
-    assert len(TABLES) == 123  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_twenty_eight_tables(hub_db):
+    assert len(TABLES) == 128  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1751,6 +1755,279 @@ def test_0078_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
     move_to(hub_db, "0077", down=True)
     assert not {"use_cases", "signal_keys"} & columns(hub_db, "canvas_claims")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
+
+
+def test_0079_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0078")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0043 knows no policy proposal
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0079")
+    assert columns(hub_db, "autonomy_policies") == {
+        "project_id",
+        "revision",
+        "body",
+        "note",
+        "created_by",
+        "created_at",
+    }
+    row = {"project_id": ids["project"], "revision": 1, "body": {"merge": {"hold_until": "merged"}}}
+    row["created_by"] = ids["user"]
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "Policy"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.autonomy_policies).values(row))
+        conn.execute(insert(t.autonomy_policies).values({**row, "revision": 2, "body": {}, "note": "all defaults"}))
+        for bad in (
+            insert(t.autonomy_policies).values(row),  # one row per revision of a project
+            insert(t.autonomy_policies).values({**row, "revision": 0}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "body": ["merge"]}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "note": ""}),
+            insert(t.autonomy_policies).values({**row, "revision": 3, "note": "x" * 1001}),
+            insert(t.builder_proposals).values({**proposal, "kind": "secrets"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "policy"}))
+        conn.execute(insert(t.builder_proposals).values({**proposal, "kind": "agent", "target": {"agent": "r"}}))
+        conn.execute(insert(t.notifications).values({**notice, "details": {"proposal": 1, "kind": "policy"}}))
+        conn.execute(insert(t.notifications).values({**notice, "details": {"proposal": 2, "kind": "agent"}}))
+    p, n = t.builder_proposals, t.notifications
+    assert query(hub_db, select(t.autonomy_policies.c.revision).order_by(t.autonomy_policies.c.revision)) == [
+        (1,),
+        (2,),
+    ]
+    # Going back drops the policies, and the proposals of a change of one with their notices.
+    move_to(hub_db, "0078", down=True)
+    assert "autonomy_policies" not in tables(hub_db)
+    assert query(hub_db, select(p.c.kind)) == [("agent",)]
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("agent",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0079") :]
+
+
+def test_0080_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0079")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    sealed = {"sealed": b"s" * 17, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    prefix = "https://gitlab.example.org/northwind"
+    forge = {"owner_id": ids["user"], "name": "gitlab-merge", "kind": "forge", "url_prefix": prefix, **sealed}
+    forge["expires_at"] = func.now() + DAY
+    git = {"owner_id": ids["user"], "name": "gitlab-push", "kind": "git", "url_prefix": prefix, "username": "oauth2"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.secrets).values({**git, **sealed}))
+        with pytest.raises(errors.CheckViolation):  # 0011 knows env and git alone
+            conn.execute(insert(t.secrets).values(forge))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0080")
+    with live.connect(hub_db) as conn:
+        forge_id = one(conn, insert(t.secrets).values(forge).returning(t.secrets.c.id))
+        conn.execute(insert(t.secret_bindings).values(secret_id=forge_id, project_id=ids["project"]))
+        for bad in (
+            {**forge, "name": "no-end", "expires_at": None},  # a forge secret always ends
+            {**forge, "name": "no-prefix", "url_prefix": None},
+            {**forge, "name": "with-user", "username": "oauth2"},  # GitLab reads the token from a header
+            {**forge, "name": "other", "kind": "ssh"},
+            {**git, **sealed, "name": "git-no-prefix", "url_prefix": None},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.secrets).values(bad))
+    s, b = t.secrets, t.secret_bindings
+    assert query(hub_db, select(s.c.name, s.c.kind).order_by(s.c.name)) == [
+        ("gitlab-merge", "forge"),
+        ("gitlab-push", "git"),
+    ]
+    # Going back deletes the forge secrets and their bindings, and the checks of 0011 hold again.
+    move_to(hub_db, "0079", down=True)
+    assert query(hub_db, select(s.c.name, s.c.kind)) == [("gitlab-push", "git")]
+    assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0080") :]
+
+
+def test_0081_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0080")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    judge_run = {
+        "project_id": ids["project"],
+        "kind": "judge",
+        "dispatched_by": ids["user"],
+        "dispatched_via": "machine",
+        "requested_runtime": "claude-code",
+        "runtime": "claude-code",
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": 600,
+        "repos": [{"repo": "lumen", "branch": "plan/report"}],
+    }
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # 0067 and 0017: a judge run is on a plan and a schedule
+            conn.execute(insert(t.runs).values(judge_run))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0081")
+    q, e = t.merge_queue, t.merge_events
+    row = {
+        "project_id": ids["project"],
+        "repo": "lumen",
+        "source": "plan",
+        "plan_id": "report",
+        "target_branch": "dev",
+        "source_branch": "plan/report",
+        "iid": 1,
+    }
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, insert(t.runs).values(judge_run).returning(t.runs.c.id))
+        row_id = one(conn, insert(q).values(**row, judge_run_id=run_id).returning(q.c.id))
+        line = {"project_id": ids["project"], "queue_id": row_id, "kind": "gate", "gate": 1, "passed": False}
+        conn.execute(insert(e).values(line))
+        for bad in (
+            {**row, "iid": 2, "source": "fork"},
+            {**row, "iid": 3, "state": "lost"},
+            {**row, "iid": 4, "plan_id": None},  # a plan's merge request names its plan
+            {**row, "iid": 0, "plan_id": "other"},
+            {**row, "iid": 5, "plan_id": "other", "reason": "x" * 2001},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(q).values(bad))
+        for bad in ({**line, "gate": None}, {**line, "gate": 8}, {**line, "kind": "pipeline"}, {**line, "kind": "x"}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(e).values(bad))
+        with pytest.raises(errors.UniqueViolation):  # one merge request for each plan and repo
+            conn.execute(insert(q).values({**row, "iid": 6}))
+        conn.execute(insert(q).values({**row, "iid": 7, "source": "label", "plan_id": None}))
+    assert query(hub_db, select(func.count()).select_from(e)) == [(1,)]
+    # Going back drops the queue, deletes the judge runs on no plan and puts the checks of 0067 and 0017 back.
+    move_to(hub_db, "0080", down=True)
+    assert {"merge_queue", "merge_events"}.isdisjoint(tables(hub_db))
+    assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "judge")) == [(0,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0081") :]
+
+
+def test_0082_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0081")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q = t.merge_queue
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "testing"}))
+        conn.execute(insert(q).values({**row, "iid": 2, "source_branch": "fix/b", "state": "ready"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0082")
+    rows = select(q.c.iid, q.c.state, q.c.rebases).order_by(q.c.iid)
+    assert query(hub_db, rows) == [(1, "testing", 0), (2, "ready", 0)]
+    second = q.c.iid == 2
+    with live.connect(hub_db) as conn:
+        for state in ("rebasing", "testing", "merging"):  # !1 has the turn of dev
+            with pytest.raises(errors.UniqueViolation):
+                conn.execute(update(q).values(state=state).where(second))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(update(q).values(rebases=-1).where(second))
+        main = {**row, "iid": 3, "source_branch": "fix/c", "target_branch": "main", "state": "merging"}
+        conn.execute(insert(q).values(main))  # main has a turn of its own
+        conn.execute(update(q).values(state="merged").where(q.c.iid == 1))
+        conn.execute(update(q).values(state="rebasing", rebases=1).where(second))  # !1 merged: the turn is !2's
+    assert query(hub_db, rows) == [(1, "merged", 0), (2, "rebasing", 1), (3, "merging", 0)]
+    # Going back drops the index and the column and keeps the rows.
+    move_to(hub_db, "0081", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
+    assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0082") :]
+
+
+def test_0083_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0082")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q, s = t.merge_queue, t.merge_samples
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "merged"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0083")
+    rows = select(q.c.iid, q.c.state, q.c.uat_result, q.c.follow, q.c.reverts_id)
+    assert query(hub_db, rows) == [(1, "merged", None, {}, None)]
+    culprit = query(hub_db, select(q.c.id).where(q.c.iid == 1))[0][0]
+    revert = {**row, "iid": 2, "source": "revert", "source_branch": "evo-revert/1", "reverts_id": culprit}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values(revert))
+        conn.execute(update(q).values(state="reverting", uat_result="failed").where(q.c.iid == 1))
+        conn.execute(insert(s).values(project_id=ids["project"], queue_id=culprit))
+        for bad in (
+            update(q).values(uat_result="maybe").where(q.c.iid == 1),
+            update(q).values(reverts_id=None).where(q.c.iid == 2),  # a revert names what it undoes
+            update(q).values(reverts_id=culprit).where(q.c.iid == 1),  # and no other row does
+            update(q).values(follow=[]).where(q.c.iid == 1),
+            insert(s).values(project_id=ids["project"], queue_id=culprit),  # one sample a merge request
+            update(s).values(result="faulty"),  # an answer has its time
+            update(s).values(result="unsure", answered_at=func.now()),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(update(s).values(result="faulty", answered_at=func.now(), note="It drops the totals."))
+    assert query(hub_db, select(s.c.result, s.c.note)) == [("faulty", "It drops the totals.")]
+    # Going back drops the samples, the reverts the hub opened and the columns, and keeps the other rows.
+    move_to(hub_db, "0082", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0083") :]
+
+
+def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0083")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q, b, n = t.merge_queue, t.merge_breakers, t.notifications
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "ready"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0084")
+    breaker = {"project_id": ids["project"], "repo": "lumen"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(b).values(breaker))
+        assert one(conn, select(b.c.state)) == "armed"
+        tripped = {"state": "tripped", "cause": "uat_check", "reason": "the UAT check of !1 failed", "trips": 1}
+        conn.execute(update(b).values(tripped_at=func.now(), **tripped))
+        conn.execute(update(q).values(state="paused", reason="the breaker of lumen tripped"))
+        notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "merge_paused", "title": "Stopped"}
+        conn.execute(insert(n).values({**notice, "project_id": ids["project"], "details": {"repo": "lumen"}}))
+        conn.execute(insert(n).values({**notice, "notice_kind": "release", "title": "Released"}))  # 0067's kind holds
+        for bad in (
+            insert(b).values(breaker),  # one breaker a repo
+            update(b).values(state="open"),
+            update(b).values(cause="weather"),
+            update(b).values(reason=None),  # a tripped breaker says why
+            update(b).values(tripped_at=None),  # and when
+            update(b).values(trips=-1),
+            insert(n).values({**notice, "notice_kind": "merge_stopped"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(update(b).values(state="armed", resumed_by=ids["user"], resumed_at=func.now()))
+    assert query(hub_db, select(b.c.state, b.c.cause, b.c.trips)) == [("armed", "uat_check", 1)]
+    # Going back drops the breakers and the notices, and puts the merge request the breaker paused back in line.
+    move_to(hub_db, "0083", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
+    assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

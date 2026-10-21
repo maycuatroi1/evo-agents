@@ -1,6 +1,6 @@
-"""The tables of the hub's own settings (0037) and of the proposals of @builder (0043), which ``evo_agents.hub.tables``
-adds to its metadata and exposes as its own attributes (``tables.hub_settings``, ``tables.builder_proposals``):
-queries name them there.
+"""The tables of the hub's own settings (0037), of the proposals of @builder (0043) and of the autonomy policies of
+projects (0079), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes
+(``tables.hub_settings``, ``tables.builder_proposals``, ``tables.autonomy_policies``): queries name them there.
 
 hub_settings holds every version of each layer of a setting a hub admin changes, never changed: its kind (branding,
 the hub's alone; features, the hub's own layer or a project's), the project of a project's layer (NULL for the
@@ -11,6 +11,10 @@ builder_proposals holds each change of a setting the agent of a chat run of @bui
 plugin builder, ``evo_agents.core_plugins.builder``): its kind, where it applies and what it changes, the version of
 the setting it was proposed on, the run, chat and thread it came from, and what became of it: pending until an admin
 approves or rejects it, applied as the setting's next version, failed with why, or rolled back.
+
+autonomy_policies holds every revision of each project's autonomy policy (``evo_agents.hub.autonomy``), never
+changed: the project, the revision (1 and up), the keys it sets (an object), the writer's note, who wrote it and
+when. A project's policy is its highest revision (``evo_agents.hub.server.autonomy_policies``).
 """
 
 from __future__ import annotations
@@ -33,7 +37,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 KINDS = ("branding", "features")  # hub_settings.kind (0037)
-PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent")  # builder_proposals.kind (0043)
+PROPOSAL_KINDS = ("branding", "features", "plugin_config", "agent", "policy")  # builder_proposals.kind (0043, 0079)
 PROPOSAL_STATES = ("pending", "applied", "rejected", "failed", "rolled_back")  # builder_proposals.state (0043)
 
 
@@ -100,6 +104,27 @@ def proposals_table(metadata: MetaData) -> Table:
     )
 
 
-def settings_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """hub_settings and builder_proposals, added to ``metadata``."""
-    return settings_table(metadata), proposals_table(metadata)
+def policies_table(metadata: MetaData) -> Table:
+    """autonomy_policies, added to ``metadata``."""
+    return Table(
+        "autonomy_policies",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("revision", Integer, nullable=False),
+        Column("body", JSONB, nullable=False, server_default="{}"),
+        Column("note", Text),
+        Column("created_by", BigInteger, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="autonomy_policies_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["created_by"], ["users.id"], ondelete="RESTRICT", name="autonomy_policies_created_by_fkey"
+        ),
+        PrimaryKeyConstraint("project_id", "revision", name="autonomy_policies_pkey"),
+    )
+
+
+def settings_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
+    """hub_settings, builder_proposals and autonomy_policies, added to ``metadata``."""
+    return settings_table(metadata), proposals_table(metadata), policies_table(metadata)

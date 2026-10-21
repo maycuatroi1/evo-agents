@@ -71,6 +71,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
   written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
   hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits for at the next
   pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``, ``.protection``).
+- ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
+  policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
+  until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
+  (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
@@ -276,6 +280,15 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
     found = hub(context)
     curator_app = getattr(found, "curator_app", None)
     return await advance(found.engine, found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.MERGE_QUEUE, pass_context=True, lock=jobs.MERGE_QUEUE, queueing_lock=jobs.MERGE_QUEUE)
+async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.changes import merge_gate  # the queue's job, through the module of the Curator's changes
+
+    found = hub(context)
+    return await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="*/10 * * * *")

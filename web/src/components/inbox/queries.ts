@@ -40,6 +40,7 @@ export const NOTICE_KINDS = [
   "plugin_disabled",
   "builder_proposal",
   "canvas_baseline",
+  "merge_paused",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [
