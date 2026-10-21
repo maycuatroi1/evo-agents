@@ -131,6 +131,26 @@ def test_a_chat_run_prompt_has_the_rules_the_repos_and_the_message_whole():
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES and "detail detail" in prompt
 
 
+def test_a_chat_runs_rules_have_it_act_without_asking_and_warn_of_no_secret_that_stayed_on_the_hub():
+    from evo_agents.hub import chat_runs
+
+    prompt = chat_runs.build_chat_prompt(
+        agent={"handle": "lumen", "project": "northwind"},
+        chat={"id": 7, "title": "Ops", "people": ["owner"], "agents": ["lumen"]},
+        trigger=_message(3, "@lumen queue the plan"),
+        login="owner",
+        hop=1,
+        branch="chat/41",
+        budget_usd=5.0,
+        blocks=[],
+    )
+    assert "- Act, do not ask: do the whole of what owner asks, with the steps it takes on the way" in prompt
+    assert "create a repo, clone or open a checkout" in prompt and "Put every such question in one reply." in prompt
+    assert "creating or rotating a credential" in prompt and "When you must ask, ask in your reply" in prompt
+    assert "no warning about it and no call to rotate it" in prompt
+    assert "Print the names of secrets, never their values." in prompt
+
+
 def test_chat_run_rules_of_hops_budgets_branches_and_the_inbox():
     from evo_agents.hub import chat_runs
 
