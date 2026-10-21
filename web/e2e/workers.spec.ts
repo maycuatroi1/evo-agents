@@ -333,6 +333,47 @@ test("the owner changes a worker's slots, labels, plugins and name, and the hub'
   await expect(row(page, renamed)).toBeVisible();
 });
 
+test("the owner adds and drops the projects a worker serves, and a project it still needs is refused at the field", async ({ page, member }) => {
+  const me = await member([
+    { role: "writer", maxLevel: "internal" },
+    { role: "writer", maxLevel: "internal" },
+  ]);
+  const [first, second] = me.projects;
+  await seedRunPlan(me, first);
+  const live = await liveWorker(me, first, uniqueName("serving"));
+  await dispatch(me, first, READY_STEPS);
+  expect(await claimRun(live)).not.toBeNull(); // it holds a run of the first project
+  const projectsOf = async () => (await workersOf(me)).find((w) => w.id === live.worker.id)?.projects;
+
+  await page.goto(`/workers/${live.worker.id}`);
+  const main = page.locator("#main");
+  const settings = main.getByTestId("worker-settings");
+  const projects = settings.getByTestId("worker-settings-projects");
+  const firstBox = projects.getByRole("checkbox", { name: first, exact: true });
+  const secondBox = projects.getByRole("checkbox", { name: second, exact: true });
+  await expect(firstBox).toBeChecked();
+  await expect(secondBox).not.toBeChecked();
+
+  // None at all: said at the field, and nothing is sent.
+  await firstBox.uncheck();
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("Choose one project at least.");
+
+  // Dropping the project of the run it holds: the hub's 409 shows at the field, and nothing changes.
+  await secondBox.check();
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("The hub keeps the projects as they were");
+  await expect(settings).toContainText(`cannot stop serving ${first}`);
+  expect(await projectsOf()).toEqual([first]);
+
+  await firstBox.check();
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(toast(page, `Settings of ${live.worker.name} saved`)).toContainText("next heartbeat");
+  expect(await projectsOf()).toEqual([first, second].sort());
+  await expect(main.getByTestId("worker-scope")).toContainText(second);
+  await expect(settings.getByTestId("worker-settings-save")).toBeDisabled();
+});
+
 test("a worker's page links the commit it runs, and its owner locks its version, the hub's refusal shown at the switch", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const worker = await registerWorker(me, { name: uniqueName("pinned"), projects: [me.projects[0]] });
