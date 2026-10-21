@@ -9,12 +9,23 @@ import { HubAdmin, newAccount } from "./support/hub";
 import { seededKg } from "./support/kg";
 import { apiOf } from "./support/memories";
 import {
+  baEnds,
+  baFinding,
+  baRecords,
+  baStarts,
+  BILLING_SLUG,
+  DECIDE_SUMMARY,
+  deliverPluginEvents,
   documentPath,
   editItem,
+  enableBa,
   enableSrs,
   enableTasks,
+  findingsOf,
+  importBilling,
   importSample,
   itemPath,
+  RETRIES,
   reviewVersion,
   RULE,
   SAMPLE_SLUG,
@@ -30,7 +41,8 @@ import { toast } from "./support/toast";
  * srs has SRS in its menu, the documents, a document's contents with each section read and edited in place, a use
  * case's page with its steps, business rules, screens and trace in the knowledge graph, the review that approves a
  * version or returns it, and the comparison of two versions; a reader only reads; a project that has not enabled it
- * has no menu item, and its pages and API answer 404.
+ * has no menu item, and its pages and API answer 404. Criterion a14 of plan srs-conflicts-and-tasks: the review page's
+ * Findings card, and Approve locked while @ba reviews the round or a finding to decide is open, with its settle chat.
  */
 test.skip(isDeployed, "enables plugins and seeds documents through the local stack");
 
@@ -225,4 +237,105 @@ test("a use case's page traces the task that implements it through the project's
   const trace = main(page).getByTestId("srs-trace");
   await expect(trace.getByTestId("srs-trace-groups")).toContainText(title);
   await expect(trace.getByTestId("srs-trace-node")).toHaveAttribute("href", `/p/${project}/kg/node?id=${encodeURIComponent(`usecase:${USE_CASE.code}`).replace(/%20/g, "+")}`);
+});
+
+test("@ba's review holds Approve: the card fills as @ba records, the finding to decide names its settle chat, and once settled the version is approved", async ({
+  page,
+  member,
+  signInAs,
+}) => {
+  test.setTimeout(120_000);
+  const author = await member([{ role: "admin", maxLevel: "internal" }]);
+  const [project] = author.projects;
+  const reviewer = newAccount("srs-approver");
+  const reader = newAccount("srs-reader");
+  const hub = new HubAdmin();
+  await hub.grant(project, reviewer.login, "writer", "internal");
+  await hub.grant(project, reader.login, "reader", "internal");
+  await enableSrs(author, project);
+  await importBilling(author, project);
+  const ba = await enableBa(author, project, author);
+  const v1 = await importSample(author, project);
+  const sent = await submitVersion(author, project, v1);
+  expect(sent.review_run?.state).toBe("queued");
+
+  // The reviewer opens the review while @ba's run waits for a worker: Approve waits for it, Request changes does not.
+  await signOut(page);
+  await signInAs(reviewer);
+  await page.goto(documentPath(project, `/versions/${v1}`));
+  const card = main(page).getByTestId("srs-findings");
+  const form = main(page).getByTestId("srs-review-form");
+  const approve = form.getByRole("radio", { name: /^Approve/ });
+  await expect(card.getByTestId("srs-findings-reviewing")).toContainText("@ba is reviewing round 1");
+  await expect(card.getByTestId("srs-findings-empty")).toContainText("@ba has recorded none so far.");
+  await expect(approve).toBeDisabled();
+  await expect(form.getByRole("radio", { name: /^Request changes/ })).toBeChecked();
+  await expect(form.getByTestId("srs-review-lock")).toContainText("Approve waits for @ba's review of round 1");
+  await expect(form.getByTestId("srs-review-run")).toHaveAttribute("data-run-id", String(sent.review_run!.id));
+
+  // @ba's run starts and records a conflict to decide and a duplicate: the card shows them while the run goes on.
+  const review = await baStarts(ba, "task");
+  expect(review).toBe(sent.review_run!.id);
+  const decide = await baRecords(ba, review, {
+    kind: "contradiction",
+    level: "decide",
+    item: RETRIES.code,
+    summary: DECIDE_SUMMARY,
+    sources: [{ kind: "code", ref: RETRIES.billing, note: "billing retries 5 times in 30 minutes" }],
+  });
+  const advice = await baRecords(ba, review, {
+    kind: "duplicate",
+    level: "advisory",
+    item: USE_CASE.code,
+    summary: "Placing an order repeats billing's checkout.",
+    sources: [{ kind: "code", ref: "UC BIL-1" }],
+  });
+  const toDecide = card.getByTestId("srs-findings-decide");
+  const row = toDecide.getByTestId("srs-finding");
+  await expect(row).toHaveAttribute("data-finding", String(decide), { timeout: 15_000 });
+  await expect(toDecide.getByTestId("srs-findings-decide-count")).toHaveText("1");
+  await expect(card.getByTestId("srs-findings-open").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(advice));
+  await expect(row.getByTestId("srs-finding-summary")).toHaveText(DECIDE_SUMMARY);
+  await expect(row.getByRole("link", { name: RETRIES.code })).toHaveAttribute("href", `${itemPath(project, RETRIES.code)}?v=${v1}`);
+  await expect(row.getByRole("link", { name: RETRIES.billing })).toHaveAttribute("href", itemPath(project, RETRIES.billing, BILLING_SLUG));
+  await expect(form.getByTestId("srs-review-lock")).toContainText("Approve is locked: 1 finding to decide is open");
+  await expect(approve).toBeDisabled();
+
+  // The run ends and the hub opens the settle chat, which the open finding to decide and the lock link to.
+  await baEnds(ba, review, "One conflict to decide, a duplicate.");
+  expect((await deliverPluginEvents(project)).delivered).toBeGreaterThan(0);
+  const chat = (await findingsOf(reviewer, project)).find((one) => one.id === decide)?.chat_link ?? "";
+  expect(chat).toMatch(/^\/chats\/\d+\?message=\d+$/);
+  await page.reload();
+  await expect(card.getByTestId("srs-findings-reviewing")).toHaveCount(0);
+  await expect(row.getByTestId("srs-finding-chat")).toHaveAttribute("href", chat);
+  await expect(form.getByTestId("srs-review-lock-chat")).toHaveAttribute("href", chat);
+  await expect(approve).toBeDisabled();
+
+  // A reader sees the card and no form.
+  await signOut(page);
+  await signInAs(reader);
+  await page.goto(documentPath(project, `/versions/${v1}`));
+  await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(decide));
+  await expect(main(page).getByTestId("srs-review-blocked")).toBeVisible();
+  await expect(main(page).getByTestId("srs-review-form")).toHaveCount(0);
+
+  // @ba's turn in the settle chat resolves the conflict as the reviewer decided there: Approve is free, and approves.
+  const turn = await baStarts(ba, "chat");
+  await baFinding(ba, turn, { action: "resolve", finding: decide, resolution: "Keep 3 retries; billing moves to 3.", settled_by: reviewer.login, chat_link: chat });
+  await signOut(page);
+  await signInAs(reviewer);
+  await page.goto(documentPath(project, `/versions/${v1}`));
+  const settled = card.getByTestId("srs-findings-settled").getByTestId("srs-finding");
+  await expect(settled).toHaveAttribute("data-finding", String(decide));
+  await expect(settled.getByTestId("srs-finding-settler")).toHaveText(`Settled by ${reviewer.login}`);
+  await expect(settled).toContainText("Keep 3 retries; billing moves to 3.");
+  await expect(settled.getByTestId("srs-finding-chat")).toHaveAttribute("href", chat);
+  await expect(card.getByTestId("srs-findings-decide")).toHaveCount(0);
+  await expect(form.getByTestId("srs-review-lock")).toHaveCount(0);
+  await expect(approve).toBeEnabled();
+  await expect(approve).toBeChecked();
+  await form.getByTestId("srs-review-submit").click();
+  await expect(toast(page, `Approved v${v1}`)).toBeVisible();
+  await expect(main(page).getByTestId("srs-review-approved")).toBeVisible();
 });

@@ -1,4 +1,4 @@
-import type { SrsDocument, SrsItem, SrsReview, SrsVersion } from "@/components/srs/api";
+import type { SrsDocument, SrsFinding, SrsItem, SrsReview, SrsVersion } from "@/components/srs/api";
 
 /** Items, versions and documents for the SRS pages' unit tests: the shape of the demo-shop sample (tests/hub/fixtures/srs). */
 export function item(key: string, patch: Partial<SrsItem> = {}): SrsItem {
@@ -101,6 +101,29 @@ export function documentOf(patch: Partial<SrsDocument> = {}): SrsDocument {
     archived_at: null,
     versions,
     shown: { ...versions[0], document: "demo-shop", preamble: "", items: ITEMS, problems: [] },
+    ...patch,
+  };
+}
+
+/** A finding of demo-shop as @ba records one: open, a contradiction to decide about BR ORD1-1, shown by billing's rule. */
+export function finding(id: number, patch: Partial<SrsFinding> = {}): SrsFinding {
+  return {
+    id,
+    version: 3,
+    item: "br1",
+    item_code: "BR ORD1-1",
+    kind: "contradiction",
+    level: "decide",
+    sources: [{ kind: "code", ref: "BR BIL2-1", note: "billing retries 5 times", document: "billing" }],
+    summary: "Demo-shop retries a payment 3 times, billing 5.",
+    status: "open",
+    resolution: null,
+    resolution_sources: [],
+    settled_by: null,
+    settled_at: null,
+    chat_link: null,
+    run_id: 41,
+    created_at: "2026-10-11T08:05:00Z",
     ...patch,
   };
 }

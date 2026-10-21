@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { createAgentByApi } from "./support/agents";
 import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
-import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
+import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -29,6 +29,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { putSecretByApi, secretValue } from "./support/secrets";
+import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -37,9 +38,9 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), Insights with its charts and a wide table,
- * Home and the Monitor, seeded with long unbroken names, at 375, 768 and 1024 px, and at 1440 px, where the content is
- * as wide as the window leaves beside the sidebar, the run page splits into its two scroll regions and the Monitor
- * puts its list beside the grid.
+ * Home, the Monitor, chats and an SRS version's review with @ba's findings, seeded with long unbroken names, at 375, 768
+ * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
+ * into its two scroll regions and the Monitor puts its list beside the grid.
  */
 const WIDTHS = [375, 768, 1024, 1440];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -296,3 +297,22 @@ for (const width of WIDTHS) {
     ]);
   });
 }
+
+test("an SRS version's review with @ba's findings never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const author = newAccount("srs-author");
+  await new HubAdmin().grant(project, author.login, "writer", "internal");
+  await enableSrs(me, project);
+  const seeded = await seedFindings(author, project, me, { summary: `${LONG}${LONG}`, note: `${LONG}${LONG}` });
+  await noSidewaysScroll(page, WIDTHS, [
+    {
+      path: documentPath(project, `/versions/${seeded.version}`),
+      ready: async (page) => {
+        await expect(page.locator("#main").getByTestId("srs-findings")).toHaveAttribute("data-state", "ready");
+        await shown("srs-review-lock")(page);
+      },
+    },
+  ]);
+});
