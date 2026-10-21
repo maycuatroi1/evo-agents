@@ -19,12 +19,13 @@ wrong call (usage_errors) and of the environment (env_errors) as the sessions' d
 and in runs, the friction in those sessions from each load to the person's next turn (Bash commands, failures by kind,
 interrupts, corrections) next to the baseline of every digest that counts skills, and what came of the runs that loaded
 it (done, the steps they reported done after the worker ran their verify again, failed and lost by cause); the failures
-that come from the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of the runs, by
-cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker reported
-(runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again across
-sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt, open_questions);
-the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the span; and what the
-worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that failed with its error;
+that come from the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of
+the runs, by cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker
+reported (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again
+across sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
+open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
+span; and what the worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that
+failed with its error;
 and the health of the project's knowledge graph (``kg_health``, ``evo_agents.hub.server.kg_health``): how far each git
 source lags its default branch and the files it lacks or holds stale, at the latest measure, what the builds of the span
 covered, and what agents got from the graph; and the ``runtime`` and the ``harness`` of the sessions and runs
