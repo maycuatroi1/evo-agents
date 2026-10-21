@@ -19,7 +19,7 @@ unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``
 contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
 versions, the comparison of two versions, the review and the comments.
 ``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive`` is
-their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064 and 0066), every row of a
+their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064, 0066 and 0067), every row of a
 document carrying its label, the project's by default. The version of each document approved last, of the documents not archived, is a
 source of the project's knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the
 ids a mention of their codes gets.
@@ -41,17 +41,22 @@ A conflict @ba finds is a finding (``findings``, criteria a4 and a5 of plan srs-
 run of @ba records it with its sources, which the hub looks up first, and resolves, waives or reopens it with the tool
 srs__finding. Members read them (``evo-agents hub srs findings``), an admin of the project waives an open one
 (``evo-agents hub srs waive``), and a version is not approved while its document has an open finding of level decide or
-@ba's review of its round is still queued or running.
+@ba's review of its round is still queued or running. When that review ends with findings of level decide open, the
+hub opens a settle chat for the version (``settle``, criterion a7, through the plugin's events contribution
+``reviews``): the people the rules name, @ba woken by every message, and anyone there settles; @ba records the
+settling on the finding and proposes the next version as the author of the version the chat is for.
 
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
 comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares two versions, ``models`` and
-``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent`` and ``auto_review`` are @ba's.
+``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent``, ``auto_review`` and
+``settle`` are @ba's.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
 KG = "evo_agents.core_plugins.srs.kg"
 AGENT = "evo_agents.core_plugins.srs.agent"
+SETTLE = "evo_agents.core_plugins.srs.settle"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
@@ -325,6 +330,7 @@ TABLES = (
     ("srs_reviews", "Approvals and requests for changes of a version"),
     ("srs_comments", "Comments on a document, a version or an item"),
     ("srs_findings", "The conflicts found in a document, their sources and how each was settled"),
+    ("srs_settle_chats", "The chat where members settle the conflicts of a version with @ba"),
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,
@@ -361,6 +367,7 @@ MANIFEST = {
                 "mentioned_by": "writer",
                 "chat_runs": "run_as",
                 "packs": [BA],
+                "events": ["reviews"],
                 "profile": {
                     "handle": BA,
                     "name": "BA",
@@ -372,6 +379,15 @@ MANIFEST = {
         "mcp_tools": [
             {"name": name, "title": title, "description": text, "python": f"{AGENT}:{name}", "input_schema": schema}
             for name, title, text, schema in TOOLS
+        ],
+        "events": [
+            {
+                "name": "reviews",
+                "title": "The end of @ba's review of a version",
+                "description": "Opens the settle chat of a version whose review left findings of level decide open.",
+                "on": ["task.result"],
+                "python": f"{SETTLE}:review_ended",
+            }
         ],
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],
         "kg_sources": [

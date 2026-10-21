@@ -27,7 +27,10 @@ issues and errors of its coverage, its size and its audiences. The web's graph p
 ``unknown`` looks node ids and paths up in the same graph, as a session of the caller reads it, for a check that only
 needs to know which of them it lacks: the sources of a finding of the core plugin srs
 (``evo_agents.hub.server.kg.unknown_refs``). An id names a node as kg_node finds it; a path, ``repo:path`` or a path
-alone, names one when a visible File or Document node carries exactly that path.
+alone, names one when a visible File or Document node carries exactly that path. It also gives the author emails of
+the LATEST_COMMITS newest commits visible to the session that changed each file or document the ids and paths name
+(``changes`` edges, newest by the committer time the Commit node keeps), each address once: the people a settle chat
+of srs invites for that source.
 
 The api runs one process: the in-use counts and the fetch locks are per process.
 """
@@ -47,12 +50,15 @@ from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.kg import freshness
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.policy import Label, Policy, audience_below
-from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
+from evo_agents.kg.serve import HANDLE_TTL, IMPACT_STATUSES, TOOLS, Session, ToolError
 from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
 MAX_HANDLES = 100  # kg_more handles kept per user and project
+LATEST_COMMITS = 3  # the newest commits of a file whose authors ``unknown`` gives
+COMMITS_PAGE = 500  # edges into a file read at once to find its commits
+MAX_COMMITS_READ = 5_000  # edges into one file read at most; a file changed more often is read that far
 
 
 class GraphUnavailable(Exception):
@@ -312,22 +318,63 @@ class HubSession(Session):
         }
         return "\n".join(lines), status
 
-    def unknown(self, ids: list[str], paths: list[str]) -> tuple[list[str], list[str]]:
-        """Of node ``ids`` and ``paths``, those no node visible to the session has (see the module); ToolError when
-        nothing of the project is visible to it, or the graph holds no ready build."""
+    def unknown(self, ids: list[str], paths: list[str]) -> tuple[list[str], list[str], list[str]]:
+        """(of node ``ids`` and ``paths``, those no node visible to the session has; the author emails of the newest
+        commits of the files and documents they name), as the module says; ToolError when nothing of the project is
+        visible to the session, or the graph holds no ready build."""
         if self.error:
             raise ToolError(self.error)
         store, b = self._store()
-        lacking = [node_id for node_id in ids if self._lookup(store, node_id, b) is None]
+        lacking, named = [], set()
+        for node_id in ids:
+            found = self._lookup(store, node_id, b)
+            if found is None:
+                lacking.append(node_id)
+            elif found["kind"] in ("File", "Document"):
+                named.add(found["id"])
         files = [found for found in store.path_nodes(b) if self.visible(found["label"])] if paths else []
-        held = {(found["props"].get("repo"), found["props"]["path"]) for found in files}
-        bare = {path for _, path in held}
+        held: dict[tuple, set[str]] = {}
+        for found in files:
+            held.setdefault((found["props"].get("repo"), found["props"]["path"]), set()).add(found["id"])
+        bare: dict[str, set[str]] = {}
+        for (_, path), nodes in held.items():
+            bare.setdefault(path, set()).update(nodes)
         missing = []
         for path in paths:
             repo, sep, rest = path.partition(":")
-            if not ((sep and rest and (repo, rest) in held) or path in bare):
+            if sep and rest and (repo, rest) in held:
+                named |= held[(repo, rest)]
+            elif path in bare:
+                named |= bare[path]
+            else:
                 missing.append(path)
-        return lacking, missing
+        return lacking, missing, self._authors(store, b, sorted(named))
+
+    def _authors(self, store: Store, b: int, file_ids: list[str]) -> list[str]:
+        """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
+        ``file_ids``, each address once, in the order found."""
+        found: list[str] = []
+        for file_id in file_ids:
+            edges: list[dict] = []
+            while len(edges) < MAX_COMMITS_READ:
+                page = store.edges_into(
+                    file_id, b, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
+                )
+                edges += page
+                if len(page) < COMMITS_PAGE:
+                    break
+            sources = [edge["src"] for edge in edges if self.visible(edge["label"])]
+            commits = [
+                node
+                for node in store.nodes(sources, b).values()
+                if node["kind"] == "Commit" and self.visible(node["label"])
+            ]
+            commits.sort(key=lambda node: (str(node["props"].get("time") or ""), node["id"]), reverse=True)
+            for node in commits[:LATEST_COMMITS]:
+                email = node["props"].get("author_email")
+                if isinstance(email, str) and email and email not in found:
+                    found.append(email)
+        return found
 
 
 class Handles:
@@ -391,11 +438,13 @@ def answer(
 @dataclass(frozen=True)
 class UnknownRefs:
     """Of the node ids and paths looked up in a project's graph, those it lacks; ``why`` when they could not be looked
-    up at all (no graph, none readable now, nothing of the project visible), and then each counts as lacking."""
+    up at all (no graph, none readable now, nothing of the project visible), and then each counts as lacking.
+    ``authors``: the author emails of the newest commits of the files and documents found (``HubSession.unknown``)."""
 
     ids: tuple[str, ...]
     paths: tuple[str, ...]
     why: str | None = None
+    authors: tuple[str, ...] = ()
 
 
 def unknown(
@@ -410,17 +459,18 @@ def unknown(
     paths: list[str],
 ) -> UnknownRefs:
     """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
-    under ``ceiling``. Blocking, as ``answer``. Raises GraphUnavailable, ArtifactMismatch."""
+    under ``ceiling``, with the authors of the newest commits of the files they name. Blocking, as ``answer``. Raises
+    GraphUnavailable, ArtifactMismatch."""
     path, graph = cache.acquire(store, project, graphs)
     try:
         opened = open_graph(path, project, graph)
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
-            lacking, missing = session.unknown(ids, paths)
+            lacking, missing, authors = session.unknown(ids, paths)
         except ToolError as exc:
             return UnknownRefs(tuple(ids), tuple(paths), str(exc))
         finally:
             opened.close()
     finally:
         cache.release(path)
-    return UnknownRefs(tuple(lacking), tuple(missing))
+    return UnknownRefs(tuple(lacking), tuple(missing), None, tuple(authors))

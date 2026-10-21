@@ -1,4 +1,5 @@
-"""The tables of the core plugin srs (0046, 0064, 0066), which ``evo_agents.hub.tables`` adds to its metadata as ``tables.srs``:
+"""The tables of the core plugin srs (0046, 0064, 0066, 0067), which ``evo_agents.hub.tables`` adds to its metadata as
+``tables.srs``:
 queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
@@ -21,6 +22,11 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
   (null for the whole document), its kind and level, the sources that show it (at least one), a summary, its status
   (open, resolved, waived) and how it was settled: the resolution, who settled it (null when settled from the graph),
   when, the sources that settled it and the link of the chat message; the run that wrote it, and the document's label.
+  ``commit_authors`` (0067) holds the author emails of the newest commits of the files its sources name, as the run
+  that recorded it read the knowledge graph: whom its settle chat invites. No route returns them.
+- srs_settle_chats (0067): the settle chat of a version whose review by @ba ended with findings of level decide still
+  open: one chat a version and one version a chat, its first message, the review run whose end opened it and the chat
+  run its first message started.
 """
 
 from __future__ import annotations
@@ -78,6 +84,8 @@ MAX_SOURCE_CHARS = 300  # of a source's ref
 MAX_FINDING_SUMMARY_CHARS = 2_000
 MAX_RESOLUTION_CHARS = 10_000
 MAX_CHAT_LINK_CHARS = 500
+LATEST_COMMITS = 3  # the newest commits of a source's file whose authors a finding keeps (evo_agents.hub.kg_graph)
+MAX_COMMIT_AUTHORS = MAX_SOURCES * LATEST_COMMITS  # of srs_findings.commit_authors
 
 
 # The node of the knowledge graph each kind of coded item is: the plugin srs declares them, the plugin tasks links
@@ -113,6 +121,7 @@ class SrsTables:
     reviews: Table
     comments: Table
     findings: Table
+    settle_chats: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
@@ -330,6 +339,7 @@ def _findings(metadata: MetaData) -> Table:
         Column("run_id", BigInteger),
         Column("label", JSONB, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("commit_authors", JSONB, nullable=False, server_default="[]"),  # 0067
         _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
         _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
         _key(name, "item_id", "srs_items", ondelete="CASCADE"),
@@ -340,8 +350,32 @@ def _findings(metadata: MetaData) -> Table:
     )
 
 
+def _settle_chats(metadata: MetaData) -> Table:
+    name = "srs_settle_chats"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("chat_id", BigInteger, nullable=False),
+        Column("root_message_id", BigInteger, nullable=False),
+        Column("review_run_id", BigInteger),
+        Column("agent_run_id", BigInteger),
+        Column("opened_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "chat_id", "chats", ondelete="CASCADE"),
+        _key(name, "root_message_id", "chat_messages", ondelete="CASCADE"),
+        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
+        _key(name, "agent_run_id", "runs", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="srs_settle_chats_pkey"),
+        UniqueConstraint("version_id", name="srs_settle_chats_version_id_key"),
+        UniqueConstraint("chat_id", name="srs_settle_chats_chat_id_key"),
+    )
+
+
 def srs_tables(metadata: MetaData) -> SrsTables:
-    """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users and runs already)."""
+    """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users, runs and chats
+    already)."""
     return SrsTables(
         documents=_documents(metadata),
         texts=_texts(metadata),
@@ -353,4 +387,5 @@ def srs_tables(metadata: MetaData) -> SrsTables:
         reviews=_reviews(metadata),
         comments=_comments(metadata),
         findings=_findings(metadata),
+        settle_chats=_settle_chats(metadata),
     )

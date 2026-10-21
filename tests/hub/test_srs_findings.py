@@ -355,7 +355,7 @@ def test_srs_approval_gate_holds_a_version_while_a_decide_finding_is_open_and_na
     settle(client, chat, "reopen", decide)
     held = review(client, hub["other"], 1)
     assert held.status_code == 409, held.text
-    assert f"#{decide} (contradiction, UC ORD-2, settled in {CHAT})" in held.json()["message"], held.text
+    assert f"#{decide} (contradiction, UC ORD-2, chat {CHAT})" in held.json()["message"], held.text
     assert held.json()["detail"][0]["chat_link"] == CHAT
     settle(client, chat, "resolve", decide, resolution="Three retries", settled_by=CHI, chat_link=CHAT)
     approved = review(client, hub["other"], 1)

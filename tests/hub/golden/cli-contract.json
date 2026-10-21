@@ -45734,10 +45734,11 @@
               "type": "string",
               "enum": [
                 "group",
-                "direct"
+                "direct",
+                "settle"
               ],
               "title": "Kind",
-              "description": "group: members are added and removed; direct: one person and one agent, for good"
+              "description": "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes"
             },
             "image_url": {
               "anyOf": [
@@ -46257,7 +46258,8 @@
                     "handle",
                     "project",
                     "thread",
-                    "direct"
+                    "direct",
+                    "settle"
                   ]
                 },
                 {
@@ -46948,10 +46950,11 @@
               "type": "string",
               "enum": [
                 "group",
-                "direct"
+                "direct",
+                "settle"
               ],
               "title": "Kind",
-              "description": "group, or direct: one person and one agent"
+              "description": "group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"
             },
             "image_url": {
               "anyOf": [

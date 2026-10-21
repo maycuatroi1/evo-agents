@@ -143,7 +143,10 @@ class Chat(BaseModel):
         description="what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
     )
     kind: Literal[chats.CHAT_KINDS] = Field(
-        description="group: members are added and removed; direct: one person and one agent, for good"
+        description=(
+            "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat "
+            "the hub opened, whose agent every message of a person wakes"
+        )
     )
     image_url: str | None = Field(
         description="the image its members set, on this hub; null for none, and always for a direct chat"
@@ -177,7 +180,9 @@ class ChatSummary(BaseModel):
     unread: int = Field(description="messages of others after the reader's last read")
     people: list[str]
     agents: list[str]
-    kind: Literal[chats.CHAT_KINDS] = Field(description="group, or direct: one person and one agent")
+    kind: Literal[chats.CHAT_KINDS] = Field(
+        description="group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"
+    )
     image_url: str | None = Field(description="the image its members set; null for none, and always for a direct chat")
     direct_agent: ChatAuthor | None = Field(
         description="a direct chat's agent, whose avatar is its face; null for a group"

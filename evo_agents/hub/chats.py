@@ -8,9 +8,11 @@ not inside a code span or a fenced code block, ignoring case. A name resolves am
 person's login, an agent's handle, or a project's name, which is the handle of that project's default agent.
 
 A chat is of one of CHAT_KINDS, which the hub keeps with it: a group chat (GROUP), which any member adds people and
-agents to, or a direct chat (DIRECT) of one person and one agent, which that person opens with the agent's handle and
-whose members never change. In a direct chat each message of the person that mentions no agent is work for its agent
-(``via`` DIRECT), as if it mentioned it.
+agents to; a direct chat (DIRECT) of one person and one agent, which that person opens with the agent's handle and
+whose members never change; or a settle chat (SETTLE), a group chat the hub opens for something members settle with
+one agent, such as the conflicts @ba found in a version of a BA document (the core plugin srs). A direct or a settle
+chat names its agent (ATTENDED): each message of a person whose mentions do not reach it is work for it, as if it
+mentioned it (``via`` DIRECT, or SETTLE), and in a settle chat a member who only reads the agent's project wakes it too.
 
 A group chat may have an image, which its members set (``image_url``); a direct chat has none, since its face is its
 agent's avatar. A person shows with the avatar of their GitHub account (``github_avatar``), the one image the web
@@ -44,10 +46,12 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # off when it puts CHECK or CROSS. A run that is lost and tried again keeps its EYES.
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
-GROUP, DIRECT = "group", "direct"
-CHAT_KINDS = (GROUP, DIRECT)
-# How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat
-VIA = ("login", "handle", "project", "thread", DIRECT)
+GROUP, DIRECT, SETTLE = "group", "direct", "settle"
+CHAT_KINDS = (GROUP, DIRECT, SETTLE)
+ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profile_id) each message of a person wakes
+# How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat;
+# settle: no @ of the agent, a settle chat
+VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE)
 IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
 EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed", IMAGE_CHANGED)
 NOTICE_MENTION, NOTICE_ADDED = "chat_mention", "chat_added"  # the kinds of notice a chat sends (``runs.NOTICE_KINDS``)
