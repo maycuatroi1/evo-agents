@@ -1485,9 +1485,24 @@ Shared pieces built on them:
   problems that refuse it. An item's page (`/items/{code}`) heads with the code as a chip before the h1, the kind and
   the version's state, a `review` banner when a newer version changes it, its threads, and the Traceability card read
   from the knowledge graph (tasks, plan steps, commits and pull requests, tests; the build it read, or why there is
-  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the reviewer's
-  form (Approve or Request changes, which needs a note) or why the visitor cannot review (a reader, an author of a
-  version since the approved one, admins too), what approving approves, the checks and the review history. Compare
+  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the Findings
+  card, the reviewer's form (Approve or Request changes, which needs a note) or why the visitor cannot review (a
+  reader, an author of a version since the approved one, admins too), what approving approves, the checks and the
+  review history. The Findings card (`findings-card.tsx`, plan srs-conflicts-and-tasks), which readers see too, lists
+  the conflicts @ba found in the document in three groups under a heading with a round count: to decide (open, level
+  decide; the count in `attention`), other open, settled (the one settled last first). A finding is its level as a tag
+  (decide in `attention`, as a task's urgent priority), its kind as a tag, its state as a pill (open neutral, resolved
+  green, waived an outline), `#id` and the version it was found on, its summary, the item it is about and its sources
+  as chips (a code links to its item's page, in another document when the reader sees it; a graph node to its page);
+  an open one links its settle chat, a settled one says on `surface-sunken` who settled it (a member, the knowledge
+  graph, @ba's waiver), when, how and the message that did. While @ba's review of the round is queued or running a
+  neutral banner names the run (`#id` and its pill) and the page reads the document and the findings every 5 s until
+  it ends; a review that failed, was lost or cancelled gets its own banner, since the list may miss conflicts. The
+  card has a skeleton while it loads, a line when there is none, and an alert with Try again when the read fails.
+  While a finding to decide is open, or the review runs, the form's Approve is disabled with a lock and Request
+  changes is taken; a banner under the choices says why (`attention` with the settle chat for findings, neutral with
+  the run for the review) and the Approve radio names it in `aria-describedby`. A 409 of the hub still shows as the
+  form's refusal and reads the findings again. No control on the web settles or waives a finding. Compare
   (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
   diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
   dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,

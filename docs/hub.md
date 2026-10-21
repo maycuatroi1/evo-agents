@@ -80,6 +80,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
+| emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
@@ -210,6 +211,24 @@ evo-agents hub logout                                 # revokes this machine's t
 
 The token and the hub URL stay in `~/.evo/hub` (mode 0700, files 0600). A hub URL must be https, or http to a
 loopback address. No command prints a token.
+
+The hub names a member by an email too, such as the author of a commit, from the addresses the member lists. An
+address belongs to one member on the hub, whatever its case: adding one another member holds is refused (409), adding
+one you hold already does nothing. A hub admin lists, adds and removes the emails of anyone with `--user LOGIN`; anyone
+else gets 403. GitHub's noreply address of a login, `ID+LOGIN@users.noreply.github.com` or
+`LOGIN@users.noreply.github.com`, names that login without a row, so the hub refuses one that names another login. The
+hub does not check that you read an address, since sign-in asks GitHub for `read:user` alone: it takes 20 addresses a
+member at most, and an admin removes one listed by the wrong member.
+
+```sh
+evo-agents hub email list                              # your emails; --json prints the hub's rows
+evo-agents hub email add octo@northwind.example
+evo-agents hub email remove octo@northwind.example
+evo-agents hub email add ops@lumen.example --user lumen-dev   # a hub admin, for another member
+```
+
+An address travels in the body of a request, never in its path, so no access line holds it, and the audit rows of
+`user_email.add` and `user_email.remove` name the row and the member, never the address.
 
 One machine can be signed in to two hubs. `EVO_HUB_HOME` names the directory of a second login, and every command,
 hook and the MCP proxy then read the token, the hub URL and their state files (`hook-state.json`, `memory-state.json`,
@@ -533,8 +552,8 @@ titled with the agent's name. A person has one direct chat with each agent: the 
 agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
 of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
 for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
-there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group` or `direct`, in
-Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group`, `direct` or
+`settle`, in Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
 agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
 leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
@@ -543,6 +562,20 @@ hop 1 for the person, within the chat's budget, and a reply in the thread of the
 reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
+**Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
+with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
+findings of level decide open (`docs/srs-plugin.md`, `evo_agents/core_plugins/srs/settle.py`). It is a group chat in
+all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
+whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
+message's thread, within the chat's budget and hops: an `@` of it makes the same one run, and a mention of another
+agent hands that one work as in any chat and wakes the chat's agent too. And a person with any grant on the agent's
+project wakes the chat's agent, a reader too; any other agent of the chat still works for the writers of its project
+alone. Its members change as a group chat's do, and it may have an image. The hub opens it with no model asked: the
+creator is the version's author (or the run_as of the agent type when the author no longer clears its label), the
+people the plugin's rules name are added (each gets `chat_added`, from "the hub"), those it cannot add are named with
+why in its first message, which is the hub's and mentions the agent; the run that mention starts acts for the type's
+run_as, as any run a message of the hub wakes. Opening one is audited as `chat.create` in the agent's project.
 
 **Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
@@ -660,7 +693,10 @@ every direct chat a group chat of the same person and agent, and a mention `via`
 0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
 chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
 event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
-whose objects stay in the bucket with nothing referring to them.
+whose objects stay in the bucket with nothing referring to them. Schema 0070 adds the kind `settle` (its agent in
+`chats.direct_profile_id`, no person) and the `via` settle of a mention, with the table `srs_settle_chats` of the core
+plugin srs. Going back to 0069 makes every settle chat a group chat of the same members, its agent no longer named on
+its row, reads a mention `via` settle as `via` thread, and drops the table.
 
 ### What a triage agent may do on its own
 
@@ -856,7 +892,11 @@ account there is; going back to 0065 drops them and the tokens with them. Schema
 (`docs/releases.md`): `release_schedules`, `release_cycles`, `release_runs`, `release_tags` and `release_checks`, the
 run kind `release` with `dispatched_via` `release` and one active release run per project, the decision category
 `release` and the notice `release`; going back to 0066 deletes the release runs, their decisions and the release
-notices, and drops the five tables.
+notices, and drops the five tables. Schema 0068 adds `user_emails`, the emails of each member (Signing in). Schema 0069
+adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.review_run_id`; 0070 the settle chats
+(Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
+of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
+approved). Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

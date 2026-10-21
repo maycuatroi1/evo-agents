@@ -1,5 +1,5 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive``: the BA documents of
-a project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive``: the
+BA documents of a project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
 plugins). The plugin's code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
 
 ``list`` prints the documents with their latest and approved versions, ``--all`` the archived ones too. ``show SLUG``
@@ -13,7 +13,9 @@ admin, with the reason as a comment on it (``--comment``). ``retire SLUG CODE...
 without the items holding those codes or aliases and their subtrees (POST .../documents/{slug}/retire), a draft, and
 prints its number and every item dropped; ``--dry-run`` prints the items only and writes nothing. ``archive SLUG``, an
 admin's, takes a document out of the list, @ba's search and the knowledge graph and closes it to changes;
-``unarchive SLUG`` opens it again. ``--json`` prints what the hub answered. A refusal prints the hub's reason and each
+``unarchive SLUG`` opens it again. ``findings SLUG`` prints the conflicts @ba found in a document, with their sources
+and how each was settled (``--status`` keeps one status); an open one of level decide holds approval. ``waive SLUG
+FINDING``, an admin's, waives an open one with ``--reason``. ``--json`` prints what the hub answered. A refusal prints the hub's reason and each
 problem it listed. Standard library only, like the rest of the client.
 """
 
@@ -48,6 +50,25 @@ ITEM_KEYS = ("key", "kind", "code", "aliases", "title", "parent", "heading_level
 ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children")
 IMPORT_KEYS = ("document", "created", "version", "dry_run", "preview")
 RETIRE_KEYS = ("document", "version", "dry_run", "dropped")
+FINDING_STATUSES = ("open", "resolved", "waived")
+FINDING_KEYS = (
+    "id",
+    "version",
+    "item",
+    "item_code",
+    "kind",
+    "level",
+    "sources",
+    "summary",
+    "status",
+    "resolution",
+    "resolution_sources",
+    "settled_by",
+    "settled_at",
+    "chat_link",
+    "run_id",
+    "created_at",
+)
 VERSION_KEYS = (
     "number",
     "parent_number",
@@ -59,6 +80,7 @@ VERSION_KEYS = (
     "created_at",
     "submitted_at",
     "decided_at",
+    "review_run",
     "reviews",
 )
 
@@ -79,6 +101,9 @@ def _problems(exc: HubError) -> None:
             print(f"  {problem['level']}: {problem['check']}{code}{where}: {problem['message']}", file=sys.stderr)
         elif isinstance(problem, dict) and "latest" in problem:
             print(f"  conflict on {problem.get('code') or problem.get('item') or 'the preamble'}", file=sys.stderr)
+        elif isinstance(problem, dict) and "finding" in problem:
+            chat = f" ({problem['chat_link']})" if problem.get("chat_link") else ""
+            print(f"  finding {problem['finding']}, {problem['kind']}: {problem['summary']}{chat}", file=sys.stderr)
 
 
 def _call(method: str, path: str, body: dict | None = None):
@@ -307,6 +332,56 @@ def cmd_archive(args) -> int:
     return 0
 
 
+def _sources(sources: list[dict]) -> str:
+    return "; ".join(f"{source['kind']} {source['ref']}" for source in sources)
+
+
+def _print_finding(found: dict) -> None:
+    about = found["item_code"] or found["item"] or "the document"
+    print(
+        f"#{found['id']} {found['level']} {found['kind']} on v{found['version']}, {about}: {found['status']}"
+        f" {when(found['created_at'])}"
+    )
+    print(f"  {found['summary']}")
+    print(f"  sources: {_sources(found['sources'])}")
+    if found["status"] != "open":
+        by = found["settled_by"] or ("the graph" if found["status"] == "resolved" else "@ba")
+        print(f"  {found['status']} by {by} {when(found['settled_at'])}: {found['resolution']}")
+        if found["resolution_sources"]:
+            print(f"  settled by: {_sources(found['resolution_sources'])}")
+    if found["chat_link"]:
+        print(f"  chat: {found['chat_link']}")
+
+
+@client_command
+def cmd_findings(args) -> int:
+    found = _call("GET", _path(args.project, "documents", args.slug, "findings", query={"status": args.status}))
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"{args.slug} has no finding{' ' + args.status if args.status else ''}.")
+        return 0
+    holding = [f for f in found if f["level"] == "decide" and f["status"] == "open"]
+    if holding:
+        print(f"{len(holding)} open finding(s) of level decide hold the approval of {args.slug}.")
+    for finding in found:
+        _print_finding(finding)
+    return 0
+
+
+@client_command
+def cmd_waive(args) -> int:
+    path = _path(args.project, "documents", args.slug, "findings", str(args.finding), "waive")
+    found = _call("POST", path, {"reason": args.reason})
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Waived finding {found['id']} of {args.slug}: it holds no approval now.")
+        _print_finding(found)
+    return 0
+
+
 def _project(parser) -> None:
     parser.add_argument("--project", required=True, metavar="PROJECT", help="the project that enabled plugin srs")
 
@@ -398,6 +473,23 @@ def _register_documents(ssub) -> None:
         parser.set_defaults(func=cmd_archive)
 
 
+def _register_findings(ssub) -> None:
+    listed = ssub.add_parser("findings", help="the conflicts @ba found in a document, and how each was settled")
+    listed.add_argument("slug", metavar="SLUG")
+    _project(listed)
+    listed.add_argument("--status", choices=FINDING_STATUSES, help="only the findings in this status")
+    json_option(listed, returns_array(*FINDING_KEYS, schema="SrsFinding"))
+    listed.set_defaults(func=cmd_findings)
+
+    waive = ssub.add_parser("waive", help="waive an open finding, so it holds no approval (an admin)")
+    waive.add_argument("slug", metavar="SLUG")
+    waive.add_argument("finding", type=int, metavar="FINDING", help="the finding's id, as `srs findings` prints it")
+    _project(waive)
+    waive.add_argument("--reason", required=True, metavar="TEXT", help="why, kept as the finding's resolution")
+    json_option(waive, returns_object(*FINDING_KEYS, schema="SrsFinding"))
+    waive.set_defaults(func=cmd_waive)
+
+
 def register_srs(hsub) -> None:
     srs = hsub.add_parser("srs", help="BA documents of a project: versions, coded items, approval (plugin srs)")
     ssub = srs.add_subparsers(dest="srs_command", required=True)
@@ -405,3 +497,4 @@ def register_srs(hsub) -> None:
     _register_markdown(ssub)
     _register_review(ssub)
     _register_documents(ssub)
+    _register_findings(ssub)

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import quote
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -62,7 +63,8 @@ class ReviewRow:
 
 @dataclass(frozen=True)
 class VersionRow:
-    """A version of a document, with the reviews of every round it went through."""
+    """A version of a document, with the reviews of every round it went through and @ba's review of its current round
+    (srs_versions.review_run_id) with that run's state, when one was handed."""
 
     id: int
     number: int
@@ -79,6 +81,8 @@ class VersionRow:
     submitted_at: datetime | None
     decided_at: datetime | None
     reviews: list[ReviewRow] = field(default_factory=list)
+    review_run_id: int | None = None
+    review_run_state: str | None = None
 
 
 @dataclass
@@ -154,6 +158,14 @@ async def approved_documents(conn: AsyncConnection, project_id: int) -> list[Doc
     return [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
 
 
+async def document_by_id(conn: AsyncConnection, project_id: int, document_id: int) -> DocumentRow | None:
+    """Document ``document_id`` of project ``project_id`` whoever reads, archived or not, or None: for the hub's own
+    work on it, such as the tasks of an approval (``auto_tasks``), whose caller checked who may do it."""
+    d = tables.srs.documents
+    row = (await conn.execute(_documents_query(project_id).where(d.c.id == document_id))).first()
+    return None if row is None else DocumentRow(**row._mapping)
+
+
 async def documents(
     conn: AsyncConnection, access: ProjectAccess, sink: str | None, *, with_archived: bool = False
 ) -> list[DocumentRow]:
@@ -205,7 +217,7 @@ async def document(
 
 
 def _versions_query(document_id: int):
-    v, u = tables.srs.versions, tables.users
+    v, u, r = tables.srs.versions, tables.users, tables.runs
     return (
         select(
             v.c.id,
@@ -222,8 +234,11 @@ def _versions_query(document_id: int):
             v.c.created_at,
             v.c.submitted_at,
             v.c.decided_at,
+            v.c.review_run_id,
+            r.c.state.label("review_run_state"),
         )
         .join_from(v, u, u.c.id == v.c.author_id)
+        .outerjoin(r, r.c.id == v.c.review_run_id)
         .where(v.c.document_id == document_id)
     )
 
@@ -280,6 +295,24 @@ async def text(conn: AsyncConnection, sha256: str | None) -> str:
         return ""
     t = tables.srs.texts
     return (await conn.execute(select(t.c.body).where(t.c.sha256 == sha256))).scalar_one()
+
+
+async def item_id(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, ref: str) -> int:
+    """The id of the item of ``doc`` whose key, code or alias is ``ref``; 422 when it has none."""
+    s = tables.srs
+    i, c = s.items, s.codes
+    by_key = select(i.c.id).where(i.c.document_id == doc.id, i.c.key == ref)
+    found = (await conn.execute(by_key)).scalar_one_or_none()
+    if found is None:
+        by_code = (
+            select(i.c.id)
+            .join_from(c, i, i.c.id == c.c.item_id)
+            .where(c.c.project_id == access.project_id, c.c.code_key == code_key(ref), i.c.document_id == doc.id)
+        )
+        found = (await conn.execute(by_code)).scalar_one_or_none()
+    if found is None:
+        raise SrsError(422, f"document {doc.slug} has no item {ref}")
+    return found
 
 
 def _items_query(version_id: int):
@@ -364,6 +397,21 @@ async def snapshot(conn: AsyncConnection, row: VersionRow) -> Snapshot:
     return Snapshot(row, doc, {item.key: item.id for item in rows})
 
 
+def document_path(project: str, slug: str) -> str:
+    """A document on the hub's web (web/src/app/(app)/p/[project]/x/srs/documents/[slug])."""
+    return f"/p/{quote(project, safe='')}/x/srs/documents/{quote(slug, safe='')}"
+
+
+def compare_path(project: str, slug: str, low: int, high: int) -> str:
+    """The comparison of two versions of a document on the hub's web."""
+    return f"{document_path(project, slug)}/compare?from={low}&to={high}"
+
+
+def item_path(project: str, slug: str, ref: str) -> str:
+    """An item's page on the hub's web, by its code or key."""
+    return f"{document_path(project, slug)}/items/{quote(ref, safe='')}"
+
+
 async def settings(conn: AsyncConnection, access: ProjectAccess) -> Settings:
     """The plugin's effective config in the project; 409 when its code patterns do not compile."""
     return await project_settings(conn, access.project_id, access.name)
@@ -394,8 +442,13 @@ __all__ = [
     "Snapshot",
     "VersionRow",
     "approved_documents",
+    "compare_path",
     "document",
+    "document_by_id",
+    "document_path",
     "documents",
+    "item_id",
+    "item_path",
     "missing",
     "project_settings",
     "reader",

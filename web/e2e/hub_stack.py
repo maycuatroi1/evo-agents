@@ -38,6 +38,15 @@ every minute: in each charter's window it counts the night's figures and queues 
 /curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
 on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
+The SRS specs need the settle chat a review of @ba opens without waiting for the hub's worker: POST /plugins/deliver
+{project} runs one pass of the job hub.deliver_plugin_events (``evo_agents.hub.plugin_events``) over that project's
+pending deliveries alone, so other specs' deliveries stay as they expect. The stack has no plugin host, so only a core
+plugin's contribution, which runs in the hub, is delivered: the srs contribution reviews, which opens the chat. The
+handle of @ba is the hub's, so one project of a stack enables it; the pages that only need a review with findings get
+them from POST /srs/findings {project, slug, findings}, which writes them as @ba's tool does (``srs_findings``, on the
+document's latest version, with its label), each {kind, level, summary, sources, item (a code), status, resolution,
+resolution_sources, settled_by (a login), chat_link}, and answers their ids.
+
 The Releases specs need cycles without a GitHub App to read tags or CI: POST /releases/seed {project, worker_id,
 stopped} plays the release job for that project's schedule (``release_seed.py``): two cycles that ended, and one open
 whose tag is red and whose fix run is queued, or with ``stopped`` one stopped on its red test with a decision for its
@@ -409,6 +418,95 @@ def fire_curator(dsn: str, body: dict) -> dict:
     return asyncio.run(once())
 
 
+def deliver_plugin_events(dsn: str, body: dict) -> dict:
+    """One pass of the job hub.deliver_plugin_events over the pending deliveries of project ``project`` alone, each in
+    a transaction of its own as the job tries it: how many were delivered, are to be tried again, and failed."""
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub import tables
+    from evo_agents.hub.plugin_events import _deliver_one
+
+    d, p = tables.plugin_deliveries, tables.projects
+    pending = (
+        select(d.c.id)
+        .join(p, p.c.id == d.c.project_id)
+        .where(p.c.name == str(body["project"]), d.c.state == "pending")
+        .order_by(d.c.id)
+    )
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        report = {"delivered": 0, "retried": 0, "failed": 0}
+        try:
+            async with engine.begin() as conn:
+                due = (await conn.execute(pending)).scalars().all()
+            for delivery_id in due:
+                async with engine.begin() as conn:
+                    outcome = await _deliver_one(conn, delivery_id, engine, None, None)
+                if outcome is not None:
+                    report[outcome] += 1
+            return report
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
+def seed_findings(dsn: str, body: dict) -> dict:
+    """Write the findings of ``body`` on document ``slug`` of project ``project`` as srs__finding writes them, settled
+    ones settled now: {ids}, in order. LookupError for a document, an item code or a login the hub does not hold."""
+    from sqlalchemy import create_engine, func, insert, select
+    from sqlalchemy.exc import NoResultFound
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub import tables
+
+    s, p, u = tables.srs, tables.projects, tables.users
+    d, v, i, f = s.documents, s.versions, s.items, s.findings
+    engine = create_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+    ids = []
+    try:
+        with engine.begin() as conn:
+            where = (p.c.name == str(body["project"])) & (d.c.slug == str(body["slug"]))
+            doc = conn.execute(select(d.c.id, d.c.label).join(p, p.c.id == d.c.project_id).where(where)).one()
+            version = conn.execute(select(func.max(v.c.id)).where(v.c.document_id == doc.id)).scalar_one()
+            for found in body["findings"]:
+                status = found.get("status") or "open"
+                item = settler = None
+                if found.get("item"):
+                    item = conn.execute(
+                        select(i.c.id).where(i.c.document_id == doc.id, i.c.code == found["item"])
+                    ).scalar_one()
+                if found.get("settled_by"):
+                    settler = conn.execute(select(u.c.id).where(u.c.login == found["settled_by"])).scalar_one()
+                values = {
+                    "document_id": doc.id,
+                    "version_id": version,
+                    "item_id": item,
+                    "kind": found["kind"],
+                    "level": found["level"],
+                    "summary": found["summary"],
+                    "sources": found["sources"],
+                    "status": status,
+                    "resolution": found.get("resolution"),
+                    "resolution_sources": found.get("resolution_sources") or [],
+                    "settled_by": settler,
+                    "settled_at": None if status == "open" else func.now(),
+                    "chat_link": found.get("chat_link"),
+                    "label": doc.label,
+                }
+                ids.append(conn.execute(insert(f).values(values).returning(f.c.id)).scalar_one())
+    except NoResultFound as exc:
+        raise LookupError(f"no such document, item or member in {body}") from exc
+    finally:
+        engine.dispose()
+    return {"ids": ids}
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -617,6 +715,16 @@ def control_server(
             elif self.path == "/curator/collect":
                 try:
                     self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/plugins/deliver":
+                try:
+                    self._reply(200, deliver_plugin_events(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/srs/findings":
+                try:
+                    self._reply(200, seed_findings(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/releases/seed":

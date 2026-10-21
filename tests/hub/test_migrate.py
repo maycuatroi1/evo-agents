@@ -97,6 +97,10 @@ TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.RELEASE_TABLES  # migration 0067
+TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
+TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
+TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
+TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -171,8 +175,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_seven_tables(hub_db):
-    assert len(TABLES) == 107  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eleven_tables(hub_db):
+    assert len(TABLES) == 111  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1287,6 +1291,157 @@ def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_
     move_to(hub_db, "0065", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+
+
+def test_0068_keeps_user_emails_one_member_an_address_whatever_its_case_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0067")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0068")
+    emails, users = hub_tables.user_emails, hub_tables.users
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        other = one(conn, insert(users).values(login="lumen-dev", github_id=2).returning(users.c.id))
+        conn.execute(insert(emails).values(user_id=ids["user"], email="Octo@Northwind.example"))
+        with pytest.raises(errors.UniqueViolation):  # an address is one member's, whatever its case
+            conn.execute(insert(emails).values(user_id=other, email="octo@northwind.EXAMPLE"))
+        for wrong in (
+            "octo",
+            "octo@northwind",
+            "oc to@northwind.example",
+            "a@b@northwind.example",
+            "x" * 250 + "@a.bc",
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(emails).values(user_id=other, email=wrong))
+        conn.execute(insert(emails).values(user_id=other, email="dev@lumen.example"))
+        conn.execute(delete(users).where(users.c.id == other))  # a member's emails go with the member
+    assert query(hub_db, select(emails.c.email)) == [("Octo@Northwind.example",)]
+    move_to(hub_db, "0067", down=True)
+    assert "user_emails" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+
+
+def test_0069_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_and_the_review_run(hub_db):
+    move_to(hub_db, "0068")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0069")
+    s = hub_tables.srs
+    f = s.findings
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "number": 1, "author_id": ids["user"], "content_sha256": "a" * 64}
+        version_id = one(conn, insert(s.versions).values(**version).returning(s.versions.c.id))
+        shown = [{"kind": "code", "ref": "UC PAY-1"}]
+        found = {"document_id": doc, "version_id": version_id, "kind": "contradiction", "level": "decide"}
+        found |= {"summary": "Two limits of retries", "label": {"level": "internal"}}
+        conn.execute(insert(f).values(**found, sources=shown))
+        for wrong in (
+            {"sources": []},  # no source, no conflict
+            {"sources": {"kind": "code"}},
+            {"sources": shown, "kind": "typo"},
+            {"sources": shown, "level": "urgent"},
+            {"sources": shown, "summary": ""},
+            {"sources": shown, "resolution": "settled"},  # an open finding carries nothing of a settling
+            {"sources": shown, "status": "resolved", "resolution": "settled"},  # a settled one carries its moment
+            {"sources": shown, "status": "gone", "resolution": "x", "settled_at": func.now()},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(f).values({**found, **wrong}))
+        conn.execute(insert(f).values(**found, sources=shown, status="waived", resolution="x", settled_at=func.now()))
+    assert query(hub_db, select(f.c.status, f.c.resolution_sources).order_by(f.c.id)) == [
+        ("open", []),
+        ("waived", []),
+    ]
+    assert "review_run_id" in columns(hub_db, "srs_versions")
+    move_to(hub_db, "0068", down=True)
+    assert "srs_findings" not in tables(hub_db)
+    assert "review_run_id" not in columns(hub_db, "srs_versions")
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+
+
+def test_0070_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_group_chats(hub_db):
+    move_to(hub_db, "0069")
+    before = query(hub_db, SNAPSHOT)
+    t, s = hub_tables, hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        profile = {"project_id": ids["project"], "handle": "ba", "name": "BA", "color": "#336699"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        profile_id = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+        settle = {"title": "Conflicts of demo-shop v1", "created_by": ids["user"], "kind": "settle"}
+        with pytest.raises(errors.CheckViolation):  # 0050 knows group and direct chats alone
+            conn.execute(insert(t.chats).values(**settle, direct_profile_id=profile_id))
+    move_to(hub_db, "0070")
+    with live.connect(hub_db) as conn:
+        pairs = ({"direct_profile_id": None}, {"direct_profile_id": profile_id, "direct_user_id": ids["user"]})
+        for wrong in pairs:  # a settle chat names its agent, and no person
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.chats).values(**settle, **wrong))
+        chat = one(conn, insert(t.chats).values(**settle, direct_profile_id=profile_id).returning(t.chats.c.id))
+        twin = one(conn, insert(t.chats).values(**settle, direct_profile_id=profile_id).returning(t.chats.c.id))
+        message = {"chat_id": chat, "seq": 1, "author_user_id": ids["user"], "body": "keep 3", "label": []}
+        message_id = one(conn, insert(t.chat_messages).values(message).returning(t.chat_messages.c.id))
+        mention = {"message_id": message_id, "ordinal": 0, "name": "ba", "profile_id": profile_id}
+        conn.execute(insert(t.chat_mentions).values(**mention, via="settle"))
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "number": 1, "author_id": ids["user"], "content_sha256": "a" * 64}
+        version_id = one(conn, insert(s.versions).values(**version).returning(s.versions.c.id))
+        opened = {"version_id": version_id, "chat_id": chat, "root_message_id": message_id}
+        conn.execute(insert(s.settle_chats).values(opened))
+        with pytest.raises(errors.UniqueViolation):  # one chat a version
+            conn.execute(insert(s.settle_chats).values({**opened, "chat_id": twin}))
+        found = {"document_id": doc, "version_id": version_id, "kind": "contradiction", "level": "decide"}
+        found |= {"summary": "Two limits", "label": {"level": "internal"}, "sources": [{"kind": "code", "ref": "X"}]}
+        conn.execute(insert(s.findings).values(**found))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(s.findings).values(**found, commit_authors={"a": "b"}))
+    assert query(hub_db, select(s.findings.c.commit_authors)) == [([],)]
+    move_to(hub_db, "0069", down=True)
+    c, m = t.chats, t.chat_mentions
+    kinds = query(hub_db, select(c.c.kind, c.c.direct_profile_id).where(c.c.id.in_([chat, twin])))
+    assert kinds == [("group", None), ("group", None)]
+    assert query(hub_db, select(m.c.via)) == [("thread",)]
+    assert "srs_settle_chats" not in tables(hub_db)
+    assert "commit_authors" not in columns(hub_db, "srs_findings")
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+
+
+def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0070")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0071")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        versions = [
+            one(
+                conn,
+                insert(s.versions)
+                .values(document_id=doc, number=number, author_id=ids["user"], content_sha256="a" * 64)
+                .returning(s.versions.c.id),
+            )
+            for number in (1, 2)
+        ]
+        done = {"version_id": versions[0], "approved_by": ids["user"]}
+        conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.UniqueViolation):  # one row a version
+            conn.execute(insert(s.approval_tasks).values(done))
+        with pytest.raises(errors.CheckViolation):  # its outcome is an object
+            conn.execute(insert(s.approval_tasks).values(version_id=versions[1], approved_by=ids["user"], outcome=[]))
+    a = s.approval_tasks
+    assert query(hub_db, select(a.c.previous_version, a.c.split_run_id, a.c.outcome)) == [(None, None, {})]
+    move_to(hub_db, "0070", down=True)
+    assert "srs_approval_tasks" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

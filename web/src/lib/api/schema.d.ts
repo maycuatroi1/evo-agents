@@ -229,6 +229,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Emails
+         * @description The emails of the caller, or of the member ``user`` names, in the order of their addresses.
+         */
+        get: operations["list_emails_v1_emails_get"];
+        put?: never;
+        /**
+         * Add Email
+         * @description Give the caller, or the member ``user`` names, the address ``email``: 201 with the new row, 200 with the row
+         *     they had, 409 when another member holds it.
+         */
+        post: operations["add_email_v1_emails_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/emails/{email_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Email
+         * @description Remove the email ``email_id`` of the caller, or of anyone for a hub admin; answers the row it removed.
+         */
+        delete: operations["remove_email_v1_emails__email_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users": {
         parameters: {
             query?: never;
@@ -3793,8 +3838,9 @@ export interface paths {
         put?: never;
         /**
          * Submit Version
-         * @description Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
-         *     project enabled the agent type ba; its comments block nothing.
+         * @description Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
+         *     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
+         *     records holds approval.
          */
         post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
         delete?: never;
@@ -3815,7 +3861,11 @@ export interface paths {
         /**
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
-         *     it, and the agent of a run never does.
+         *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
+         *     decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
+         *     approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
+         *     use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
+         *     child tasks, in the same transaction.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
         delete?: never;
@@ -3926,6 +3976,48 @@ export interface paths {
          * @description Close the thread of a comment.
          */
         post: operations["resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Findings
+         * @description The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among
+         *     them names the document whose item holds it, when the member sees that document.
+         */
+        get: operations["list_findings_v1_x_srs__project__documents__slug__findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive Finding
+         * @description Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and
+         *     ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived.
+         */
+        post: operations["waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7487,10 +7579,10 @@ export interface components {
             budget_usd: number;
             /**
              * Kind
-             * @description group: members are added and removed; direct: one person and one agent, for good
+             * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set, on this hub; null for none, and always for a direct chat
@@ -7708,7 +7800,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread" | "direct") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle") | null;
             /**
              * Login
              * @description the person it reached
@@ -8043,10 +8135,10 @@ export interface components {
             agents: string[];
             /**
              * Kind
-             * @description group, or direct: one person and one agent
+             * @description group; direct: one person and one agent; or settle: a group chat the hub opened for its agent
              * @enum {string}
              */
-            kind: "group" | "direct";
+            kind: "group" | "direct" | "settle";
             /**
              * Image Url
              * @description the image its members set; null for none, and always for a direct chat
@@ -8849,6 +8941,14 @@ export interface components {
              * @description sha256 of the effective config, a secret counted by its sealed value
              */
             digest: string;
+        };
+        /** EmailAdd */
+        EmailAdd: {
+            /**
+             * Email
+             * @description one address; case does not matter
+             */
+            email: string;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -16485,6 +16585,99 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
+        /**
+         * SrsFinding
+         * @description A conflict found in a document, with the sources that show it and, once settled, how.
+         */
+        SrsFinding: {
+            /** Id */
+            id: number;
+            /**
+             * Version
+             * @description the version it was found on
+             */
+            version: number;
+            /**
+             * Item
+             * @description the key of the item it is about; null for the whole document
+             */
+            item: string | null;
+            /** Item Code */
+            item_code: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "contradiction" | "kg_conflict" | "overlap";
+            /**
+             * Level
+             * @description an open finding of level decide holds approval
+             * @enum {string}
+             */
+            level: "info" | "advisory" | "decide";
+            /**
+             * Sources
+             * @description what shows the conflict, at least one
+             */
+            sources: components["schemas"]["SrsFindingSource"][];
+            /** Summary */
+            summary: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "resolved" | "waived";
+            /**
+             * Resolution
+             * @description how it was settled, or why it was waived
+             */
+            resolution: string | null;
+            /**
+             * Resolution Sources
+             * @description what settled it, when settled from the graph
+             */
+            resolution_sources: components["schemas"]["SrsFindingSource"][];
+            /**
+             * Settled By
+             * @description the member who settled it; null when settled from the graph
+             */
+            settled_by: string | null;
+            /** Settled At */
+            settled_at: string | null;
+            /**
+             * Chat Link
+             * @description the link of the chat message that settled it
+             */
+            chat_link: string | null;
+            /**
+             * Run Id
+             * @description the run of @ba that recorded it
+             */
+            run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SrsFindingSource */
+        SrsFindingSource: {
+            /**
+             * Kind
+             * @description node: an id of the project's knowledge graph; code: a code an item of the project holds; path: repo:path, or a path, a file or document node carries; version: a later version of the document
+             * @enum {string}
+             */
+            kind: "node" | "code" | "path" | "version";
+            /** Ref */
+            ref: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Document
+             * @description of a code: the slug of the document whose item holds it, when the reader sees that document
+             */
+            document?: string | null;
+        };
         /** SrsImport */
         SrsImport: {
             /** Markdown */
@@ -16834,6 +17027,20 @@ export interface components {
              */
             body: string;
         };
+        /**
+         * SrsReviewRun
+         * @description @ba's review of a version's current round: the task run the hub handed when the version entered review.
+         */
+        SrsReviewRun: {
+            /** Id */
+            id: number;
+            /**
+             * State
+             * @description approving the version waits while it is queued or running
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+        };
         /** SrsSave */
         SrsSave: {
             /**
@@ -16891,6 +17098,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
         };
@@ -16934,6 +17143,8 @@ export interface components {
             submitted_at: string | null;
             /** Decided At */
             decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
             /** Document */
@@ -16944,6 +17155,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWaiveIn */
+        SrsWaiveIn: {
+            /**
+             * Reason
+             * @description why, kept as its resolution
+             */
+            reason: string;
         };
         /** SrsWithdrawIn */
         SrsWithdrawIn: {
@@ -18940,6 +19159,20 @@ export interface components {
             /** Resets At */
             resets_at?: string | null;
         };
+        /** UserEmail */
+        UserEmail: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Login */
+            login: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** UserGrant */
         UserGrant: {
             /** Project */
@@ -20078,6 +20311,204 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_emails_v1_emails_get: {
+        parameters: {
+            query?: {
+                /** @description the member, any case; another's needs a hub admin */
+                user?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_email_v1_emails_post: {
+        parameters: {
+            query?: {
+                /** @description the member, any case; another's needs a hub admin */
+                user?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailAdd"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_email_v1_emails__email_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserEmail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33626,6 +34057,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_findings_v1_x_srs__project__documents__slug__findings_get: {
+        parameters: {
+            query?: {
+                /** @description only the findings in this status */
+                status?: ("open" | "resolved" | "waived") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsWaiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"];
                 };
             };
             /** @description Unauthorized */

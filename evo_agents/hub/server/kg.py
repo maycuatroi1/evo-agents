@@ -37,7 +37,9 @@ declares no such sink, reads through the hub sink, as the local ``cli`` sink rea
 is the MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
 build recorded is 502 and is never opened. The kg_* tools of /mcp (``evo_agents.hub.server.mcp``) answer through the
 same ``tool_result``, so the REST route and MCP read and filter alike; for the agent of a run, the audience a result
-reveals is noted as what the run was shown before the result goes back (``run_audience``).
+reveals is noted as what the run was shown before the result goes back (``run_audience``). ``unknown_refs`` reads the
+same graph with the same rule for a plugin's tool that only needs to know which node ids and paths it lacks
+(``plugin_calls.CoreContext.graph_refs``).
 """
 
 from __future__ import annotations
@@ -71,7 +73,9 @@ from evo_agents.hub.kg_graph import (
     BuiltGraph,
     GraphOutdated,
     GraphUnavailable,
+    UnknownRefs,
     answer,
+    unknown,
 )
 from evo_agents.hub.kg_ingest import (
     LogProblem,
@@ -792,6 +796,39 @@ async def tool_result(
         async with state.engine.begin() as conn:
             await run_audience.note(conn, user.scope.run_id, shown)
     return result
+
+
+async def unknown_refs(
+    state, user: Principal, project: str, sink: str | None, ids: list[str], paths: list[str]
+) -> UnknownRefs:
+    """Which of node ``ids`` and ``paths`` (``repo:path``, or a path alone) the project's latest successful build
+    lacks, as ``user`` reads it through ``sink`` (the project's hub sink when None) with ``tool_result``'s rule, and the
+    author emails of the newest commits of the files they name (``kg_graph.HubSession.unknown``). Never raises for the
+    graph: when it cannot look them up (no grant, no graph yet, none readable now) every one counts as lacking, and
+    ``why`` says so."""
+    if not ids and not paths:
+        return UnknownRefs((), ())
+    every = (tuple(ids), tuple(paths))
+    async with state.engine.begin() as conn:
+        try:
+            access = await project_access(conn, user, project)
+            _member(access)
+        except HTTPException as exc:
+            return UnknownRefs(*every, str(exc.detail))
+        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        audience = await reader_audience(conn, user) if graphs else frozenset()
+    if not graphs:
+        return UnknownRefs(*every, f"project {project} has no knowledge graph on the hub yet")
+    through = sink or (access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK)
+    ceiling = access.rules.ceiling(access.max_level, _read_sink(access, through), audience)
+    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, ids, paths)
+    try:
+        return await asyncio.to_thread(unknown, *looked)
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        return UnknownRefs(*every, str(exc))
+    except (GraphUnavailable, ArtifactMismatch) as exc:
+        return UnknownRefs(*every, str(exc))
 
 
 @router.post("/{project}/tools/{tool}", response_model=ToolResult, responses=REFUSALS | {502: {"model": ErrorBody}})
