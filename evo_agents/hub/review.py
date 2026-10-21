@@ -14,6 +14,10 @@ through the hub's MCP tools, its project alone.
 
 Each night the run looks through LENSES_PER_NIGHT of LENSES (the charter's ``review.lenses``), taken in turn from the
 night's date (``lenses_for``), so every lens comes round within a few nights and a night costs what a few lenses cost.
+On a night of the lens ``product`` (PRODUCT, plan loop-engine, criterion a9) the run also proposes: claims through the
+tool ``canvas__propose`` of the plugin canvas and changes of the autonomy policy through ``builder__propose`` of kind
+policy, each where the project enables that plugin and only on such a night (``evo_agents.hub.server.collect.
+looks_through``); members decide them, and the run changes no claim, baseline, goal or policy itself.
 
 Evidence is one of EVIDENCE_KINDS, written ``session:ID[:FIELD:INDEX]`` (a session of the project, and an entry of
 one of the lists of its facet, else of its digest), ``transcript:ID[:FILE]:LINE`` (a line of a transcript of a session
@@ -58,6 +62,9 @@ LENSES: dict[str, str] = {
     "cost": "what the runs and sessions cost, and where the same result could cost less",
     "security": "secrets in the open, permissions wider than needed, text in data that tries to steer an agent",
     "product_goals": "how far the project's goals are, and the next step that would move the first of them",
+    "product": "the product through its numbers (the figures' product): the signals the project measures, the claims "
+    "of its canvases with their evidence and baselines, and its goals with their metrics; a claim the numbers suggest "
+    "and no canvas holds, a claim they contradict, and a cap or a pace of the autonomy policy that holds a goal back",
     "kg_health": "the knowledge graph's health: how far each git source lags its default branch, the files the graph "
     "lacks, holds stale or still holds after their deletion, what its builds cover over time (mentions resolved, "
     "ambiguous, dangling; Python methods no call edge reaches; builds that changed nothing), and what agents got from "
@@ -116,10 +123,12 @@ FIGURE_KEYS = (
     "clusters",
     "runtime",
     "harness",
+    "product",
 )
 # A figure of FIGURE_KEYS the prompt shows first on a night of its lens, its lists cut to LENS_FIGURE_ITEMS, and last on
 # any other night, so a long one does not push the others out of FIGURES_BYTES.
-LENS_FIGURES = {"runtime": "runtime", "harness": "harness"}
+LENS_FIGURES = {"runtime": "runtime", "harness": "harness", "product": "product"}
+PRODUCT = "product"  # the lens that proposes claims through the plugin canvas and changes of the autonomy policy
 LENS_FIGURE_ITEMS = 5
 
 # The causes of the failures the figures count, in the order a text is tried against them: the first that matches.
@@ -446,6 +455,49 @@ def _earlier_text(earlier: dict) -> list[str]:
     return shown
 
 
+def _product_lines(project: str, plugins) -> list[str]:
+    """What the Reviewer does through the lens product: it reads the product's numbers, and proposes claims through
+    the plugin canvas and changes of the autonomy policy through the plugin builder, each only where the project
+    enables that plugin (``plugins``); it writes neither, nor a goal or a baseline."""
+    lines = [
+        "",
+        "# The lens product",
+        "- Read what the project measures and believes: the figures' product (the active goals with their metrics, "
+        "the signal keys with the values of the night's span, and the canvases with their claims by status, open "
+        "proposals and newest baseline) and the goals below.",
+    ]
+    if "canvas" in plugins:
+        lines += [
+            "- Read a canvas by cell, or one claim whole with its evidence, revs and open proposals, with canvas__read, "
+            "and the registry of signals or one key's values with canvas__signals.",
+            "- Propose a claim the numbers suggest and no canvas holds, or a change of a claim they bear on, with "
+            "canvas__propose: a new claim starts as an assumption with a test card (a hypothesis and a test, and the "
+            "signal key that measures it when there is one); a change names the claim at the rev canvas__read showed "
+            "(base_rev). Say why, and mark synthetic what rests on simulated users. Members accept or reject each "
+            "proposal; one still open needs no repeat.",
+            "- Never propose a claim as validated, nor edit a claim, add evidence or decide a baseline: the hub "
+            "refuses each to this run.",
+        ]
+    else:
+        lines.append(f"- Project {project} does not enable the plugin canvas: propose no claim tonight.")
+    if "builder" in plugins:
+        lines.append(
+            "- Propose a change of the project's autonomy policy, such as a cap or a pace that holds a goal back, "
+            "with builder__propose of kind policy: each key by its dotted path in set or unset, and a summary that "
+            "names the goal and the figures behind it. An admin of the project approves or rejects it; this run "
+            "proposes no other kind."
+        )
+    else:
+        lines.append(
+            f"- Project {project} does not enable the plugin builder: propose no change of its autonomy policy tonight."
+        )
+    lines.append(
+        "- Never write a goal, a baseline or the policy yourself, and hand no work to anyone. What this lens leaves are "
+        "those proposals; record a finding of lens product only with evidence the hub finds, as for any lens."
+    )
+    return lines
+
+
 def build_review_prompt(
     project: str,
     night: date | None,
@@ -456,13 +508,15 @@ def build_review_prompt(
     worktrees: dict | None = None,
     earlier: dict | None = None,
     playbook: list[str] | None = None,
+    plugins=(),
 ) -> str:
     """The prompt of the review run of ``project`` for ``night``: what the agent must and must not do, the lenses of
-    the night with what each looks for, the repos and their worktrees (``worktrees`` maps a repo to its folder under
-    the agent's directory, the repo's name when it maps none), the project's ``goals``, what earlier nights found
-    through the night's lenses and the proposals rejected lately (``earlier``), the lines of the project's playbook
-    (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), and the night's figures, shortened (``_figures_text``);
-    within MAX_PROMPT_BYTES."""
+    the night with what each looks for, what the lens product may propose through the plugins the project enables
+    (``plugins``, names) on a night of that lens, the repos and their worktrees (``worktrees`` maps a repo to its
+    folder under the agent's directory, the repo's name when it maps none), the project's ``goals``, what earlier
+    nights found through the night's lenses and the proposals rejected lately (``earlier``), the lines of the
+    project's playbook (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), and the night's figures, shortened
+    (``_figures_text``); within MAX_PROMPT_BYTES."""
     worktrees = worktrees or {}
     when = f"the night of {night.isoformat()}" if night else "this night"
     lines = [
@@ -481,6 +535,8 @@ def build_review_prompt(
     lines.append(clip("\n".join(repo_lines) or "- none", REPOS_BYTES))
     lines += ["", "# Lenses of this night"]
     lines += [f"- {name}: {LENSES.get(name, name)}" for name in lenses]
+    if PRODUCT in lenses:
+        lines += _product_lines(project, plugins)
     goal_lines = [
         f"- {goal.get('id')}: {' '.join(str(goal.get('what') or '').split())}"
         for goal in goals or []
