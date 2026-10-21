@@ -147,6 +147,9 @@ class TasksItemDetail(TasksItem):
     """A task whole: its description, links, blockers, history and comments."""
 
     description_md: str
+    outcome_md: str = Field(
+        description="what the task came to, markdown; pm reads it before the description's outcome section"
+    )
     external_ref: dict | None = Field(description="where an import took it from, and what it named it could not link")
     links: list[TasksLink]
     blockers: list[TasksBlocker] = Field(description="every open blocker, those set by hand first")
@@ -181,6 +184,7 @@ class TasksItemIn(BaseModel):
 
     title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
     description_md: str = Field("", max_length=MAX_DESCRIPTION_CHARS)
+    outcome_md: str = Field("", max_length=MAX_DESCRIPTION_CHARS)
     type: str | None = Field(None, max_length=40)
     status: str | None = Field(None, max_length=40)
     priority: Literal[PRIORITIES] = "medium"
@@ -201,6 +205,7 @@ class TasksItemEdit(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=MAX_TITLE_CHARS)
     description_md: str | None = Field(None, max_length=MAX_DESCRIPTION_CHARS)
+    outcome_md: str | None = Field(None, max_length=MAX_DESCRIPTION_CHARS)
     type: str | None = Field(None, max_length=40)
     status: str | None = Field(None, max_length=40)
     priority: Literal[PRIORITIES] | None = None
@@ -215,7 +220,7 @@ class TasksItemEdit(BaseModel):
     def values(self) -> dict:
         """The fields set, with the null of a field that clears; a null elsewhere sets nothing."""
         clearable = {"due_on", "sprint", "parent"}
-        fields = ("title", "description_md", "type", "status", "priority", "due_on", "sprint", "parent")
+        fields = ("title", "description_md", "outcome_md", "type", "status", "priority", "due_on", "sprint", "parent")
         given = self.model_fields_set
         return {
             name: getattr(self, name)
@@ -381,6 +386,7 @@ def detail_model(
     return TasksItemDetail(
         **item.model_dump(),
         description_md=row.description_md,
+        outcome_md=row.outcome_md,
         external_ref=row.external_ref,
         links=[TasksLink(**view.__dict__) for view in shown],
         blockers=[blocker_model(blocker) for blocker in blockers],

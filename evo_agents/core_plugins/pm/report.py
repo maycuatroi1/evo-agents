@@ -96,7 +96,7 @@ class Daily:
                 continue
             case = next(c for c in subject.use_cases if c.code == code)
             entry = {"code": code, "title": case.title, "task": subject.ref, "done_at": at}
-            entry["outcome"] = outcome_of(subject.description_md)
+            entry["outcome"] = subject.outcome_md.strip() or outcome_of(subject.description_md)
             pairs.append((subject.visible and case.visible, entry))
         return self.shown("done_use_cases", pairs)
 
