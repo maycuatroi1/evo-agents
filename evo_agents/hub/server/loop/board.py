@@ -24,11 +24,18 @@ from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 
 
+async def reading_of(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> Reading:
+    """What the member ``access`` names reads of the project through ``sink`` (the project's hub sink when None): the
+    plans whose runs and decisions they read, the runs of no plan, and the labels the sink clears; 403 from
+    ``visible_plans`` without a grant. The Loop's pages of work items read through the same."""
+    plans = frozenset(await visible_plans(conn, access, sink))
+    return Reading(access, plans, sees_unplanned(access, sink), sink_of(access, sink))
+
+
 async def gather(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> DecisionBoard:
     """The decision board of project ``access`` as the member it names reads it through ``sink`` (the project's hub
     sink when None); 403 from ``visible_plans`` without a grant."""
-    plans = frozenset(await visible_plans(conn, access, sink))
-    reading = Reading(access, plans, sees_unplanned(access, sink), sink_of(access, sink))
+    reading = await reading_of(conn, access, sink)
     crowd = await people(conn, access.project_id)
     policy = (await effective_policy(conn, access.project_id))["loop"]
     zone = await loop_zone(conn, access.project_id, policy)
@@ -48,4 +55,4 @@ async def gather(conn: AsyncConnection, access: ProjectAccess, sink: str | None)
     )
 
 
-__all__ = ["gather"]
+__all__ = ["gather", "reading_of"]

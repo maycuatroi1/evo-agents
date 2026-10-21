@@ -50461,6 +50461,364 @@
           }
         }
       },
+      "/v1/projects/{project}/loop/items": {
+        "get": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Loop Items",
+          "description": "The work items of the project's Loop, the newest first: where each stands and why, and its ancestors.",
+          "operationId": "loop_items_v1_projects__project__loop_items_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "queued",
+                      "running",
+                      "watching",
+                      "waiting_human",
+                      "done",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "brainstorm",
+                      "use_case",
+                      "build",
+                      "deliver"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Kind"
+              }
+            },
+            {
+              "name": "goal",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(?:G-[1-9][0-9]{0,8}|[a-z0-9][a-z0-9-]{0,63})$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a goal's code or alias",
+                "title": "Goal"
+              },
+              "description": "a goal's code or alias"
+            },
+            {
+              "name": "open",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "only the work items not done or cancelled",
+                "default": false,
+                "title": "Open"
+              },
+              "description": "only the work items not done or cancelled"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 200,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LoopItems"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/loop/items/{item_id}": {
+        "get": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Loop Item",
+          "description": "A work item of the project's Loop with its chain from the goal to the release, and what happened to it.",
+          "operationId": "loop_item_v1_projects__project__loop_items__item_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "item_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Item Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LoopItemChain"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/loop/goals": {
+        "get": {
+          "tags": [
+            "loop"
+          ],
+          "summary": "Loop Goals",
+          "description": "Each goal of the project with its metric measured now against its target, and its work items by state.",
+          "operationId": "loop_goals_v1_projects__project__loop_goals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LoopGoal"
+                    },
+                    "title": "Response Loop Goals V1 Projects  Project  Loop Goals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/decision-board": {
         "get": {
           "tags": [
@@ -65923,6 +66281,989 @@
           },
           "type": "object",
           "title": "LocalState"
+        },
+        "LoopChainClaim": {
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "title": "Canvas"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "the claim's status now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "canvas",
+            "code",
+            "status"
+          ],
+          "title": "LoopChainClaim"
+        },
+        "LoopChainGoal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "statement": {
+              "type": "string",
+              "title": "Statement"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ],
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "statement",
+            "status"
+          ],
+          "title": "LoopChainGoal"
+        },
+        "LoopChainMerge": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iid"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "iid",
+            "state",
+            "web_url",
+            "merged_at"
+          ],
+          "title": "LoopChainMerge"
+        },
+        "LoopChainPlan": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "the plan's goal, on one line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "goal"
+          ],
+          "title": "LoopChainPlan"
+        },
+        "LoopChainRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the newest run that goes on from the one handed out (resumed, retried)"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "work_item": {
+              "type": "integer",
+              "title": "Work Item"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "state",
+            "work_item"
+          ],
+          "title": "LoopChainRun"
+        },
+        "LoopChainStages": {
+          "properties": {
+            "goal": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainGoal"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "proposals": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposals",
+              "description": "the claims a brainstorm proposed"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainClaim"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "use_case": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainUseCase"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "task": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainTask"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopChainPlan"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/LoopChainRun"
+              },
+              "type": "array",
+              "title": "Runs"
+            },
+            "merges": {
+              "items": {
+                "$ref": "#/components/schemas/LoopChainMerge"
+              },
+              "type": "array",
+              "title": "Merges"
+            },
+            "released_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released At",
+              "description": "when the last merge request of the delivered plan merged"
+            },
+            "after_sha": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "After Sha",
+              "description": "the commits the release merged"
+            },
+            "hidden": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "claim",
+                  "use_case",
+                  "task",
+                  "plan",
+                  "runs",
+                  "merges"
+                ]
+              },
+              "type": "array",
+              "title": "Hidden",
+              "description": "the stages the reader may not read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "goal",
+            "proposals",
+            "claim",
+            "use_case",
+            "task",
+            "plan",
+            "runs",
+            "merges",
+            "released_at",
+            "after_sha",
+            "hidden"
+          ],
+          "title": "LoopChainStages",
+          "description": "The path of a chain from its goal to its release."
+        },
+        "LoopChainTask": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "the task's status, a key of the plugin tasks' config"
+            },
+            "group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group",
+              "description": "its group: todo, doing, done or cancelled"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "title",
+            "status",
+            "group"
+          ],
+          "title": "LoopChainTask"
+        },
+        "LoopChainUseCase": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "the state of that version of the document"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "code",
+            "version",
+            "state"
+          ],
+          "title": "LoopChainUseCase"
+        },
+        "LoopClaimRef": {
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "title": "Canvas",
+              "description": "the slug of the claim's canvas"
+            },
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "CL-<number>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "canvas",
+            "code"
+          ],
+          "title": "LoopClaimRef"
+        },
+        "LoopGoal": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value",
+              "description": "its metric's value now; null without a metric or a signal in its window"
+            },
+            "reached": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reached",
+              "description": "whether that value meets its target; null without a value"
+            },
+            "items": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "propertyNames": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "watching",
+                  "waiting_human",
+                  "done",
+                  "cancelled"
+                ]
+              },
+              "type": "object",
+              "title": "Items",
+              "description": "its work items by state"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "value",
+            "reached",
+            "items"
+          ],
+          "title": "LoopGoal",
+          "description": "A goal as the Loop measures it now."
+        },
+        "LoopItem": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "brainstorm",
+                "use_case",
+                "build",
+                "deliver"
+              ],
+              "title": "Kind"
+            },
+            "cycle": {
+              "type": "string",
+              "enum": [
+                "business",
+                "development"
+              ],
+              "title": "Cycle"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "watching",
+                "waiting_human",
+                "done",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "breaker",
+                    "concurrency",
+                    "rate",
+                    "worker",
+                    "type_refused",
+                    "stable",
+                    "auto_tasks",
+                    "split",
+                    "merge_queue",
+                    "triage",
+                    "srs_review",
+                    "srs_finding",
+                    "srs_changes",
+                    "author_question",
+                    "run_decision",
+                    "loop_decision",
+                    "merge_blocked",
+                    "merge_manual",
+                    "claim_invalidated",
+                    "claim_retired",
+                    "goal_paused",
+                    "goal_closed",
+                    "loop_off",
+                    "task_closed",
+                    "no_frame_task",
+                    "person",
+                    "dropped",
+                    "manual"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it stands where it does; done has none"
+            },
+            "waiting": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "type": "object",
+              "title": "Waiting",
+              "description": "the figures of its reason: the cap and the count for concurrency or rate, the worker and why..."
+            },
+            "attempts": {
+              "type": "integer",
+              "title": "Attempts",
+              "description": "how often a run was handed out for it"
+            },
+            "failures": {
+              "type": "integer",
+              "title": "Failures",
+              "description": "its failures since a person last let it go on"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner",
+              "description": "the agent type or the member it stands for"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "the code of its goal"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopClaimRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "use_case": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LoopUseCaseRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "task": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task",
+              "description": "the number of its frame task in the plugin tasks"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run",
+              "description": "the run handed out for it last"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the work item it came of"
+            },
+            "root": {
+              "type": "integer",
+              "title": "Root",
+              "description": "the first work item of its chain: itself when it came of none"
+            },
+            "hidden": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "claim",
+                  "use_case",
+                  "task",
+                  "plan",
+                  "run"
+                ]
+              },
+              "type": "array",
+              "title": "Hidden",
+              "description": "the ancestors it has that the reader may not read"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "cycle",
+            "state",
+            "reason",
+            "waiting",
+            "attempts",
+            "failures",
+            "owner",
+            "goal",
+            "claim",
+            "use_case",
+            "task",
+            "plan",
+            "run",
+            "parent",
+            "root",
+            "hidden",
+            "created_at",
+            "updated_at",
+            "finished_at"
+          ],
+          "title": "LoopItem",
+          "description": "A work item of the Loop, as a member of the project reads it."
+        },
+        "LoopItemChain": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "item": {
+              "$ref": "#/components/schemas/LoopItem"
+            },
+            "chain": {
+              "items": {
+                "$ref": "#/components/schemas/LoopItem"
+              },
+              "type": "array",
+              "title": "Chain",
+              "description": "every work item of its chain, each after the one it came of"
+            },
+            "path": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Path",
+              "description": "the ids of the chain's work items from its first to the end of this one's"
+            },
+            "stages": {
+              "$ref": "#/components/schemas/LoopChainStages"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/LoopItemEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "what happened to this work item, oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "item",
+            "chain",
+            "path",
+            "stages",
+            "events"
+          ],
+          "title": "LoopItemChain"
+        },
+        "LoopItemEvent": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "created",
+                "ready",
+                "admitted",
+                "dispatched",
+                "waiting",
+                "failed",
+                "triaged",
+                "asked",
+                "done",
+                "cancelled",
+                "noted"
+              ],
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "watching",
+                "waiting_human",
+                "done",
+                "cancelled"
+              ],
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "breaker",
+                    "concurrency",
+                    "rate",
+                    "worker",
+                    "type_refused",
+                    "stable",
+                    "auto_tasks",
+                    "split",
+                    "merge_queue",
+                    "triage",
+                    "srs_review",
+                    "srs_finding",
+                    "srs_changes",
+                    "author_question",
+                    "run_decision",
+                    "loop_decision",
+                    "merge_blocked",
+                    "merge_manual",
+                    "claim_invalidated",
+                    "claim_retired",
+                    "goal_paused",
+                    "goal_closed",
+                    "loop_off",
+                    "task_closed",
+                    "no_frame_task",
+                    "person",
+                    "dropped",
+                    "manual"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run"
+            },
+            "figures": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "type": "object",
+              "title": "Figures"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "state",
+            "reason",
+            "run",
+            "figures",
+            "at"
+          ],
+          "title": "LoopItemEvent"
+        },
+        "LoopItems": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/LoopItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "the newest first"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "true when more work items match than were listed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "items",
+            "more"
+          ],
+          "title": "LoopItems"
+        },
+        "LoopUseCaseRef": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document",
+              "description": "the slug of the SRS document"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code",
+              "description": "the use case's code; null before the document has one for it"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version of the document it was read from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "code",
+            "version"
+          ],
+          "title": "LoopUseCaseRef"
         },
         "MemberCounts": {
           "properties": {

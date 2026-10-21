@@ -8,6 +8,12 @@ project's decision board (criterion a8).
   reads its events again and hands out runs from its next tick, queued now. 403 for anyone else, 409 when the breaker
   has not tripped.
 
+- GET /v1/projects/{p}/loop/items: its work items, the newest first, of a state, a kind or a goal when asked, each with
+  where it stands and why and the codes of its ancestors (``items``); GET .../loop/items/{id}: one with its chain, the
+  stages of its path from the goal to the release, and its ledger (``chain``); GET .../loop/goals: each goal's metric
+  measured now with its work items by state. For anyone with a grant on the project, who sees each ancestor as its own
+  route shows it, through the sink X-Evo-Sink names, else the project's hub sink.
+
 - GET /v1/projects/{p}/decision-board: everything of the project that waits for a person, the three gates first, then
   what the Loop's chain waits on (``board``); for anyone with a grant on the project, who sees what they may read, as
   each object's own route shows it (a canvas's under its label, a decision of a run whose plan they read), through
@@ -23,16 +29,19 @@ import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 
+from evo_agents.hub import goals
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.loop import board
+from evo_agents.hub.server.loop import board, chain, items
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.loop.board_items import DecisionBoard
 from evo_agents.hub.server.loop.breaker import BREAKER_STATES
-from evo_agents.hub.server.loop.model import STATES
+from evo_agents.hub.server.loop.chain import LoopItemChain
+from evo_agents.hub.server.loop.items import LoopGoal, LoopItems
+from evo_agents.hub.server.loop.model import KINDS, STATES
 from evo_agents.hub.server.plans import SINK_HEADER
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
@@ -87,6 +96,54 @@ async def resume_loop(request: Request, project: ProjectName, user: CurrentUser)
         view = await _view(conn, access.project_id, access.name)
     log.info("loop resumed", extra={"project": project, "login": user.login})
     return view
+
+
+async def _reader(conn, user, project: str, what: str):
+    access = await project_access(conn, user, project)
+    if access.role is None:
+        raise HTTPException(403, f"reading {what} of project {access.name} needs a grant on it")
+    return access
+
+
+@router.get("/{project}/loop/items", response_model=LoopItems, responses=REFUSALS)
+async def loop_items(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    state: Literal[STATES] | None = None,
+    kind: Literal[KINDS] | None = None,
+    goal: Annotated[str | None, Query(pattern=goals.REF, description="a goal's code or alias")] = None,
+    open: Annotated[bool, Query(description="only the work items not done or cancelled")] = False,  # noqa: A002
+    limit: Annotated[int, Query(ge=1, le=items.MAX_ITEMS)] = items.DEFAULT_ITEMS,
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
+) -> LoopItems:
+    """The work items of the project's Loop, the newest first: where each stands and why, and its ancestors."""
+    async with request.app.state.engine.begin() as conn:
+        access = await _reader(conn, user, project, "the work items")
+        reading = await board.reading_of(conn, access, sink)
+        return await items.listed(conn, reading, state=state, kind=kind, goal=goal, open_only=open, limit=limit)
+
+
+@router.get("/{project}/loop/items/{item_id}", response_model=LoopItemChain, responses=REFUSALS)
+async def loop_item(
+    request: Request,
+    project: ProjectName,
+    item_id: Annotated[int, Path(ge=1, le=2**63 - 1)],
+    user: CurrentUser,
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
+) -> LoopItemChain:
+    """A work item of the project's Loop with its chain from the goal to the release, and what happened to it."""
+    async with request.app.state.engine.begin() as conn:
+        access = await _reader(conn, user, project, "a work item")
+        return await chain.shown(conn, await board.reading_of(conn, access, sink), item_id)
+
+
+@router.get("/{project}/loop/goals", response_model=list[LoopGoal], responses=REFUSALS)
+async def loop_goals(request: Request, project: ProjectName, user: CurrentUser) -> list[LoopGoal]:
+    """Each goal of the project with its metric measured now against its target, and its work items by state."""
+    async with request.app.state.engine.begin() as conn:
+        access = await _reader(conn, user, project, "the goals")
+        return await items.goal_figures(conn, access.project_id)
 
 
 @router.get("/{project}/decision-board", response_model=DecisionBoard, responses=REFUSALS)
