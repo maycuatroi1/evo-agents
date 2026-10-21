@@ -153,6 +153,8 @@ SAMPLE_TABLES = frozenset({"merge_samples"})
 BREAKER_TABLES = frozenset({"merge_breakers"})
 # migration 0085: what a task waits on
 TASKS_BLOCKER_TABLES = frozenset({"tasks_blockers"})
+# migration 0086: what the plugin pm sent
+PM_TABLES = frozenset({"pm_sends"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

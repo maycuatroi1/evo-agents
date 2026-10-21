@@ -2,7 +2,7 @@
 
 The plugin **pm** answers, for a project that enabled it, what the team did on the last working day and what needs a
 project manager today: the use cases and tasks that reached done, where the sprint stands against what it held when it
-opened, the tasks that are late, in review, stale or blocked, what to escalate and how loaded each member is. It writes
+opened, the tasks that are late, in review, stale or blocked, what to escalate and how loaded each member is. The report writes
 nothing: it reads the hub's tables for the plugins tasks (`docs/tasks-plugin.md`) and srs (`docs/srs-plugin.md`), the
 plans, runs and decisions. Its code is `evo_agents/core_plugins/pm`; evo-ak ships it as a core plugin
 (`docs/plugins.md`, Core plugins). It does nothing in a project until an admin of the project enables it there, and it
@@ -15,7 +15,7 @@ evo-agents hub plugin enable pm --project evo-agents        # asks for notificat
 evo-agents hub plugin config pm --project evo-agents --set pm=alice --set timezone=Asia/Ho_Chi_Minh
 ```
 
-It asks for `notifications:send` and `chats:write` so that a later digest can reach a member and a group chat; the
+It asks for `notifications:send` and `chats:write` so that the morning job can reach a member and a group chat; the
 report itself uses neither. Its config, in the project's layer (`docs/hub.md`, Plugins in a project):
 
 | Field | What it holds | When left out |
@@ -78,10 +78,34 @@ evo-agents hub pm daily --project evo-agents --date 2026-10-19 --json
 
 The command speaks HTTP only (`evo_agents/hub/cli_pm.py`).
 
+## The morning job
+
+The job `daily` runs at 01:00 UTC on weekdays (`0 1 * * 1-5`, `hub.plugin_jobs`). For each project that enables pm it takes
+today's date in the project's `timezone`; on a day outside `working_days`, or when the pm or tasks config cannot be used,
+it does nothing. On a working day:
+
+- **The digest.** The report of the day, computed as the route computes it, goes as the notice `pm_daily` to the PM (the
+  config's `pm`; the project's admins when it is empty or names a member with no grant) when the project granted the
+  plugin `notifications:send`, and as a message of the hub in the group chat `digest_chat` when it granted `chats:write`
+  and that chat still exists with an agent of the project (otherwise the job logs and skips it).
+- **The escalations.** Each blocker in `escalate` sends the notice `pm_escalation` to the PM and to whom it waits on: the
+  member, the assignees of the task it waits on, or the owner of the run whose decision is open. A blocker that waits on
+  a text goes to the PM alone.
+- **What they say.** Counts, task codes and a link to `/p/{project}/x/pm`; never a title, a reason or a description,
+  because Telegram forwards a notice and a chat's label may be lower than a task's. A notice counts what its recipient may
+  see, the report computed with their grant; a recipient who may not see a blocker's task gets no escalation for it. The
+  chat message counts what the project's top grant sees.
+- **Once.** The table `pm_sends` (migration 0086) holds one row per project, day and thing sent: the digest, and each
+  blocker (`blocker:<id>` or `decision:<id>`). A row is claimed in the transaction that sends, so running the job again or
+  twice the same day sends nothing more, and a failed pass claims nothing.
+
+The notice kinds `pm_daily` and `pm_escalation` are in `runs.NOTICE_KINDS` and the check of `notifications.notice_kind`
+(`docs/notifications.md`).
+
 ## Code
 
 `workdays` counts days, `settings` reads the config of pm and the statuses of tasks, `reads` reads the facts from the
 tables (SQLAlchemy only), `report`, `sprint_view` and `outcome` compute from them with no I/O (tests give a fixed date),
-`service` joins the two for `server` (the route) and `agent` (the tools), and `models` is the API. Import-linter keeps it
+`service` joins the two for `server` (the route) and `agent` (the tools), `models` is the API and `job` is the morning job. Import-linter keeps it
 in its own package (contract pm-plugin-own-package): it imports neither tasks nor srs, and reads their tables through
 `evo_agents.hub.tables`.

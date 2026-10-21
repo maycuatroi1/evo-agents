@@ -4849,7 +4849,9 @@
       "builder_proposal": "@builder proposed a change for you to approve",
       "canvas_baseline": "A Lean Canvas baseline waits for your review",
       "merge_paused": "The merge queue of a repo stopped",
-      "release": "Daily release"
+      "release": "Daily release",
+      "pm_daily": "Daily digest of a project",
+      "pm_escalation": "A blocked task waits to be escalated"
     },
     "item": {
       "unread": "Unread",

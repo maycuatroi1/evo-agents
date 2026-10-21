@@ -66808,7 +66808,9 @@
                     "builder_proposal",
                     "canvas_baseline",
                     "merge_paused",
-                    "release"
+                    "release",
+                    "pm_daily",
+                    "pm_escalation"
                   ]
                 },
                 {

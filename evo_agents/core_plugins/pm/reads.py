@@ -182,6 +182,7 @@ async def _blockers(conn: AsyncConnection, prefix: str, ids: list[int]) -> dict[
     setter, waiter, other = u.alias("setter"), u.alias("waiter"), tables.tasks.items.alias("other")
     manual = (
         select(
+            b.c.id,
             b.c.task_id,
             b.c.reason,
             b.c.since,
@@ -206,7 +207,9 @@ async def _blockers(conn: AsyncConnection, prefix: str, ids: list[int]) -> dict[
             kind, on = "task", f"{prefix}-{row.waiting_number}"
         else:
             kind, on = "text", row.waiting_text
-        found.setdefault(row.task_id, []).append(Blocker(MANUAL, row.reason, kind, on, row.since, row.set_by))
+        found.setdefault(row.task_id, []).append(
+            Blocker(MANUAL, row.reason, kind, on, row.since, row.set_by, None, None, row.id)
+        )
     by_run = and_(k.c.kind == "run", k.c.run_id == r.c.id)
     by_step = and_(k.c.kind == "plan_step", k.c.plan_id == r.c.plan_id, k.c.step_id == r.c.step_key)
     asked = (
