@@ -482,7 +482,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | `Caller` | a dependency of a route: the caller, a member with any credential the hub's own routes take (`Session.web` says whether it is a web session), as `GET /v1/me/telegram` takes it; a web session's write carries the hub's `X-Evo-CSRF` (1.1) |
 | `HubAdmin` | a dependency of a route: the caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine token as those routes take, a web session's write with the hub's `Origin` |
 | `begin(request)`, `hub_config(request)`, `web_url(config, link)` | a transaction on the hub's engine; the hub's config, which a plugin hands the API and never reads; the absolute URL of a page a notification links to |
-| `Context`, `transaction(context)` | what the hub passes a job, an event, a tool or a source of the graph, read only, and a transaction on its engine |
+| `Context`, `transaction(context)` | what the hub passes a job, an event, a tool or a source of the graph, read only, and a transaction on its engine. The hub passes a `CoreContext`, a subclass whose `graph_refs` only the core plugins of this repository read: it is no part of the API |
 | `plugin_environment(plugin)` | the variables `EVO_HUB_<ID>_*` of the process (the id in upper case, `-` as `_`) |
 | `Channel`, `Outgoing`, `RetryAfter`, `Undeliverable`, `ChannelGone`, `SESSION_ENDED` | the class and the errors of the extension point `channels`, version 1 |
 | `ErrorBody`, `Login` | types for a route that keeps the hub's OpenAPI components |
