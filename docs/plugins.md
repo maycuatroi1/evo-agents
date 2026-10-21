@@ -332,7 +332,7 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins builder, srs, tasks and canvas in `evo_agents.core_plugins`, declared in its own entry
+evo-ak ships its core plugins builder, srs, tasks, canvas and pm in `evo_agents.core_plugins`, declared in its own entry
 points, so every install has them, the hub's image among them. No package of evo_agents imports them (import-linter
 contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
@@ -427,6 +427,16 @@ Two more core plugins keep a project's requirements and work in the hub's databa
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
+### PM
+
+**pm** (`evo_agents/core_plugins/pm`, `docs/pm-plugin.md`) answers the daily report of a project that enabled it and
+tasks: what was done on the last working day, the sprint against what it held when it opened, the tasks that are late,
+in review, stale or blocked, what to escalate and the load of each member, counted in working days of the project's
+time zone. It reads the tables of tasks, srs, plans, runs and decisions and writes nothing. It contributes the route
+`GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
+`chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
+plugin.
 
 ### Lean Canvas
 

@@ -360,6 +360,8 @@ def test_decisions_and_notices_the_plan_names():
         "canvas_baseline",
         "merge_paused",
         "release",
+        "pm_daily",
+        "pm_escalation",
         "run_outputs",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)

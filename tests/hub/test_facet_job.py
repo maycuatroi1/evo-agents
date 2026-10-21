@@ -381,6 +381,25 @@ def test_session_evidence_resolves_in_the_facet_and_a_local_run_of_the_owner_is_
     assert unknown.status_code == 422 and "nor a facet of it" in unknown.text
 
 
+def test_skills_evidence_resolves_in_the_digest_even_when_the_session_has_a_facet(review, tmp_path):
+    from evo_agents.hub.digest import build
+    from tests.hub.test_digest import skill_session, write_transcript
+    from tests.hub.test_review_runs import SKILLED, push_digest
+
+    client, db = review.client, review.db
+    body = build(write_transcript(tmp_path / "s.jsonl", skill_session()), "/w")
+    push_digest(client, review.headers["owner"], SKILLED, body)
+    analyzed(client, later(db))
+    assert session_facet_of(db, SKILLED)["body"]["skills"] is None, "a facet made from a digest names no skill"
+    run_id = held_review(review)
+    cited = evidence(f"session:{SKILLED}:skills:0", f"session:{SKILLED}:tools:0")
+    ok = finding(client, review.worker, run_id, evidence=cited)
+    assert ok.status_code == 201, ok.text
+    assert [item["resolved"] for item in ok.json()["evidence"]] == ["digest", "facet"]
+    past = finding(client, review.worker, run_id, evidence=evidence(f"session:{SKILLED}:skills:{len(body['skills'])}"))
+    assert past.status_code == 422 and f"the digest's skills has {len(body['skills'])} entries" in past.text
+
+
 # Schema 0054
 
 

@@ -22,6 +22,8 @@ const TOKEN = "sk-ant-oat01-unit-token";
 const ACCOUNT: Account = {
   name: "claude-a",
   env_var: "CLAUDE_CODE_OAUTH_TOKEN",
+  provider: "claude",
+  category: "model",
   auth: "token",
   projects: ["demo", "docs"],
   workers: ["mac-mini"],

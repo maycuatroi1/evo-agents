@@ -149,14 +149,16 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 | `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
 | `merge_paused` | the breaker of a repo of the hub's merge queue on GitLab tripped, to each admin of the project: the queue of that repo waits until an admin resets it (`docs/merge-queue.md`, The breaker) | the repo, its target branch, the cause and its reason, the merge requests it paused, how to reset it, and a link to the project's merge queue |
+| `pm_daily` | a working morning's digest of a project that enables the core plugin pm, to its PM (the config's `pm`, else the project's admins), when the project grants the plugin `notifications:send` (`docs/pm-plugin.md`, The morning job) | counts of what was done, late, in review, stale, blocked and to escalate, as the member may see them, the codes of the late, stale and escalated tasks, and a link to the project's pm page; never a title |
+| `pm_escalation` | a blocker of an open task that has lasted longer than `escalate_after_days` working days, once a day, to the PM and to whom it waits on (the member, the assignees of the task it waits on, the owner of the run whose decision is open) | the task's code, the kind of blocker, its age in working days and a link to the project's pm page; never the reason or a title |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention`, `chat_added` and `run_outputs`, and
-the `merge_default_branch` of its merge queue. A release run that fails sends no
+`curator_paused`, `release`, `merge_paused`, `author_waiting`, `pm_daily`, `pm_escalation`, `chat_mention`,
+`chat_added` and `run_outputs`, and the `merge_default_branch` of its merge queue. A release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
 it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
@@ -189,7 +191,7 @@ notice no channel has tried yet, and a notice left with no file goes, its delive
 `outputs` (`RunOutput`, as `docs/hub.md` describes it): the files of a `run_outputs` still there, with the run's URLs
 of their bytes, and the files of a decision, with the decision's.
 
-A member turns `run_outputs` off for themselves (`runs.MUTABLE_NOTICE_KINDS`, schema 0086's `notification_mutes`):
+A member turns `run_outputs` off for themselves (`runs.MUTABLE_NOTICE_KINDS`, schema 0090's `notification_mutes`):
 the hub then stores no such notice for them, on any channel, and their decisions and every other notice still come.
 `GET /v1/me/notification-settings` answers each kind a member may turn off with whether it is on, and `PUT` with
 `{"notices": [{"kind": "run_outputs", "on": false}]}` sets the kinds it names, audited `notification.settings` with
@@ -292,7 +294,7 @@ A notification links to a page of the hub's web: a decision to `/inbox?decision=
 `/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
 `curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
 (`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
-(`/p/{p}/merge-queue`), and a chat's notice to the chat (`/chats/{id}`,
+(`/p/{p}/merge-queue`), `pm_daily` and `pm_escalation` to the project's pm page (`/p/{p}/x/pm`), and a chat's notice to the chat (`/chats/{id}`,
 with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 

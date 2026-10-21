@@ -55,6 +55,12 @@ DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 DEFAULT_INTERVAL = 5  # seconds between polls when GitHub does not say
 SLOW_DOWN_STEP = 5  # seconds added to the interval on every slow_down
 POLL_FAILURES = 3  # network failures in a row while polling before giving up
+# The exit statuses of evo-agents (docs/hub.md, "Exit status"), as sysexits.h names the last two. evo-cli reads 2 with
+# argparse's "invalid choice" or "unrecognized arguments" as an evo-agents too old for the command it ran.
+EXIT_FAILED = 1  # any other failure: the hub refused the request, a file could not be read, ...
+EXIT_USAGE = 2  # the command line is wrong (argparse's own status)
+EXIT_UNAVAILABLE = 69  # the hub or the network could not be reached (EX_UNAVAILABLE)
+EXIT_TEMPFAIL = 75  # the hub answered 5xx or 429: try again later (EX_TEMPFAIL)
 LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 IDLE_TIMEOUT = 30.0  # seconds a kept-alive connection may wait unused before it is closed rather than reused
 MAX_IDLE = 8  # kept-alive connections per hub
@@ -96,6 +102,16 @@ class Unreachable(HubError):
     def __init__(self, message: str, refused: bool = False):
         super().__init__(message)
         self.refused = refused
+
+
+def exit_status(exc: HubError) -> int:
+    """The exit status of a command that failed with ``exc``: EXIT_UNAVAILABLE when the hub or the network could not
+    be reached, EXIT_TEMPFAIL when the hub (or GitHub) answered 5xx or 429, EXIT_FAILED for any other refusal."""
+    if isinstance(exc, Unreachable):
+        return EXIT_UNAVAILABLE
+    if exc.status is not None and (exc.status >= 500 or exc.status == 429):
+        return EXIT_TEMPFAIL
+    return EXIT_FAILED
 
 
 def transient(exc: HubError) -> bool:

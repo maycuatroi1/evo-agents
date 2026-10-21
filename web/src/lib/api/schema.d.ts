@@ -4375,6 +4375,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/pm/{project}/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily
+         * @description The daily report: what was done on the working day before ``date``, the sprint, what is late, in review,
+         *     stale or blocked, what to escalate, and the load of each member.
+         */
+        get: operations["daily_v1_x_pm__project__daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents": {
         parameters: {
             query?: never;
@@ -4893,6 +4914,46 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Blocker
+         * @description Block a task: why, and what it waits on (a member, another task of the project, or a text).
+         */
+        post: operations["add_blocker_v1_x_tasks__project__tasks__ref__blockers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers/{blocker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Blocker
+         * @description Change a blocker set by hand: its reason, what it waits on, or clear it (``cleared``).
+         */
+        patch: operations["edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch"];
         trace?: never;
     };
     "/v1/x/tasks/{project}/sprints/{name}": {
@@ -7071,6 +7132,18 @@ export interface components {
              */
             env_var: string;
             /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
              * Projects
              * @description the projects whose runs may take it
              */
@@ -7143,14 +7216,14 @@ export interface components {
             runs_7d: number;
             /**
              * Cost 24H Usd
-             * @description what those runs cost in the last 24 hours, in USD, from their usage
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
              */
-            cost_24h_usd: number;
+            cost_24h_usd: number | null;
             /**
              * Cost 7D Usd
-             * @description what those runs cost in the last 7 days, in USD, an estimate
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
              */
-            cost_7d_usd: number;
+            cost_7d_usd: number | null;
             /**
              * Held By
              * @description the runs a worker holds now with it
@@ -10685,6 +10758,34 @@ export interface components {
              */
             added: number;
         };
+        /** CompoundBash */
+        CompoundBash: {
+            /**
+             * Calls
+             * @description Bash commands that ran several programs
+             */
+            calls: number;
+            /**
+             * Errors
+             * @description their failures whose output named none of their programs
+             */
+            errors: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+        };
         /** ConfigField */
         ConfigField: {
             /** Name */
@@ -11505,7 +11606,7 @@ export interface components {
              * Field
              * @description session: the list of the digest
              */
-            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash") | null;
+            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash" | "skills") | null;
             /**
              * Index
              * @description session: the entry of that list, from 0
@@ -13996,7 +14097,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "run_outputs") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -15645,6 +15746,379 @@ export interface components {
              */
             published_at: string;
         };
+        /** PmBlocked */
+        PmBlocked: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /**
+         * PmDaily
+         * @description What the project did on the working day before ``date``, and what needs the PM today.
+         */
+        PmDaily: {
+            /** Project */
+            project: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Previous Working Day
+             * Format: date
+             */
+            previous_working_day: string;
+            /** Done Use Cases */
+            done_use_cases: components["schemas"]["PmDoneUseCase"][];
+            /** Done Tasks */
+            done_tasks: components["schemas"]["PmDoneTask"][];
+            sprint: components["schemas"]["PmSprint"] | null;
+            /** Late */
+            late: components["schemas"]["PmLate"][];
+            /** Review */
+            review: components["schemas"]["PmReview"][];
+            /** Stale */
+            stale: components["schemas"]["PmStale"][];
+            /** Blocked */
+            blocked: components["schemas"]["PmBlocked"][];
+            /** Escalate */
+            escalate: components["schemas"]["PmEscalate"][];
+            /** Load */
+            load: components["schemas"]["PmLoad"][];
+            /** @description what each list leaves out because the reader may not see it */
+            hidden: components["schemas"]["PmHidden"];
+        };
+        /** PmDoneTask */
+        PmDoneTask: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Done At
+             * Format: date-time
+             * @description when it moved to a status of group done, inside the window
+             */
+            done_at: string;
+        };
+        /** PmDoneUseCase */
+        PmDoneUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /**
+             * Task
+             * @description the task whose state is the use case's: its frame task, else the task opened last
+             */
+            task: string;
+            /**
+             * Done At
+             * Format: date-time
+             */
+            done_at: string;
+            /**
+             * Outcome
+             * @description its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description
+             */
+            outcome: string | null;
+        };
+        /** PmEscalate */
+        PmEscalate: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Escalate To
+             * @description the config's pm: whom the escalation is for
+             */
+            escalate_to: string | null;
+        };
+        /** PmHidden */
+        PmHidden: {
+            /**
+             * Done Use Cases
+             * @default 0
+             */
+            done_use_cases: number;
+            /**
+             * Done Tasks
+             * @default 0
+             */
+            done_tasks: number;
+            /**
+             * Sprint
+             * @default 0
+             */
+            sprint: number;
+            /**
+             * Late
+             * @default 0
+             */
+            late: number;
+            /**
+             * Review
+             * @default 0
+             */
+            review: number;
+            /**
+             * Stale
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Blocked
+             * @default 0
+             */
+            blocked: number;
+            /**
+             * Escalate
+             * @default 0
+             */
+            escalate: number;
+        };
+        /** PmLate */
+        PmLate: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "overdue" | "at_risk";
+            /**
+             * Days Late
+             * @description working days past due_on; overdue only
+             */
+            days_late: number | null;
+            /**
+             * Days Left
+             * @description working days left to due_on, today's included; at risk only
+             */
+            days_left: number | null;
+        };
+        /** PmLoad */
+        PmLoad: {
+            /** Login */
+            login: string;
+            /** Role */
+            role: string;
+            /** Doing */
+            doing: number;
+            /** Wip Limit */
+            wip_limit: number;
+            /**
+             * Overloaded
+             * @description doing is above wip_limit
+             */
+            overloaded: boolean;
+            /**
+             * Empty
+             * @description no task doing
+             */
+            empty: boolean;
+            /** Review As Qa */
+            review_as_qa: number;
+            /** Late */
+            late: number;
+            /** Doing Tasks */
+            doing_tasks: string[];
+        };
+        /** PmReview */
+        PmReview: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /** Qa */
+            qa: string[];
+            /**
+             * Since
+             * Format: date-time
+             * @description when it moved to a status of group review
+             */
+            since: string;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+        };
+        /** PmSprint */
+        PmSprint: {
+            /** Name */
+            name: string;
+            /** Starts On */
+            starts_on: string | null;
+            /** Ends On */
+            ends_on: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             * @description when it turned active, else its first day, else when it was made
+             */
+            opened_at: string;
+            /**
+             * Scope
+             * @description the tasks it held when it opened
+             */
+            scope: number;
+            /**
+             * Done Percent
+             * @description of that scope, done now; cancelled tasks leave the whole
+             */
+            done_percent: number | null;
+            /**
+             * Added
+             * @description tasks in it now that were not in it when it opened
+             */
+            added: number;
+            /**
+             * Removed
+             * @description tasks that were in it when it opened and are not now
+             */
+            removed: number;
+            /**
+             * Working Days
+             * @description in the sprint, from its opening to ends_on
+             */
+            working_days: number | null;
+            /**
+             * Working Days Gone
+             * @description before the date of the report
+             */
+            working_days_gone: number | null;
+            /**
+             * Time Percent
+             * @description working_days_gone over working_days
+             */
+            time_percent: number | null;
+            /** Use Cases */
+            use_cases: components["schemas"]["PmSprintUseCase"][];
+        };
+        /** PmSprintUseCase */
+        PmSprintUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Done */
+            done: number;
+            /**
+             * Total
+             * @description the tasks of the sprint that link it, not cancelled
+             */
+            total: number;
+        };
+        /** PmStale */
+        PmStale: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /**
+             * Source
+             * @description history, comment, run, plan_step or created
+             */
+            source: string;
+            /** Idle Days */
+            idle_days: number;
+        };
         /** PolicyChange */
         PolicyChange: {
             /**
@@ -15769,6 +16243,23 @@ export interface components {
             calls: number;
             /** Errors */
             errors: number;
+        };
+        /** ProgramKinds */
+        ProgramKinds: {
+            /** Program */
+            program: string;
+            /**
+             * Usage Errors
+             * @description failures of a wrong call: a usage line, an unknown option or choice
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @description failures the environment caused: the hub or the network, a timeout, a block
+             */
+            env_errors: number;
+            /** Other Errors */
+            other_errors: number;
         };
         /** Project */
         Project: {
@@ -15978,6 +16469,11 @@ export interface components {
              * @description per tool and runtime, the most called first
              */
             tools: components["schemas"]["RuntimeToolStat"][];
+            /**
+             * Skills
+             * @description per skill the Skill tool loaded, the most called first
+             */
+            skills?: components["schemas"]["RuntimeSkillStat"][];
         };
         /** Proposal */
         Proposal: {
@@ -18901,6 +19397,11 @@ export interface components {
              * @description the most called first; empty for a run that has not ended
              */
             tools: components["schemas"]["ToolStat"][];
+            /**
+             * Skills
+             * @description what the Skill tool loaded, the most called first; empty before schema 0087
+             */
+            skills?: components["schemas"]["SkillStat"][];
         };
         /** RunUploadRequest */
         RunUploadRequest: {
@@ -18945,6 +19446,26 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** RuntimeSkillStat */
+        RuntimeSkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Runs
+             * @description runs that loaded the skill
+             */
+            runs: number;
         };
         /** RuntimeToolStat */
         RuntimeToolStat: {
@@ -19382,6 +19903,28 @@ export interface components {
              * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
              */
             tool_result_chars?: components["schemas"]["ToolChars"][] | null;
+            /**
+             * Bash Kinds
+             * @description per program with failures, how many of each kind; null when an older client pushed the digest
+             */
+            bash_kinds?: components["schemas"]["ProgramKinds"][] | null;
+            /** @description Bash commands that ran several programs; null when a client that did not count them pushed */
+            bash_compound?: components["schemas"]["CompoundBash"] | null;
+            /**
+             * Skills
+             * @description per skill loaded, its loads and the friction after them, the most loaded first; null when a client that did not count them pushed the digest
+             */
+            skills?: components["schemas"]["SkillCount"][] | null;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent
+             */
+            interrupts?: number | null;
+            /**
+             * Turns
+             * @description turns of the person, the commands they typed among them
+             */
+            turns?: number | null;
             /**
              * Spool Results
              * @description results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest
@@ -19835,6 +20378,63 @@ export interface components {
              */
             published_at: string;
         };
+        /** SkillCount */
+        SkillCount: {
+            /**
+             * Skill
+             * @description the skill, as the Skill tool or the person's /name named it
+             */
+            skill: string;
+            /**
+             * Calls
+             * @description loads: through the Skill tool, and typed by the person
+             */
+            calls: number;
+            /**
+             * Typed
+             * @description loads the person typed as /name (Codex: named with $name)
+             */
+            typed: number;
+            /**
+             * Failed
+             * @description calls of the Skill tool that answered an error
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Bash
+             * @description Bash commands from each load to the person's next turn
+             * @default 0
+             */
+            bash: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent in those windows
+             * @default 0
+             */
+            interrupts: number;
+            /**
+             * Corrections
+             * @description turns that closed a window and read as a correction of the agent
+             * @default 0
+             */
+            corrections: number;
+        };
         /** SkillHistory */
         SkillHistory: {
             /**
@@ -19856,6 +20456,21 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+        };
+        /** SkillStat */
+        SkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
         };
         /** SourceRead */
         SourceRead: {
@@ -21108,6 +21723,107 @@ export interface components {
              */
             daily_usd: number;
         };
+        /**
+         * TasksBlocker
+         * @description What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task.
+         */
+        TasksBlocker: {
+            /**
+             * Id
+             * @description the blocker's id for PATCH; None for an open decision
+             */
+            id: number | null;
+            /**
+             * Kind
+             * @description manual: set with POST blockers; decision: an open decision of a run
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /**
+             * Reason
+             * @description why; a decision's question
+             */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @description who or what it waits on: a member, a task or a text
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /**
+             * Waiting On
+             * @description the member's login, the task's ref, or the text
+             */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             * @description when it was set; when a decision was asked
+             */
+            since: string;
+            /**
+             * Set By
+             * @description who set it; None for a decision
+             */
+            set_by: string | null;
+            /** Cleared At */
+            cleared_at: string | null;
+            /** Cleared By */
+            cleared_by: string | null;
+            /**
+             * Decision Id
+             * @description decision: the decision to answer
+             */
+            decision_id: number | null;
+            /**
+             * Run Id
+             * @description decision: the run that asked it
+             */
+            run_id: number | null;
+        };
+        /**
+         * TasksBlockerEdit
+         * @description A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``.
+         */
+        TasksBlockerEdit: {
+            /** Reason */
+            reason?: string | null;
+            /** Waiting Member */
+            waiting_member?: string | null;
+            /** Waiting Task */
+            waiting_task?: string | null;
+            /** Waiting Text */
+            waiting_text?: string | null;
+            /**
+             * Cleared
+             * @description true clears the blocker
+             * @default false
+             */
+            cleared: boolean;
+        };
+        /**
+         * TasksBlockerIn
+         * @description A new blocker: why, and exactly one of the three things it waits on.
+         */
+        TasksBlockerIn: {
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Member
+             * @description the login of a member with a grant
+             */
+            waiting_member?: string | null;
+            /**
+             * Waiting Task
+             * @description the ref of another task of the project
+             */
+            waiting_task?: string | null;
+            /**
+             * Waiting Text
+             * @description someone outside, in words
+             */
+            waiting_text?: string | null;
+        };
         /** TasksComment */
         TasksComment: {
             /** Id */
@@ -21419,6 +22135,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -21434,7 +22155,7 @@ export interface components {
         };
         /**
          * TasksItemDetail
-         * @description A task whole: its description, links, history and comments.
+         * @description A task whole: its description, links, blockers, history and comments.
          */
         TasksItemDetail: {
             /** Number */
@@ -21494,6 +22215,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -21509,6 +22235,11 @@ export interface components {
             /** Description Md */
             description_md: string;
             /**
+             * Outcome Md
+             * @description what the task came to, markdown; pm reads it before the description's outcome section
+             */
+            outcome_md: string;
+            /**
              * External Ref
              * @description where an import took it from, and what it named it could not link
              */
@@ -21517,6 +22248,11 @@ export interface components {
             } | null;
             /** Links */
             links: components["schemas"]["TasksLink"][];
+            /**
+             * Blockers
+             * @description every open blocker, those set by hand first
+             */
+            blockers: components["schemas"]["TasksBlocker"][];
             /** Events */
             events: components["schemas"]["TasksEvent"][];
             /** Comments */
@@ -21532,6 +22268,8 @@ export interface components {
             title?: string | null;
             /** Description Md */
             description_md?: string | null;
+            /** Outcome Md */
+            outcome_md?: string | null;
             /** Type */
             type?: string | null;
             /** Status */
@@ -21566,6 +22304,11 @@ export interface components {
              * @default
              */
             description_md: string;
+            /**
+             * Outcome Md
+             * @default
+             */
+            outcome_md: string;
             /** Type */
             type?: string | null;
             /** Status */
@@ -21788,6 +22531,11 @@ export interface components {
             created_at: string;
             /** Closed At */
             closed_at: string | null;
+            /**
+             * Activated At
+             * @description when it turned active; empty for a sprint that was active before the hub kept this
+             */
+            activated_at: string | null;
             /**
              * Tasks
              * @description how many tasks it holds
@@ -39298,6 +40046,78 @@ export interface operations {
             };
         };
     };
+    daily_v1_x_pm__project__daily_get: {
+        parameters: {
+            query?: {
+                /** @description the day of the report; today when left out */
+                date?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PmDaily"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_documents_v1_x_srs__project__documents_get: {
         parameters: {
             query?: {
@@ -41021,6 +41841,8 @@ export interface operations {
                 mine?: boolean;
                 /** @description an assignee's login */
                 assignee?: string | null;
+                /** @description the tasks that are blocked */
+                blocked?: boolean;
                 limit?: number;
             };
             header?: {
@@ -41602,6 +42424,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TasksComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_blocker_v1_x_tasks__project__tasks__ref__blockers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+                blocker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
                 };
             };
             /** @description Unauthorized */

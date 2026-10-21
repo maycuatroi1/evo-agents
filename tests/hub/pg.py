@@ -151,9 +151,13 @@ MERGE_TABLES = frozenset({"merge_queue", "merge_events"})
 SAMPLE_TABLES = frozenset({"merge_samples"})
 # migration 0084: the breaker of each repo of the merge queue
 BREAKER_TABLES = frozenset({"merge_breakers"})
-# migration 0085: the outputs of runs and what carries them
+# migration 0085: what a task waits on
+TASKS_BLOCKER_TABLES = frozenset({"tasks_blockers"})
+# migration 0086: what the plugin pm sent
+PM_TABLES = frozenset({"pm_sends"})
+# migration 0089: the outputs of runs and what carries them
 OUTPUT_TABLES = frozenset({"run_outputs", "run_output_links"})
-# migration 0086: the notices members turned off
+# migration 0090: the notices members turned off
 MUTE_TABLES = frozenset({"notification_mutes"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

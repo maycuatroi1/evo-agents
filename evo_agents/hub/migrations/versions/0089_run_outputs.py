@@ -1,7 +1,7 @@
 """The outputs of runs, their links to questions and chat messages, and a project's switch of tool images.
 
-Revision ID: 0085
-Revises: 0084
+Revision ID: 0089
+Revises: 0088
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.outputs`` and ``evo_agents.hub.tables_outputs`` as of this revision,
@@ -22,8 +22,8 @@ stay, as any blob a project holds, for the collection of unreferenced blobs to t
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0085"
-down_revision = "0084"
+revision = "0089"
+down_revision = "0088"
 branch_labels = None
 depends_on = None
 
