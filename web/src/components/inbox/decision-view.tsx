@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, CircleCheck, Clock, Eraser, Lock, Terminal } from "lucide-react";
+import { ChevronDown, CircleCheck, Clock, Eraser, Terminal } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -15,7 +15,7 @@ import { durationParts } from "@/components/runs/model";
 import { runHref } from "@/components/runs/queries";
 import { utf8Bytes } from "@/components/runs/run-model";
 import { shortcutText } from "@/components/shell/shortcuts";
-import { StatusBadge, useStatusText } from "@/components/status/status-badge";
+import { StatusBadge } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,7 @@ import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
 import { DecisionCategoryBadge } from "./badges";
+import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
 import {
@@ -534,33 +535,6 @@ function AnswerForm({
   );
 }
 
-/** Why the visitor sees no form: someone else's decision, or one whose run can no longer take an answer. */
-export function NoFormNote({ decision, access }: { decision: Decision; access: "notOwner" | "runGone" }) {
-  const t = useTranslations("inbox.decision");
-  const tState = useStatusText("run");
-  return (
-    <p className="flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2.5 text-[13px] leading-[18px] text-pretty text-muted-foreground" data-testid="decision-locked" data-reason={access}>
-      <Lock className="mt-px size-4 shrink-0" aria-hidden="true" />
-      <span>
-        {access === "notOwner"
-          ? t("onlyOwner", { owner: decision.owner, run: decision.run_id })
-          : t("runGone", { run: decision.run_id, state: tState(decision.run_state) })}
-      </span>
-    </p>
-  );
-}
-
-export function ClosedNote({ decision }: { decision: Decision }) {
-  const t = useTranslations("inbox.decision");
-  if (decision.state !== "expired" && decision.state !== "cancelled") return null;
-  return (
-    <p className="flex items-start gap-2 text-[13px] leading-[18px] text-pretty text-muted-foreground" data-testid="decision-closed">
-      <Lock className="mt-px size-4 shrink-0" aria-hidden="true" />
-      <span>{decision.state === "expired" ? t("expired", { run: decision.run_id }) : t("cancelled", { run: decision.run_id })}</span>
-    </p>
-  );
-}
-
 /**
  * One decision as the kit's DecisionCard. While it is open: the head on `attention-soft`, the question, the agent's
  * context folded after four lines, then for the run's owner the answer form, and for anyone else the options and why
@@ -613,6 +587,7 @@ export function DecisionCard({
           {decision.question.trim()}
         </Question>
         {open && decision.context ? <FoldedContext text={decision.context} /> : null}
+        <DecisionFiles decision={decision} />
         {decision.state === "answered" ? <AnswerSummary decision={decision} /> : null}
         <ClosedNote decision={decision} />
         {open && access !== "answer" ? (

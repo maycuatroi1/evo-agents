@@ -19,6 +19,8 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
+import { OutputSettingsCard } from "./output-settings";
+
 function labelText(label: Record<string, unknown>): string {
   return ["level", "location", "integrity"]
     .map((key) => label[key])
@@ -244,6 +246,7 @@ function Overview({ project }: { project: Project }) {
         <div className="flex flex-col gap-6">
           <Ladder project={project} />
           <Details project={project} />
+          {project.role === null ? null : <OutputSettingsCard project={project} />}
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <Repos project={project} />

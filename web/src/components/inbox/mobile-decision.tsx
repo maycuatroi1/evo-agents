@@ -39,14 +39,13 @@ import {
   AnswerHint,
   AnswerSummary,
   AskedTiming,
-  ClosedNote,
   DecisionStatePill,
   DecisionWhere,
   FoldedContext,
-  NoFormNote,
   TakeOverButton,
   useAnswerForm,
 } from "./decision-view";
+import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { OptionList } from "./decision-options";
 import { useInboxViewer, useParksAt } from "./hooks";
 import { InboxBell } from "./inbox-bell";
@@ -155,6 +154,7 @@ function ScreenLead({
         </h1>
       </SheetTitle>
       {open && decision.context ? <FoldedContext text={decision.context} screen /> : null}
+      <DecisionFiles decision={decision} />
     </>
   );
 }

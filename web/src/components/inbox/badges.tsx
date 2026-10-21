@@ -10,6 +10,7 @@ import {
   DatabaseZap,
   GitMerge,
   Hammer,
+  Images,
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
@@ -74,6 +75,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   canvas_baseline: { icon: ClipboardCheck },
   merge_paused: { icon: PowerOff },
   release: { icon: Tags },
+  run_outputs: { icon: Images },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

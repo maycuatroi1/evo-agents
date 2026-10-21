@@ -449,6 +449,18 @@
       "path": "Thư mục harness",
       "created": "Đăng ký lúc",
       "updated": "Cập nhật lúc"
+    },
+    "outputs": {
+      "title": "Output của run",
+      "description": "File mà agent của các run trong dự án này tạo ra: file nó gửi, file nó để trong .evo-run/outputs/ và ảnh trong kết quả tool.",
+      "toolImages": "Giữ ảnh trong kết quả tool",
+      "toolImagesHint": "Screenshot và ảnh một tool trả về thành file của run, và bị xoá cùng log của run. Khi tắt, máy không gửi và hub từ chối các ảnh đó.",
+      "adminOnly": "Admin của dự án bật hay tắt mục này.",
+      "limits": "Tối đa {file} mỗi file, {count, number} file và {run} mỗi run.",
+      "loadFailed": "Không đọc được cài đặt output của dự án.",
+      "turnedOn": "Đã bật giữ ảnh trong kết quả tool",
+      "turnedOff": "Đã tắt giữ ảnh trong kết quả tool",
+      "failed": "Không đổi được việc giữ ảnh trong kết quả tool"
     }
   },
   "admin": {
@@ -3569,7 +3581,8 @@
           "trace": "Trace",
           "log": "Log thô",
           "terminal": "Terminal",
-          "chat": "Chat"
+          "chat": "Chat",
+          "outputs": "Output"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
         "connect": "Kết nối terminal",
@@ -3977,6 +3990,37 @@
         "unknown": "không rõ",
         "plan": "Plan",
         "step": "Bước"
+      },
+      "outputs": {
+        "count": "{count, plural, other {# file}}",
+        "label": "Output của run #{id}",
+        "filter": "Nguồn",
+        "all": "Tất cả",
+        "sources": {
+          "sent": "Gửi",
+          "tool": "Tool",
+          "outputs": "Thư mục output"
+        },
+        "summary": "{count, plural, other {# file}}, {size}",
+        "toolImagesOff": "Dự án này đang tắt ảnh từ kết quả tool.",
+        "noMatch": "Không có file nào của nguồn này.",
+        "none": "Run này chưa có file nào.",
+        "loading": "Đang tải các file",
+        "failed": "Không đọc được các file.",
+        "retry": "Thử lại",
+        "arrived": "{count, plural, other {# file mới}}",
+        "showInTrace": "Xem trong trace",
+        "delete": "Xoá",
+        "deleteTitle": "Xoá {name}?",
+        "deleteDescription": "File bị gỡ khỏi run, khỏi các câu hỏi và tin nhắn chat có nó; bytes bị xoá khi không còn gì tham chiếu. Không hoàn tác được.",
+        "deleteConfirm": "Xoá file",
+        "deleting": "Đang xoá",
+        "keep": "Giữ lại",
+        "deleted": "Đã xoá {name}",
+        "deleteFailed": "Không xoá được {name}",
+        "deleteForbidden": "Chỉ người dispatch run, hoặc admin của dự án, xoá được file của nó.",
+        "preview": "Output",
+        "previewOpen": "Mở tất cả output"
       }
     },
     "diff": {
@@ -4849,7 +4893,8 @@
       "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
       "canvas_baseline": "Một baseline của Lean Canvas chờ bạn duyệt",
       "merge_paused": "Hàng đợi merge của một repo đã dừng",
-      "release": "Phát hành hằng ngày"
+      "release": "Phát hành hằng ngày",
+      "run_outputs": "File từ một run"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -5035,6 +5080,22 @@
       "resumeConflict": "Cầu dao này không còn ở trạng thái nhảy.",
       "resumeGone": "{login} đã đặt lại cầu dao.",
       "resumed": "Đã đặt lại cầu dao của {repo}"
+    },
+    "settings": {
+      "button": "Thông báo",
+      "title": "Thông báo",
+      "description": "Những thông báo đến với bạn, trong Inbox và trên Telegram. Câu hỏi của các run của bạn luôn đến với bạn.",
+      "loadFailed": "Không đọc được cài đặt thông báo của bạn từ hub.",
+      "retry": "Thử lại",
+      "close": "Đóng",
+      "kind": {
+        "run_outputs": {
+          "label": "File từ các run của bạn",
+          "hint": "File mà agent gửi trong khi làm một run bạn đã dispatch, gom theo từng phút."
+        }
+      },
+      "saved": "{on, select, true {Bạn sẽ nhận lại thông báo} other {Bạn sẽ không nhận thông báo nữa}}: {kind}",
+      "failed": "Không đổi được thông báo"
     }
   },
   "toast": {
@@ -8077,6 +8138,58 @@
       "emptyTitle": "Không có tín hiệu trong khoảng này",
       "empty": "Không có số đo nào trong {days} ngày qua.",
       "emptyTenant": "Không có số đo nào cho {tenant} trong {days} ngày qua."
+    }
+  },
+  "outputs": {
+    "open": "Mở {name}, {kind}, {size}",
+    "more": "{count, plural, other {thêm # file}}",
+    "source": {
+      "sent": "Agent gửi",
+      "tool": "Từ kết quả tool",
+      "outputs": "Thư mục output"
+    },
+    "strip": {
+      "question": "File của câu hỏi này",
+      "message": "File của tin nhắn này",
+      "notice": "File của thông báo này",
+      "calls": "File của các lệnh gọi này",
+      "recorded": "File hub đã ghi nhận"
+    },
+    "viewer": {
+      "kind": {
+        "image": "Ảnh",
+        "video": "Video",
+        "audio": "Âm thanh",
+        "pdf": "PDF",
+        "text": "Văn bản",
+        "html": "Trang web",
+        "none": "File"
+      },
+      "kindSize": "{kind}, {size}",
+      "navigation": "Các file",
+      "previous": "File trước",
+      "next": "File sau",
+      "position": "{index} trên {total}",
+      "zoom": "Thu phóng",
+      "zoomIn": "Phóng to",
+      "zoomOut": "Thu nhỏ",
+      "fit": "Vừa khung",
+      "download": "Tải về",
+      "close": "Đóng trình xem",
+      "frameTitle": "Xem trước {name}",
+      "pdfNote": "Nếu trình duyệt không hiện PDF ở đây, hãy mở nó trong một tab riêng.",
+      "openTab": "Mở trong tab mới",
+      "sandboxNote": "Hiện trong sandbox: script của trang vẫn chạy nhưng không với tới hub hay phiên đăng nhập của bạn.",
+      "noPreview": "Loại file này không có bản xem trước. Tải về để mở.",
+      "imageFailed": "Trình duyệt không hiện được ảnh này.",
+      "loading": "Đang đọc file",
+      "readFailed": "Không đọc được file.",
+      "retry": "Thử lại",
+      "emptyFile": "File trống.",
+      "tableLabel": "Các dòng của file",
+      "textLabel": "Nội dung file",
+      "csvMore": "Đang hiện {count, number} dòng đầu.",
+      "textCut": "Đang hiện {size} đầu. Tải file về để xem phần còn lại."
     }
   }
 }

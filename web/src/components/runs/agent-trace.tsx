@@ -1,21 +1,7 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  ArrowDown,
-  Bot,
-  Brain,
-  ChevronRight,
-  Circle,
-  CircleCheck,
-  CircleDot,
-  CircleX,
-  Info,
-  ListChecks,
-  MessageSquare,
-  User,
-} from "lucide-react";
-import Link from "next/link";
+import { ArrowDown, Bot, Brain, ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { memo, type ReactNode, type RefObject, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -23,25 +9,24 @@ import { SafeMarkdown } from "@/components/memories/markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import type { RepoWeb } from "./forge";
 import { LinkedText } from "./links";
-import type { DescribeMove } from "./log-model";
-import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
+import type { RunEvent } from "./queries";
 import { TraceTyping } from "./chat-parts";
 import { holdsStepReport } from "./step-report-start";
-import {
-  buildTrace,
-  openByDefault,
-  TRACE_VIRTUAL_THRESHOLD,
-  type TraceItem,
-} from "./trace-model";
+import { buildTrace, openByDefault, TRACE_VIRTUAL_THRESHOLD, type TraceItem } from "./trace-model";
 import { useTraceDuration } from "./trace-look";
 import { StepReportMessage } from "./trace-report-lazy";
 import { Row, Who } from "./trace-row";
-import { TermBlock } from "./trace-term";
+import { AskRow, MoveRow, PlanRow, SystemRow, type TraceContext, UserRow } from "./trace-rows";
 import { callRunning, groupByIntent, type NormalItem } from "./trace-groups";
 import { GroupRow } from "./trace-tools";
 import type { LogStatus } from "./use-run-log";
+import { useTraceOutputs } from "./use-run-outputs";
+
+export type { TraceContext };
+
+/** A row of the trace to show, asked by the page (an output's Show in trace): its tool call, or else its seq. */
+export type TraceReveal = { call: string | null; seq: number | null; nonce: number };
 
 /**
  * The kit's AgentTrace, the default tab of a run's page: what the agent did, step by step (trace-model.ts reads the
@@ -62,26 +47,6 @@ import type { LogStatus } from "./use-run-log";
 const END_SLACK = 32;
 /** An item's height before it is measured. */
 const ITEM_ESTIMATE = 64;
-
-export type TraceContext = {
-  runId: number;
-  /** The login of the run's owner, whom the agent asks. */
-  owner: string;
-  /** The visitor's login, to say "You". */
-  viewer: string | null;
-  describe: DescribeMove;
-  /** Decisions open now whose card is on this page, which "Asked you" links to; the others link to the Inbox. */
-  openDecisions: ReadonlySet<number>;
-  /** An author run's: opens a decision's card in the Chat tab, where every decision of the run is. */
-  showDecision?: (id: number) => void;
-  /** The agent is at work: the trace ends with the typing dots. */
-  working: boolean;
-  /** The run may still write events. */
-  active: boolean;
-  /** The web page of the run's repo on a branch, which a step report's branch and commits link to. */
-  webOfBranch?: (branch: string | null) => RepoWeb | null;
-};
-
 
 const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
 const message = (text: string) => <SafeMarkdown className="leading-[21px]" testId="trace-message">{text}</SafeMarkdown>;
@@ -113,157 +78,6 @@ function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" 
         ) : null}
       </div>
     </Row>
-  );
-}
-
-function PlanRow({ item }: { item: Extract<TraceItem, { type: "plan" }> }) {
-  const t = useTranslations("runs.detail.trace");
-  const done = item.entries.filter((entry) => entry.status === "completed").length;
-  return (
-    <Row
-      icon={ListChecks}
-      look="agent"
-      at={item.at}
-      head={
-        <>
-          <Who>{t("plan")}</Who>
-          <span className="tabular-nums">{t("planCount", { done, total: item.entries.length })}</span>
-        </>
-      }
-    >
-      <ul className="flex flex-col gap-1 text-sm" data-testid="trace-plan">
-        {item.entries.map((entry, index) => {
-          const Icon = entry.status === "completed" ? CircleCheck : entry.status === "in_progress" ? CircleDot : Circle;
-          return (
-            <li key={index} className="flex min-w-0 items-start gap-2" data-status={entry.status}>
-              <Icon
-                className={cn(
-                  "mt-0.5 size-4 shrink-0",
-                  entry.status === "completed" ? "text-success" : entry.status === "in_progress" ? "text-running" : "text-fg-subtle",
-                )}
-                aria-hidden="true"
-              />
-              <span className="sr-only">{t(`planStatus.${entry.status}`)}: </span>
-              <span className={cn("min-w-0 [overflow-wrap:anywhere]", entry.status === "completed" && "text-muted-foreground")}>
-                <LinkedText text={entry.content} />
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </Row>
-  );
-}
-
-function AskRow({ item, context }: { item: Extract<TraceItem, { type: "ask" }>; context: TraceContext }) {
-  const t = useTranslations("runs.detail.trace");
-  const mine = context.viewer !== null && context.viewer === context.owner;
-  const onPage = context.openDecisions.has(item.decisionId);
-  const link = "shrink-0 font-medium text-brand underline-offset-4 hover:text-brand-hover hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center";
-  return (
-    <Row
-      icon={MessageSquare}
-      look="ask"
-      at={item.at}
-      head={
-        <>
-          <Who>{mine ? t("askedYou") : t("asked", { login: context.owner })}</Who>
-          <span className="min-w-0 text-foreground [overflow-wrap:anywhere]" data-testid="trace-ask-question">
-            <LinkedText text={item.question} />
-          </span>
-          {onPage || context.showDecision ? (
-            <a
-              href={`#${decisionAnchor(item.decisionId)}`}
-              className={link}
-              onClick={(event) => {
-                if (!context.showDecision) return;
-                event.preventDefault();
-                context.showDecision(item.decisionId);
-              }}
-              data-testid="trace-ask-link"
-            >
-              {mine && onPage ? t("answer") : t("viewDecision")}
-            </a>
-          ) : (
-            <Link href={decisionHref(item.decisionId)} className={link} data-testid="trace-ask-link">
-              {t("inInbox")}
-            </Link>
-          )}
-        </>
-      }
-    />
-  );
-}
-
-function UserRow({ item, context }: { item: Extract<TraceItem, { type: "user" }>; context: TraceContext }) {
-  const t = useTranslations("runs.detail.trace");
-  const you = item.from !== null && item.from === context.viewer;
-  const who = you ? t("you") : (item.from ?? t("someone"));
-  return (
-    <Row
-      icon={User}
-      look="user"
-      at={item.at}
-      head={
-        <Who>
-          {item.decisionId !== null
-            ? you
-              ? t("youAnswered", { id: item.decisionId })
-              : t("answered", { login: who, id: item.decisionId })
-            : who}
-        </Who>
-      }
-    >
-      <p className="text-sm leading-[21px] break-words whitespace-pre-wrap text-foreground">
-        <LinkedText text={item.text} />
-      </p>
-    </Row>
-  );
-}
-
-function SystemRow({ item }: { item: Extract<TraceItem, { type: "system" }> }) {
-  const t = useTranslations("runs.detail.trace");
-  const Icon = item.tone === "ok" ? CircleCheck : item.tone === "error" ? CircleX : Info;
-  return (
-    <Row
-      icon={Icon}
-      look="system"
-      system
-      at={item.at}
-      head={
-        <span className={cn("min-w-0 break-words whitespace-pre-wrap", item.tone === "error" && "text-danger", item.tone === "ok" && "text-success")}>
-          <LinkedText text={item.text} />
-        </span>
-      }
-    >
-      {item.output ? (
-        <details className="group/out min-w-0 overflow-hidden rounded-sm border" data-testid="trace-system-output">
-          <summary className="flex h-8 cursor-pointer list-none items-center gap-2 px-3 text-xs text-muted-foreground select-none hover:bg-accent max-md:h-11 [&::-webkit-details-marker]:hidden">
-            <ChevronRight className="size-3.5 transition-transform duration-[var(--transition-duration-base)] group-open/out:rotate-90" aria-hidden="true" />
-            {t("systemOutput")}
-          </summary>
-          <TermBlock text={item.output} testId="trace-system-output-text" />
-        </details>
-      ) : null}
-    </Row>
-  );
-}
-
-function MoveRow({ item, context }: { item: Extract<TraceItem, { type: "move" }>; context: TraceContext }) {
-  const bad = item.move.to === "failed" || item.move.to === "lost";
-  const good = item.move.to === "done";
-  return (
-    <Row
-      icon={bad ? CircleX : good ? CircleCheck : CircleDot}
-      look="system"
-      system
-      at={item.at}
-      head={
-        <span className={cn("min-w-0 [overflow-wrap:anywhere]", bad && "text-danger", good && "text-success")}>
-          <LinkedText text={context.describe(item.move)} />
-        </span>
-      }
-    />
   );
 }
 
@@ -378,17 +192,32 @@ function VirtualItems({
   );
 }
 
+/** Where a row to reveal sits: its index among the items, and the call it is when it is one of a group's. */
+function revealTarget(items: readonly NormalItem[], reveal: TraceReveal) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.type === "group") {
+      const call = reveal.call === null ? undefined : item.calls.find((entry) => entry.tool.id === reveal.call);
+      if (call) return { index, item, call };
+    } else if (reveal.seq !== null && item.seq === reveal.seq) return { index, item, call: null };
+  }
+  return null;
+}
+
 export function AgentTrace({
   events,
   status,
   context,
   shown = true,
   fill = false,
+  reveal = null,
 }: {
   events: readonly RunEvent[];
   status: LogStatus;
   context: TraceContext;
   shown?: boolean;
+  /** A row the page asks to show (Show in trace): opened, scrolled to the middle and focused, following stopped. */
+  reveal?: TraceReveal | null;
   /**
    * From the xl breakpoint, take the height the parent gives (the run page's session card, as tall as the window
    * allows) instead of growing with the items up to 70 % of the window.
@@ -399,8 +228,13 @@ export function AgentTrace({
   const tLog = useTranslations("runs.detail.log");
   const deferred = useDeferredValue(events);
   const built = useMemo(() => buildTrace(deferred), [deferred]);
-  // Calls that did the same kind of work are one row; the runtime's bookkeeping events are left to the Raw log.
-  const items = useMemo(() => groupByIntent(built), [built]);
+  // Calls that did the same kind of work are one row; the runtime's bookkeeping events are left to the Raw log, and the
+  // hub's lines of files its calls show already are left out (output-index.ts).
+  const hidden = useTraceOutputs()?.index?.hiddenSystem;
+  const items = useMemo(() => {
+    const grouped = groupByIntent(built);
+    return hidden?.size ? grouped.filter((item) => !(item.type === "system" && hidden.has(item.seq))) : grouped;
+  }, [built, hidden]);
   const rawLeft = useMemo(() => built.reduce((sum, item) => sum + (item.type === "raw" ? item.events.length : 0), 0), [built]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [follow, setFollow] = useState(true);
@@ -430,6 +264,32 @@ export function AgentTrace({
           .join(",")}`
       : "";
   const render = (item: NormalItem) => <Item item={item} context={context} open={isOpen(item)} onToggle={onToggle} signature={signature(item)} />;
+
+  // A row asked for opens with its group, and the trace stops following so it stays in view.
+  const [revealed, setRevealed] = useState<number | null>(null);
+  if (reveal && reveal.nonce !== revealed) {
+    setRevealed(reveal.nonce);
+    const target = revealTarget(items, reveal);
+    if (target) setFollow(false);
+    if (target?.call) {
+      const keys = [target.item.key, target.call.key];
+      setToggled((previous) => new Map([...previous, ...keys.map((key) => [key, true] as const)]));
+    }
+  }
+  useLayoutEffect(() => {
+    const target = revealed !== null && reveal ? revealTarget(items, reveal) : null;
+    if (!target) return;
+    if (virtual) virtualRef.current?.scrollToIndex(target.index, { align: "center" });
+    const show = () => {
+      const row = scrollRef.current?.querySelector<HTMLElement>(`[data-testid="trace-item"][data-seq="${target.item.seq}"]`);
+      const call = target.call?.tool.id ? row?.querySelector<HTMLElement>(`[data-tool-call-id="${CSS.escape(target.call.tool.id)}"] > summary`) : null;
+      const goal = call ?? row?.querySelector<HTMLElement>("button, summary, a") ?? null;
+      (goal ?? row)?.scrollIntoView({ block: "center" });
+      goal?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(show));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per row asked for, on the items of that render
+  }, [revealed]);
 
   const toEnd = () => {
     const element = scrollRef.current;
