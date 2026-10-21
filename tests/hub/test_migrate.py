@@ -97,6 +97,7 @@ TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.POLICY_TABLES  # migration 0066
+TABLES |= pg.MERGE_TABLES  # migration 0068
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -171,8 +172,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_three_tables(hub_db):
-    assert len(TABLES) == 103  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_five_tables(hub_db):
+    assert len(TABLES) == 105  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1352,6 +1353,67 @@ def test_0067_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
     assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+
+
+def test_0068_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0067")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    judge_run = {
+        "project_id": ids["project"],
+        "kind": "judge",
+        "dispatched_by": ids["user"],
+        "dispatched_via": "machine",
+        "requested_runtime": "claude-code",
+        "runtime": "claude-code",
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": 600,
+        "repos": [{"repo": "lumen", "branch": "plan/report"}],
+    }
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # 0059 and 0017: a judge run is on a plan and a schedule
+            conn.execute(insert(t.runs).values(judge_run))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0068")
+    q, e = t.merge_queue, t.merge_events
+    row = {
+        "project_id": ids["project"],
+        "repo": "lumen",
+        "source": "plan",
+        "plan_id": "report",
+        "target_branch": "dev",
+        "source_branch": "plan/report",
+        "iid": 1,
+    }
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, insert(t.runs).values(judge_run).returning(t.runs.c.id))
+        row_id = one(conn, insert(q).values(**row, judge_run_id=run_id).returning(q.c.id))
+        line = {"project_id": ids["project"], "queue_id": row_id, "kind": "gate", "gate": 1, "passed": False}
+        conn.execute(insert(e).values(line))
+        for bad in (
+            {**row, "iid": 2, "source": "fork"},
+            {**row, "iid": 3, "state": "lost"},
+            {**row, "iid": 4, "plan_id": None},  # a plan's merge request names its plan
+            {**row, "iid": 0, "plan_id": "other"},
+            {**row, "iid": 5, "plan_id": "other", "reason": "x" * 2001},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(q).values(bad))
+        for bad in ({**line, "gate": None}, {**line, "gate": 8}, {**line, "kind": "pipeline"}, {**line, "kind": "x"}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(e).values(bad))
+        with pytest.raises(errors.UniqueViolation):  # one merge request for each plan and repo
+            conn.execute(insert(q).values({**row, "iid": 6}))
+        conn.execute(insert(q).values({**row, "iid": 7, "source": "label", "plan_id": None}))
+    assert query(hub_db, select(func.count()).select_from(e)) == [(1,)]
+    # Going back drops the queue, deletes the judge runs on no plan and puts the checks of 0059 and 0017 back.
+    move_to(hub_db, "0067", down=True)
+    assert {"merge_queue", "merge_events"}.isdisjoint(tables(hub_db))
+    assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "judge")) == [(0,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

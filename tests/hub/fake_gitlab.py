@@ -1,21 +1,23 @@
-"""A fake GitLab for the hub tests: the API v4 of one host held in memory and served through ``httpx.MockTransport``,
-so the real GitLab is never called (``evo_agents.hub.server.gitlab``).
+"""A fake GitLab for the hub tests: the API v4 of one host held in memory and served through ``httpx.MockTransport``, so
+the real GitLab is never called (``evo_agents.hub.server.gitlab``).
 
 A test adds projects (``add_project``: merge settings, branch heads, protected branches), their merge requests
-(``add_merge_request``: head, labels, files, commits, whether GitLab would merge it, the head a rebase gives it) and
-the pipelines of a commit with their jobs (``add_pipeline``), and reads back every request (``requests``), the comments
-(``notes``), the jobs played with their variables (``played``) and the reverts made (``reverted``). Every request needs
+(``add_merge_request``: head, labels, files, commits, whether GitLab would merge it, the head a rebase gives it) and the
+pipelines of a commit with their jobs (``add_pipeline``), and reads back every request (``requests``), the comments
+(``notes``), the jobs played with their variables (``played``) and the reverts made (``reverted``). ``label`` records
+who added or removed a label of a merge request, and a project's ``members`` the role of each user. Every request needs
 the PRIVATE-TOKEN header ``token`` names, or the answer is 401, as GitLab answers. ``queue`` scripts the answers of the
-next requests, whatever they ask, one a request: a status with a body or headers, or an exception the transport
-raises (a timeout).
+next requests, whatever they ask, one a request: a status with a body or headers, or an exception the transport raises
+(a timeout).
 
-It answers what the hub's client calls, as GitLab does: GET /projects/:id and .../protected_branches/:name; GET and
-POST .../merge_requests, GET .../merge_requests/:iid with .../diffs, .../commits (paged by x-next-page), PUT .../rebase
-(202, the head becomes ``rebase_to``), PUT .../merge (409 for a sha that is not the head, 405 when ``mergeable`` is
-false, else merged fast-forward: the target branch's head becomes the merge request's), POST .../notes; GET
-.../pipelines (by sha and ref, the newest first), .../pipelines/:id and .../pipelines/:id/jobs; POST .../jobs/:id/play
-(a manual job only, else 400) and .../jobs/:id/retry; POST .../repository/branches (400 for a branch that exists) and
-POST .../repository/commits/:sha/revert (400 with the error_code ``revert_refusals`` names for that sha).
+It answers what the hub's client calls, as GitLab does: GET /projects/:id and .../protected_branches/:name; GET and POST
+.../merge_requests, GET .../merge_requests/:iid with .../diffs, .../commits and .../resource_label_events (paged by
+x-next-page), GET .../members/all/:user_id, PUT .../rebase (202, the head becomes ``rebase_to``), PUT .../merge (409 for
+a sha that is not the head, 405 when ``mergeable`` is false, else merged fast-forward: the target branch's head becomes
+the merge request's), POST .../notes; GET .../pipelines (by sha and ref, the newest first), .../pipelines/:id and
+.../pipelines/:id/jobs; POST .../jobs/:id/play (a manual job only, else 400) and .../jobs/:id/retry; POST
+.../repository/branches (400 for a branch that exists) and POST .../repository/commits/:sha/revert (400 with the
+error_code ``revert_refusals`` names for that sha).
 """
 
 from __future__ import annotations
@@ -59,6 +61,7 @@ class FakeMergeRequest:
     merge_error: str | None = None
     merge_commit_sha: str | None = None
     pipeline: dict | None = None  # its head pipeline
+    label_events: list[dict] = field(default_factory=list)  # as .../resource_label_events lists them
 
     def as_json(self) -> dict:
         return {
@@ -102,6 +105,7 @@ class FakeProject:
     notes: list[tuple[int, str]] = field(default_factory=list)
     played: list[tuple[int, dict]] = field(default_factory=list)  # (job id, variables)
     reverted: list[tuple[str, str]] = field(default_factory=list)  # (sha, branch)
+    members: dict[int, int] = field(default_factory=dict)  # user id: access level, inherited ones included
 
     def as_json(self) -> dict:
         return {
@@ -223,6 +227,12 @@ class FakeGitLab:
             (r"/merge_requests/(\d+)/rebase", "PUT", self._rebase),
             (r"/merge_requests/(\d+)/merge", "PUT", self._merge),
             (r"/merge_requests/(\d+)/notes", "POST", self._note),
+            (
+                r"/merge_requests/(\d+)/resource_label_events",
+                "GET",
+                lambda p, q, b, iid: self._page(q, self._mr(p, iid).label_events),
+            ),
+            (r"/members/all/(\d+)", "GET", self._member),
             (r"/pipelines", "GET", self._pipelines),
             (r"/pipelines/(\d+)", "GET", self._pipeline),
             (r"/pipelines/(\d+)/jobs", "GET", lambda p, q, b, pid: self._page(q, p.jobs.get(int(pid), []))),
@@ -296,6 +306,27 @@ class FakeGitLab:
         if body.get("should_remove_source_branch"):
             project.branches.pop(mr.source_branch, None)
         return _answer(200, mr.as_json())
+
+    def _member(self, project, query, body, user_id):
+        level = project.members.get(int(user_id))
+        if level is None:
+            return _refused(404, "404 Not found")
+        return _answer(200, {"id": int(user_id), "username": f"user-{user_id}", "access_level": level})
+
+    def label(self, merge_request: FakeMergeRequest, label: str, user_id: int, action: str = "add") -> None:
+        """``user_id`` adds (or removes) ``label`` on ``merge_request``, as a resource label event says."""
+        if action == "add" and label not in merge_request.labels:
+            merge_request.labels.append(label)
+        if action == "remove" and label in merge_request.labels:
+            merge_request.labels.remove(label)
+        merge_request.label_events.append(
+            {
+                "id": next(self._ids),
+                "user": {"id": user_id, "username": f"user-{user_id}"},
+                "label": {"id": 1, "name": label},
+                "action": action,
+            }
+        )
 
     def _note(self, project, query, body, iid):
         project.notes.append((int(iid), body["body"]))

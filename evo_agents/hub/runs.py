@@ -163,6 +163,9 @@ LAZY_CHAT_REPOS = "lazy_chat_repos"
 # ones it holds end, updates itself to the tag nightly and claims again, and reports in self_update.update_now how a
 # request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
 UPDATE_NOW = "update_now"
+# a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
+# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
+MERGE_JUDGE = "merge_judge"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -175,6 +178,7 @@ WORKER_FEATURES = (
     KG_SYNC,
     LAZY_CHAT_REPOS,
     UPDATE_NOW,
+    MERGE_JUDGE,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>

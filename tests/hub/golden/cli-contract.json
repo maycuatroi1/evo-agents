@@ -42030,6 +42030,327 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/merge-queue": {
+        "get": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Show Queue",
+          "description": "The merge requests of the project's queue (``repo``'s alone when given), newest first, each with its ledger.",
+          "operationId": "show_queue_v1_projects__project__merge_queue_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Repo"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeQueueView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/merge-judge": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge Judge Inputs",
+          "description": "What the judge run of the queue this worker holds reads, with the run's own key.",
+          "operationId": "merge_judge_inputs_v1_worker_runs__run_id__merge_judge_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeJudgeInputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/merge-verdict": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Merge Verdict",
+          "description": "The verdict of the judge run of the queue this worker holds, with the run's own key: the gates it closes.",
+          "operationId": "merge_verdict_v1_worker_runs__run_id__merge_verdict_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Judge-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Judge-Key"
+              },
+              "description": "the judge run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeVerdictIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MergeVerdict"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -48516,6 +48837,29 @@
           ],
           "title": "DigestSummary"
         },
+        "Dimension": {
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ],
+              "title": "Verdict"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Reason",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict"
+          ],
+          "title": "Dimension"
+        },
         "Dispatch": {
           "properties": {
             "plan_id": {
@@ -53387,6 +53731,350 @@
             "body"
           ],
           "title": "MemoryRevision"
+        },
+        "MergeEvent": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "gate": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate",
+              "description": "the gate's number, 0 to 7, for kind gate"
+            },
+            "gate_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gate Name"
+            },
+            "passed": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Passed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "detail": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Detail"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "gate",
+            "gate_name",
+            "passed",
+            "reason",
+            "sha",
+            "run_id",
+            "detail",
+            "created_at"
+          ],
+          "title": "MergeEvent"
+        },
+        "MergeJudgeInputs": {
+          "properties": {
+            "queue_id": {
+              "type": "integer",
+              "title": "Queue Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "type": "integer",
+              "title": "Iid"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "base_branch": {
+              "type": "string",
+              "title": "Base Branch"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "second": {
+              "type": "boolean",
+              "title": "Second",
+              "description": "the second Judge, of a merge request of high risk"
+            },
+            "verify": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Verify"
+            },
+            "protected_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Protected Paths"
+            },
+            "hidden_checks": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Hidden Checks",
+              "description": "commands run in the worktree; never logged, never shown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "queue_id",
+            "repo",
+            "iid",
+            "branch",
+            "base_branch",
+            "head_sha",
+            "second",
+            "verify",
+            "protected_paths",
+            "hidden_checks"
+          ],
+          "title": "MergeJudgeInputs",
+          "description": "What a judge run of the queue reads: the merge request, the verify of its plan's steps in the repo, the\ncharter's protected paths, and the project's hidden checks, which no other run reads."
+        },
+        "MergeQueueView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "requests": {
+              "items": {
+                "$ref": "#/components/schemas/QueuedMergeRequest"
+              },
+              "type": "array",
+              "title": "Requests",
+              "description": "newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "requests"
+          ],
+          "title": "MergeQueueView"
+        },
+        "MergeVerdict": {
+          "properties": {
+            "queue_id": {
+              "type": "integer",
+              "title": "Queue Id"
+            },
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "this Judge's verdict, its checks and the worker's reading of the diff"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "where the merge request stands now"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "queue_id",
+            "passed",
+            "state",
+            "reason"
+          ],
+          "title": "MergeVerdict"
+        },
+        "MergeVerdictIn": {
+          "properties": {
+            "verdict": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict",
+              "description": "the Judge agent's; null when it gave none"
+            },
+            "reasons": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reasons"
+            },
+            "head_sha": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head Sha",
+              "description": "the commit the worktree was at"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "verify": {
+              "items": {
+                "$ref": "#/components/schemas/VerifyResult"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Verify"
+            },
+            "hidden": {
+              "items": {
+                "$ref": "#/components/schemas/HiddenResult"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Hidden"
+            },
+            "signs": {
+              "items": {
+                "$ref": "#/components/schemas/Sign"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Signs"
+            },
+            "paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 3000,
+              "title": "Paths"
+            },
+            "dimensions": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/Dimension"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dimensions",
+              "description": "each dimension the Judge judged apart, with its verdict and reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "verdict",
+            "head_sha"
+          ],
+          "title": "MergeVerdictIn"
         },
         "Message": {
           "properties": {
@@ -59016,6 +59704,274 @@
             "queued"
           ],
           "title": "Queued"
+        },
+        "QueuedMergeRequest": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "iid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iid",
+              "description": "null while the hub could not open it"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "one of plan, task, builder, label"
+            },
+            "target_branch": {
+              "type": "string",
+              "title": "Target Branch"
+            },
+            "source_branch": {
+              "type": "string",
+              "title": "Source Branch"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            },
+            "steps": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Steps"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "web_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Web Url"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of gating, judging, ready, rebasing, testing, merging, merged, verifying, releasing, done, rolling_back, reverting, reverted, blocked, paused, closed"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it waits or is blocked, the gate first"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "fingerprint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fingerprint"
+            },
+            "risk": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Risk"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            },
+            "judge_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Judge Run Id"
+            },
+            "queued_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queued At"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/MergeEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "its ledger, the newest 100 first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "iid",
+            "source",
+            "target_branch",
+            "source_branch",
+            "run_id",
+            "plan_id",
+            "steps",
+            "change_id",
+            "profile",
+            "model",
+            "title",
+            "web_url",
+            "state",
+            "reason",
+            "head_sha",
+            "fingerprint",
+            "risk",
+            "verdict",
+            "judge_run_id",
+            "queued_at",
+            "merged_at",
+            "created_at",
+            "updated_at",
+            "events"
+          ],
+          "title": "QueuedMergeRequest",
+          "description": "A merge request of the queue: where it comes from, where it stands and why, and its ledger."
         },
         "RateLimitAnswer": {
           "properties": {

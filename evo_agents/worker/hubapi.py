@@ -245,6 +245,14 @@ class WorkerHub:
     async def verdict(self, run_id: int, body: dict, key: str | None) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body, headers=_judge_key(key))
 
+    async def merge_judge_inputs(self, run_id: int, key: str | None) -> dict:
+        """What a judge run of the hub's merge queue reads, with the run's own key."""
+        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/merge-judge", headers=_judge_key(key))
+
+    async def merge_verdict(self, run_id: int, body: dict, key: str | None) -> dict:
+        """The verdict of a judge run of the hub's merge queue, with the run's own key."""
+        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-verdict", body, headers=_judge_key(key))
+
     async def replay(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST one arm of a replay run, or why it replays nothing, with the run's own key."""
         from evo_agents.hub.replay import REPLAY_KEY_HEADER

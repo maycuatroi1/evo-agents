@@ -257,6 +257,13 @@ def _path_raises(kind: str, repo: str, path: str, protected, unknown, knowledge)
     return raises
 
 
+def path_raises(repo: str, path: str, protected=()) -> list[tuple[int, str]]:
+    """(level, why) of each path rule of ``tier_of`` that ``repo:path`` raises a change by, whatever its kind: a
+    protected path or one of HARD_PATHS 3, a schema or a migration 2, code 1; nothing for documentation or a test. The
+    risk score of the merge queue reads it (``evo_agents.hub.merge_gate``), as a merge request names no kind."""
+    return _path_raises("", repo, path, protected, {}, None)
+
+
 def tier_of(
     kind: str,
     paths: list[tuple[str, str]],
