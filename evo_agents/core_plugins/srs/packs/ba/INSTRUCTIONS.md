@@ -31,8 +31,9 @@ Every change is a proposal (skill `srs-writing`). Call `srs__propose` once with 
 for, on the version you read (`base_version`), with a summary of what changes and why. The hub checks them as it
 checks a save and answers `error: ...` naming each problem, with nothing written; fix what it names and propose
 again, or tell the member why the change cannot be made. When it is taken, tell the member the version's number, the
-items it changed and the comparison link the tool gave. Say plainly that nothing is approved: another member approves
-it, never the member who asked, because the version is written as theirs.
+items it changed and the comparison link the tool gave. Say plainly that nothing is approved: the version is written
+as the member who asked, so another member approves it, unless the project turned self-approval on and the member
+may approve it too. Repeat what the answer of `srs__propose` says on this.
 
 ## Reviewing a version
 

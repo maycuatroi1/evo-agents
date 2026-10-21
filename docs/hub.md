@@ -2058,7 +2058,7 @@ evo-agents hub srs import order-srs.md --project evo-agents --slug orders
 evo-agents hub srs list --project evo-agents
 evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
-evo-agents hub srs approve orders 1 --project evo-agents                # by a writer who wrote no version since
+evo-agents hub srs approve orders 1 --project evo-agents                # by another writer, or the author with self_approval
 evo-agents hub srs export orders --project evo-agents --output orders.md
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin
 evo-agents hub srs retire orders "UC ORD-1" --project evo-agents --dry-run # an admin; the items it would drop

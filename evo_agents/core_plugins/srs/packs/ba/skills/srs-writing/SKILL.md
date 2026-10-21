@@ -60,5 +60,6 @@ the steps they apply to, `Step (2)` or `Steps (2, 2.1)`. Link the screens it sho
 - There is no change that drops an item: tell the member that a member of the project drops it.
 - When the item changed since `base_version`, the hub answers a conflict with the item's text now: read it again,
   redo the change on it and propose again.
-- The version goes to review at once, written as the member who asked, so another member approves it. Tell the
-  member its number, what it changed and the comparison link.
+- The version goes to review at once, written as the member who asked, so another member approves it, unless the
+  project turned self-approval on (the tool's answer says so). Tell the member its number, what it changed, the
+  comparison link and who may approve it.

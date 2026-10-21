@@ -92,11 +92,13 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Settings:
-    """The plugin's effective config in a project: the template, the members of each role and the approval policy."""
+    """The plugin's effective config in a project: the template, the members of each role, the approval policy, and
+    whether the author of a version may approve it (``self_approval``, off unless an admin turns it on)."""
 
     template: Template
     roles: dict = field(default_factory=dict)
     policy: dict = field(default_factory=dict)
+    self_approval: bool = False
 
 
 def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
@@ -379,7 +381,8 @@ async def project_settings(conn: AsyncConnection, project_id: int, project: str)
         template = template_of(values.get("template"), values.get("code_patterns"))
     except TemplateError as exc:
         raise SrsError(409, f"the config of plugin {PLUGIN} in project {project}: {exc}") from None
-    return Settings(template, dict(values.get("roles") or {}), dict(values.get("approval_policy") or {}))
+    roles, policy = dict(values.get("roles") or {}), dict(values.get("approval_policy") or {})
+    return Settings(template, roles, policy, self_approval=values.get("self_approval") is True)
 
 
 __all__ = [

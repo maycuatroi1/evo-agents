@@ -2,11 +2,12 @@
 
 - ``submit``: a writer sends a draft to review once it has no error (``checks``); its review round goes up by one.
 - ``review``: a writer approves a version in review or asks for changes. Nobody who wrote a version since the one
-  approved last (the version under review included) reviews it, admins included, and the agent of a run never does.
-  A request for changes sends the version back to draft. An approval counts for a role the reviewer holds in the
-  config's ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires
-  approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
-  but a withdrawn one.
+  approved last (the version under review included) reviews it, admins included, unless the config's ``self_approval``
+  is on: then the author reviews it as any writer does. The agent of a run never reviews one, the switch on or off. A
+  request for changes sends the version back to draft. An approval counts for a role the reviewer holds in the config's
+  ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires approved it
+  in this round, or after one approval when it requires none. Approving it supersedes every older version but a
+  withdrawn one.
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
@@ -100,7 +101,12 @@ async def _approve(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) ->
     await conn.execute(update(d).where(d.c.id == doc.id).values(approved_version=held.number))
 
 
-async def _checked_reviewer(conn: AsyncConnection, access: ProjectAccess, user: Principal, doc, held: VersionRow):
+async def _checked_reviewer(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, doc, held: VersionRow, settings: Settings
+) -> None:
+    """Refuse ``user`` a review of ``held``: the agent of a run always, a member without writer, a version not in
+    review, an author since the version approved last (unless ``settings.self_approval``), a second review this
+    round."""
     if user.scope is not None:
         raise SrsError(403, "the agent of a run never approves or returns a version: a member of the project does")
     writer(access, "reviewing a version")
@@ -108,7 +114,7 @@ async def _checked_reviewer(conn: AsyncConnection, access: ProjectAccess, user: 
         raise SrsError(
             409, f"version {held.number} of {doc.slug} is {held.state}: only a version in review is reviewed"
         )
-    if user.user_id in await _authors_since(conn, doc, held.number):
+    if not settings.self_approval and user.user_id in await _authors_since(conn, doc, held.number):
         since = f"version {doc.approved_version}" if doc.approved_version else "the first version"
         raise SrsError(403, f"{user.login} wrote a version of {doc.slug} since {since}: another member reviews it")
     if any(review.reviewer_id == user.user_id and review.round == held.round for review in held.reviews):
@@ -134,7 +140,7 @@ async def review(
     """Approve version ``number`` of ``doc`` or ask for changes, as ``user``; its row after. The caller holds the
     document's row lock."""
     held = await store.version(conn, doc, number, lock=True)
-    await _checked_reviewer(conn, access, user, doc, held)
+    await _checked_reviewer(conn, access, user, doc, held, settings)
     approvals = [r for r in held.reviews if r.round == held.round and r.decision == APPROVE]
     role = role_for(settings, user.login, request.role, doc.kind, approvals)
     s = tables.srs
