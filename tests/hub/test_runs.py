@@ -1165,10 +1165,11 @@ def test_dispatch_and_rerun_of_a_step_whose_repo_has_no_origin_are_409_naming_th
     refused = dispatch(client, hub["owner"], [2])
     assert refused.status_code == 409, refused.text
     message = refused.json()["message"]
-    assert "step 2 of plan rollout needs evo-agents" in message and f"project {PROJECT} lists no origin" in message
+    assert "step 2 of plan rollout needs evo-agents" in message
+    assert f"neither project {PROJECT} nor another project you hold a grant on lists an origin" in message
     assert message.endswith("nothing was dispatched")
     again = control(client, hub["owner"], old["id"], "rerun")
-    assert again.status_code == 409 and "lists no origin" in again.json()["message"]
+    assert again.status_code == 409 and "lists an origin" in again.json()["message"]
     assert count_runs(hub_db) == [(1,)]
     # a repo the project does not list at all is refused the same way
     body = registration()

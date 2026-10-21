@@ -187,7 +187,7 @@ def test_the_harness_is_a_checkout_from_the_hubs_project_or_the_registrys_root(t
     held = checkouts.hub_repos(project)
     assert held == {
         "workspace": str(workspace),
-        "repos": [{"name": "evo-agents", "path": "evo-agents", "default_branch": "main"}],
+        "repos": [{"name": "evo-agents", "path": "evo-agents", "default_branch": "main", "origin": None}],
         "harness": "demo-harness",
     }
     expected = {

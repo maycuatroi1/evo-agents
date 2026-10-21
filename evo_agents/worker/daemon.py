@@ -170,6 +170,7 @@ class Daemon:
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
         self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
         self.checkouts: dict[str, dict] = {}
+        self._set_up: dict[str, dict] = {}  # the checkouts runs set up (add_checkout), kept by a look begun before
         self.draining = False
         self.exit_code = 0
         self.stopped_by_hub = False
@@ -201,6 +202,24 @@ class Daemon:
     def repo_lock(self, checkout: Path) -> asyncio.Lock:
         return self._repo_locks.setdefault(str(checkout), asyncio.Lock())
 
+    def add_checkout(self, project: str, repo: str, path: Path) -> None:
+        """A checkout of ``repo`` of ``project`` a run set up at ``path`` (``runner.clones``): in the checkouts the next
+        heartbeat reports, and in ``checkouts`` of config.json, read again so a field set by hand since the start stays,
+        so the next look at the machine finds it whatever registry or project names it."""
+        key = f"{project}/{repo}"
+        self.checkouts[key] = self._set_up[key] = {"path": str(path), "branch": checkouts.git_branch(path)}
+        self.config.checkouts = {**(self.config.checkouts or {}), key: str(path)}
+        try:
+            on_disk = self.home.load_config()
+        except Exception:  # an unreadable config.json: write the one in memory, which holds the new checkout
+            on_disk = self.config
+        on_disk.checkouts = {**(on_disk.checkouts or {}), key: str(path)}
+        try:
+            self.home.save(on_disk)
+        except OSError as exc:
+            log.error("config.json could not be written; the checkout holds until the daemon stops", exc_info=exc)
+        log.info("checkout set up", extra={"checkout": key, "path": str(path)})
+
     def fatal(self, problem: HubProblem) -> None:
         """The hub no longer takes this worker (a revoked worker or token, or a protocol the hub no longer speaks):
         stop everything, without reports."""
@@ -227,7 +246,11 @@ class Daemon:
             self.runtimes = await asyncio.to_thread(self._detect)
             self._runtimes_at = now
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
-            self.checkouts = await asyncio.to_thread(checkouts.discover, self.config)
+            found = await asyncio.to_thread(checkouts.discover, self.config)
+            for key, entry in self._set_up.items():  # set up while the look ran, before config.json held it
+                if key not in found and checkouts.is_work_tree(Path(entry["path"])):
+                    found[key] = entry
+            self.checkouts = found
             self._checkouts_at = now
 
     def _detect(self) -> dict[str, dict]:
@@ -317,9 +340,8 @@ class Daemon:
         if not available:
             log.warning("no runtime can take runs here; the worker claims nothing until one can")
         if not self.checkouts:
-            log.warning(
-                "no checkout of the worker's projects found: add their repos to the harness registry "
-                "(`evo-agents hub registry pull`) or set checkouts in config.json",
+            log.info(
+                "no checkout of the worker's projects found: each run clones the repos it needs",
                 extra={"projects": self.config.projects},
             )
 
