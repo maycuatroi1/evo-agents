@@ -15,6 +15,7 @@ import {
   CircleHelp,
   Equal,
   Eye,
+  Lock,
   ListChecks,
   type LucideIcon,
   Play,
@@ -53,6 +54,14 @@ export function groupLook(group: TaskGroup | null): StatusLook {
 /** A task's status as a pill: the project's name for it, drawn by its group. */
 export function TaskStatusBadge({ name, group, ...props }: StatusPillProps & { name: string; group: TaskGroup | null }) {
   return <StatusPill look={groupLook(group)} label={name} data-group={group ?? "other"} data-testid="task-status" {...props} />;
+}
+
+/** A task that waits on something: a flag beside its status, never a status of its own. */
+export const BLOCKED_LOOK = { tone: "attention", icon: Lock } as const satisfies StatusLook;
+
+export function BlockedBadge(props: StatusPillProps) {
+  const t = useTranslations("tasks.blockers");
+  return <StatusPill look={BLOCKED_LOOK} label={t("blocked")} data-testid="task-blocked" {...props} />;
 }
 
 /** A sprint's state: active (green, the one at work), planned, closed. */
