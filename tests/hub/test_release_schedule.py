@@ -535,6 +535,8 @@ def test_a_worker_handed_no_release_pass_checks_no_schedule_and_says_so(world, c
 def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkeypatch, tmp_path):
     import argparse
 
+    from evo_agents.hub.server.loop.tick import tick as loop_tick
+
     from evo_agents.hub import cli as hub_cli
     from evo_agents.hub import worker
     from evo_agents.hub.config import S3_VARIABLES
@@ -548,7 +550,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker"
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
-    assert handed == [{"release_pass": release_pass}]
+    assert handed == [{"release_pass": release_pass, "loop_tick": loop_tick}]
 
 
 # From the command line
