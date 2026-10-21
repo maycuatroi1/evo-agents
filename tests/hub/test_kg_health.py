@@ -424,6 +424,7 @@ def test_schema_0055_takes_the_lens_kg_health_and_going_back_deletes_what_it_wro
         "0066",
         "0067",
         "0068",
+        "0069",
     )
     b = tables.kg_builds
     assert sql(world.db, select(func.count(), func.count(b.c.coverage)))[0] == (3, 0)  # the column came back empty

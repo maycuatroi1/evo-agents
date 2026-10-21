@@ -204,6 +204,36 @@ def test_a_merge_whose_head_moved_is_a_sha_mismatch_and_one_gitlab_will_not_merg
     assert mr.state == "opened" and project.branches["main"] != mr.sha
 
 
+def test_merge_queue_reads_the_head_of_a_branch_and_a_merge_request_behind_it_needs_a_rebase(fake):
+    project, mr = merge_request_of(fake)
+    assert calls(fake, lambda gl: gl.branch_head(PATH, "main")) == project.branches["main"]
+    assert calls(fake, lambda gl: gl.branch_head(PATH, "release/1.0")) is None  # no such branch
+    assert fake.paths()[-1] == f"GET /api/v4/projects/{ENCODED}/repository/branches/release%2F1.0"
+    project.branches["main"] = sha_of("merged by hand")
+    behind = calls(fake, lambda gl: gl.merge_request(PATH, mr.iid))
+    assert behind.detailed_merge_status == "need_rebase"
+    with pytest.raises(NotMergeable, match="GitLab answered 406 while merging !1"):
+        calls(fake, lambda gl: gl.merge(PATH, mr.iid, mr.sha))
+
+    async def rebased(gl):
+        await gl.rebase(PATH, mr.iid)
+        return await gl.merge_request(PATH, mr.iid)
+
+    found = calls(fake, rebased)
+    assert found.detailed_merge_status == "mergeable" and found.sha != behind.sha and project.rebased == [1]
+    assert calls(fake, lambda gl: gl.merge(PATH, mr.iid, found.sha)).state == "merged"
+    assert project.branches["main"] == found.sha
+
+
+def test_merge_queue_retries_a_pipeline_that_failed(fake):
+    project, mr = merge_request_of(fake)
+    pipeline = fake.add_pipeline(project, mr.sha, mr.source_branch, "failed", jobs=[("test", "failed")])
+    again = calls(fake, lambda gl: gl.retry_pipeline(PATH, pipeline["id"]))
+    assert (again.id, again.status) == (pipeline["id"], "running") and project.retried == [pipeline["id"]]
+    assert fake.paths()[-1] == f"POST /api/v4/projects/{ENCODED}/pipelines/{pipeline['id']}/retry"
+    assert [job["status"] for job in project.jobs[pipeline["id"]]] == ["failed", "pending"]
+
+
 def test_a_comment_is_posted_on_the_merge_request(fake):
     project, mr = merge_request_of(fake)
     note = calls(fake, lambda gl: gl.comment(PATH, mr.iid, "Blocked: the pipeline of the head failed."))

@@ -1416,6 +1416,40 @@ def test_0068_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
 
 
+def test_0069_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0068")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q = t.merge_queue
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "testing"}))
+        conn.execute(insert(q).values({**row, "iid": 2, "source_branch": "fix/b", "state": "ready"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0069")
+    rows = select(q.c.iid, q.c.state, q.c.rebases).order_by(q.c.iid)
+    assert query(hub_db, rows) == [(1, "testing", 0), (2, "ready", 0)]
+    second = q.c.iid == 2
+    with live.connect(hub_db) as conn:
+        for state in ("rebasing", "testing", "merging"):  # !1 has the turn of dev
+            with pytest.raises(errors.UniqueViolation):
+                conn.execute(update(q).values(state=state).where(second))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(update(q).values(rebases=-1).where(second))
+        main = {**row, "iid": 3, "source_branch": "fix/c", "target_branch": "main", "state": "merging"}
+        conn.execute(insert(q).values(main))  # main has a turn of its own
+        conn.execute(update(q).values(state="merged").where(q.c.iid == 1))
+        conn.execute(update(q).values(state="rebasing", rebases=1).where(second))  # !1 merged: the turn is !2's
+    assert query(hub_db, rows) == [(1, "merged", 0), (2, "rebasing", 1), (3, "merging", 0)]
+    # Going back drops the index and the column and keeps the rows.
+    move_to(hub_db, "0068", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
+    assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

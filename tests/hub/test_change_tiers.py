@@ -432,6 +432,7 @@ def test_tier_schema_0057_takes_kind_kg_source_and_going_back_deletes_its_propos
         "0066",
         "0067",
         "0068",
+        "0069",
     )
     assert "kg_source" in kind_check(db)
 
