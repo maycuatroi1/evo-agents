@@ -501,6 +501,13 @@ audited `run.finish`). A parked run is then `done` at once (`OWNER ended the cha
 over, with the agent's summary (or its last message). A message or a wait after the end is 409. A queued author run
 has no chat to end (409: cancel it), and a run of another kind has none at all (409).
 
+An author run the Loop of a project hands out (plan loop-engine) runs in Loop mode: its prompt says no member reads its
+chat turn by turn, so the agent decides what it can and asks a member only what nobody else can answer. When its worker
+reports `waiting` after a turn that leaves a plan the run (or a run it resumes) put on the hub and no decision of the run
+open, the hub sets `finish_requested_at` itself, as the owner's end of the chat would, writes so in the run's log and
+sends no `author_waiting`; the worker ends the run `done` on its next heartbeat. A turn that ends before the plan is on
+the hub, or with a decision open, waits for the owner as any author run's does.
+
 A question with options goes to the member as a decision (Decisions and notices below), on a daemon that lists
 `author_decisions` in its heartbeat's `features`. `POST /v1/worker/runs/{id}/decisions` takes it from the worker that
 holds the author run with the bounds of a plan run's: a category of `runs.DECISION_CATEGORIES`, 2 to 6 options, at
@@ -2175,8 +2182,10 @@ agent's environment, and a machine where Claude Code has no subscription login (
 environment, `~/.claude/.credentials.json`, or the macOS keychain item `Claude Code-credentials`) fails the run before
 its agent starts, saying so.
 
-The agent of a review run, a judge run or a Builder gets the hub's MCP server from its runtime's adapter, so it has the
-hub's tools its prompt names on a worker without the evo-hub plugin (`evo_agents/worker/runtimes/hub_tools.py`):
+The agent of a review run, a judge run, a Builder or a task run of a plugin's agent type (the brainstorm of
+@strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
+hub's tools its prompt names on a worker without the evo-hub plugin, Codex included
+(`evo_agents/worker/runtimes/hub_tools.py`):
 Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hub`, the stdio proxy
 `evo-agents hub mcp` of the daemon's own install (its interpreter with `-I`, so a checkout of evo_agents in the
 worktree is never imported), with the run's `EVO_RUN_ID`, `EVO_WORKER_HOME` and `EVO_RUN_PROJECT`, so it speaks with

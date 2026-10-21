@@ -90,6 +90,13 @@ CLOSED_GROUPS = (DONE_GROUP, CANCELLED_GROUP)
 RUN_ENDED = ("done", "failed", "lost", "cancelled")  # runs.TERMINAL_STATES
 MERGE_FINAL = "done"  # merge_gate.STATES: what follows its merge is over
 MERGED, REVERTED = "merged", "reverted"
+MERGE_HELD = ("blocked", "paused")  # merge_gate.STATES: a merge request that waits for a person
+ASKING = ("waiting", "parked")  # the states of a run whose agent waits for its owner's answer
+DRAFT, IN_REVIEW, WITHDRAWN = "draft", "in_review", "withdrawn"  # tables_srs.VERSION_STATES
+# Triage and the person (the report's section Triage): the failure that opens triage, the one that asks a person, and
+# how long the third hand-out waits at most for the chat run of the triage thread.
+TRIAGE_AT, ASK_AT = 2, 3
+TRIAGE_WAIT_MINUTES = 60
 
 
 @dataclass(frozen=True)
@@ -150,6 +157,8 @@ class ItemView:
     parent_id: int | None = None
     detail: Mapping = field(default_factory=dict)
     runs: tuple[int, ...] = ()
+    attempts: int = 0
+    failures: int = 0
 
     @property
     def finished(self) -> bool:
@@ -183,18 +192,46 @@ class ApprovalView:
 
 @dataclass(frozen=True)
 class RunView:
-    """A run a work item waits on: its kind and state, the plan an author run wrote (None: none), and for a plan run
-    whether every step of its plan is done."""
+    """A run a work item waits on, the newest of those that go on from the run handed out for it (a run resumed, the
+    next attempt of a run lost): its kind and state, the plan an author run wrote (None: none), for a plan run whether
+    every step of its plan is done and the repos it works in, whether its owner's end of an author run's chat was asked
+    (``finish_requested``), its decisions open, and the proposals of claims it made."""
 
     id: int
     kind: str
     state: str
     plan_id: str | None = None
     steps_done: bool | None = None
+    repos: tuple[str, ...] = ()
+    finish_requested: bool = False
+    decisions: int = 0
+    proposals: int = 0
 
     @property
     def ended(self) -> bool:
         return self.state in RUN_ENDED
+
+    @property
+    def asks(self) -> bool:
+        """Whether its agent waits for its owner: a turn ended with a question, or a decision open."""
+        return self.state in ASKING and not self.finish_requested
+
+
+@dataclass(frozen=True)
+class VersionView:
+    """The version of an SRS document a use_case work item's runs drafted, as it stands now: the newest version of that
+    document from the first its runs drafted on (a settle chat may write the next); the ids of the open findings of
+    level decide of the document (``decide``), the link of the version's settle chat, and whether a reviewer asked for
+    changes in its last round (``changes``)."""
+
+    id: int
+    document_id: int
+    document: str
+    number: int
+    state: str
+    decide: tuple[int, ...] = ()
+    chat: str | None = None
+    changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -215,7 +252,11 @@ class View:
     (None before it comes this week); ``keys`` the keys of the project's brainstorm work items; ``brainstormed`` when
     each goal's newest brainstorm was made; ``proposals`` the open proposals of claims a goal's brainstorm runs made;
     ``versions`` the run that drafted each version an event names; ``tasks`` the frame tasks of the work items by id
-    and ``frames`` by external key; ``approvals`` what the plugin srs did of each approved version, by its id."""
+    and ``frames`` by external key; ``approvals`` what the plugin srs did of each approved version, by its id;
+    ``runs`` the runs the work items wait on by the id handed out (the triage chat runs by their own); ``drafts`` the
+    version each use_case work item drafted, by work item; ``manual`` the repos whose merge requests the hub's queue
+    does not merge (``repos.<repo>.mode`` off, or on GitHub); ``released`` the repos of each deliver's plan its
+    ``repos`` mark merged (or not needed)."""
 
     now: datetime
     policy: Mapping
@@ -234,6 +275,9 @@ class View:
     approvals: Mapping[int, ApprovalView] = field(default_factory=dict)
     runs: Mapping[int, RunView] = field(default_factory=dict)
     merges: Mapping[str, tuple[MergeView, ...]] = field(default_factory=dict)
+    drafts: Mapping[int, VersionView] = field(default_factory=dict)
+    manual: frozenset[str] = frozenset()
+    released: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     def goal_of_canvas(self, canvas_id: int) -> GoalView | None:
         """The active goal with a metric that a claim of canvas ``canvas_id`` serves: the first by rank among those

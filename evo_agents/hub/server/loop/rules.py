@@ -28,9 +28,16 @@ or retired (row 4), or its frame task closed before a run was handed out for it 
 ``loop.stable_hours`` to queued; a ``build`` from its frame task's approval to the task, then to queued once the task
 is ready (group todo, the split run ended, in an active sprint when ``loop.require_sprint``; row 7); a ``build``
 whose author run wrote a plan and ended to done, with a ``deliver`` of that plan (row 9); a ``deliver`` whose merge
-requests are all through to done (row 10), one reverted a failure (row 11). A run that failed or was lost is a
-failure, the work item queued again; a run a person cancelled cancels it. Test cards past their deadline make nothing
-(row 13): the canvas's baseline asks about them.
+requests are all through to done (row 10), one reverted a failure (row 11), and one whose repos the queue does not
+merge to a person (``merge_manual``) until the plan marks them merged. A run a person cancelled cancels its work item.
+Test cards past their deadline make nothing (row 13): the canvas's baseline asks about them.
+
+A work item waits for a person (``waiting_human``), and fails nothing, while its run's agent waits for its owner (an
+author's question, a plan run's decision), while the version a use_case drafted waits for its review or for the settle
+chat of an open finding of level decide, and while a merge request of its plan is held. A failure (a run failed or lost
+for good, a run that ended without what it was for, a revert) queues it again the first time, puts it in triage the
+second and asks a person from the third (``_failure``; the tick's ``stall`` opens the thread and asks the decision);
+changes asked of a use_case's version queue it again with no failure.
 """
 
 from __future__ import annotations
@@ -40,6 +47,7 @@ from datetime import datetime, timedelta
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
+    ASK_AT,
     BA,
     BRAINSTORM,
     BUILD,
@@ -48,12 +56,14 @@ from evo_agents.hub.server.loop.model import (
     DELIVER,
     DONE,
     DONE_EVENT,
+    DRAFT,
     ENDED_CLAIMS,
     ENGINE,
     FAILED,
+    IN_REVIEW,
     MERGE_FINAL,
+    MERGE_HELD,
     MERGED,
-    OWNER_OF,
     PAUSED,
     QUEUED,
     READY,
@@ -62,15 +72,21 @@ from evo_agents.hub.server.loop.model import (
     STRATEGIST,
     TESTING,
     TODO,
+    TRIAGE_AT,
+    TRIAGE_WAIT_MINUTES,
     USE_CASE,
     VALIDATED,
     WAITING,
+    WAITING_HUMAN,
     WATCHING,
+    WITHDRAWN,
     Effect,
     Event,
     ItemView,
     Note,
+    RunView,
     Transition,
+    VersionView,
     View,
     WorkSpec,
 )
@@ -151,7 +167,12 @@ def _chains(event: Event, view: View) -> list[tuple[ItemView, list[str]]]:
     drafted = view.versions.get(payload["version_id"])
     found: dict[int, tuple[ItemView, list[str]]] = {}
     for item in view.items:
-        if item.kind == USE_CASE and drafted is not None and drafted in item.runs:
+        if item.kind != USE_CASE:
+            continue
+        follows = view.drafts.get(item.id)  # a later version of the document its run drafted (a settle chat's)
+        if (drafted is not None and drafted in item.runs) or (
+            not item.finished and follows is not None and follows.document_id == payload.get("document_id")
+        ):
             found[item.id] = (item, added)
     touched = {code_key(code) for code in (*added, *changed)}
     for claim in view.claims.values():
@@ -233,9 +254,13 @@ def _stale(item: ItemView, view: View) -> Transition | None:
     return None
 
 
+def _run_of(item: ItemView, view: View) -> RunView | None:
+    return view.runs.get(item.run_id) if item.run_id is not None else None
+
+
 def _run_end(item: ItemView, view: View) -> Transition | None:
     """A run of the work item that ended other than done: cancelled by a person, or a failure."""
-    run = view.runs.get(item.run_id) if item.run_id is not None else None
+    run = _run_of(item, view)
     if run is None or not run.ended or run.state == "done":
         return None
     if run.state == "cancelled":
@@ -244,25 +269,92 @@ def _run_end(item: ItemView, view: View) -> Transition | None:
 
 
 def _failure(item: ItemView, **detail) -> Transition:
+    """A failure of the work item (the report's section Triage): queued again at the first, triage at the second
+    (watching until the chat run of its triage thread ends, TRIAGE_WAIT_MINUTES at most), and a decision of a person
+    from the third on (waiting_human, ``loop_decision``)."""
+    count = item.failures + 1
+    detail = {**detail, "failures": count}
+    if count >= ASK_AT:
+        return Transition(item.id, WAITING_HUMAN, FAILED, reason="loop_decision", detail=detail, failed=True)
+    if count >= TRIAGE_AT:
+        return Transition(item.id, WATCHING, FAILED, reason="triage", detail=detail, failed=True)
     return Transition(item.id, QUEUED, FAILED, detail=detail, failed=True)
 
 
-def _done_run(item: ItemView, view: View):
-    run = view.runs.get(item.run_id) if item.run_id is not None else None
-    return run if run is not None and run.state == "done" else None
+def _triaged(item: ItemView, view: View) -> Transition | None:
+    """A work item in triage queued again once the tick opened its thread and the thread's chat run ended, or
+    TRIAGE_WAIT_MINUTES passed, or no agent was asked."""
+    triage = item.detail.get("triage")
+    if not isinstance(triage, dict) or (triage.get("failures"), triage.get("attempts")) != (
+        item.failures,
+        item.attempts,
+    ):
+        return None  # the tick has not opened this failure's thread yet
+    chat = view.runs.get(triage["run_id"]) if isinstance(triage.get("run_id"), int) else None
+    since = triage.get("at")
+    waited = since is None or view.now >= datetime.fromisoformat(since) + timedelta(minutes=TRIAGE_WAIT_MINUTES)
+    if chat is None or chat.ended or waited:
+        return Transition(item.id, QUEUED, READY, detail={"after_triage": item.failures})
+    return None
 
 
-def _business(item: ItemView, view: View) -> Transition | None:
-    """A brainstorm whose task run is done; a use_case past its stable hours. A use_case is done when its version is
-    approved (row 6), not when its run ends."""
+def _asks(item: ItemView, run: RunView, reason: str) -> Transition | None:
+    """A work item whose run's agent waits for its owner (a question, a decision) waits for a person with
+    ``reason``; back to running once the agent goes on."""
+    if item.state == RUNNING and run.asks:
+        return Transition(item.id, WAITING_HUMAN, WAITING, reason=reason, detail={"asked_in": run.id})
+    if item.state == WAITING_HUMAN and item.reason == reason and not run.asks and not run.ended:
+        return Transition(item.id, RUNNING, READY, detail={"asked_in": None})
+    return None
+
+
+def _brainstormed(item: ItemView, view: View) -> Transition | None:
+    """A brainstorm whose task run is done, with the proposals it made."""
+    run = _run_of(item, view)
+    if item.state == RUNNING and run is not None and run.state == "done":
+        return Transition(item.id, DONE, DONE_EVENT, detail={"run_id": run.id, "proposals": run.proposals})
+    return None
+
+
+def _in_review(item: ItemView, version: VersionView) -> Transition | None:
+    """Where the version a use_case drafted leaves it: waiting for its review (``srs_review``), for the settle chat of
+    an open finding of level decide (``srs_finding``), queued again with the reviewer's request for changes, or
+    cancelled when a person withdrew it. None of these is a failure; approved is row 6's."""
+    where = {"document": version.document, "version": version.number}
+    if version.state == WITHDRAWN:
+        return _cancel(item, "person", **where)
+    if version.state == DRAFT and version.changes:
+        return Transition(item.id, QUEUED, READY, detail={"srs_changes": {**where, "version_id": version.id}})
+    if version.state != IN_REVIEW:
+        return None
+    reason, srs = "srs_review", dict(where)
+    if version.decide:
+        reason, srs = "srs_finding", {**where, "findings": list(version.decide), "chat": version.chat}
+    if item.state == WAITING_HUMAN and item.reason == reason and item.detail.get("srs") == srs:
+        return None
+    return Transition(item.id, WAITING_HUMAN, WAITING, reason=reason, detail={"srs": srs})
+
+
+def _drafted(item: ItemView, view: View) -> Transition | None:
+    """A use_case past its stable hours; one whose task run ended, by the version it drafted. A use_case is done when
+    its version is approved (row 6), not when its run ends; a run done with no version in review, or none newer than
+    the one changes were asked of, is a failure."""
     if item.state == WATCHING and item.reason == "stable":
         stable_at = item.detail.get("stable_at")
         if stable_at is None or view.now >= datetime.fromisoformat(stable_at):
             return Transition(item.id, QUEUED, READY)
         return None
-    if item.kind == BRAINSTORM and item.state == RUNNING and _done_run(item, view) is not None:
-        return Transition(item.id, DONE, DONE_EVENT, detail={"run_id": item.run_id})
-    return None
+    run = _run_of(item, view)
+    if item.state not in (RUNNING, WAITING_HUMAN) or (run is not None and not run.ended):
+        return None
+    version = view.drafts.get(item.id)
+    asked = item.detail.get("srs_changes")
+    again = isinstance(asked, dict) and version is not None and asked.get("version_id") == version.id
+    if item.state == RUNNING and (version is None or (again and version.changes)):
+        if run is not None and run.state == "done":
+            return _failure(item, run_id=run.id, why="the task run sent no new version of an SRS document to review")
+        return None
+    return None if version is None else _in_review(item, version)
 
 
 def _frame(item: ItemView, view: View) -> Transition | None:
@@ -282,11 +374,16 @@ def _frame(item: ItemView, view: View) -> Transition | None:
 
 
 def _build(item: ItemView, view: View) -> Transition | None:
+    """Rows 7 and 9: a build to its frame task; its author run waiting for a person's answer; written and ended, a
+    deliver of its plan."""
     if item.state == WATCHING:
         return _frame(item, view)
-    run = _done_run(item, view) if item.state == RUNNING else None
+    run = _run_of(item, view) if item.state in (RUNNING, WAITING_HUMAN) else None
     if run is None:
         return None
+    asking = _asks(item, run, "author_question")
+    if asking is not None or run.state != "done":
+        return asking
     if run.plan_id is None:
         return _failure(item, run_id=run.id, why="the author run ended without a plan")
     deliver = WorkSpec(
@@ -304,27 +401,61 @@ def _build(item: ItemView, view: View) -> Transition | None:
     return Transition(item.id, DONE, DONE_EVENT, plan_id=run.plan_id, detail={"plan": run.plan_id}, spawn=(deliver,))
 
 
-def _deliver(item: ItemView, view: View) -> Transition | None:
-    """Rows 10 and 11: a deliver whose plan run is done waits on the merge queue until each merge request of its plan
-    is through; a revert is a failure."""
-    if item.state == RUNNING:
-        run = _done_run(item, view)
-        if run is None:
-            return None
-        if run.steps_done is False:
-            return _failure(item, run_id=run.id, why="the plan run ended with steps not done")
-        return Transition(item.id, WATCHING, WAITING, reason="merge_queue", detail={"run_id": run.id})
-    if item.state != WATCHING or item.reason != "merge_queue":
-        return None
+def _merging(item: ItemView, view: View, run: RunView) -> Transition:
+    """A deliver whose plan run is done: waiting on the merge queue, or on a person for the repos the queue does not
+    merge (``merge_manual``)."""
+    detail = {"run_id": run.id, "repos": list(run.repos)}
+    if run.repos and all(repo in view.manual for repo in run.repos):
+        return Transition(item.id, WAITING_HUMAN, WAITING, reason="merge_manual", detail=detail)
+    return Transition(item.id, WATCHING, WAITING, reason="merge_queue", detail=detail)
+
+
+def _released(item: ItemView, merges: tuple) -> Transition:
+    shas = [merge.after_sha for merge in merges if merge.after_sha]
+    merged = [merge.merged_at for merge in merges if merge.merged_at is not None]
+    released = max(merged).isoformat() if merged else None
+    return Transition(item.id, DONE, DONE_EVENT, detail={"after_sha": shas, "released_at": released})
+
+
+def _merged(item: ItemView, view: View) -> Transition | None:
+    """Rows 10 and 11: each merge request of the plan through the queue, and each repo the queue does not merge marked
+    merged in the plan, is the deliver done; a revert is a failure; one blocked or paused waits for a person."""
     merges = view.merges.get(item.plan_id or "", ())
     reverted = [merge.id for merge in merges if merge.state == REVERTED]
     if reverted:
         return _failure(item, reverted=reverted)
-    if merges and all(merge.state == MERGE_FINAL or (merge.state == MERGED and not merge.checked) for merge in merges):
-        shas = [merge.after_sha for merge in merges if merge.after_sha]
-        merged = [merge.merged_at for merge in merges if merge.merged_at is not None]
-        released = max(merged).isoformat() if merged else None
-        return Transition(item.id, DONE, DONE_EVENT, detail={"after_sha": shas, "released_at": released})
+    repos = [repo for repo in item.detail.get("repos") or [] if isinstance(repo, str)]
+    by_hand = [repo for repo in repos if repo in view.manual]
+    queued = [repo for repo in repos if repo not in view.manual]
+    through = bool(merges) and all(m.state == MERGE_FINAL or (m.state == MERGED and not m.checked) for m in merges)
+    hand_done = all(repo in view.released.get(item.plan_id or "", frozenset()) for repo in by_hand)
+    if hand_done and (through or (repos and not queued)):
+        return _released(item, merges)
+    held = sorted(merge.id for merge in merges if merge.state in MERGE_HELD)
+    if held:
+        reason, detail = "merge_blocked", {"merges": held}
+    elif through or (repos and not queued):
+        reason, detail = "merge_manual", {"by_hand": by_hand}
+    else:
+        reason, detail = "merge_queue", {}
+    if item.reason == reason:
+        return None
+    state = WATCHING if reason == "merge_queue" else WAITING_HUMAN
+    return Transition(item.id, state, WAITING, reason=reason, detail=detail)
+
+
+def _deliver(item: ItemView, view: View) -> Transition | None:
+    """A deliver's plan run, its decisions included, then the merge requests of its plan."""
+    run = _run_of(item, view)
+    if run is not None and (item.state == RUNNING or item.reason == "run_decision"):
+        asking = _asks(item, run, "run_decision")
+        if asking is not None or run.state != "done":
+            return asking
+        if run.steps_done is False:
+            return _failure(item, run_id=run.id, why="the plan run ended with steps not done")
+        return _merging(item, view, run)
+    if item.reason in ("merge_queue", "merge_blocked", "merge_manual"):
+        return _merged(item, view)
     return None
 
 
@@ -357,11 +488,14 @@ class Rules:
         stale = _stale(item, view) or _run_end(item, view)
         if stale is not None:
             return stale
-        if item.kind in OWNER_OF:
-            return _business(item, view)
-        return _build(item, view) if item.kind == BUILD else _deliver(item, view)
+        if item.state == WATCHING and item.reason == "triage":
+            return _triaged(item, view)
+        if item.state == WAITING_HUMAN and item.reason == "loop_decision":
+            return None  # the person's answer moves it (``stall.answer``)
+        return MOVES[item.kind](item, view)
 
 
+MOVES = {BRAINSTORM: _brainstormed, USE_CASE: _drafted, BUILD: _build, DELIVER: _deliver}
 RULES = Rules()
 
 __all__ = ["RULES", "Rules"]

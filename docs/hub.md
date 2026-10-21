@@ -929,7 +929,10 @@ the cursor on `hub_events`, the breaker), `loop_items` (each work item: kind, cy
 ancestors, state and reason, tries and failures, the engine that made it) and `loop_item_events`, its ledger, only
 ever added to; no column of an older table changes, and going back to 0086 drops the three tables. Schema 0088 lets
 `findings.lens` and `proposals.lens` take the Curator's lens `product` (`docs/curator.md`, The lens product); going
-back to 0087 deletes the findings and proposals of that lens.
+back to 0087 deletes the findings and proposals of that lens. Schema 0089 lets `decisions.category` take `loop`, the
+decision the Loop asks the person a work item's last run stands for after its third failure, and
+`notifications.notice_kind` take `loop_paused`, the notice of a tripped breaker of the Loop; going back to 0088
+deletes those decisions and notices.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1663,6 +1666,23 @@ evo-agents hub goal set --statement "Fewer searches find nothing" --metric searc
 evo-agents hub goal set G-1 --target 0.03 --note "tighter" --project demo                  # the options given change
 evo-agents hub goal close G-1 --reason achieved --project demo
 ```
+
+**The Loop** of a project (plan loop-engine), on with the policy's `loop.enabled`, hands its work items out through run
+kinds the hub has: a brainstorm to a task run of @strategist, a use case to a task run of @ba (whose version
+`srs__propose` writes as the goal's owner), the frame task of an approved use case to one author run in Loop mode, and
+the plan that run wrote to a plan run; author and plan runs go to worker `loop.worker`, in its owner's name, with the
+caps of `loop.caps`. A work item that fails twice gets its triage, and from the third failure the person its last run
+stands for answers a decision of category `loop` (run it again, drop it, leave it to a person), which the hub does.
+More work items in an hour than `loop.max_items_per_hour` trip its breaker: the Loop reads no event and hands out no
+run, each admin gets the notice `loop_paused`, and only an admin resets it.
+
+```sh
+evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
+evo-agents hub loop resume --project demo     # an admin resets the breaker that tripped
+```
+
+`GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the
+admin's reset (403 for anyone else, 409 when the breaker has not tripped), audited `loop.resume`.
 
 ## Memories, skills and knowledge graphs
 

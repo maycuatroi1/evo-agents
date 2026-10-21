@@ -114,6 +114,29 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
     return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
 
 
+async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | None:
+    """Worker ``worker_id`` as its last heartbeat reported it, for a run the hub hands out itself in its owner's name
+    (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
+    w = tables.workers
+    query = select(
+        w.c.name, w.c.runtimes, w.c.checkouts, w.c.agent_version, w.c.run_kinds, w.c.features, w.c.labels, w.c.plugins
+    ).where(w.c.id == worker_id)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        return None
+    return Pinned(
+        worker_id,
+        row.name,
+        row.runtimes or {},
+        row.checkouts or {},
+        row.agent_version,
+        tuple(row.run_kinds or ()),
+        tuple(row.features or ()),
+        tuple(row.labels or ()),
+        tuple(row.plugins or ()),
+    )
+
+
 def unfit(
     worker: Pinned, project: str, kind: str, repos: list[str], runtime: str, *, session_per_step: bool = False
 ) -> list[str]:
@@ -483,25 +506,33 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     return view
 
 
-async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
-    """The repos of an author run on ``worker``: the project's harness first, where plans live, then each repo of the
-    project the worker has a checkout of, in name order, each with no branch, since an author run's worktrees are
-    detached. 409 when the project was registered without its harness."""
+async def author_repos(conn: AsyncConnection, project_id: int, project: str, checkouts: dict) -> list[dict] | None:
+    """The repos of an author run of ``project`` on a worker with ``checkouts``: the project's harness first, where
+    plans live, then each repo of the project the worker has a checkout of, in name order, each with no branch, since
+    an author run's worktrees are detached. None when the project was registered without its harness."""
     p, pr = tables.projects, tables.project_repos
-    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == access.project_id))).scalar_one_or_none()
+    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
     harness = author.harness_repo(path)
     if harness is None:
+        return None
+    names = await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))
+    repos = [{"repo": harness, "branch": None}]
+    for name in names.scalars():
+        if name != harness and f"{project}/{name}" in checkouts:
+            repos.append({"repo": name, "branch": None})
+    return repos
+
+
+async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
+    """``author_repos`` on ``worker``; 409 when the project was registered without its harness."""
+    repos = await author_repos(conn, access.project_id, access.name, worker.checkouts)
+    if repos is None:
         raise HTTPException(
             409,
             f"project {access.name} was registered without its harness, where plans live, so an author run has "
             "nowhere to read the project's plans: register it again with `evo-agents hub project register` from its "
             "harness; nothing was dispatched",
         )
-    names = await conn.execute(select(pr.c.name).where(pr.c.project_id == access.project_id).order_by(pr.c.name))
-    repos = [{"repo": harness, "branch": None}]
-    for name in names.scalars():
-        if name != harness and f"{access.name}/{name}" in worker.checkouts:
-            repos.append({"repo": name, "branch": None})
     return repos
 
 

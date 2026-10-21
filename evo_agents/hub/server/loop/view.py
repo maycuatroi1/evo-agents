@@ -14,22 +14,25 @@ from __future__ import annotations
 
 import operator
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, time, timedelta
 
 from sqlalchemy import Text, column, func, literal, or_, select, table
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, tables
-from evo_agents.hub.autonomy import WEEKDAYS, repo_policy
+from evo_agents.hub.autonomy import AUTO, WEEKDAYS, repo_policy
+from evo_agents.hub.chats import chat_link as chats_link
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.autonomy_policies import effective_policy, newest
+from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
     BRAINSTORM,
     DELIVER,
     DISPATCHED,
+    DRAFT,
     FINISHED,
     RUN_ENDED,
     USE_CASE,
@@ -41,6 +44,7 @@ from evo_agents.hub.server.loop.model import (
     MergeView,
     RunView,
     TaskView,
+    VersionView,
     View,
 )
 from evo_agents.hub.server.plugin_configs import stored_stacks
@@ -49,10 +53,14 @@ from evo_agents.plugins import config as plugin_config
 TASKS = "tasks"  # the core plugin whose tasks a build waits on
 NUMBER = "number"  # tables_signals: the kind of key a goal's metric names
 OPEN_PROPOSAL = "open"  # canvas_proposals.status
+OPEN_FINDING, DECIDE = "open", "decide"  # tables_srs.FINDING_STATUSES, FINDING_LEVELS: a finding that holds approval
+REQUEST_CHANGES = "request_changes"  # tables_srs.REVIEW_DECISIONS
 COMPARE = {">=": operator.ge, ">": operator.gt, "<=": operator.le, "<": operator.lt}
 UTC_ZONE = "UTC"
 PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # the zones Postgres knows
 CHECK_JOBS = ("uat_check", "prod_check")  # a repo naming either waits for them after a merge
+MAX_HOPS = 20  # how far a run handed out is followed through the runs that resume it or retry it
+RELEASED = ("merged", "not-needed")  # the status of a repo of a plan once a person merged it, or it needs nothing
 
 
 # Goals
@@ -140,6 +148,8 @@ def _item_query():
         i.c.run_id,
         i.c.parent_id,
         i.c.detail,
+        i.c.attempts,
+        i.c.failures,
     )
 
 
@@ -295,26 +305,94 @@ def _steps_done(body: dict | None) -> bool | None:
     return all(isinstance(step, dict) and step.get("status") == "done" for step in steps)
 
 
-async def _runs(conn: AsyncConnection, project_id: int, items: Sequence[ItemView]) -> dict[int, RunView]:
-    """The run in flight of each unfinished work item: its state, the plan an author run wrote, and for a plan run
-    whether every step of its plan is done."""
-    wanted = sorted({item.run_id for item in items if item.run_id is not None and not item.finished})
-    if not wanted:
-        return {}
-    r, pr, p = tables.runs, tables.plan_revisions, tables.plans
-    rows = list(await conn.execute(select(r.c.id, r.c.kind, r.c.state, r.c.plan_id).where(r.c.id.in_(wanted))))
-    written = select(pr.c.run_id, func.min(pr.c.plan_id)).where(pr.c.project_id == project_id, pr.c.run_id.in_(wanted))
-    plans_written = {run_id: plan_id for run_id, plan_id in await conn.execute(written.group_by(pr.c.run_id))}
+async def run_chains(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, list[int]]:
+    """Each run of ``ids`` -> it and the runs that go on from it, oldest first: one that resumes it
+    (``resume_of_run_id``) or is its next attempt (``parent_run_id``), and so on, at most MAX_HOPS deep."""
+    r = tables.runs
+    chains = {run_id: [run_id] for run_id in ids}
+    frontier = {run_id: run_id for run_id in chains}  # a run reached -> the run handed out it goes on from
+    for _ in range(MAX_HOPS):
+        if not frontier:
+            break
+        wanted = sorted(frontier)
+        query = select(r.c.id, r.c.resume_of_run_id, r.c.parent_run_id).where(
+            or_(r.c.resume_of_run_id.in_(wanted), r.c.parent_run_id.in_(wanted))
+        )
+        reached = {}
+        for row in await conn.execute(query.order_by(r.c.id)):
+            origin = frontier.get(row.resume_of_run_id, frontier.get(row.parent_run_id))
+            if origin is not None and row.id not in chains[origin]:
+                chains[origin].append(row.id)
+                reached[row.id] = origin
+        frontier = reached
+    return {origin: sorted(chain) for origin, chain in chains.items()}
+
+
+async def _proposals(conn: AsyncConnection, ids: Sequence[int]) -> dict[int, int]:
+    """Run -> the proposals of claims it made (a brainstorm's)."""
+    p = tables.canvas.proposals
+    query = select(p.c.run_id, func.count()).where(p.c.run_id.in_(ids)).group_by(p.c.run_id)
+    return {run_id: count for run_id, count in await conn.execute(query)}
+
+
+async def _run_rows(conn: AsyncConnection, project_id: int, ids: Sequence[int]) -> dict[int, RunView]:
+    r, p, d = tables.runs, tables.plans, tables.decisions
+    open_decisions = select(func.count()).where(d.c.run_id == r.c.id, d.c.state == "open").scalar_subquery()
+    columns = (r.c.id, r.c.kind, r.c.state, r.c.plan_id, r.c.repos, r.c.finish_requested_at, open_decisions)
+    rows = list(await conn.execute(select(*columns).where(r.c.id.in_(ids))))
     plan_ids = sorted({row.plan_id for row in rows if row.kind == "plan" and row.plan_id})
     bodies = {}
     if plan_ids:
         query = select(p.c.plan_id, p.c.body).where(p.c.project_id == project_id, p.c.plan_id.in_(plan_ids))
         bodies = {plan_id: body for plan_id, body in await conn.execute(query)}
+    made = await _proposals(conn, [row.id for row in rows if row.kind == "task"])
     found = {}
     for row in rows:
-        plan = plans_written.get(row.id) if row.kind == "author" else row.plan_id
-        steps = _steps_done(bodies.get(row.plan_id)) if row.kind == "plan" else None
-        found[row.id] = RunView(row.id, row.kind, row.state, plan, steps)
+        repos = tuple(entry["repo"] for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo"))
+        found[row.id] = RunView(
+            row.id,
+            row.kind,
+            row.state,
+            row.plan_id if row.kind == "plan" else None,
+            _steps_done(bodies.get(row.plan_id)) if row.kind == "plan" else None,
+            repos if row.kind == "plan" else (),
+            row.finish_requested_at is not None,
+            int(row[6] or 0),
+            made.get(row.id, 0),
+        )
+    return found
+
+
+async def _written(conn: AsyncConnection, project_id: int, chains: Mapping[int, list[int]]) -> dict[int, str]:
+    """The run handed out -> the plan an author run of its chain wrote first."""
+    pr = tables.plan_revisions
+    every = sorted({run_id for chain in chains.values() for run_id in chain})
+    query = select(pr.c.run_id, func.min(pr.c.plan_id)).where(pr.c.project_id == project_id, pr.c.run_id.in_(every))
+    by_run = {run_id: plan_id for run_id, plan_id in await conn.execute(query.group_by(pr.c.run_id))}
+    return {
+        origin: next(by_run[run_id] for run_id in chain if run_id in by_run)
+        for origin, chain in chains.items()
+        if any(run_id in by_run for run_id in chain)
+    }
+
+
+async def _runs(conn: AsyncConnection, project_id: int, items: Sequence[ItemView]) -> dict[int, RunView]:
+    """The run in flight of each unfinished work item, as the newest run that goes on from it stands (``RunView``), by
+    the id handed out; and the chat run of each work item's triage thread, by its own id. An author run's plan is the
+    one a run of its chain wrote."""
+    handed = {item.run_id for item in items if item.run_id is not None and not item.finished}
+    chats = {item.detail["triage"].get("run_id") for item in items if isinstance(item.detail.get("triage"), dict)}
+    wanted = sorted(handed | {run_id for run_id in chats if isinstance(run_id, int)})
+    if not wanted:
+        return {}
+    chains = await run_chains(conn, wanted)
+    views = await _run_rows(conn, project_id, sorted({chain[-1] for chain in chains.values()}))
+    written = await _written(conn, project_id, chains)
+    found = {}
+    for run_id, chain in chains.items():
+        view = views.get(chain[-1])
+        if view is not None:
+            found[run_id] = replace(view, plan_id=written.get(run_id)) if view.kind == "author" else view
     return found
 
 
@@ -336,6 +414,105 @@ async def _merges(conn: AsyncConnection, project_id: int, items: Sequence[ItemVi
         checked = any(jobs.get(job) for job in CHECK_JOBS)
         found[row.plan_id].append(MergeView(row.id, row.repo, row.state, row.after_sha, row.merged_at, checked))
     return {plan_id: tuple(merges) for plan_id, merges in found.items()}
+
+
+async def _newest_versions(conn: AsyncConnection, documents: Sequence[int]) -> dict[int, tuple]:
+    """Document -> (its newest version's id, number, state and round, its slug)."""
+    v, d = tables.srs.versions, tables.srs.documents
+    newest = select(v.c.document_id, func.max(v.c.number).label("number")).where(v.c.document_id.in_(documents))
+    newest = newest.group_by(v.c.document_id).subquery()
+    query = (
+        select(v.c.document_id, v.c.id, v.c.number, v.c.state, v.c.round, d.c.slug)
+        .join_from(v, newest, (newest.c.document_id == v.c.document_id) & (newest.c.number == v.c.number))
+        .join(d, d.c.id == v.c.document_id)
+    )
+    return {row.document_id: tuple(row)[1:] for row in await conn.execute(query)}
+
+
+async def _review_state(conn: AsyncConnection, documents: Sequence[int], versions: Mapping[int, tuple]):
+    """(document -> its open findings of level decide, version -> its settle chat's link, the versions a reviewer asked
+    changes of in their round)."""
+    f, sc, rv = tables.srs.findings, tables.srs.settle_chats, tables.srs.reviews
+    decide: dict[int, list[int]] = defaultdict(list)
+    query = select(f.c.document_id, f.c.id).where(
+        f.c.document_id.in_(documents), f.c.status == OPEN_FINDING, f.c.level == DECIDE
+    )
+    for document_id, finding_id in await conn.execute(query.order_by(f.c.id)):
+        decide[document_id].append(finding_id)
+    ids = [found[0] for found in versions.values()]
+    query = select(sc.c.version_id, sc.c.chat_id, sc.c.root_message_id).where(sc.c.version_id.in_(ids))
+    chats = {version: chats_link(chat, root) for version, chat, root in await conn.execute(query)}
+    rounds = {found[0]: found[3] for found in versions.values()}
+    query = select(rv.c.version_id, rv.c.round).where(rv.c.version_id.in_(ids), rv.c.decision == REQUEST_CHANGES)
+    asked = {version for version, round_ in await conn.execute(query) if rounds.get(version) == round_}
+    return decide, chats, asked
+
+
+async def _drafts(conn: AsyncConnection, items: Sequence[ItemView], runs: Mapping[int, RunView]) -> dict:
+    """The version each unfinished use_case work item drafted (``VersionView``), by work item: the newest version of
+    the document its runs drafted a version of last."""
+    wanted: dict[int, set[int]] = {}
+    for item in items:
+        if item.kind == USE_CASE and not item.finished:
+            ids = set(item.runs) | ({runs[item.run_id].id} if item.run_id in runs else set())
+            if ids:
+                wanted[item.id] = ids
+    every = sorted({run_id for ids in wanted.values() for run_id in ids})
+    if not every:
+        return {}
+    v = tables.srs.versions
+    drafted = list(
+        await conn.execute(select(v.c.id, v.c.drafted_by_run, v.c.document_id).where(v.c.drafted_by_run.in_(every)))
+    )
+    document_of = {}
+    for item_id, ids in wanted.items():
+        mine = [row for row in drafted if row.drafted_by_run in ids]
+        if mine:
+            document_of[item_id] = max(mine, key=lambda row: row.id).document_id
+    documents = sorted(set(document_of.values()))
+    if not documents:
+        return {}
+    versions = await _newest_versions(conn, documents)
+    decide, chats, asked = await _review_state(conn, documents, versions)
+    found = {}
+    for item_id, document_id in document_of.items():
+        version_id, number, state, _, slug = versions[document_id]
+        found[item_id] = VersionView(
+            version_id,
+            document_id,
+            slug,
+            number,
+            state,
+            tuple(decide.get(document_id, ())),
+            chats.get(version_id),
+            state == DRAFT and version_id in asked,
+        )
+    return found
+
+
+async def _delivery(conn: AsyncConnection, project_id: int, effective: dict, items: Sequence[ItemView]):
+    """(the repos whose merge requests the hub's queue does not merge, the repos of each deliver's plan its ``repos``
+    mark merged or not needed); nothing without a deliver waiting."""
+    plans = sorted({item.plan_id for item in items if item.kind == DELIVER and item.plan_id and not item.finished})
+    if not plans:
+        return frozenset(), {}
+    facts = await project_repos(conn, project_id)
+    manual = frozenset(
+        name
+        for name, entry in (effective.get("repos") or {}).items()
+        if entry.get("mode") != AUTO or (name in facts and facts[name].on_github)
+    )
+    p = tables.plans
+    query = select(p.c.plan_id, p.c.body).where(p.c.project_id == project_id, p.c.plan_id.in_(plans))
+    released = {}
+    for plan_id, body in await conn.execute(query):
+        entries = body.get("repos") if isinstance(body, dict) and isinstance(body.get("repos"), list) else []
+        released[plan_id] = frozenset(
+            entry["repo"]
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("repo") and entry.get("status") in RELEASED
+        )
+    return manual, released
 
 
 async def _versions(conn: AsyncConnection, events: Sequence[Event]) -> dict[int, int | None]:
@@ -395,7 +572,8 @@ async def _week(conn: AsyncConnection, project_id: int, policy: dict) -> tuple[s
 async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] = ()) -> View:
     """What the tick reads of project ``project_id`` for ``events`` (none: for the clock and reconciling)."""
     now = await conn.scalar(select(func.now()))
-    policy = (await effective_policy(conn, project_id))["loop"]
+    effective = await effective_policy(conn, project_id)
+    policy = effective["loop"]
     items = await _items(conn, project_id, events)
     moved = {moved["claim_id"] for e in events if e.kind == BASELINE for moved in e.payload.get("transitions") or []}
     claims = await _claims(conn, moved | {item.claim_id for item in items if item.claim_id is not None})
@@ -403,6 +581,8 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
     week, week_at = await _week(conn, project_id, policy)
     plugin = await enabled_in(conn, TASKS, project_id)
     by_id, by_key = await _tasks(conn, project_id, items, plugin)
+    runs = await _runs(conn, project_id, items)
+    manual, released = await _delivery(conn, project_id, effective, items)
     return View(
         now=now,
         policy=policy,
@@ -419,8 +599,11 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
         tasks=by_id,
         frames=by_key,
         approvals=await _approvals(conn, items),
-        runs=await _runs(conn, project_id, items),
+        runs=runs,
         merges=await _merges(conn, project_id, items),
+        drafts=await _drafts(conn, items, runs),
+        manual=manual,
+        released=released,
     )
 
 

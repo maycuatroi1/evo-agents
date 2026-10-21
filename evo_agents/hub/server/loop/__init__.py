@@ -9,6 +9,12 @@ into work items with ancestors and a key, and moves them on.
   the rate of hand-outs and the worker before a run is handed out for it (criterion a5);
 - ``caps``: what a run the Loop hands out may use: the turns and minutes of ``loop.caps`` for an author or a plan run,
   the agent type's daily cap for a task run;
+- ``dispatch`` and ``texts`` (criterion a6): the hand-out of each kind of work item through a run kind the hub has, and
+  what its agent is told; ``author_mode``: the end of an author run of the Loop once its plan is on the hub;
+  ``runs_of``: which work item a run was handed out for;
+- ``stall`` and ``breaker`` (criterion a7): triage at the second failure, a decision of a person at the third, and the
+  breaker that stops the Loop of a project making too many work items in an hour; ``routes``: its state and the reset
+  of its breaker;
 - ``state``: the Loop turned on and off with the revision of the policy that sets ``loop.enabled``.
 
 The Loop's rows are tables loop_states, loop_items and loop_item_events (``evo_agents.hub.tables_loop``); its keys are

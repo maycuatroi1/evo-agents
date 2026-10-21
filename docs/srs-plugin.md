@@ -435,7 +435,7 @@ as for any agent.
 | `srs__read` | the documents; a version as Markdown with its state and problems; an item and the items under it | anyone with a grant |
 | `srs__search` | items of the latest versions by code, alias or words | anyone with a grant |
 | `srs__diff` | what changed between two versions, item by item | anyone with a grant |
-| `srs__propose` | changes on `base_version` as the document's next version, sent to review at once | the agent of a chat run of @ba |
+| `srs__propose` | changes on `base_version` as the document's next version, sent to review at once | the agent of a chat run of @ba, or of a task run of @ba the Loop handed out for a use case |
 | `srs__comment` | a comment on a document, a version or an item | the agent of a run of @ba |
 | `srs__finding` | record a finding with its sources; resolve, waive or reopen one (section Findings) | the agent of a run of @ba |
 | `kg_search`, `kg_context` | nodes of the project's knowledge graph by words, and a node with what it links to | the agent of any run, as the hub's /mcp offers them |
@@ -447,7 +447,8 @@ the run's worker is another member's, when that member sees it too, since what a
 agent runs on.
 
 **A proposal is a version members approve.** `srs__propose` checks its changes as a save is checked, writes them as
-the next version under the name of the person who mentioned @ba, with `drafted_by_run` set, and submits it at once.
+the next version under the name of the person who mentioned @ba (for a use case the Loop handed out, the owner of
+its goal, plan loop-engine), with `drafted_by_run` set, and submits it at once.
 That person is its author, so they never approve it: another writer does, unless the project turned `self_approval`
 on, when they may approve it as any writer may, and the tool's answer says so. The agent of the run never approves it
 either way. Its schema takes no drop and never changes a code.
