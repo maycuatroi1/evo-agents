@@ -600,7 +600,7 @@ async def _verify_env(agent: _AgentRun, name: str, path: Path) -> dict[str, str]
             raise WorkerStateError(
                 f"`{venvs.shown(command)}` in {name} exited {code}, so the verify did not run:\n{tail}"
             )
-        said = ", ".join(f"`{venvs.shown(command)}`" for command in want.commands(path))
+        said = ", ".join(f"`{venvs.shown(command)}`" for command in want.commands())
         print(f"Made the Python environment of {name} again: {said}.")
     env["PATH"] = venvs.front(env.get("PATH"), [bin_dir])
     return env

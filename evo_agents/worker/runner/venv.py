@@ -75,7 +75,7 @@ async def make(run: Run, name: str, worktree: Path, want: venvs.Wanted, then: st
             f"and uv is not on this worker's PATH; {then}",
             cause="missing_tool",
         )
-    for command in want.commands(worktree, uv):
+    for command in want.commands(uv):
         started = run.loop.time()
         code, output = await verify.shell(run, shlex.join(command), run.deadline - started, cwd=worktree, env=env)
         duration_ms = int((run.loop.time() - started) * 1000)

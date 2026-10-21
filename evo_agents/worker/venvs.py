@@ -46,14 +46,14 @@ class Wanted:
     groups: tuple[str, ...] = ()
     requirements: tuple[str, ...] = ()  # paths relative to the worktree
 
-    def commands(self, worktree: Path, uv: str = "uv") -> list[list[str]]:
-        """The commands that make the environment in ``worktree``, in order, with ``uv`` the program."""
+    def commands(self, uv: str = "uv") -> list[list[str]]:
+        """The commands that make the environment, in order, each run in the worktree, with ``uv`` the program."""
         sync = [uv, "sync", "--frozen"]
         for extra in self.extras:
             sync += ["--extra", extra]
         for group in self.groups:
             sync += ["--group", group]
-        python = str(bin_dir(worktree) / "python")
+        python = f"{VENV_DIR}/bin/python"
         installs = [[uv, "pip", "install", "--python", python, "--no-deps", "-r", file] for file in self.requirements]
         return [sync, *installs]
 
@@ -128,7 +128,7 @@ def front(path: str | None, dirs: Iterable[str]) -> str:
 async def make(worktree: Path, want: Wanted, uv: str, env: Mapping[str, str]) -> tuple[list[str], int, str]:
     """Run the commands of ``want`` in ``worktree`` with ``env`` (``uv_env`` of it), one after the other until one
     fails: the last that ran, its exit code and its output."""
-    for command in want.commands(worktree, uv):
+    for command in want.commands(uv):
         proc = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(worktree),
