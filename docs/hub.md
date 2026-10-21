@@ -919,7 +919,12 @@ each project's autonomy policy, and the @builder proposal kind `policy`; 0080 th
 and its rebases in a row; 0083 what follows a merge (its checks, a revert's merge request, the results of the UAT and
 PROD checks) and `merge_samples`; 0084 `merge_breakers` and the notice `merge_paused`. No column of a table older than
 0079 changes. Going back to 0078 drops those tables, deletes the forge secrets, the policy proposals, the judge runs on
-no plan and the merge_paused notices, and puts back the checks they widened.
+no plan and the merge_paused notices, and puts back the checks they widened. Schema 0085 adds `goals` and
+`goal_revisions` and the @builder proposal kind `goal` (section Goals); going back to 0084 deletes the goal proposals
+and their notices and drops both tables. Schema 0086 adds the delivery kinds `srs.version.approved` and `tasks.status`
+and the permissions `srs:read` and `tasks:read` (`docs/plugins.md`, Extension points); `hub_events` takes both kinds as
+it is. Going back to 0085 deletes the deliveries and the rows of `hub_events` of the two kinds and takes the two
+permissions out of every grant.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

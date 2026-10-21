@@ -151,8 +151,9 @@ approves it or asks for changes, with these rules:
 - A version answers its `review_run`: the id and state of @ba's review of its current round, null when none was
   handed. The submit route answers it too, queued, once the hub handed one.
 - Approving a version supersedes every older one but a withdrawn one and, when the project has a knowledge config on
-  the hub, queues a build of its knowledge graph. When the project enables the plugin tasks, it also keeps the
-  project's tasks in step, in the same transaction (section Tasks when a version is approved).
+  the hub, queues a build of its knowledge graph. It emits the event `srs.version.approved` in the same transaction;
+  when the project enables the plugin tasks, the plugin keeps the project's tasks in step once the hub delivers that
+  event (section Tasks when a version is approved).
 
 **Withdrawing a version.** The author of a version in review, while they hold writer, or an admin of the project,
 takes it out of review for good:
@@ -240,9 +241,17 @@ message of its chat; once settled, the message that settled it.
 
 ## Tasks when a version is approved
 
-When a version is approved in a project that enables the plugin tasks, the hub compares it with the version approved
-before it (none the first time) and keeps the project's tasks in step with its use cases, in the approval's
-transaction (`evo_agents/core_plugins/srs/auto_tasks.py`):
+An approval emits the event `srs.version.approved` in its transaction (`evo_agents/core_plugins/srs/events.py`): the
+document's slug and id, the version's number and id, the version approved before it (null the first time), the
+approver's login and id, and the codes of the items the version added, changed and dropped since that one, by kind.
+Plugins the project granted `srs:read` get it, at least once, and the hub keeps it in `hub_events`, where the Loop
+reads it (`docs/plugins.md`, section Extension points). The plugin srs takes it itself, with no grant, through its
+events contribution `approvals`; the job `hub.deliver_plugin_events` delivers it within a minute or so of the
+approval, and the approval's route does nothing more to tasks.
+
+When the project enables the plugin tasks, whether its Loop is on or off, that handler compares the version with the
+version approved before it (none the first time) and keeps the project's tasks in step with its use cases, in the
+delivery's transaction (`evo_agents/core_plugins/srs/auto_tasks.py`):
 
 - **A new use case** gets one frame task: `UC ORD-1: Place an order`, linked to the use case, of type `story` when the
   project has it (its first type otherwise), in the first status, carrying the document's label, made by the approver.
@@ -261,10 +270,13 @@ keeps that member for the run (`srs_approval_tasks`), and the tool refuses a chi
 already (`docs/tasks-plugin.md`). No run is handed while the agent type ba is off or past its cap, or when no frame
 task waits; the approval goes through all the same.
 
+Each frame task made and each task cancelled emits `tasks.status` with the cause `srs_approval` and the document and
+version as its source (`docs/tasks-plugin.md`).
+
 Everything goes through one function, which takes the document, the version approved, the version approved before and
-the approver. It is idempotent by document and version: `srs_approval_tasks` holds one row a version, claimed first, so
-a second call makes no task, comment or run. The event `srs.version.approved` of the loop engine is to call it with the
-same data.
+the approver: the event's payload. It is idempotent by document and version: `srs_approval_tasks` holds one row a
+version, claimed first, so a delivery again makes no task, comment or run. A project that enabled the plugin tasks
+only after the version was approved gets nothing from that version, as when the approval made the tasks itself.
 
 ## Archiving a document
 

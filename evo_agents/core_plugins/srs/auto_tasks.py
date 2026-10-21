@@ -14,6 +14,9 @@ version approved before it (none the first time) and keeps the project's tasks i
   task's history names the hub, with the reason. A project whose statuses have no such group keeps the task, which
   gets a comment saying so.
 
+A frame task made and a task cancelled each emit ``tasks.status`` (cause ``srs_approval``, the document and version
+its source; ``evo_agents.hub.task_status``), in the same transaction.
+
 Then the hub hands @ba a task run (``task_dispatch.hand_own_task``) that splits each open frame task of the document
 with no child task yet into child tasks (``split_task``, the skill srs-tasks of @ba's pack), which it makes with
 ``tasks__create``, the frame task their parent, linked to the use case: that tool acts, for this run alone, for the
@@ -21,10 +24,12 @@ approver, whom srs_approval_tasks keeps for the run (``approved_by``, ``split_ru
 on, is past its cap, or no frame task waits, there is no run and the outcome says why.
 
 Everything goes through ``approved``, which takes (the document, the version approved, the version approved before,
-the approver): the data the event srs.version.approved of plan loop-engine is to carry, so its handler calls it as the
-approval route calls it now, in the caller's transaction. It is idempotent by (document, version approved):
-srs_approval_tasks holds one row a version, claimed first, so a second call, an event delivered twice included, makes
-no task, comment or run.
+the approver): the data the event ``srs.version.approved`` carries (plan loop-engine, criterion a3). The approval
+emits that event (``events.version_approved``) and no longer calls ``approved``: the plugin's events contribution
+``approvals`` (``events.on_version_approved``) calls it with the event's payload when the hub delivers it, in the
+delivery's transaction, in every project that enables the plugin tasks, whether its Loop is on or off. It is
+idempotent by (document, version approved): srs_approval_tasks holds one row a version, claimed first, so a second
+call, an event delivered twice included, makes no task, comment or run.
 
 The plugin srs imports no other core plugin: it reads the config of the plugin tasks with the hub's config layers and
 writes the rows of its tasks through the hub's tables (``tables.tasks``), as the plugin tasks reads srs's items.
@@ -44,7 +49,7 @@ from evo_agents.core_plugins.srs import BA, store
 from evo_agents.core_plugins.srs.diff import diff
 from evo_agents.core_plugins.srs.doc import Document, Item
 from evo_agents.core_plugins.srs.store import PLUGIN, DocumentRow, Snapshot
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_status
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX, frame_task_key
@@ -71,9 +76,13 @@ class TasksConfig:
     cancelled: str | None  # the first status of group cancelled
     finished: tuple[str, ...]  # the statuses of groups done and cancelled
     type: str  # a frame task's
+    groups: tuple[tuple[str, str], ...] = ()  # (status, its group) of each status
 
     def ref(self, number: int) -> str:
         return f"{self.prefix}-{number}"
+
+    def group(self, status: str | None) -> str | None:
+        return next((group for key, group in self.groups if key == status), None)
 
 
 @dataclass(frozen=True)
@@ -128,6 +137,16 @@ class _Approval:
     def because(self, what: str) -> str:
         return f"{what} in version {self.number} of {self.doc.slug}, which {self.approver} approved"
 
+    async def announce(self, conn: AsyncConnection, task_id: int, old: str | None, new: str) -> None:
+        """Emit ``tasks.status`` of task ``task_id``, which this approval made (``old`` None) or cancelled: the hub
+        changed it, the document and the version its source."""
+        source = {"document": self.doc.slug, "document_id": self.doc.id, "version": self.number}
+        groups = self.config.group(old), self.config.group(new)
+        change = task_status.StatusChange(
+            task_id, old, new, *groups, task_status.SRS_APPROVAL, self.config.prefix, source=source
+        )
+        await task_status.emit(conn, self.project_id, change)
+
 
 # The config of tasks
 
@@ -145,7 +164,8 @@ async def tasks_config(conn: AsyncConnection, plugin, project_id: int) -> TasksC
     cancelled = next((status["key"] for status in statuses if status.get("group") == CANCELLED), None)
     finished = tuple(status["key"] for status in statuses if status.get("group") in FINISHED_GROUPS)
     kind = FRAME_TYPE if FRAME_TYPE in types else types[0]
-    return TasksConfig(values.get("prefix") or "T", statuses[0]["key"], cancelled, finished, kind)
+    groups = tuple((status["key"], status.get("group")) for status in statuses)
+    return TasksConfig(values.get("prefix") or "T", statuses[0]["key"], cancelled, finished, kind, groups)
 
 
 # What changed
@@ -230,6 +250,7 @@ async def _frame(conn: AsyncConnection, work: _Approval, item: Item, outcome: Ou
     link = {"task_id": task_id, "kind": "srs_item", "srs_item_id": work.version.ids[item.key]}
     await conn.execute(insert(k).values(**link, created_by=work.approver_id))
     await _history(conn, task_id, "link", None, f"srs_item {code}", cause)
+    await work.announce(conn, task_id, None, work.config.first)
     outcome.created.append(number)
 
 
@@ -282,6 +303,7 @@ async def _dropped(conn: AsyncConnection, work: _Approval, item: Item, outcome: 
             update(t).where(t.c.id == task.id).values(status=work.config.cancelled, updated_at=func.now())
         )
         await _history(conn, task.id, "status", task.status, work.config.cancelled, cause)
+        await work.announce(conn, task.id, task.status, work.config.cancelled)
         outcome.cancelled.append(task.number)
 
 

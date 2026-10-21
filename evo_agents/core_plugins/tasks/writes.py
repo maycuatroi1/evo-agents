@@ -1,6 +1,6 @@
 """Keeping tasks: a new task (``create``), a change of one (``edit``), its people, its links, sprints and comments.
 Every change of a task is a row of its history (``record``), with the member who made it, or the hub (no actor) and
-why.
+why. A new task and a change of its status emit ``tasks.status`` too (``announce``, ``evo_agents.hub.task_status``).
 
 A task's status is a key of the config's statuses and its type one of its types; its people hold a grant on the
 project; its sprint is one of the project's that is not closed; its parent is another task of the project, never one
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.tasks import PRIORITIES, links
 from evo_agents.core_plugins.tasks.settings import Settings, TasksError, number_of
 from evo_agents.core_plugins.tasks.store import SLOTS, People, TaskRow, members, people, sprint, visible
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_status
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_tasks import MAX_VALUE_CHARS
 
@@ -85,6 +85,17 @@ def _text(value) -> str | None:
     if value is None:
         return None
     return str(value)[:MAX_VALUE_CHARS]
+
+
+async def announce(
+    conn: AsyncConnection, writer: Writer, task_id: int, old: str | None, new: str, cause: str = task_status.CREATE
+) -> None:
+    """Emit ``tasks.status`` of task ``task_id``, whose status ``writer``'s member set (``old`` None) or changed."""
+    settings = writer.settings
+    change = task_status.StatusChange(
+        task_id, old, new, settings.group(old), settings.group(new), cause, settings.prefix, writer.user_id
+    )
+    await task_status.emit(conn, writer.access.project_id, change)
 
 
 async def record(
@@ -240,9 +251,15 @@ async def _next_number(conn: AsyncConnection, project_id: int) -> int:
 
 
 async def create(
-    conn: AsyncConnection, writer: Writer, task: TaskInput, *, targets: list[links.Target] | None = None
+    conn: AsyncConnection,
+    writer: Writer,
+    task: TaskInput,
+    *,
+    targets: list[links.Target] | None = None,
+    cause: str | None = task_status.CREATE,
 ) -> int:
-    """Keep a new task, linked to ``targets`` when given (found already), else to what ``task.links`` names; its
+    """Keep a new task, linked to ``targets`` when given (found already), else to what ``task.links`` names, and emit
+    its status with ``cause`` (None: the caller emits it once it has set what is left, as an import sets parents); its
     number."""
     settings, access = writer.settings, writer.access
     values = {
@@ -267,6 +284,8 @@ async def create(
     await record(conn, task_id, writer.user_id, "created", None, settings.ref(values["number"]))
     await _set_people(conn, writer, task_id, _slots(task.assignees, task.roles), People())
     await _add_links(conn, writer, task_id, targets)
+    if cause is not None:
+        await announce(conn, writer, task_id, None, values["status"], cause)
     return values["number"]
 
 
@@ -330,6 +349,9 @@ async def edit(conn: AsyncConnection, writer: Writer, row: TaskRow, changes: Tas
         await _unlink(conn, writer, row.id, changes.unlink)
         await _add_links(conn, writer, row.id, targets)
         await conn.execute(update(t).where(t.c.id == row.id).values(updated_at=func.now()))
+    if "status" in found:  # with the links and parent the edit leaves
+        old, new, _ = found["status"]
+        await announce(conn, writer, row.id, old, new, task_status.EDIT)
 
 
 async def comment(conn: AsyncConnection, writer: Writer, task_id: int, body: str) -> int:
@@ -418,6 +440,7 @@ __all__ = [
     "TaskChanges",
     "TaskInput",
     "Writer",
+    "announce",
     "comment",
     "create",
     "create_sprint",

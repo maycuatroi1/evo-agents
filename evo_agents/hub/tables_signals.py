@@ -13,9 +13,9 @@ and the Curator all read them; ``evo_agents.hub.tables`` adds them to its metada
   free dimension of the data; the hub has no tenants), whether it is synthetic, the id its sender gave it, its label,
   who pushed it (an ingest key, a member, or the agent of a run for a member), the batch it came in and when.
 - hub_events (0077): each event of a project the hub wrote for the Loop, only ever added to
-  (``evo_agents.hub.hub_events``): its kind (``canvas.claim``, ``canvas.baseline``, ``signal.posted``; plan loop-engine
-  adds its own), its payload of ids and states, and when; its id only grows, in the order the events of one project
-  became visible.
+  (``evo_agents.hub.hub_events``): its kind (``canvas.claim``, ``canvas.baseline``, ``signal.posted``, and since plan
+  loop-engine ``srs.version.approved`` and ``tasks.status``), its payload of ids and states, and when; its id only
+  grows, in the order the events of one project became visible.
 """
 
 from __future__ import annotations

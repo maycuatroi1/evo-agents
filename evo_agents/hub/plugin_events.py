@@ -7,11 +7,14 @@ whose installed version takes it and whose grant there lets it read it: a run's 
 ``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result`` stores for
 the plugin of the run's agent type alone (``evo_agents.hub.task_runs``), a rev of a claim of a Lean Canvas and an
 approved baseline of one (``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits
-them), and a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``). A core plugin
-takes the end of its own task runs without that grant, as it hands them without one (``task_dispatch.hand_own_task``):
-the image trusts it. An events contribution takes the kinds its ``on`` names, or every kind when it names none. The
-same call writes an event of the last three kinds into the hub's own table hub_events too, which the Loop reads by
-cursor (``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table plugin_deliveries is the outbox:
+them), a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``), an approved version of
+an SRS document (``srs.version.approved``, with ``srs:read``; the core plugin srs emits it), and a task's status set or
+changed (``tasks.status``, with ``tasks:read``; ``evo_agents.hub.task_status``). A core plugin takes the end of its own
+task runs without that grant, as it hands them without one (``task_dispatch.hand_own_task``), and the events of its
+own (``OWN``) likewise: the image trusts it. An events contribution takes the kinds its ``on`` names, or every kind
+when it names none. The same call writes an event of the last five kinds into the hub's own table hub_events too,
+which the Loop reads by cursor (``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table
+plugin_deliveries is the outbox:
 nothing goes out while the transaction is open, and nothing is lost when the hub stops after the commit.
 ``emit_notification`` does the same for a notification of a project, to each isolated plugin's channel there, with
 ``notifications:send``: a core plugin's channel is a kind of members' channel instead, which
@@ -67,8 +70,13 @@ PERMISSION = {
     hub_events.CLAIM: "canvas:read",
     hub_events.BASELINE: "canvas:read",
     hub_events.SIGNALS: "signals:read",
+    hub_events.SRS_APPROVED: "srs:read",
+    hub_events.TASK_STATUS: "tasks:read",
     NOTIFICATION: "notifications:send",
 }
+# the core plugin each of these kinds belongs to, which takes it ungranted: srs keeps the tasks of an approved version
+# in step from its own event (``evo_agents.core_plugins.srs.auto_tasks``)
+OWN = {hub_events.SRS_APPROVED: "srs", hub_events.TASK_STATUS: "tasks"}
 MAX_ATTEMPTS = 8
 BACKOFF_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
@@ -89,8 +97,9 @@ def subscriptions(manifest: dict, tier: str, kind: str) -> list[str]:
 
 def _granted(manifest: dict, permissions, kind: str, tier: str | None) -> bool:
     """Whether a plugin of ``tier`` whose project grants it ``permissions`` reads events of ``kind``: a core plugin
-    reads the end of its own task runs (``task.result`` goes to the plugin of the run's agent type alone) ungranted."""
-    if kind == "task.result" and tier == "core":
+    reads the end of its own task runs (``task.result`` goes to the plugin of the run's agent type alone) and the
+    events of ``OWN`` that are its own ungranted."""
+    if tier == "core" and (kind == "task.result" or OWN.get(kind) == manifest.get("id")):
         return True
     needed = PERMISSION[kind]
     return needed in (permissions or []) and needed in asked_for(manifest)
