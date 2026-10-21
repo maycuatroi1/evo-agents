@@ -63,7 +63,8 @@ export function Section({
 /**
  * A radio as a compact tile: an icon, the name, and a short note below it for what is wrong with the choice (a runtime
  * none of the workers has). The tiles of a fieldset sit side by side as a segmented control: the radio itself is out of
- * sight, and the tile picked has a thicker brand border; the fieldset's info icon says what each one does.
+ * sight but covers its tile, so a click anywhere on the tile lands on it, and the tile picked has a thicker brand
+ * border; the fieldset's info icon says what each one does.
  */
 export function Tile({
   name,
@@ -91,7 +92,7 @@ export function Tile({
     <label
       htmlFor={id}
       className={cn(
-        "flex min-h-11 min-w-0 items-center gap-2 rounded-md border px-3 py-2 transition-colors duration-150 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
+        "relative flex min-h-11 min-w-0 items-center gap-2 rounded-md border px-3 py-2 transition-colors duration-150 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
         disabled ? "cursor-not-allowed border-dashed bg-muted/40 text-muted-foreground" : "cursor-pointer hover:bg-muted/50",
         checked && !disabled && "border-brand bg-surface-selected shadow-[inset_0_0_0_1px_var(--color-brand)]",
       )}
@@ -106,7 +107,8 @@ export function Tile({
         checked={checked}
         disabled={disabled}
         onChange={onChange}
-        className="sr-only"
+        // Transparent over the whole tile rather than sr-only, which the tile's icon and words would cover.
+        className={cn("absolute inset-0 m-0 size-full appearance-none opacity-0", disabled ? "cursor-not-allowed" : "cursor-pointer")}
         aria-describedby={note ? `${id}-note` : undefined}
       />
       {icon}
