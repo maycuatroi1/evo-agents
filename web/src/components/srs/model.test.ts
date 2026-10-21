@@ -155,6 +155,21 @@ describe("what an item holds", () => {
     expect(stepRefs(byKey("br1"))).toEqual(["2"]);
   });
 
+  it("reads intent, context and expectation as the template's fields, a row it does not name after them", () => {
+    const ice = item("ice", {
+      kind: "use_case",
+      code: "UC ITS-1",
+      fields: { claim: "CL-3", expectation: "Saved as reachable", actor: "Tenant admin", context: "One instance", intent: "Agents open tickets" },
+    });
+    expect(factsOf(ice).map((fact) => [fact.name, fact.known])).toEqual([
+      ["intent", true],
+      ["actor", true],
+      ["context", true],
+      ["expectation", true],
+      ["claim", false],
+    ]);
+  });
+
   it("finds the screens of a use case, linked or named, and the use cases of a screen", () => {
     expect(screensOf(ITEMS, byKey("uc1")).map(({ screen, linked }) => [screen.key, linked])).toEqual([["cart", true]]);
     const named = { ...byKey("uc1"), refs: [] };

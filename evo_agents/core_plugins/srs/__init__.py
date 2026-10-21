@@ -67,6 +67,20 @@ SETTLE = "evo_agents.core_plugins.srs.settle"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
+# The fields of a use case the templates name, in their order (markdown.ITEM_FIELDS reads them): the classic ones
+# (objective, pre- and post-condition), those of intent, context and expectation, or both.
+USE_CASE_FIELDS = (
+    "id",
+    "status",
+    "objective",
+    "intent",
+    "actor",
+    "context",
+    "trigger",
+    "pre_condition",
+    "post_condition",
+    "expectation",
+)
 DOCUMENT_KINDS = ("srs", "spec")  # evo_agents.hub.tables_srs.DOCUMENT_KINDS
 
 _LOGINS = {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 100}}
@@ -93,6 +107,16 @@ CONFIG = {
             "type": "object",
             "additionalProperties": False,
             "properties": {kind: {"type": "string", "minLength": 2, "maxLength": 200} for kind in CODED_KINDS},
+        },
+        "required_use_case_fields": {
+            "title": "Required use case fields",
+            "description": "The fields every use case fills, besides its actor, before its version is submitted, such "
+            'as ["intent", "context", "expectation"]: a row of its table of items (Intent, Context, Expectation, '
+            "Objective, Trigger, Pre-condition, Post-condition, Status, ID).",
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"enum": [field for field in USE_CASE_FIELDS if field != "actor"]},
+            "default": [],
         },
         "roles": {
             "title": "Roles",
