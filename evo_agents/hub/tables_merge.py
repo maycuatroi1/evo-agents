@@ -14,6 +14,9 @@ merge_events (0068) is its ledger, only ever added to: each gate passed or not w
 what the queue, the release and the breaker do later (``merge_gate.EVENT_KINDS``).
 merge_samples (0070) holds the merge requests drawn for an audit sample, one each, and an admin's answer
 (``post_merge.SAMPLE_RESULTS``) with a note.
+merge_breakers (0071) holds the breaker of each repo of a project the queue passed over: armed or tripped
+(``merge_breaker.STATES``), what tripped it last and why, when, how often, who reset it last and when, and since when
+the hub has seen its target branch red.
 """
 
 from __future__ import annotations
@@ -175,6 +178,32 @@ def _samples(metadata: MetaData) -> Table:
     )
 
 
-def merge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """merge_queue and merge_events (0068) and merge_samples (0070), added to ``metadata``."""
-    return _queue(metadata), _events(metadata), _samples(metadata)
+def _breakers(metadata: MetaData) -> Table:
+    return Table(
+        "merge_breakers",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("repo", Text, nullable=False),
+        Column("state", Text, nullable=False, server_default="armed"),
+        Column("cause", Text),  # what tripped it last (merge_breaker.CAUSES)
+        Column("reason", Text),  # why, each thing that tripped it
+        _when("tripped_at"),
+        Column("trips", Integer, nullable=False, server_default="0"),
+        Column("resumed_by", BigInteger),  # the admin who reset it last
+        _when("resumed_at"),  # what trips it counts from then
+        _when("red_since"),  # the hub saw the newest pipeline of its target branch fail then, none passing since
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_breakers_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["resumed_by"], ["users.id"], ondelete="SET NULL", name="merge_breakers_resumed_by_fkey"),
+        PrimaryKeyConstraint("id", name="merge_breakers_pkey"),
+        UniqueConstraint("project_id", "repo", name="merge_breakers_project_id_repo_key"),
+    )
+
+
+def merge_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """merge_queue and merge_events (0068), merge_samples (0070) and merge_breakers (0071), added to ``metadata``."""
+    return _queue(metadata), _events(metadata), _samples(metadata), _breakers(metadata)

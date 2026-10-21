@@ -239,7 +239,7 @@ def test_post_merge_a_uat_check_that_fails_again_reverts_its_merge_first_in_the_
     assert entries[3]["source"] == "revert" and entries[3]["reverts_id"] == entries[1]["id"]
     (opened,) = lines(entries[1], "revert_opened")
     assert opened["passed"] is True and opened["detail"] == {"iid": 3, "branch": "evo-revert/1", "commits": [first.sha]}
-    assert entries[2]["state"] == "ready"  # held by !1, which failed its check
+    assert entries[2]["state"] == "paused"  # !1's check tripped the breaker of the repo (merge_breaker)
 
     green(world, revert, UNDONE)
     assert gate_pass(world) == {"merged": 1, "ready": 1}  # no Judge: its diff undoes !1's; first in line, never held
@@ -248,6 +248,11 @@ def test_post_merge_a_uat_check_that_fails_again_reverts_its_merge_first_in_the_
     assert lines(entries[1], "reverted")[0]["reason"].startswith("its revert !3 merged into dev")
     gates = [(line["gate"], line["passed"]) for line in lines(entries[3], "gate")]
     assert gates[:4] == [(0, True), (1, True), (2, True), (3, True)] and "judged" not in kinds(entries[3])
+    assert entries[2]["state"] == "paused"  # the breaker let the revert alone through
+    reset = world.client.post(f"/v1/projects/{PROJECT}/merge-queue/repos/{REPO}/resume", headers=world.headers["owner"])
+    assert reset.status_code == 200, reset.text
+    gate_pass(world)
+    entries = by_iid(world)
     assert entries[2]["state"] == "ready" and "waits for !3" in entries[2]["reason"]  # the revert's own check now
 
     on_dev(world, revert, jobs=[("uat-smoke", "success")])

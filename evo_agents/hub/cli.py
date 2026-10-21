@@ -246,6 +246,10 @@ def register(sub) -> None:
 
     register_policy(hsub)
 
+    from evo_agents.hub.cli_merge import register_merge
+
+    register_merge(hsub)
+
     from evo_agents.hub.openapi import register as register_openapi
 
     register_openapi(hsub)

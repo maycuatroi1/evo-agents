@@ -99,6 +99,7 @@ TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.POLICY_TABLES  # migration 0066
 TABLES |= pg.MERGE_TABLES  # migration 0068
 TABLES |= pg.SAMPLE_TABLES  # migration 0070
+TABLES |= pg.BREAKER_TABLES  # migration 0071
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -173,8 +174,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_six_tables(hub_db):
-    assert len(TABLES) == 106  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_seven_tables(hub_db):
+    assert len(TABLES) == 107  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1488,6 +1489,47 @@ def test_0070_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+
+
+def test_0071_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0070")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    q, b, n = t.merge_queue, t.merge_breakers, t.notifications
+    row = {"project_id": ids["project"], "repo": "lumen", "source": "label", "target_branch": "dev"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(q).values({**row, "iid": 1, "source_branch": "fix/a", "state": "ready"}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0071")
+    breaker = {"project_id": ids["project"], "repo": "lumen"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(b).values(breaker))
+        assert one(conn, select(b.c.state)) == "armed"
+        tripped = {"state": "tripped", "cause": "uat_check", "reason": "the UAT check of !1 failed", "trips": 1}
+        conn.execute(update(b).values(tripped_at=func.now(), **tripped))
+        conn.execute(update(q).values(state="paused", reason="the breaker of lumen tripped"))
+        notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "merge_paused", "title": "Stopped"}
+        conn.execute(insert(n).values({**notice, "project_id": ids["project"], "details": {"repo": "lumen"}}))
+        for bad in (
+            insert(b).values(breaker),  # one breaker a repo
+            update(b).values(state="open"),
+            update(b).values(cause="weather"),
+            update(b).values(reason=None),  # a tripped breaker says why
+            update(b).values(tripped_at=None),  # and when
+            update(b).values(trips=-1),
+            insert(n).values({**notice, "notice_kind": "merge_stopped"}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        conn.execute(update(b).values(state="armed", resumed_by=ids["user"], resumed_at=func.now()))
+    assert query(hub_db, select(b.c.state, b.c.cause, b.c.trips)) == [("armed", "uat_check", 1)]
+    # Going back drops the breakers and the notices, and puts the merge request the breaker paused back in line.
+    move_to(hub_db, "0070", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
+    assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

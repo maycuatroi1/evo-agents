@@ -16,7 +16,9 @@ carried. A PROD check that fails again after its retry, or has no result, rolls 
 culprit of a check goes ``reverting``: the hub opens its revert on ``evo-revert/<iid>``, first in the queue, gated by
 its pipeline and by its diff undoing the merged one; once the revert merges, the culprit is ``reverted``. When the hub
 cannot tell the culprit, it reverts nothing and asks each admin of the project in the Inbox, listing the suspects; an
-admin asks for the revert of one (``ask_revert``).
+admin asks for the revert of one (``ask_revert``). Once the checks of a pass are settled, and again before the turn,
+the repo's breaker may trip (``merge_breaker.watch``); tripped, PROD starts no deploy and a deploy job that failed is
+not run again, while a deploy under way, the rollback and the reverts go on.
 
 Each step is a line of the ledger (``uat_check``, ``prod_deploy``, ``prod_check``, ``retried``, ``rollback``,
 ``revert_opened``, ``reverted``, ``sampled``, ``sample_answered``); a wait only updates the row's reason. What acts on
@@ -201,12 +203,18 @@ async def revert_gated(found, row_id: int, mr: MergeRequest, files: list) -> Non
 
 
 async def follow(found) -> None:
-    """Move what follows each merge of the target branch of ``found``, a pass over one repo, as far as it goes."""
+    """Move what follows each merge of the target branch of ``found``, a pass over one repo, as far as it goes. Once
+    the checks are settled the repo's breaker may trip (``merge_breaker.watch``), and PROD then starts no deploy; what
+    PROD and the reverts met may trip it again before the turn."""
+    from evo_agents.hub.server import merge_breaker  # it reads the admins and the link through this module
+
     after = After(found)
     await after.uat()
     await after.settle()
+    await merge_breaker.watch(found)
     await after.prod()
     await after.reverts()
+    await merge_breaker.watch(found, read_target=False)
 
 
 class After:
@@ -306,6 +314,8 @@ class After:
             what = f"the hub runs manual job {name}" + (f" to put PROD back at {short(to)}" if to else "")
             await self.moved(row, stage, "played", kind, what, {"job": name, "to": to})
             return None
+        if step == "retry" and stage == "deploy" and self.found.tripped:  # the breaker runs no deploy job again
+            step = "failed" if job.status == "failed" else "none"
         if step == "retry":
             again = await self.gl.retry_job(self.path, job.id)
             why = f"job {name} ended {job.status}: the hub runs it again once"
@@ -541,7 +551,7 @@ class After:
         try:
             if flight:
                 await (self.rolling_back(flight[0]) if flight[0].state == "rolling_back" else self.deployed(flight[0]))
-            else:
+            elif not self.found.tripped:  # the repo's breaker tripped: no deploy starts
                 await self.next_deploy(rows)
         except GitLabRefused as exc:
             await self.refused((flight or rows)[0].id, exc)
@@ -581,7 +591,8 @@ class After:
             async with self.engine.begin() as conn:
                 for row in [*carried, target]:
                     locked = await queue.row_of(conn, row.id, lock=True)
-                    await queue.record(conn, locked, "prod_deploy", reason=why, sha=row.after_sha)
+                    detail = {"result": "none"}
+                    await queue.record(conn, locked, "prod_deploy", reason=why, sha=row.after_sha, detail=detail)
                     await queue.set_row(
                         conn, row.id, state="done", prod_result="none", reason=merge_gate.reason_line(why)
                     )
@@ -697,7 +708,10 @@ class After:
             locked = await queue.row_of(conn, target.id, lock=True)
             follow = locked.follow or {}
             to, which = await self.rollback_to(conn, locked, follow.get("carried", []))
-            await queue.record(conn, locked, kind, passed=PASSED[result], reason=why, sha=target.after_sha)
+            detail = {"result": result}
+            await queue.record(
+                conn, locked, kind, passed=PASSED[result], reason=why, sha=target.after_sha, detail=detail
+            )
             kept = {**follow, "rollback_to": to}
             reason = merge_gate.reason_line(f"its {kind.replace('_', ' ')} failed ({why}): PROD goes back to {which}")
             values = {"prod_result": result, "follow": kept, "waits_since": func.now(), "reason": reason}
@@ -742,7 +756,7 @@ class After:
 # What an admin answers
 
 
-def _admin(user, access) -> None:
+def admin_only(user, access) -> None:
     if user.scope is not None or not has_role(access.role, "admin"):
         raise HTTPException(403, f"this needs the admin role on project {access.name}")
 
@@ -756,7 +770,7 @@ async def _queued(conn: AsyncConnection, access, queue_id: int):
 
 async def answer_sample(conn: AsyncConnection, user, access, sample_id: int, result: str, note: str | None):
     """An admin's answer to audit sample ``sample_id``: ``faulty`` counts as a pass of the Judge found wrong."""
-    _admin(user, access)
+    admin_only(user, access)
     s = tables.merge_samples
     found = (await conn.execute(select(s).where(s.c.id == sample_id).with_for_update())).one_or_none()
     if found is None or found.project_id != access.project_id:
@@ -789,7 +803,7 @@ async def answer_sample(conn: AsyncConnection, user, access, sample_id: int, res
 
 async def approve_release(conn: AsyncConnection, user, access, queue_id: int, release: str):
     """An admin approves the PROD release of merge ``queue_id`` (``prod_release`` manual): the next pass deploys it."""
-    _admin(user, access)
+    admin_only(user, access)
     row = await _queued(conn, access, queue_id)
     if release != "manual":
         raise HTTPException(409, f"the policy releases {row.repo} to PROD {release}, not by hand")
@@ -813,7 +827,7 @@ AFTER_MERGE = (*post_merge.UAT_STATES, "releasing", "done")
 async def ask_revert(conn: AsyncConnection, user, access, queue_id: int):
     """An admin asks the hub to revert merge ``queue_id``, a suspect it could not tell, or any merge it followed: the
     next pass opens its revert, first in the queue."""
-    _admin(user, access)
+    admin_only(user, access)
     row = await _queued(conn, access, queue_id)
     retry = row.state == "reverting" and (row.follow or {}).get("revert_problem")
     if row.source == post_merge.REVERT or not (row.state in AFTER_MERGE or retry):

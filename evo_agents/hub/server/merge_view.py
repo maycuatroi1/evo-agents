@@ -1,16 +1,18 @@
 """The routes of the hub's merge queue on GitLab (plan gitlab-merge-queue): GET /v1/projects/{p}/merge-queue lists, to a
 member with a grant on the project, the merge requests of its queue (``repo``'s alone when given), newest first, each
 with where it comes from, its state, why it waits or is blocked (the gate first), the risk and the Judges' verdicts,
-the results of its checks after its merge, and its ledger (merge_events), the newest MAX_EVENTS lines first; and the
-audit samples, those waiting for an answer first. GET .../merge-queue/figures counts, for each repo, agent and model,
+the results of its checks after its merge, and its ledger (merge_events), the newest MAX_EVENTS lines first; the audit
+samples, those waiting for an answer first; and the breaker of each repo (``evo_agents.hub.server.merge_breaker``).
+GET .../merge-queue/figures counts, for each repo, agent and model,
 the merges of the last ``days``, the reverts, the rollbacks, the Judge's passes found wrong and the time in the queue
 (``post_merge.figures``).
 
 An admin of the project answers what the hub asks after a merge (``evo_agents.hub.server.post_merge``): POST
 .../merge-queue/samples/{id} answers an audit sample ``ok`` or ``faulty`` with a note, POST .../merge-queue/{id}/release
 approves the PROD release of a merge when the policy releases its repo by hand, and POST .../merge-queue/{id}/revert
-asks the hub to revert a merge it followed, one of the suspects it could not tell apart. ``evo_agents.hub.server.
-merge_gate`` moves the merge requests; no value of a secret is ever in a row.
+asks the hub to revert a merge it followed, one of the suspects it could not tell apart. POST .../merge-queue/repos/
+{repo}/resume resets the breaker of a repo that tripped: its paused merge requests wait for their turn again.
+``evo_agents.hub.server.merge_gate`` moves the merge requests; no value of a secret is ever in a row.
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import merge_gate, post_merge, tables
+from evo_agents.hub import merge_breaker, merge_gate, post_merge, tables
+from evo_agents.hub.server import merge_breaker as breaker_rows
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.autonomy_policies import effective_policy
@@ -41,6 +44,7 @@ router = APIRouter(prefix="/v1/projects", tags=["merge queue"], responses={401: 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 ANSWER_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
 RowId = Annotated[int, Path(ge=1, le=MAX_ID)]
+RepoName = Annotated[str, Path(min_length=1, max_length=200)]
 
 
 class MergeEvent(BaseModel):
@@ -109,10 +113,31 @@ class MergeSample(BaseModel):
     created_at: datetime
 
 
+class MergeBreaker(BaseModel):
+    """The breaker of a repo of the queue: armed, or tripped until an admin resets it."""
+
+    repo: str
+    state: str = Field(description=f"one of {', '.join(merge_breaker.STATES)}")
+    cause: str | None = Field(description=f"what tripped it last: one of {', '.join(merge_breaker.CAUSES)}")
+    reason: str | None = Field(description="why it tripped last, each thing that tripped it")
+    tripped_at: datetime | None
+    trips: int = Field(description="how often it tripped")
+    resumed_by: str | None = Field(description="the admin who reset it last")
+    resumed_at: datetime | None = Field(description="what trips it counts from then")
+    red_since: datetime | None = Field(description="the hub saw its target branch turn red then, none passing since")
+
+
+class BreakerReset(MergeBreaker):
+    """A breaker an admin reset, and the merge requests waiting for their turn again."""
+
+    resumed: list[int] = Field(description="the iids of the merge requests it had paused, ready again")
+
+
 class MergeQueueView(BaseModel):
     project: str
     requests: list[QueuedMergeRequest] = Field(description="newest first")
     samples: list[MergeSample] = Field([], description=f"the audit samples, those waiting first, at most {MAX_SAMPLES}")
+    breakers: list[MergeBreaker] = Field([], description="the breaker of each repo the queue passed over, by repo")
 
 
 class SampleAnswer(BaseModel):
@@ -193,6 +218,11 @@ def _samples_query(project_id: int):
     )
 
 
+def _breaker(row) -> MergeBreaker:
+    keys = set(MergeBreaker.model_fields) - {"resumed_by"}
+    return MergeBreaker(**{key: getattr(row, key) for key in keys}, resumed_by=row.resumed_login)
+
+
 def _sample(row) -> MergeSample:
     return MergeSample(
         id=row.id,
@@ -232,10 +262,12 @@ async def show_queue(
             samples = samples.where(q.c.repo == repo)
         samples = samples.order_by(s.c.result.is_not(None), s.c.id.desc()).limit(MAX_SAMPLES)
         found = (await conn.execute(samples)).all()
+        breakers = await breaker_rows.breakers(conn, access.project_id, repo)
     return MergeQueueView(
         project=access.name,
         requests=[_entry(row, events[row.id]) for row in rows],
         samples=[_sample(row) for row in found],
+        breakers=[_breaker(row) for row in breakers],
     )
 
 
@@ -330,3 +362,14 @@ async def ask_revert(request: Request, project: ProjectName, queue_id: RowId, us
         access = await project_access(conn, user, project)
         row = await after_merge.ask_revert(conn, user, access, queue_id)
         return await _answered(conn, row)
+
+
+@router.post("/{project}/merge-queue/repos/{repo}/resume", response_model=BreakerReset, responses=ANSWER_REFUSALS)
+async def resume_repo(request: Request, project: ProjectName, repo: RepoName, user: CurrentUser) -> BreakerReset:
+    """An admin of the project resets the breaker of a repo that tripped: its paused merge requests wait for their turn
+    again, at their place, and what trips it counts from now."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        resumed = await breaker_rows.resume(conn, user, access, repo)
+        (row,) = await breaker_rows.breakers(conn, access.project_id, repo)
+    return BreakerReset(**_breaker(row).model_dump(), resumed=resumed)

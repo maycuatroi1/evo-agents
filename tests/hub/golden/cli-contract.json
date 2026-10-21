@@ -3626,6 +3626,101 @@
         "schema": "Memory"
       }
     },
+    "hub merge list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "requests",
+          "samples",
+          "breakers"
+        ],
+        "schema": "MergeQueueView"
+      }
+    },
+    "hub merge resume": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "repo",
+          "state",
+          "cause",
+          "reason",
+          "tripped_at",
+          "trips",
+          "resumed_by",
+          "resumed_at",
+          "red_since",
+          "resumed"
+        ],
+        "schema": "BreakerReset"
+      }
+    },
     "hub migrate": {
       "positionals": [],
       "options": [
@@ -42532,6 +42627,101 @@
           }
         }
       },
+      "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Resume Repo",
+          "description": "An admin of the project resets the breaker of a repo that tripped: its paused merge requests wait for their turn\nagain, at their place, and what trips it counts from now.",
+          "operationId": "resume_repo_v1_projects__project__merge_queue_repos__repo__resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "title": "Repo"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BreakerReset"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/merge-judge": {
         "get": {
           "tags": [
@@ -45164,6 +45354,121 @@
             "data"
           ],
           "title": "BrandingImage"
+        },
+        "BreakerReset": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of armed, tripped"
+            },
+            "cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cause",
+              "description": "what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it tripped last, each thing that tripped it"
+            },
+            "tripped_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tripped At"
+            },
+            "trips": {
+              "type": "integer",
+              "title": "Trips",
+              "description": "how often it tripped"
+            },
+            "resumed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed By",
+              "description": "the admin who reset it last"
+            },
+            "resumed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed At",
+              "description": "what trips it counts from then"
+            },
+            "red_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Red Since",
+              "description": "the hub saw its target branch turn red then, none passing since"
+            },
+            "resumed": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Resumed",
+              "description": "the iids of the merge requests it had paused, ready again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "state",
+            "cause",
+            "reason",
+            "tripped_at",
+            "trips",
+            "resumed_by",
+            "resumed_at",
+            "red_since",
+            "resumed"
+          ],
+          "title": "BreakerReset",
+          "description": "A breaker an admin reset, and the merge requests waiting for their turn again."
         },
         "BriefSummary": {
           "properties": {
@@ -54130,6 +54435,112 @@
           ],
           "title": "MemoryRevision"
         },
+        "MergeBreaker": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "one of armed, tripped"
+            },
+            "cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cause",
+              "description": "what tripped it last: one of uat_check, prod_check, rollback, revert, target_red, reverts_in_a_row, revert_rate, judge_misses"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it tripped last, each thing that tripped it"
+            },
+            "tripped_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tripped At"
+            },
+            "trips": {
+              "type": "integer",
+              "title": "Trips",
+              "description": "how often it tripped"
+            },
+            "resumed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed By",
+              "description": "the admin who reset it last"
+            },
+            "resumed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resumed At",
+              "description": "what trips it counts from then"
+            },
+            "red_since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Red Since",
+              "description": "the hub saw its target branch turn red then, none passing since"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "state",
+            "cause",
+            "reason",
+            "tripped_at",
+            "trips",
+            "resumed_by",
+            "resumed_at",
+            "red_since"
+          ],
+          "title": "MergeBreaker",
+          "description": "The breaker of a repo of the queue: armed, or tripped until an admin resets it."
+        },
         "MergeEvent": {
           "properties": {
             "id": {
@@ -54470,6 +54881,15 @@
               "type": "array",
               "title": "Samples",
               "description": "the audit samples, those waiting first, at most 50",
+              "default": []
+            },
+            "breakers": {
+              "items": {
+                "$ref": "#/components/schemas/MergeBreaker"
+              },
+              "type": "array",
+              "title": "Breakers",
+              "description": "the breaker of each repo the queue passed over, by repo",
               "default": []
             }
           },
@@ -55537,7 +55957,8 @@
                     "chat_mention",
                     "chat_added",
                     "plugin_disabled",
-                    "builder_proposal"
+                    "builder_proposal",
+                    "merge_paused"
                   ]
                 },
                 {

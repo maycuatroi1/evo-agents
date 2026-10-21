@@ -115,7 +115,8 @@ class Turn:
 
     async def start(self) -> int | None:
         """Give the turn to the merge request ready first, a revert before any other, unless it waits for something
-        on GitLab or one merged before holds the turn (``held``; a revert is never held); its id, or None."""
+        on GitLab or one merged before holds the turn (``held``; a revert is never held), or the repo's breaker tripped
+        (a revert alone goes on); its id, or None."""
         q = tables.merge_queue
         not_waiting = or_(q.c.reason.is_(None), ~q.c.reason.startswith(merge_gate.WAITS, autoescape=True))
         query = (
@@ -125,6 +126,8 @@ class Turn:
             .limit(1)
             .with_for_update()
         )
+        if self.found.tripped:  # the repo's breaker tripped: a revert alone takes the turn
+            query = query.where(q.c.source == post_merge.REVERT)
         async with self.engine.begin() as conn:
             row = (await conn.execute(query)).one_or_none()
             if row is None:
