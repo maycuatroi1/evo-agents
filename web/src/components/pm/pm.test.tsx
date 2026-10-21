@@ -126,6 +126,23 @@ describe("DailyPage", () => {
     expect(screen.queryByTestId("pm-report")).toBeNull();
   });
 
+  it("explains a project whose members carry no task: the load lists them with nothing counted", () => {
+    show({
+      ...DAILY,
+      done_use_cases: [],
+      done_tasks: [],
+      sprint: null,
+      late: [],
+      review: [],
+      stale: [],
+      blocked: [],
+      escalate: [],
+      load: [{ login: "bao", role: "admin", doing: 0, wip_limit: 2, overloaded: false, empty: true, review_as_qa: 0, late: 0, doing_tasks: [] }],
+      hidden: { done_use_cases: 0, done_tasks: 0, sprint: 0, late: 0, review: 0, stale: 0, blocked: 0, escalate: 0 },
+    });
+    expect(screen.getByTestId("pm-bare")).toBeInTheDocument();
+  });
+
   it("says what to do when the hub answers 409", () => {
     show(null, { status: 409, message: "tasks is not enabled in this project" });
     expect(screen.getByTestId("pm-not-ready")).toBeInTheDocument();

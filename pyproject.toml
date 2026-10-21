@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development",
 ]
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "tzdata>=2024.1"]
 
 [project.optional-dependencies]
 # import-linter: `lint-imports` checks the package boundaries of [tool.importlinter] below (docs/structure.md).
