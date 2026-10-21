@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Save, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
@@ -9,7 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { browserApi } from "@/lib/api/browser";
+import type { Project } from "@/lib/api/client";
 import { isApiError } from "@/lib/api/errors";
+import { projectsQuery } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 import { FormError } from "./form-error";
 import { useWorkerFailure, useWorkerWrite } from "./hooks";
@@ -29,24 +34,44 @@ export function parsePlugins(input: string): { plugins: string[]; invalid: strin
   return { plugins, invalid: words.filter((word) => !PLUGIN_ID.test(word)), tooMany: plugins.length > MAX_PLUGINS };
 }
 
-type Form = { name: string; slots: string; labels: string; plugins: string };
+type Form = { name: string; slots: string; labels: string; plugins: string; projects: string[] };
 type Field = keyof Form;
 type Errors = Partial<Record<Field, string>>;
 
 function formOf(worker: Worker): Form {
-  return { name: worker.name, slots: String(worker.slots), labels: worker.labels.join(", "), plugins: worker.plugins.join(", ") };
+  return {
+    name: worker.name,
+    slots: String(worker.slots),
+    labels: worker.labels.join(", "),
+    plugins: worker.plugins.join(", "),
+    projects: [...worker.projects].sort(),
+  };
 }
 
 function sameLabels(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((label, index) => label === b[index]);
 }
 
+function writable(project: Project): boolean {
+  return project.role === "writer" || project.role === "admin";
+}
+
 /**
- * The owner's settings of a worker: its name, slots, labels and the plugins whose runtimes it takes, saved with PATCH
- * /v1/workers/{id}, and under them the switch that locks its version, which saves as soon as it is flipped
+ * The projects the form offers: those the worker serves, which it keeps whatever role the owner holds on them now, and
+ * those the owner may add, where they hold writer. While the projects are read, or when they cannot be, the worker's
+ * own are offered alone.
+ */
+function projectChoices(worker: Worker, projects: Project[] | undefined): string[] {
+  return [...new Set([...worker.projects, ...(projects ?? []).filter(writable).map((project) => project.name)])].sort();
+}
+
+/**
+ * The owner's settings of a worker: its name, slots, labels, the plugins whose runtimes it takes and the projects it
+ * serves, saved with PATCH /v1/workers/{id}, and under them the switch that locks its version, which saves as soon as it is flipped
  * (version-lock.tsx). The fields show what the hub holds until the owner types; a save sends only the fields that differ, and once the hub answers the page and
  * the list read the worker again, so the header, the Scope card and the Slots line show the new values. What the hub
- * refuses (a name taken, a value out of range, the worker revoked meanwhile) stays at the form until the next try.
+ * refuses (a name taken, a value out of range, a project it may not add or still needs, the worker revoked meanwhile)
+ * stays at the form until the next try.
  * Another member never gets here, and a hub admin who is not the owner sees the values in Scope, without this form.
  */
 export function WorkerSettings({ worker }: { worker: Worker }) {
@@ -54,6 +79,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
   const ids = useId();
   const failure = useWorkerFailure();
   const write = useWorkerWrite((api, body: WorkerUpdate) => updateWorker(api, worker.id, body));
+  const projects = useQuery(projectsQuery(browserApi));
   const [edits, setEdits] = useState<Form | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const revoked = workerView(worker) === "revoked";
@@ -63,7 +89,8 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
   if (revoked && !write.isError) return null;
 
   const form = edits ?? formOf(worker);
-  const set = (field: Field, value: string) => {
+  const choices = projectChoices(worker, projects.data);
+  const set = <F extends Field>(field: F, value: Form[F]) => {
     setEdits({ ...form, [field]: value });
     setErrors((current) => ({ ...current, [field]: undefined }));
     if (write.isError) write.reset();
@@ -87,10 +114,11 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     const plugins = parsePlugins(form.plugins);
     if (plugins.invalid.length) found.plugins = t("pluginsInvalid", { plugins: plugins.invalid.join(", ") });
     else if (plugins.tooMany) found.plugins = t("pluginsTooMany", { max: MAX_PLUGINS });
+    if (form.projects.length === 0) found.projects = t("projectsRequired");
     setErrors(found);
-    const first = (["name", "slots", "labels", "plugins"] as const).find((key) => found[key]);
+    const first = (["name", "slots", "labels", "plugins", "projects"] as const).find((key) => found[key]);
     if (first) {
-      document.getElementById(`${ids}-${first}`)?.focus();
+      document.getElementById(first === "projects" ? `${ids}-project-0` : `${ids}-${first}`)?.focus();
       return;
     }
 
@@ -99,6 +127,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     if (slots !== worker.slots) body.slots = slots;
     if (!sameLabels(labels.labels, worker.labels)) body.labels = labels.labels;
     if (!sameLabels(plugins.plugins, worker.plugins)) body.plugins = plugins.plugins;
+    if (!sameLabels(form.projects, [...worker.projects].sort())) body.projects = form.projects;
     if (Object.keys(body).length === 0) {
       setEdits(null); // what was typed is what the hub holds already
       return;
@@ -107,10 +136,15 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     try {
       saved = await write.mutateAsync(body); // resolves once the worker queries were reloaded
     } catch (error) {
-      if (isApiError(error) && error.status === 409 && body.name !== undefined && !/revoked/i.test(error.info.message)) {
-        write.reset(); // said at the name field, not twice
+      // a 409 about the name or about a project the worker still needs is said at its field, not twice
+      if (isApiError(error) && error.status === 409 && body.name !== undefined && /worker named/i.test(error.info.message)) {
+        write.reset();
         setErrors({ name: t("nameTaken", { name }) });
         document.getElementById(`${ids}-name`)?.focus();
+      } else if (isApiError(error) && error.status === 409 && body.projects !== undefined && /cannot stop serving/i.test(error.info.message)) {
+        write.reset();
+        setErrors({ projects: t("projectsStillNeeded", { message: error.info.message }) });
+        document.getElementById(`${ids}-project-0`)?.focus();
       }
       return; // anything else is said above the buttons, from the mutation's state
     }
@@ -227,6 +261,47 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
               </p>
               <FieldError id={`${ids}-plugins-error`} text={errors.plugins} />
             </div>
+            <fieldset className="flex min-w-0 flex-col gap-2 md:col-span-3" aria-describedby={describedBy("projects")}>
+              <legend className="mb-1.5 text-sm font-medium">{t("projects")}</legend>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-testid="worker-settings-projects">
+                {choices.map((name, index) => {
+                  const checked = form.projects.includes(name);
+                  return (
+                    <label
+                      key={name}
+                      htmlFor={`${ids}-project-${index}`}
+                      className={cn(
+                        "flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50",
+                        checked && "border-brand/40 bg-surface-selected",
+                      )}
+                    >
+                      <input
+                        id={`${ids}-project-${index}`}
+                        type="checkbox"
+                        name="projects"
+                        value={name}
+                        checked={checked}
+                        onChange={(event) =>
+                          set(
+                            "projects",
+                            event.target.checked
+                              ? [...form.projects, name].sort()
+                              : form.projects.filter((project) => project !== name),
+                          )
+                        }
+                        className="size-4 shrink-0 cursor-pointer accent-primary"
+                        aria-invalid={errors.projects ? true : undefined}
+                      />
+                      <span className="min-w-0 font-mono text-sm [overflow-wrap:anywhere]">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p id={`${ids}-projects-hint`} className="text-xs text-muted-foreground">
+                {t("projectsHint")}
+              </p>
+              <FieldError id={`${ids}-projects-error`} text={errors.projects} />
+            </fieldset>
           </fieldset>
           {error ? <FormError text={error.text} detail={error.detail} requestId={error.requestId} testId="worker-settings-error" /> : null}
           {revoked ? null : (

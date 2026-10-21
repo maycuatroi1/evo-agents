@@ -132,7 +132,14 @@ async def record_heartbeat(
             .where(w.c.id == worker_id)
             .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
         )
-        settings = WorkerSettings(**held.one()._mapping)
+        wp, projects = tables.worker_projects, tables.projects
+        served = (
+            select(projects.c.name)
+            .join_from(wp, projects, projects.c.id == wp.c.project_id)
+            .where(wp.c.worker_id == worker_id)
+            .order_by(projects.c.name)
+        )
+        settings = WorkerSettings(**held.one()._mapping, projects=list((await conn.execute(served)).scalars()))
         nightly = await update_now.nightly_read(conn)  # the job hub.read_nightly reads GitHub, never a heartbeat
         asked = await update_now.settle(conn, worker_id, body, nightly)
         declared = []
