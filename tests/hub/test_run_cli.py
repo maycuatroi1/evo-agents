@@ -29,7 +29,7 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import run_cli
+from evo_agents.hub import run_cli, run_cli_candidates
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.run_cli import follow, format_event, sse_messages
 from tests.hub import live, pg
@@ -69,6 +69,111 @@ def ok(result: SimpleNamespace) -> SimpleNamespace:
 
 def as_json(result: SimpleNamespace):
     return json.loads(ok(result).out)
+
+
+# Candidates to run a failed run again
+
+
+CANDIDATES = {
+    "run_id": 161,
+    "project": "demo",
+    "kind": "step",
+    "state": "failed",
+    "failure_cause": "missing_tool",
+    "workers": [
+        {
+            "worker_id": 4,
+            "worker": "studio",
+            "fit": True,
+            "rank": 1,
+            "reasons": ["online with a free slot", "the worker the run failed on"],
+            "is_run_worker": True,
+            "online": True,
+            "free_slots": 1,
+            "runtimes": ["claude-code"],
+            "models": [],
+            "labels": [],
+            "accounts": [],
+        },
+        {
+            "worker_id": 5,
+            "worker": "laptop",
+            "fit": False,
+            "rank": None,
+            "reasons": ["is offline", "has no checkout of evo-lms"],
+            "is_run_worker": False,
+            "online": False,
+            "free_slots": 0,
+            "runtimes": [],
+            "models": [],
+            "labels": [],
+            "accounts": [],
+        },
+    ],
+    "agents": [
+        {
+            "profile_id": 1,
+            "handle": "demo",
+            "name": "demo",
+            "is_default": True,
+            "fit": True,
+            "rank": 1,
+            "reasons": ["a worker of yours can take it"],
+            "project": "demo",
+        },
+        {
+            "profile_id": 9,
+            "handle": "evo-lms",
+            "name": "evo-lms",
+            "is_default": True,
+            "fit": True,
+            "rank": 2,
+            "reasons": ["a worker of yours can take it", "the run's error names evo-lms"],
+            "project": "evo-lms",
+        },
+    ],
+    "accounts": [{"name": "claude-main", "state": "ready", "workers": ["any"], "used_by_run": True}],
+    "other_projects": [
+        {
+            "project": "evo-lms",
+            "role": "writer",
+            "named": "evo-lms",
+            "fit": True,
+            "reasons": ["the owner is a writer of project evo-lms"],
+        }
+    ],
+    "cause_inferred": False,
+    "triage": None,
+}
+
+
+class AnswersCandidates:
+    url = HUB_URL
+
+    def __init__(self):
+        self.calls = []
+
+    def call(self, method, path, body=None):
+        self.calls.append((method, path))
+        return CANDIDATES
+
+
+def test_candidates_prints_the_workers_agents_and_accounts_with_why(monkeypatch, capsys, tmp_path):
+    hub = AnswersCandidates()
+    monkeypatch.setattr(run_cli_candidates, "signed_in", lambda: (hub, None))
+    result = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo"))
+    assert hub.calls == [("GET", "/v1/projects/demo/runs/161/rerun-candidates")]
+    assert "Run #161 (step) failed, cause missing_tool: who can run it again" in result.out
+    assert "studio  #1   claude-code" in result.out and "is offline; has no checkout of evo-lms" in result.out
+    squeezed = " ".join(result.out.split())
+    assert "@demo #1" in squeezed and "claude-main ready any" in squeezed
+    assert "@evo-lms (evo-lms) #2" in squeezed and "Other projects the error names" in squeezed
+    assert "evo-lms writer evo-lms" in squeezed
+    assert (
+        as_json(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo", "--json"))
+        == CANDIDATES
+    )
+    assert_json_keys("hub run candidates", CANDIDATES)
 
 
 # Reading server-sent events
@@ -276,6 +381,52 @@ def test_a_model_needs_the_runtime_that_names_it(monkeypatch, capsys, tmp_path, 
     assert result.err.startswith("error: --model names a model as one runtime names it, so it needs --runtime")
 
 
+def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypatch, capsys, tmp_path):
+    from evo_agents.hub import decision_cli
+
+    planless = {
+        "id": 12,
+        "project": "demo",
+        "run_id": 40,
+        "run_state": "waiting",
+        "plan_id": None,
+        "step_key": None,
+        "category": "scope",
+        "question": "Poll, or subscribe?",
+        "context": None,
+        "options": [{"key": "poll", "label": "Poll", "description": None, "recommended": True}],
+        "recommended": "poll",
+        "state": "open",
+        "owner": "owner",
+        "answer_option": None,
+        "answer_text": None,
+        "answered_by": None,
+        "answer_run_id": None,
+        "asked_at": AT,
+        "answered_at": None,
+        "delivered_at": None,
+    }
+    planned = {**planless, "id": 13, "plan_id": "wait-helper", "step_key": "2"}
+
+    class Answers:
+        def call(self, method, path, body=None):
+            if path.endswith("/decisions/12"):
+                return planless
+            return {"decisions": [planned, planless], "total": 2, "limit": 50, "offset": 0}
+
+    monkeypatch.setattr(decision_cli, "_signed_in", lambda: (Answers(), None))
+    home = tmp_path / "home"
+    table = ok(cli(monkeypatch, capsys, home, "hub", "decision", "list", "--project", "demo")).out
+    (row,) = [line for line in table.splitlines() if line.startswith("#12")]
+    assert row.split()[3:5] == ["#40", "-"] and "None" not in row and "null" not in row
+    (row,) = [line for line in table.splitlines() if line.startswith("#13")]
+    assert "wait-helper" in row and "author run" not in row
+    shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "12", "--project", "demo")).out
+    (run_line,) = [line for line in shown.splitlines() if line.strip().startswith("run ")]
+    assert run_line.split(None, 1)[1] == "#40 (waiting), no plan"
+    assert "None" not in shown and "null" not in shown
+
+
 @pytest.mark.parametrize(
     "args, problem",
     [
@@ -328,6 +479,8 @@ def show_offline(monkeypatch, capsys, tmp_path, run: dict) -> list[str]:
     """``hub run show`` of ``run``, the hub's answer given rather than asked for: its output lines."""
 
     class Answering:
+        url = HUB_URL
+
         def call(self, method, path, body=None):
             assert (method, path) == ("GET", f"/v1/projects/demo/runs/{run['id']}")
             return run
@@ -359,6 +512,68 @@ def test_show_names_the_worker_the_next_attempt_of_a_lost_run_waits_for_until_it
 
     for run in (queued_attempt(steady_wait=None), queued_attempt(state="leased")):
         assert not any("waits for" in line for line in show_offline(monkeypatch, capsys, tmp_path, run))
+
+
+def test_show_of_a_chat_run_names_its_chat_and_the_message_that_started_it(monkeypatch, capsys, tmp_path):
+    repos = [{"repo": "curator-sandbox", "branch": "chat/57"}, {"repo": "evo-agents", "branch": "chat/57"}]
+    run = queued_attempt(
+        id=57,
+        kind="chat",
+        plan_id="",
+        step_key=None,
+        plan_revision=None,
+        title="@evo-sandbox in Step 11: fix one line",
+        repo=None,
+        branch="chat/57",
+        repos=repos,
+        chat_id=3,
+        chat_message_id=8,
+        hop=1,
+        state="done",
+        parent_run_id=None,
+        steady_wait=None,
+    )
+    said = {
+        line.split(None, 1)[0]: line.split(None, 1)[1]
+        for line in show_offline(monkeypatch, capsys, tmp_path, run)[1:-1]
+    }
+    assert said["kind"].startswith("chat run: one turn of an agent mentioned in a group chat")
+    assert said["title"] == "@evo-sandbox in Step 11: fix one line"
+    assert said["chat"] == "#3, message #8, hop 1"
+    assert said["message"] == f"{HUB_URL}/chats/3?message=8"
+    assert said["repos"] == "curator-sandbox (chat/57), evo-agents (chat/57)"
+    assert "plan" not in said and "step" not in said and "repo" not in said
+
+
+@pytest.mark.parametrize("plan_id", ["", "curator-lumen-report"])
+def test_show_of_a_judge_run_says_whose_judge_it_is_and_names_a_plan_only_when_it_has_one(
+    monkeypatch, capsys, tmp_path, plan_id
+):
+    repos = [{"repo": "lumen-app", "branch": "fix/one"}]
+    run = queued_attempt(
+        id=383,
+        kind="judge",
+        plan_id=plan_id,
+        step_key=None,
+        plan_revision=4 if plan_id else None,
+        title="Judge of !2 of lumen-app: Fix one" if not plan_id else "Judge of the lumen report",
+        repo="lumen-app",
+        branch="fix/one",
+        repos=repos,
+        state="done",
+        parent_run_id=None,
+        steady_wait=None,
+    )
+    said = {
+        line.split(None, 1)[0]: line.split(None, 1)[1]
+        for line in show_offline(monkeypatch, capsys, tmp_path, run)[1:-1]
+    }
+    if plan_id:
+        assert said["kind"].startswith("judge run: the Curator's Judge reads a change of its plan")
+        assert said["plan"] == "curator-lumen-report of project demo, revision 4"
+    else:
+        assert said["kind"].startswith("judge run: a Judge of the merge queue reads a merge request")
+        assert "plan" not in said and "Curator" not in said["kind"]
 
 
 # Against a hub
@@ -1001,3 +1216,34 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     assert fields["delivered"] == "not to the agent yet"
     left = ok(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", "all"))
     assert left.out == "Marked 0 notification(s) read; 0 left unread.\n"  # answering read the decision's
+
+
+@needs_pg
+def test_dispatch_plan_author_and_rerun_send_the_account_picked_by_hand(hub, monkeypatch, capsys):
+    """``--account`` goes in the body: a name that is no env secret of the caller's comes back refused, nothing
+    queued; ``rerun`` takes ``--account`` or ``--account-by-rule``, never both (``tests.hub.test_accounts_dispatch``
+    checks the accounts the runs take)."""
+    from tests.hub.test_author_runs import CHECKOUTS, KINDS, beat
+
+    push(hub.client, hub.headers["owner"], fleet_body())
+    fleet_worker(hub.client, hub.headers["owner"], "mac-plan")
+    beat(hub.client, add_worker(hub.client, hub.headers["owner"], "mac-author", checkouts=CHECKOUTS), KINDS)
+    refused = "you have no env secret named claude-z on this hub"
+    for args in (
+        ("dispatch", PLAN, "2"),
+        ("plan", FLEET, "--worker", "mac-plan"),
+        ("author", "Write a plan.", "--worker", "mac-author"),
+    ):
+        result = runs_of(hub, monkeypatch, capsys, "owner", *args, "--account", "claude-z")
+        assert result.code == 1 and refused in result.err and "nothing was dispatched" in result.err, args
+    assert as_json(runs_of(hub, monkeypatch, capsys, "owner", "list", "--json"))["runs"] == []
+
+    queued = str(dispatched(hub.client, hub.headers["owner"], [4])[0]["id"])
+    ok(runs_of(hub, monkeypatch, capsys, "owner", "cancel", queued))
+    result = runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account", "claude-z")
+    assert result.code == 1 and refused in result.err
+    with pytest.raises(SystemExit) as both:
+        runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account", "claude-z", "--account-by-rule")
+    assert both.value.code == 2 and "not allowed with argument --account" in capsys.readouterr().err
+    again = as_json(runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account-by-rule", "--json"))
+    assert (again["parent_run_id"], again["state"]) == (int(queued), "queued")

@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { RunRef } from "@/components/data/identifier";
 import type { OverviewDecision, OverviewRun } from "@/components/home/model";
 import { PlanRunKindBadge } from "@/components/runs/badges";
+import { LocalRunKindBadge } from "@/components/local-run";
 import type { DescribeMove } from "@/components/runs/log-model";
 import { isActiveState, LIVE_REFRESH_MS, type Run, runHref, runKey } from "@/components/runs/queries";
 import { type LogStatus, logSignal, useRunLog } from "@/components/runs/use-run-log";
@@ -21,7 +22,7 @@ import { countSteps, parsePlan } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { KEEP_EVENTS, tailStart, type TileRef, tileKey } from "./model";
-import { RunTime, StepsDone, WorkerName } from "./parts";
+import { LocalName, LocalTime, RunTime, StepsDone, WorkerName } from "./parts";
 import { type TileSignals, useTileSignal } from "./signals";
 import { TileTrace } from "./tile-trace";
 
@@ -168,12 +169,13 @@ function LiveTile({ tile, run, flight, decision, viewer, signals, onClose }: Omi
     setSaid(t("now", { id: tile.id, state: tState(run.state) }));
   }
 
-  const plan = run.kind === "plan" || run.step_key === null;
+  const local = run.kind === "local";
+  const plan = run.kind === "plan" || (run.step_key === null && !local);
   // A review run of the Curator works on no plan: its title may be all there is.
-  const title = (plan ? (flight?.plan_title ?? run.title ?? run.plan_id) : (run.title ?? run.step_key ?? run.plan_id)) || tRuns("untitled");
+  const title = (local ? (run.title ?? run.machine ?? "") : plan ? (flight?.plan_title ?? run.title ?? run.plan_id) : (run.title ?? run.step_key ?? run.plan_id)) || tRuns("untitled");
   const steps = usePlanSteps(run, flight);
   const active = isActiveState(run.state);
-  const waiting = decision !== null && (run.state === "waiting" || run.state === "parked");
+  const waiting = decision !== null && (run.state === "waiting" || run.state === "parked" || (local && run.state === "idle"));
   const partial = (log.events[0]?.seq ?? start + 1) > 1;
 
   return (
@@ -199,11 +201,11 @@ function LiveTile({ tile, run, flight, decision, viewer, signals, onClose }: Omi
         <span className="truncate" title={title} data-testid="tile-title">
           {title}
         </span>
-        {run.kind === "plan" ? <PlanRunKindBadge /> : null}
+        {local ? <LocalRunKindBadge /> : run.kind === "plan" ? <PlanRunKindBadge /> : null}
       </p>
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-subtle" data-testid="tile-facts">
-        <WorkerName worker={run.worker} />
-        <RunTime run={run} />
+        {local ? <LocalName run={run} /> : <WorkerName worker={run.worker} />}
+        {local ? <LocalTime run={run} /> : <RunTime run={run} />}
         {steps ? <StepsDone done={steps.done} total={steps.total} testId="tile-steps" /> : null}
         {waiting && decision.yours ? (
           <span className="inline-flex items-center gap-1 font-medium text-attention" data-testid="tile-waiting-you">

@@ -51,12 +51,33 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   this one died can stop an agent it left (``evo_agents.worker.orphans``).
 - stdin is the message channel or ``/dev/null``, never a pipe left open by accident: some runtimes wait for its EOF.
 - ``context.env`` is the environment of the agent; it has no hub token. ``context.leased`` names the variables of it
-  that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them.
+  that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them, and
+  ``environment_refusal`` why the agent cannot start without what it lacks (a variable a plugin's runtime needs),
+  which fails the run before its agent starts.
+- ``context.environment`` is where the agent runs (``evo_agents.worker.environments``): the host, as always, or a
+  container of a plugin's environment. An adapter finds its program with ``context.environment.program`` and builds
+  its command with ``context.environment.command``, which on the host is the program and its arguments as they are;
+  ``context.environment.visible(context)`` is what of ``context.env`` the agent gets there.
+- A run under an agent profile (``context.run["profile"]``, ``evo_agents.hub.profiles``) that limits tool, skill or
+  model, or has instructions, gets them in the session (``evo_agents.worker.runtimes.profiles``). Before any of the
+  run's work the daemon asks ``profile_refusal`` whether the adapter can: one that cannot fails the run, with the
+  reason, and an adapter that finds out only once its runtime runs raises ``ProfileRefused`` from ``start``. A
+  profile that allows everything and has no instructions changes nothing.
+- ``context.packs`` are the agent packs the run's profile attaches, built for the run (``evo_agents.worker.packs``):
+  the adapter gives the runtime their components in its own form. Before the agent starts the daemon asks
+  ``pack_refusal`` whether the runtime loads them all (``pack_kinds``, ``pack_transports``): one that does not fails
+  the run, saying which pack holds what. A run with no pack gets what it got before packs were.
 
-Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the entry points of
-the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class`` separated by
-commas), each later source winning: tests and development point a runtime at an adapter of their own that way.
-A runtime with no adapter is reported as unavailable, with the reason. Standard library only.
+Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the ``runtimes`` that
+core plugins contribute (the entry points of the group ``evo_agents.plugins``, ``evo_agents.plugins.core``), in the
+entry points of the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class``
+separated by commas), each later source winning: tests and development point a runtime at an adapter of their own
+that way. A runtime with no adapter is reported as unavailable, with the reason.
+
+The runtimes plugins declare (``<plugin>/<name>``, an ACP agent's command, ``evo_agents.plugins.runtimes``) are no
+entry of these registries: the daemon gets their declarations from the hub, for the plugins its owner accepted, makes
+each one's adapter with ``evo_agents.worker.runtimes.acp.adapter_class``, and reports them with ``detect_adapters``
+beside the core's; a run of one is started with the declaration its claim carries. Standard library only.
 """
 
 from __future__ import annotations
@@ -77,7 +98,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from evo_agents import __version__
-from evo_agents.hub import runs
+from evo_agents.hub import profiles, runs
+from evo_agents.plugins.core import python_contributions
+from evo_agents.worker import packs
+from evo_agents.worker.environments import HOST_ENVIRONMENT, Environment
 
 if TYPE_CHECKING:
     from evo_agents.worker.interactive import Tui
@@ -185,6 +209,8 @@ class RunContext:
     # cost of the session it goes on in, and the agent time it used.
     spent_usd: float = 0.0
     spent_seconds: float = 0.0
+    environment: Environment = HOST_ENVIRONMENT  # where the agent runs: the host, or a container of a plugin's
+    packs: tuple = ()  # the agent packs of the run's profile, built for it (``evo_agents.worker.packs.Pack``)
 
     @property
     def run_id(self) -> int:
@@ -193,6 +219,11 @@ class RunContext:
 
 class AgentFinished(RuntimeError):
     """``send`` after the agent took its last input: nothing would read the message, so it stays in the inbox."""
+
+
+class ProfileRefused(RuntimeError):
+    """``start`` found that the runtime would give the agent what the run's agent profile leaves out; the agent did
+    not start, and the run fails with the message."""
 
 
 @dataclass
@@ -204,6 +235,9 @@ class Outcome:
     usage: dict | None = None  # tokens and cost as the runtime counts them, for the run's record
     summary: str | None = None  # the agent's last message
     cap: str | None = None  # the cap of the run's budget that stopped it: cost, turns or time (CAPS)
+    cause: str | None = None  # why the run fails, of runs.FAILURE_CAUSES, when the agent's end says (rate_limit, ...)
+    limit: dict | None = None  # the usage limit it hit, as ``runner.limits`` reports it to the hub; None for none
+    auth: str | None = None  # the error that says its account failed to authenticate (a token refused); None for none
 
 
 class Adapter(abc.ABC):
@@ -212,6 +246,10 @@ class Adapter(abc.ABC):
     runtime: ClassVar[str]
     binary: ClassVar[str]
     interactive: ClassVar[bool] = False  # whether it can hand its session to a person in a terminal (``tui``)
+    # The components of agent packs the runtime loads (``evo_agents.plugins.agent_packs.KINDS``) and the transports of
+    # their MCP servers it connects to; an adapter that names none loads no pack (``pack_refusal``).
+    pack_kinds: ClassVar[tuple[str, ...]] = ()
+    pack_transports: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def detect(cls) -> Detection:
@@ -235,6 +273,45 @@ class Adapter(abc.ABC):
         """What the runtime's agent, headless or in its terminal UI, does not get of ``context.env`` and why, as lines
         for the run's log; the daemon writes each once a run, as a ``system`` event, once the agent has started."""
         return []
+
+    @classmethod
+    def profile_refusal(cls, run: Mapping) -> str | None:
+        """Why the adapter cannot apply the agent profile of ``run`` (the run as the claim answered it) in the
+        session, in a sentence for the run's error; None when it can, or the profile changes nothing. An adapter that
+        does not override it applies no profile, so it refuses every one that limits tool, skill or model or has
+        instructions."""
+        profile = run.get("profile") if isinstance(run, Mapping) else None
+        if not isinstance(profile, Mapping):
+            return None
+        if not profiles.needs_worker(profile.get("permissions"), profile.get("instructions")):
+            return None
+        handle = profile.get("handle")
+        return (
+            f"the {cls.runtime} adapter of this worker does not apply agent profiles, and agent @{handle} limits "
+            "tools, skills or models or has instructions"
+        )
+
+    @classmethod
+    def pack_refusal(cls, built: tuple) -> str | None:
+        """Why the runtime cannot load the agent packs ``built`` (``evo_agents.worker.packs.Pack``) the run's profile
+        attaches, in a sentence for the run's error: a component or a transport it does not take, or two skills it
+        would name alike; None when it can, and always for a run with none. The daemon asks once the packs are built,
+        before the agent starts, and fails the run with cause runtime."""
+        if not built:
+            return None
+        if not cls.pack_kinds:
+            return (
+                f"the {cls.runtime} adapter of this worker loads no agent pack, and the run's agent attaches "
+                f"{', '.join(pack.label for pack in built)}: run it on claude-code, opencode or codex"
+            )
+        return packs.refusal(built, cls.runtime, kinds=cls.pack_kinds, transports=cls.pack_transports)
+
+    @classmethod
+    def environment_refusal(cls, context: RunContext) -> str | None:
+        """Why the agent of this run cannot start with ``context.env``, in a sentence for the run's error: a variable
+        it needs that neither the run's leases nor the worker's environment set; None when it can. The daemon asks
+        before each start of the agent, and fails the run with cause credentials."""
+        return None
 
     @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:
@@ -315,9 +392,11 @@ def _parse_spec(spec: str) -> tuple[str, str]:
 
 
 def adapter_specs(env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """runtime -> "module:Class" from BUILTIN, the entry points and EVO_WORKER_ADAPTERS, later ones winning."""
+    """runtime -> "module:Class" from BUILTIN, the core plugins, the entry points and EVO_WORKER_ADAPTERS, later ones
+    winning."""
     env = os.environ if env is None else env
     specs = dict(BUILTIN)
+    specs.update(python_contributions("runtimes"))
     try:
         for point in entry_points(group=ENTRY_POINT_GROUP):
             specs[point.name] = point.value
@@ -376,6 +455,23 @@ def _models_of(cls: type[Adapter], runtime: str) -> tuple[str, ...] | None:
     return tuple(models) if models else None
 
 
+def _detected(cls: type[Adapter], runtime: str) -> Detection:
+    """``cls.detect()``, with the models its ``models`` lists when the runtime is available."""
+    try:
+        detection = cls.detect()
+    except Exception as exc:  # an adapter's bug must not stop the heartbeat
+        log.warning("runtime detection failed", extra={"runtime": runtime}, exc_info=True)
+        detection = Detection(False, None, f"detecting it failed: {type(exc).__name__}")
+    if detection.available:
+        detection = replace(detection, models=_models_of(cls, runtime))
+    return detection
+
+
+def detect_adapters(adapters: Mapping[str, type[Adapter]]) -> dict[str, dict]:
+    """The heartbeat's report of each runtime of ``adapters`` (the runtimes of plugins), by name."""
+    return {runtime: _detected(cls, runtime).report() for runtime, cls in adapters.items()}
+
+
 def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None = None) -> dict[str, dict]:
     """The heartbeat's ``runtimes``: each of the three, from its adapter's ``detect`` when it has one, with the models
     its ``models`` lists when the runtime is available; a runtime without an adapter is unavailable even when its
@@ -384,13 +480,7 @@ def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None =
     for runtime in runs.RUNTIMES:
         cls = adapters.get(runtime)
         if cls is not None:
-            try:
-                detection = cls.detect()
-            except Exception as exc:  # an adapter's bug must not stop the heartbeat
-                log.warning("runtime detection failed", extra={"runtime": runtime}, exc_info=True)
-                detection = Detection(False, None, f"detecting it failed: {type(exc).__name__}")
-            if detection.available:
-                detection = replace(detection, models=_models_of(cls, runtime))
+            detection = _detected(cls, runtime)
         else:
             binary = BINARIES[runtime]
             probe = probe_binary(binary, path=path)

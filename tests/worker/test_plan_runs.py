@@ -87,15 +87,15 @@ def run_repos(body: dict) -> list[dict]:
 
 
 class Machine:
-    """A worker's machine: a checkout of alpha and of beta, each cloned from a bare origin with one commit on main,
-    the worker's state directory, and the files of the fake runtime."""
+    """A worker's machine: a checkout of each of ``repos`` (alpha and beta), each cloned from a bare origin with one
+    commit on main, the worker's state directory, and the files of the fake runtime."""
 
-    def __init__(self, tmp: Path):
+    def __init__(self, tmp: Path, repos: tuple[str, ...] = REPOS):
         self.tmp = tmp
-        self.origins = {name: tmp / f"{name}.git" for name in REPOS}
-        self.checkouts = {name: tmp / "ws" / name for name in REPOS}
+        self.origins = {name: tmp / f"{name}.git" for name in repos}
+        self.checkouts = {name: tmp / "ws" / name for name in repos}
         self.seeds: dict[str, str] = {}
-        for name in REPOS:
+        for name in repos:
             seed = tmp / "seed" / name
             seed.mkdir(parents=True)
             git("init", "--quiet", "--initial-branch", "main", cwd=seed)
@@ -1093,11 +1093,17 @@ def step_two_done() -> list[dict]:
     ]
 
 
+# The keys of a run's usage that hold the cache tokens of its first request (runtimes.common.FIRST_REQUEST)
+FIRST_READ, FIRST_CREATION = "first_request_cache_read_input_tokens", "first_request_cache_creation_input_tokens"
+
+
 def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machine):
     usages = {
         1: {"input_tokens": 10, "cache_read_input_tokens": 100, "total_cost_usd": 0.25, "peak_context_tokens": 900},
         2: {"input_tokens": 7, "cache_read_input_tokens": 40, "total_cost_usd": 0.5, "peak_context_tokens": 300},
     }
+    usages[1].update({FIRST_READ: 0, FIRST_CREATION: 41_000})
+    usages[2].update({FIRST_READ: 39_000, FIRST_CREATION: 2_100})
     machine.scenarios(
         {
             f"plan:{PLAN}": [*step_one_done(), {"usage": usages[1]}, {"result": {"summary": "Alpha written."}}],
@@ -1112,7 +1118,19 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
     found = {}
 
     async def run_it(hub: FakeHub, daemon: Daemon):
-        assert hub.last_heartbeat["features"] == ["session_per_step"]
+        assert hub.last_heartbeat["features"] == [
+            "session_per_step",
+            "author_decisions",
+            "agent_profiles",
+            "plugin_runtimes",
+            "environments",
+            "agent_packs",
+            "chat_decisions",
+            "kg_sync",
+            "lazy_chat_repos",
+            "update_now",
+            "merge_judge",
+        ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
         found.update(run=run_id, hub=hub)
@@ -1143,6 +1161,8 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
         ("2", second["session"], run_id),
     ]
     assert usage["sessions"][1]["peak_context_tokens"] == 300
+    assert [(item[FIRST_READ], item[FIRST_CREATION]) for item in usage["sessions"]] == [(0, 41_000), (39_000, 2_100)]
+    assert (usage[FIRST_READ], usage[FIRST_CREATION]) == (0, 41_000), "the run's first session's, never a sum"
     record = machine.home.load_run(run_id)
     listed = [(item["step"], item["session_id"], item["status"]) for item in record["step_sessions"]]
     assert listed == [("1", first["session"], "done"), ("2", second["session"], "done")]
@@ -1268,3 +1288,35 @@ def test_a_plan_run_without_session_per_step_keeps_one_session(machine):
     (only,) = machine.starts()
     assert only["prompt"] == runs.build_plan_prompt(plan_body(), run_repos(plan_body()))
     assert hub.runs[run_id]["summary"] == "Both." and "step_sessions" not in machine.home.load_run(run_id)
+
+
+def test_a_plan_run_in_one_session_reports_the_first_request_of_its_first_turn(machine):
+    first_turn = {"input_tokens": 12, FIRST_READ: 0, FIRST_CREATION: 41_000}
+    second_turn = {"input_tokens": 3, FIRST_READ: 39_000, FIRST_CREATION: 500}
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [{"cli": ["step", "1", "in_progress"]}, {"usage": first_turn}, ask()],
+            f"plan:{PLAN}/2": [
+                *step_one_done(),
+                *step_two_done(),
+                {"usage": second_turn},
+                {"result": {"summary": "Both."}},
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        hub.answer(1, "yes")
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    first, second = machine.starts()
+    assert second["resume"] == first["session"]
+    usage = hub.runs[run_id]["usage"]
+    assert usage["input_tokens"] == 3, "the other numbers are the last turn's, as before"
+    assert (usage[FIRST_READ], usage[FIRST_CREATION]) == (0, 41_000), "the session's first request: its first turn's"

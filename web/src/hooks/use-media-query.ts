@@ -26,3 +26,6 @@ export function useMediaQuery(query: string, serverValue = false): boolean {
 
 /** Tailwind's xl breakpoint (80rem, 1280 px), where the run page splits into its session and its side column. */
 export const XL_QUERY = "(min-width: 80rem)";
+
+/** A touch screen is the main pointer, as on a phone or a tablet without a mouse: its keyboard has no Shift with Enter. */
+export const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";

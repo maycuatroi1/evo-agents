@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CircleDot, MessageCircleQuestionMark, Play, Server, Workflow } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useState } from "react";
@@ -17,7 +18,6 @@ import { cn } from "@/lib/utils";
 
 import { useCanDispatch, useViewer } from "./hooks";
 import { activePlanRun, type PlanRunLock, planRunLock, planRunPhase } from "./model";
-import { PlanRunDialog } from "./plan-run-dialog";
 import {
   decisionHref,
   isActiveState,
@@ -35,6 +35,12 @@ import {
  */
 
 /** The active runs of one plan and its plan run among them; `enabled` false for a plan id the API cannot take. */
+/**
+ * The Run plan dialog, loaded the first time its button opens it: the pages that show the button (a plan's page, the
+ * plans table) do not carry the dialog's form in their first load.
+ */
+const PlanRunDialog = dynamic(() => import("./plan-run-dialog").then((module) => module.PlanRunDialog), { ssr: false });
+
 export function usePlanActivity(project: string, planId: string, enabled = true) {
   const query = useQuery({ ...runsQuery(browserApi, project, planActiveRunsQuery(planId)), enabled });
   const active = (query.data?.runs ?? []).filter((run) => run.plan_id === planId && isActiveState(run.state));
@@ -89,6 +95,7 @@ export function RunPlanButton({
   const canDispatch = useCanDispatch(project);
   const lockText = useLockText();
   const [open, setOpen] = useState(false);
+  const [opened, setOpened] = useState(false);
   if (!canDispatch) return null;
   const lock = loaded ? planRunLock(runs, planId, pending) : "loading";
   const locked = lock !== null;
@@ -101,7 +108,9 @@ export function RunPlanButton({
       aria-disabled={locked || undefined}
       aria-describedby={locked ? `${ids}-lock` : undefined}
       onClick={() => {
-        if (!locked) setOpen(true);
+        if (locked) return;
+        setOpened(true);
+        setOpen(true);
       }}
       data-testid={testId}
       data-locked={lock === null ? undefined : lock === "loading" ? "loading" : lock.kind}
@@ -110,9 +119,9 @@ export function RunPlanButton({
       {t("button")}
     </Button>
   );
-  const dialog = (
+  const dialog = opened ? (
     <PlanRunDialog project={project} planId={planId} open={open} onOpenChange={setOpen} onDispatched={onDispatched} />
-  );
+  ) : null;
   if (layout === "row") {
     return (
       <>

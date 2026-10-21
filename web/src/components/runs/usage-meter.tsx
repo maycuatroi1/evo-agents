@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo } from "react";
 
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { isActiveState, type Run } from "./queries";
@@ -14,7 +15,7 @@ import { type Cost, runUsage, shares, totalTokens, USAGE_PARTS, type UsagePart }
  * shows) and a row per part with its share; cache writes are said under it. The cost is the one the runtime reported,
  * or "not reported": the page never prices tokens itself. While the run goes on, the figures add up its usage reports
  * so far (usage-model.ts says how each runtime reports); once the worker reported the run's end, they are the run's.
- * Before the first report, or when none came, the card is its title and one line of where it stands.
+ * Before the first report, or when none came, there is no card.
  */
 
 const SWATCH: Record<UsagePart, string> = {
@@ -24,7 +25,8 @@ const SWATCH: Record<UsagePart, string> = {
   reasoning: "bg-chart-4",
 };
 
-function useCost() {
+/** A cost as the runtime reported it, in its currency; an amount under a cent keeps four decimals. */
+export function useCost() {
   const format = useFormatter();
   return (cost: Cost) => {
     try {
@@ -42,7 +44,7 @@ function useCost() {
 
 export function UsageMeter({ run, events }: { run: Pick<Run, "usage" | "state" | "runtime">; events: Parameters<typeof runUsage>[1] }) {
   const t = useTranslations("runs.detail.usage");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const format = useFormatter();
   const costText = useCost();
   const id = useId();
@@ -57,22 +59,18 @@ export function UsageMeter({ run, events }: { run: Pick<Run, "usage" | "state" |
     figures && share && figures[part] > 0 && share[part] < 0.1 ? t("tiny") : format.number(share?.[part] ?? 0, { maximumFractionDigits: 1 });
 
   const reportedAny = figures !== null && share !== null;
+  // Before the first report, or when none came, no card: the page shows what there is.
+  if (!reportedAny) return null;
 
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid="run-usage" data-source={usage?.source ?? "none"}>
-      <div className={cn("flex items-center gap-2 px-4 py-3", reportedAny && "border-b")}>
+      <div className="flex items-center gap-2 border-b px-4 py-3">
         <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
-        {reportedAny ? (
-          <span className="ml-auto truncate text-xs text-fg-subtle">
-            {usage?.source === "events" && active ? t("soFar") : run.runtime !== "any" ? tRuntime(run.runtime) : null}
-          </span>
-        ) : (
-          <span className="ml-auto truncate text-xs text-fg-subtle" data-testid="run-usage-empty">
-            {active ? t("noneYet") : t("noneEnded")}
-          </span>
-        )}
+        <span className="ml-auto truncate text-xs text-fg-subtle">
+          {usage?.source === "events" && active ? t("soFar") : run.runtime !== "any" ? tRuntime(run.runtime) : null}
+        </span>
       </div>
       {figures && share ? (
         <div className="flex min-w-0 flex-col gap-3 px-4 py-3">

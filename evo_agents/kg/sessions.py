@@ -3,15 +3,31 @@
 ``evo-agents kg hook post-tool`` runs after every evo-kg tool call and joins the labels in the result into
 ``<kg home>/sessions/<session_id>.json``, a file of mode 0600 in a 0700 directory::
 
-    v, session_id, level, location, integrity, projects, results_read, last_updated
+    v, session_id, level, location, integrity, projects, audience, results_read, last_updated
 
+``audience`` is there once a result revealed one: the principals ``chat:<id>`` and ``grant:<project>:<level>`` of the
+elements read (``evo_agents.kg.policy``), so the record names the ids of the chats whose items the session read.
 The record only rises: a join never lowers the level or the location, never turns integrity U back into T,
-and never drops a project. It names levels and projects, never ids or text from the results. kg_status and
-the SessionStart note print it.
+and never drops a project or a principal; a record that exists but cannot be read is left as it is, and the join fails
+rather than start the record again from one result. Besides those chat ids it names levels and projects, never ids or
+text from the results. kg_status and the SessionStart note print it.
 
-Claude Code hands PostToolUse the result's structuredContent as a JSON string (see
-tests/kg/fixtures/hooks/post_tool_kg_search.json), so the labels come from the result itself: each node
-carries one, and the server adds the join of everything else the result reveals (edges, evidence items).
+In a session without the evo-kg plugin the same kg_* tools come from the hub, through ``evo-agents hub mcp``, which
+joins each result into the same record with ``record_read`` itself (``evo_agents.hub.mcp_proxy.note_read``), so a
+read of the graph counts whichever server answered it; so do the chat messages the hub's chat_message and chat_thread
+read. TOOL_PREFIXES therefore stays evo-kg's alone: a hook wired by hand to the hub's tools as well would count those
+reads twice.
+
+What the session writes carries the record's audience (``session_audience``): the memories ``evo-agents hub mcp``
+writes with memory_write, and those ``hub memory push`` sends at Stop, so a memory derived from a chat keeps the chat's
+audience on the hub.
+
+The labels come from the result itself. The server sends an MCP client the text alone, with READ_META in
+the ``_meta`` of its text block: the project, the join of every label the result reveals (nodes, edges,
+evidence items) and how many elements with an id carry one. Claude Code 2.1.296 hands PostToolUse the
+content blocks with their ``_meta`` (tests/kg/fixtures/hooks/post_tool_kg_context_text.json); a result
+that kept its structuredContent comes as that JSON as a string (post_tool_kg_search.json), whose labels
+are read as they are.
 """
 
 from __future__ import annotations
@@ -27,12 +43,13 @@ from pathlib import Path
 from evo_agents import filelock
 from evo_agents.kg.corpus import kg_home
 from evo_agents.kg.ids import utc_now
-from evo_agents.kg.policy import Label, Policy
+from evo_agents.kg.policy import EVERY, Label, Policy, audience_of
 from evo_agents.kg.project import resolve_project
 
 SESSION_VERSION = 1
 # Tool names of the evo-kg server: from the plugin, or declared by hand under the name evo-kg.
 TOOL_PREFIXES = ("mcp__plugin_evo-kg_evo-kg__", "mcp__evo-kg__")
+READ_META = "evo-agents/read"  # the _meta key of a result's text block: {project, label, results_read}
 _UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
@@ -75,25 +92,49 @@ def read_session(session_id, home: Path | None = None) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def session_audience(session_id, home: Path | None = None) -> list[str]:
+    """The audience the record of session ``session_id`` names, sorted: none without a session or a record. Raises
+    ValueError when the record exists but cannot be read, or names an audience that cannot be read, so that what the
+    session writes never leaves without the audience it read."""
+    path = session_path(session_id, home)
+    if path is None:
+        return []
+    try:
+        record = _stored(path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"the label of this session ({path}) cannot be read ({type(exc).__name__})") from None
+    audience = audience_of(record.get("audience"))
+    if EVERY in audience:
+        raise ValueError(f"the label of this session ({path}) names an audience that cannot be read")
+    return sorted(audience)
+
+
 def describe(record: dict) -> str:
     location = record.get("location")
     where = "" if location in (None, "any") else f"/{location}"
     projects = ", ".join(record.get("projects") or []) or "no project"
+    named = record.get("audience")
+    audience = f", audience {' '.join(map(str, named))}" if isinstance(named, list) else ""
     return (
-        f"session label {record.get('level')}{where},{record.get('integrity')} over {projects}:"
+        f"session label {record.get('level')}{where},{record.get('integrity')} over {projects}{audience}:"
         f" {record.get('results_read', 0)} result(s) read, last at {record.get('last_updated')}"
     )
 
 
 def structured_result(tool_response) -> dict | None:
-    """The structuredContent of an evo-kg result as PostToolUse receives it: a JSON string from Claude Code
-    2.1; a whole MCP result or a list of content blocks is accepted too. None when it holds no JSON object."""
+    """What an evo-kg result says it reveals, as PostToolUse receives it: the READ_META of a content block, from
+    Claude Code 2.1.296; else the structuredContent, as a JSON string, a whole MCP result or a JSON text block.
+    None when it holds no JSON object."""
     if isinstance(tool_response, str):
         try:
             tool_response = json.loads(tool_response)
         except ValueError:
             return None
     if isinstance(tool_response, list):
+        for block in tool_response:
+            meta = block.get("_meta") if isinstance(block, dict) else None
+            if isinstance(meta, dict) and isinstance(meta.get(READ_META), dict):
+                return meta[READ_META]
         for block in tool_response:
             if isinstance(block, dict) and block.get("type") == "text":
                 found = structured_result(block.get("text"))
@@ -162,6 +203,20 @@ def _locked(path: Path):
         os.close(fd)  # closing releases the lock
 
 
+def _stored(path: Path) -> dict:
+    """The record at ``path`` that a join starts from: {} when there is none yet. Any other failure to read it, such
+    as a file this process may not read or one that holds no JSON object, raises, so a join never replaces a record
+    it could not read with one that has lost its levels and projects."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"the session record {path.name} holds no JSON object")
+    return data
+
+
 def _write(path: Path, record: dict) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")  # mode 0600
     try:
@@ -176,9 +231,14 @@ def _write(path: Path, record: dict) -> None:
 
 def record_read(session_id, data: dict, home: Path | None = None) -> dict | None:
     """Join the labels in one evo-kg result into the session's record; return the new record, or None when the
-    session id is unusable or the result names no label (an error, kg_status, kg_more)."""
+    session id is unusable or the result names no label (an error, kg_status, kg_more). ``data`` is a READ_META,
+    whose results_read gives the count, or a structuredContent, whose labelled elements are counted. Raises, and
+    writes nothing, when the record exists but cannot be read (``_stored``)."""
     path = session_path(session_id, home)
     found, count = labels_in(data)
+    given = data.get("results_read")
+    if isinstance(given, int) and not isinstance(given, bool) and given >= 0:
+        count = given
     if path is None or not found:
         return None
     project = data.get("project") if isinstance(data.get("project"), str) else None
@@ -189,7 +249,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
     with contextlib.suppress(OSError):
         os.chmod(path.parent, 0o700)
     with _locked(path.parent / ".lock"):
-        old = read_session(session_id, home) or {}
+        old = _stored(path)
         entries = [*found, old] if old else found
         levels = _vocabulary(policy.levels, (e.get("level") for e in entries))
         locations = _vocabulary(policy.locations, (e.get("location") for e in entries))
@@ -203,6 +263,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
                 _rank(locations, entry.get("location")),
                 "T" if entry.get("integrity") == "T" else "U",
                 frozenset(p for p in projects if isinstance(p, str)),
+                audience_of(entry.get("audience")),
             )
             label = one if label is None else label.join(one)
         previous = old.get("results_read")
@@ -215,6 +276,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
             "projects": sorted(label.projects),
             "results_read": (previous if isinstance(previous, int) else 0) + count,
             "last_updated": utc_now(),
+            **({"audience": sorted(label.audience)} if label.audience else {}),
         }
         _write(path, record)
     return record

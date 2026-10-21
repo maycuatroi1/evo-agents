@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { config, proxy, RUN_STREAM } from "./proxy";
+import { CHAT_STREAM, config, proxy, RUN_STREAM } from "./proxy";
 
 const SESSION = `evs_${"b".repeat(43)}`;
 
@@ -43,6 +43,8 @@ describe("proxy", () => {
     expect(first.headers.get("x-middleware-request-content-security-policy")).toBe(csp);
     expect(second.headers.get("content-security-policy")).not.toBe(csp);
     expect(first.headers.get("strict-transport-security")).toMatch(/^max-age=/);
+    // Images: the web's own, and the GitHub avatars of a chat's people, nothing else.
+    expect(/(?:^|; )img-src ([^;]*)/.exec(csp)?.[1]).toBe("'self' data: blob: https://avatars.githubusercontent.com");
   });
 
   it("asks for https upgrades only behind https", () => {
@@ -65,12 +67,25 @@ describe("proxy", () => {
     expect(config.matcher).toContain("/v1/projects/:project/runs/:id/stream");
   });
 
+  it("asks for a chat's event stream unencoded too", () => {
+    const response = proxy(request("/v1/chats/7/stream", undefined, { "accept-encoding": "gzip, br", "last-event-id": "41" }));
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-request-accept-encoding")).toBe("identity");
+    expect(response.headers.get("x-middleware-request-last-event-id")).toBe("41");
+    expect(response.headers.get("content-security-policy")).toBeNull();
+    expect(CHAT_STREAM.test("/v1/chats/7/stream")).toBe(true);
+    for (const path of ["/v1/chats/7/events", "/v1/chats/x/stream", "/v1/chats/7/stream/more", "/v1/chats/stream"]) {
+      expect(CHAT_STREAM.test(path), path).toBe(false);
+    }
+    expect(config.matcher).toContain("/v1/chats/:id/stream");
+  });
+
   it("does not run on the API or on build assets", () => {
     const pages = config.matcher[0];
     if (typeof pages === "string") throw new Error("the first matcher is the pages' one");
     const source = new RegExp(`^${pages.source}$`);
     for (const path of ["/", "/login", "/admin", "/p/demo"]) expect(source.test(path), path).toBe(true);
-    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg"]) {
+    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg", "/apple-icon.png"]) {
       expect(source.test(path), path).toBe(false);
     }
   });

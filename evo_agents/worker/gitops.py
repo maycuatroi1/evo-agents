@@ -16,7 +16,8 @@ credential it does not take, fails with ``GitAuthError``, so the run can take it
 the repo: there the push goes ahead, never forced, and the answer says it was a default branch with the commits it
 added, for the notice ``push_default_branch`` the caller sends the run's owner (``push_notice``). A run of one step
 never pushes a default branch. A Builder of the Curator (kind ``curator``) pushes a branch ``curator/...`` alone, and a
-default branch never, whatever its plan names; a review run, a judge run and an author run push nothing. ``push``
+default branch never, whatever its plan names; a chat run its branch ``chat/<run>`` alone; a review run, a judge run and
+an author run push nothing. ``push``
 sends the push options it is given (``--push-option``), with which a push to GitLab opens a merge request.
 
 A branch the remote moved past HEAD (it has HEAD in its history) is left alone: there is nothing to push. A default
@@ -74,6 +75,9 @@ REJECTED = re.compile(
     r"|behind its remote\W+(?:hint:\W*)?counterpart",
     re.IGNORECASE,
 )
+# The line of `git push --porcelain` for a ref the remote declined by a rule of its own (a pre-receive or update hook,
+# a protected branch, a ruleset such as GitHub's push protection of secrets), and its reason in parentheses.
+REMOTE_REJECTED = re.compile(r"^!\t\S+\t\[remote rejected\](?: \((?P<reason>[^\n]*)\))?$", re.MULTILINE)
 EXCLUDE_RESULT = f":(exclude){RESULT_DIR}"  # the agent's result file stays out of every commit
 # Directories no commit of a run holds, at any depth: learned skills and CLI suggestions a Stop hook of the owner's
 # Claude Code writes in the session's directory (continuous-learning, under .claude/; a copy of the learned skills
@@ -104,6 +108,11 @@ class GitAuthError(GitError):
 
 class PushRefused(GitError):
     """A push the worker never makes: a default branch, in a run of one step or one its plan does not name."""
+
+
+class PushDeclined(GitError):
+    """The remote declined a push by a rule of its own (a hook, a protected branch, a ruleset), not for its credential
+    nor because the branch moved on: nothing of the push landed, and the commits are still here."""
 
 
 class PushConflict(GitError):
@@ -262,9 +271,14 @@ async def git(
         raise GitError(f"git {args[0]} gave no answer within {timeout:g}s") from None
     stdout, stderr = out.decode(errors="replace"), err.decode(errors="replace")
     if check and proc.returncode != 0:
-        error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
-        raise error(f"git {args[0]} failed ({proc.returncode}): {_tail(stderr or stdout)}")
+        raise _failure(args[0], proc.returncode, stdout, stderr)
     return proc.returncode, stdout, stderr
+
+
+def _failure(command: str, code: int, stdout: str, stderr: str) -> GitError:
+    """The error of ``git COMMAND`` that exited ``code``: GitAuthError when the remote refused its credential."""
+    error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
+    return error(f"git {command} failed ({code}): {_tail(stderr or stdout)}")
 
 
 async def rev(cwd: Path, ref: str) -> str | None:
@@ -366,10 +380,25 @@ async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[s
     await git(cwd, "clean", "-ffdxq", env=local)
 
 
-async def current_branch(cwd: Path) -> str | None:
-    """The branch checked out at ``cwd``; None when HEAD is detached."""
-    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+HEADS = "refs/heads/"
+
+
+def branch_ref(name: str) -> str:
+    """The full ref of local branch ``name``: ``refs/heads/<name>``."""
+    return name if name.startswith("refs/") else f"{HEADS}{name}"
+
+
+async def current_ref(cwd: Path) -> str | None:
+    """The full ref HEAD names at ``cwd`` (``refs/heads/<branch>``); None when HEAD is detached. ``--short`` would
+    print ``heads/<branch>`` in a repo that has a tag of the same name, so nothing compares that."""
+    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "HEAD", check=False)
     return out.strip() if code == 0 and out.strip() else None
+
+
+async def current_branch(cwd: Path) -> str | None:
+    """The branch checked out at ``cwd``, by the name it has under ``refs/heads/``; None when HEAD is detached."""
+    ref = await current_ref(cwd)
+    return ref[len(HEADS) :] if ref and ref.startswith(HEADS) else ref
 
 
 @dataclass(frozen=True)
@@ -451,21 +480,45 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
     return out
 
 
+def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | None:
+    """For a kind of run that pushes only branches of its own: who runs it, whose branches they are, their form, and
+    the test of a branch; None for any other kind."""
+    if kind == "chat":
+        from evo_agents.hub.chat_runs import is_chat_branch
+
+        return "a chat run", "a chat run", "chat/<run>", is_chat_branch
+    if kind == "task":
+        from evo_agents.hub.task_runs import is_task_branch
+
+        return "a task run", "a task run", "task/<run>", is_task_branch
+    if kind == "curator":
+        from evo_agents.hub.judge import is_curator_branch
+
+        return "a run of the Curator", "the Curator", "curator/...", is_curator_branch
+    if kind == "release":
+        from evo_agents.hub.release_runs import is_release_branch
+
+        return "a release run", "a release", "release/<version>", is_release_branch
+    return None
+
+
 def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
-    a judge run and an author run push nothing at all, and a Builder of the Curator (``kind`` curator) only a branch
-    ``curator/...`` that is no default branch."""
-    if kind in ("review", "judge", "author"):
+    a judge run, an author run, a replay run and a history run push nothing at all, a Builder of the Curator (``kind`` curator) only a
+    branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
+    task run (``kind`` task) only its branch ``task/<run>``, and a release run (``kind`` release) only a branch
+    ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
+    if kind in ("review", "judge", "author", "replay", "history"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
-    if kind == "curator":
-        from evo_agents.hub.judge import is_curator_branch
-
+    own = _own_branches(kind)
+    if own is not None:
+        who, whose, form, is_own = own
         if branch in protected or branch in PROTECTED:
-            raise PushRefused(f"{branch} is a default branch: a run of the Curator never pushes it")
-        if not is_curator_branch(branch):
-            raise PushRefused(f"{branch} is not a branch of the Curator: a run of the Curator pushes curator/... alone")
+            raise PushRefused(f"{branch} is a default branch: {who} never pushes it")
+        if not is_own(branch):
+            raise PushRefused(f"{branch} is not a branch of {whose}: {who} pushes {form} alone")
         return False
     if branch not in protected:
         return False
@@ -528,9 +581,10 @@ async def _send(
     env: Mapping[str, str] | None,
     options: Collection[str] = (),
 ) -> None:
-    """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced."""
+    """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced; PushDeclined when the
+    remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message."""
     sent = [f"--push-option={option}" for option in options]
-    await git(
+    code, out, err = await git(
         cwd,
         "push",
         "--quiet",
@@ -540,7 +594,15 @@ async def _send(
         f"{source}:refs/heads/{branch}",
         timeout=NETWORK_TIMEOUT,
         env=env,
+        check=False,
     )
+    if code == 0:
+        return
+    failed = _failure("push", code, out, err)
+    declined = REMOTE_REJECTED.search(out)
+    if declined is None or isinstance(failed, GitAuthError):
+        raise failed
+    raise PushDeclined(f"{failed} ({remote} declined it: {declined['reason'] or 'remote rejected'})")
 
 
 async def push(

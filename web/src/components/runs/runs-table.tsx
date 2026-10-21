@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useMemo } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { DataListRow } from "@/components/data/data-list";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
@@ -11,10 +11,14 @@ import { useNow } from "@/components/kg/use-now";
 import { planHref, stepHref } from "@/components/plans/links";
 import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
-import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
-import { durationParts, runTiming } from "./model";
+import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
+import { hasOtherTurns, isSessionTurn } from "./chat-session";
+import { SessionTurns, TurnsToggle } from "./chat-session-turns";
+import { LocalRunKindBadge, localAccount } from "@/components/local-run";
+import { durationParts, runTiming, taskBranch } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
@@ -92,16 +96,45 @@ function Timing({ run, part }: { run: Run; part: "started" | "duration" }) {
 }
 
 /**
+ * A chat session's row of a grouped table, its latest turn: open (its turns show under it) or not, and how to toggle it.
+ * Null for any other row, and for every row of a table that lists each run.
+ */
+type SessionRow = { open: boolean; controls: string; onToggle: () => void } | null;
+
+/** How a cell finds its row's session, so opening one changes no column, which would draw every cell anew. */
+const SessionRows = createContext<(run: Run) => SessionRow>(() => null);
+
+/**
  * The run's title and one line under it: its plan and step (and project on a worker's page), or, once it failed, was
- * lost or cancelled, the reason in danger. A plan run carries the Plan run tag after its title.
+ * lost or cancelled, the reason in danger. A plan run carries the Plan run tag after its title. A chat session's row
+ * (`SessionRows`) has the session's title, whose session it is (the person and the agent), and its turns' disclosure.
  */
 function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const t = useTranslations("runs");
+  const session = useContext(SessionRows)(run);
   const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
   const plan = run.kind === "plan" || run.step_key === null;
   const repos = run.repos?.length ?? 0;
   const authorNew = run.kind === "author" && !run.plan_id; // an author run of a new plan: no plan to link to yet
-  const where = authorNew
+  const chat = run.kind === "chat"; // a turn of an agent in a group chat: no plan, the run's page is where it leads
+  const task = run.kind === "task"; // a turn of a plugin's agent type on a task: no plan, its page is where it leads
+  const local = run.kind === "local"; // a member's own Claude Code session: no plan, its page is where it leads
+  const localLine = { project: run.project, machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none" };
+  const where = session
+    ? t("session.line", { person: run.dispatched_by, agent: run.profile ?? run.project })
+    : local
+    ? showProject
+      ? t("local.lineProject", localLine)
+      : t("local.line", localLine)
+    : chat
+    ? showProject
+      ? t("chatRun.lineProject", { project: run.project, agent: run.profile ?? run.project })
+      : t("chatRun.line", { agent: run.profile ?? run.project })
+    : task
+    ? showProject
+      ? t("taskRun.lineProject", { project: run.project, agent: run.profile ?? run.project, branch: taskBranch(run) })
+      : t("taskRun.line", { agent: run.profile ?? run.project, branch: taskBranch(run) })
+    : authorNew
     ? showProject
       ? t("author.newPlanLineProject", { project: run.project })
       : t("author.newPlanLine")
@@ -113,7 +146,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       ? t("stepLineProject", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" })
       : t("stepLine", { plan: run.plan_id, step: run.step_key ?? "" });
   const failure = ended && run.error ? run.error : null;
-  const title = plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled"));
+  const title = session ? (run.session_title ?? run.title ?? t("untitled")) : plan && !local ? (run.title ?? run.plan_id) : (run.title ?? t("untitled"));
   return (
     <CellMain
       sub={failure ?? where}
@@ -122,20 +155,22 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       subTestId={failure ? "run-error" : "run-where"}
     >
       <Link
-        href={authorNew ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
+        href={authorNew || chat || task || local ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
         className={cn(NAME_LINK, "truncate")}
         title={title}
-        data-testid={plan ? "run-plan-link" : "run-step-link"}
+        data-testid={plan && !local ? "run-plan-link" : "run-step-link"}
       >
         {title}
       </Link>
-      {run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
+      {local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : task ? <TaskRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
+      {session && hasOtherTurns(run) ? <TurnsToggle run={run} open={session.open} controls={session.controls} onToggle={session.onToggle} /> : null}
     </CellMain>
   );
 }
 
 function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
   const t = useTranslations("runs");
+  if (run.kind === "local") return <Identifier value={run.machine ?? t("local.noWorker")} />;
   if (run.worker_id === null || !run.worker) {
     return (
       <span className="text-fg-subtle">{run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet")}</span>
@@ -150,27 +185,54 @@ function WorkerCell({ run, viewer }: { run: Run; viewer: Viewer | null }) {
  * opening the run, its state, and one line with its number and where it ran from (its worker, on the step's page), or
  * why it failed.
  */
-function useMobileRun(variant: RunsTableVariant) {
+function useMobileRun(variant: RunsTableVariant, grouped: boolean) {
   const t = useTranslations("runs");
+  // A chat session as a phone lists it: its title, the latest turn's state, whose session and its turns; the row opens
+  // the latest turn, whose page links every turn.
+  const sessionMobile = (run: Run): DataListRow => {
+    const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
+    const failure = ended && run.error ? run.error : null;
+    const detail = failure ?? t("session.mobileLine", { person: run.dispatched_by, agent: run.profile ?? run.project, count: run.session_turns ?? 1 });
+    return {
+      title: run.session_title ?? run.title ?? t("untitled"),
+      href: runHref(run.project, run.id),
+      tags: <ChatRunKindBadge />,
+      status: <StatusBadge kind="run" status={run.state} />,
+      meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
+      metaText: t("mobile.metaText", { id: run.id, detail }),
+      danger: failure !== null,
+      data: { "run-id": run.id, state: run.state },
+    };
+  };
   return (run: Run): DataListRow => {
+    if (grouped && isSessionTurn(run)) return sessionMobile(run);
     const ended = run.state === "failed" || run.state === "lost" || run.state === "cancelled";
     const plan = run.kind === "plan" || run.step_key === null;
     const failure = ended && run.error ? run.error : null;
     const worker = run.worker_id !== null && run.worker ? run.worker : run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet");
     const authorNew = run.kind === "author" && !run.plan_id;
+    const chat = run.kind === "chat";
+    const task = run.kind === "task";
+    const local = run.kind === "local";
     const where =
       variant === "step"
         ? worker
-        : authorNew
+        : local
+          ? t(variant === "worker" ? "local.lineProject" : "local.line", { project: run.project, machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none" })
+        : chat
+          ? t(variant === "worker" ? "chatRun.lineProject" : "chatRun.line", { project: run.project, agent: run.profile ?? run.project })
+        : task
+          ? t(variant === "worker" ? "taskRun.lineProject" : "taskRun.line", { project: run.project, agent: run.profile ?? run.project, branch: taskBranch(run) })
+          : authorNew
           ? t(variant === "worker" ? "author.newPlanLineProject" : "author.newPlanLine", { project: run.project })
           : plan
           ? t(variant === "worker" ? "planLineProject" : "planLine", { project: run.project, plan: run.plan_id, repos: run.repos?.length ?? 0 })
           : t(variant === "worker" ? "stepLineProject" : "stepLine", { project: run.project, plan: run.plan_id, step: run.step_key ?? "" });
     const detail = failure ?? where;
     return {
-      title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
+      title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan && !local ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
       href: runHref(run.project, run.id),
-      tags: run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
+      tags: local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : task ? <TaskRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
       status: <StatusBadge kind="run" status={run.state} />,
       meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
       metaText: t("mobile.metaText", { id: run.id, detail }),
@@ -180,23 +242,45 @@ function useMobileRun(variant: RunsTableVariant) {
   };
 }
 
-/** Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. */
+/**
+ * Runs as a table, newest first as the API sends them; the order is the server's, so the columns do not sort. A
+ * `grouped` table (the API's `group=session`) lists a chat session as its latest turn, whose row opens into its turns.
+ */
 export function RunsTable({
   runs,
   caption,
   viewer,
   variant = "project",
   testId = "runs-table",
+  grouped = false,
 }: {
   runs: Run[];
   caption: string;
   viewer: Viewer | null;
   variant?: RunsTableVariant;
   testId?: string;
+  grouped?: boolean;
 }) {
   const t = useTranslations("runs");
-  const tRuntime = useTranslations("runs.runtime");
-  const mobile = useMobileRun(variant);
+  const tRuntime = useRuntimeName();
+  const mobile = useMobileRun(variant, grouped);
+  // The sessions open, by their first run: a session keeps its place and stays open as new turns arrive.
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
+  const baseId = useId();
+  const sessionOf = useCallback(
+    (run: Run): SessionRow => {
+      if (!grouped || !isSessionTurn(run)) return null;
+      const session = run.session_run_id as number;
+      const onToggle = () =>
+        setOpen((shown) => {
+          const next = new Set(shown);
+          if (!next.delete(session)) next.add(session);
+          return next;
+        });
+      return { open: open.has(session), controls: `${baseId}-session-${session}`, onToggle };
+    },
+    [grouped, open, baseId],
+  );
   const columns = useMemo(() => {
     const helper = dataTableColumns<Run>();
     const run = helper.display({
@@ -270,15 +354,22 @@ export function RunsTable({
     return helper.columns(COLUMNS[variant].map((id) => all[id as keyof typeof all]));
   }, [t, tRuntime, variant, viewer]);
 
+  const turns = (run: Run) => {
+    const session = sessionOf(run);
+    return session?.open && hasOtherTurns(run) ? <SessionTurns run={run} id={session.controls} /> : null;
+  };
   return (
-    <DataTable
-      data={runs}
-      columns={columns}
-      caption={caption}
-      getRowId={(row) => String(row.id)}
-      columnClassNames={NARROW_HIDDEN[variant]}
-      testId={testId}
-      mobile={mobile}
-    />
+    <SessionRows.Provider value={sessionOf}>
+      <DataTable
+        data={runs}
+        columns={columns}
+        caption={caption}
+        getRowId={(row) => (grouped && isSessionTurn(row) ? `session-${row.session_run_id}` : String(row.id))}
+        columnClassNames={NARROW_HIDDEN[variant]}
+        testId={testId}
+        mobile={mobile}
+        detail={grouped ? turns : undefined}
+      />
+    </SessionRows.Provider>
   );
 }

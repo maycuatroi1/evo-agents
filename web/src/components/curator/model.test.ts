@@ -44,6 +44,8 @@ const CHARTER: Charter = {
   circuit_breaker: { max_failed_in_a_row: 2 },
   outcome_days: 7,
   review: { lenses: 3, days: 7, budget_usd: null },
+  replay: { tasks: 6, budget_usd: 0.8 },
+  history: { budget_usd: 0, model: "claude-haiku-4-5" },
   reviewer: { runtime: "claude-code", model: null },
   builder: { runtime: "claude-code", model: "claude-opus-5-5" },
   judge: { runtime: "codex", model: null, hidden_checks: ["python -m pytest -q tests/hidden"] },
@@ -147,6 +149,14 @@ describe("evidence", () => {
       field: "errors",
       index: 0,
     });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1", file: "main", line: 40, resolved: "transcript" }, "demo", repos)).toEqual({
+      kind: "transcript",
+      session: "s-1",
+      file: "main",
+      line: 40,
+    });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1", line: 2 }, "demo", repos)).toMatchObject({ file: "main" });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1" }, "demo", repos).kind).toBe("other");
     expect(evidenceView({ kind: "code", repo: "api", path: "a.py", line: 3 }, "demo", repos)).toMatchObject({
       kind: "code",
       url: "https://github.com/org/api/blob/main/a.py#L3",
@@ -228,6 +238,30 @@ describe("the charter as a form", () => {
     expect(charterBody({ ...form, outcomeDays: "0" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
     expect(charterBody({ ...form, outcomeDays: "91" }).errors).toEqual({ outcomeDays: { code: "whole", min: 1, max: 90 } });
     expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body?.outcome_days).toBe(7);
+  });
+
+  it("keeps the replays and the history run of the charter it was filled from", () => {
+    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    expect(form).toMatchObject({ replayTasks: "6", replayBudget: "0.8", historyBudget: "0", historyModel: "claude-haiku-4-5" });
+    expect(charterBody(form).body).toMatchObject({ replay: { tasks: 6, budget_usd: 0.8 }, history: { budget_usd: 0, model: "claude-haiku-4-5" } });
+    const plain = charterForm({ ...CHARTER, replay: undefined, history: undefined }, { worker: "", timezone: "" });
+    expect(charterBody(plain).body).toMatchObject({ replay: { tasks: 3, budget_usd: null }, history: { budget_usd: null, model: null } });
+    expect(charterBody(charterForm(null, { worker: "mini", timezone: "UTC" })).body).toMatchObject({
+      replay: { tasks: 3, budget_usd: null },
+      history: { budget_usd: null, model: null },
+    });
+  });
+
+  it("refuses the replays' and the history run's settings the hub refuses", () => {
+    const form = charterForm(CHARTER, { worker: "", timezone: "" });
+    expect(charterBody({ ...form, replayTasks: "21" }).errors).toEqual({ replayTasks: { code: "whole", min: 0, max: 20 } });
+    expect(charterBody({ ...form, replayTasks: "0" }).body?.replay).toEqual({ tasks: 0, budget_usd: 0.8 });
+    expect(charterBody({ ...form, replayBudget: "0" }).errors).toEqual({ replayBudget: { code: "money", max: 1000 } });
+    expect(charterBody({ ...form, replayBudget: "3" }).errors).toEqual({ replayBudget: { code: "overNight" } });
+    expect(charterBody({ ...form, historyBudget: "-1" }).errors).toEqual({ historyBudget: { code: "moneyOrZero", max: 1000 } });
+    expect(charterBody({ ...form, historyBudget: "2.5" }).errors).toEqual({ historyBudget: { code: "overNight" } });
+    expect(charterBody({ ...form, historyBudget: "" }).body?.history).toEqual({ budget_usd: null, model: "claude-haiku-4-5" });
+    expect(charterBody({ ...form, historyModel: "two\nlines" }).errors).toEqual({ historyModel: { code: "model", max: 200 } });
   });
 
   it("reads which revision the page shows and whether it edits", () => {

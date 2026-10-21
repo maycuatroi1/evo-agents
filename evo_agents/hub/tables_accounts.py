@@ -1,0 +1,118 @@
+"""The tables of accounts (0027) and of members' emails (0068), which ``evo_agents.hub.tables`` adds to its metadata
+and exposes as its own attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accounts``,
+``tables.user_emails``): queries name them there.
+
+accounts holds what a member set on one of their env secrets as an account, and where it stands: its weight and
+priority, when its owner paused it, until when it cools down and why, when a run last took it, its place in the
+rotation (``evo_agents.hub.accounts.pick``), and the last usage a run reported for it (0028), and for an account that signed in with OAuth the sealed set of its
+tokens (0066: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other account). A secret without a row
+has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
+holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
+
+user_emails holds each email a member listed, or a hub admin listed for them, as it was written: one member an
+address, whatever its case (user_emails_email_key, on lower(email)). ``evo_agents.hub.user_emails`` names the login of
+an address from these rows, or from GitHub's noreply address, which needs none.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Double,
+    ForeignKeyConstraint,
+    Identity,
+    Index,
+    Integer,
+    LargeBinary,
+    MetaData,
+    PrimaryKeyConstraint,
+    SmallInteger,
+    Table,
+    Text,
+    func,
+    true,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+
+
+def _stamp(name: str) -> Column:
+    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+def _when(name: str) -> Column:
+    return Column(name, DateTime(timezone=True))
+
+
+def email_table(metadata: MetaData) -> Table:
+    """user_emails, added to ``metadata``."""
+    user_emails = Table(
+        "user_emails",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("user_id", BigInteger, nullable=False),
+        Column("email", Text, nullable=False),  # as it was written; compared in lower case
+        _stamp("created_at"),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="user_emails_user_id_fkey"),
+        PrimaryKeyConstraint("id", name="user_emails_pkey"),
+        Index("user_emails_user_idx", "user_id"),
+    )
+    Index("user_emails_email_key", func.lower(user_emails.c.email), unique=True)
+    return user_emails
+
+
+def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """(accounts, account_policies, run_accounts, user_emails), added to ``metadata``."""
+    accounts = Table(
+        "accounts",
+        metadata,
+        Column("secret_id", BigInteger, nullable=False),
+        Column("weight", Integer, nullable=False, server_default="1"),
+        Column("priority", Integer, nullable=False, server_default="0"),
+        _when("paused_at"),
+        _when("cooldown_until"),
+        Column("cooldown_reason", Text),
+        _when("last_leased_at"),
+        Column("rotation", Double, nullable=False, server_default="0"),
+        _stamp("updated_at"),
+        Column("last_usage", JSONB),  # 0028: the last usage a run reported (rate_limits), never a value
+        _when("last_usage_at"),
+        Column("oauth_sealed", LargeBinary),  # 0066: the sealed set of an OAuth account's tokens
+        Column("oauth_nonce", LargeBinary),
+        Column("oauth_key_id", Text),
+        ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="accounts_secret_id_fkey"),
+        PrimaryKeyConstraint("secret_id", name="accounts_pkey"),
+    )
+    account_policies = Table(
+        "account_policies",
+        metadata,
+        Column("owner_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("strategy", Text, nullable=False, server_default="round-robin"),
+        Column("cooldown_seconds", Integer, nullable=False, server_default="3600"),
+        Column("failover", Boolean, nullable=False, server_default=true()),
+        Column("max_failovers", SmallInteger, nullable=False, server_default="3"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="account_policies_owner_id_fkey"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="account_policies_project_id_fkey"
+        ),
+        PrimaryKeyConstraint("owner_id", "project_id", name="account_policies_pkey"),
+    )
+    run_accounts = Table(
+        "run_accounts",
+        metadata,
+        Column("run_id", BigInteger, nullable=False),
+        Column("env_var", Text, nullable=False),
+        Column("secret_id", BigInteger, nullable=False),
+        Column("how", Text, nullable=False),
+        _stamp("chosen_at"),
+        Column("failovers", SmallInteger, nullable=False, server_default="0"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_accounts_run_id_fkey"),
+        ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="RESTRICT", name="run_accounts_secret_id_fkey"),
+        PrimaryKeyConstraint("run_id", "env_var", name="run_accounts_pkey"),
+        Index("run_accounts_secret_idx", "secret_id"),
+    )
+    return accounts, account_policies, run_accounts, email_table(metadata)

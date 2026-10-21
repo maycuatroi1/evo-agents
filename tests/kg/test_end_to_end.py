@@ -1,7 +1,14 @@
+import json
+import sqlite3
+
+import pytest
+
 from evo_agents.kg.build import build_project
+from evo_agents.kg.project import load_project_at
+from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
-from tests.kg.projects import GUIDE, commit, make_project, write
+from tests.kg.projects import GUIDE, commit, git, make_project, write
 
 
 def sync_build(project, **kw):
@@ -129,3 +136,142 @@ def test_labels_join_over_inputs(tmp_path, kg_env):
         " AND dst = 'app:file:app/server.py'"
     ).fetchone()
     assert e[0] == 2  # the edge reveals a customer-level file: it is customer-level too
+
+
+def audit_builds(project) -> int:
+    lines = (project.root / "audit.jsonl").read_text().splitlines()
+    return sum(json.loads(line)["event"] == "build" for line in lines)
+
+
+def test_a_build_of_an_unchanged_corpus_is_skipped_until_something_it_reads_changes(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    first = sync_build(project)
+    assert not first.skipped and audit_builds(project) == 1
+
+    again = sync_build(project, verify=True, cold=True)
+    assert again.skipped and again.ok and again.verify["match"], again.verify
+    assert (again.build_id, again.content_hash) == (first.build_id, first.content_hash)
+    assert (again.nodes, again.edges, again.units) == (first.nodes, first.edges, first.units)
+    assert again.coverage["sources"] == first.coverage["sources"]
+    assert "is current" in again.summary_line() and audit_builds(project) == 1  # nothing was built
+
+    forced = build_project(project, force=True)
+    assert not forced.skipped and forced.build_id == first.build_id + 1
+    assert forced.content_hash == first.content_hash and audit_builds(project) == 2
+
+    knowledge = project.knowledge_path
+    knowledge.write_text(
+        knowledge.read_text().replace("      clearance: {level: customer}", "      clearance: {level: public}")
+    )
+    project = load_project_at(project.harness.root, kg_env)
+    config = build_project(project)
+    assert not config.skipped and config.build_id == forced.build_id + 1  # the config is an input
+
+    write(tmp_path / "demo-app/docs/guide.md", GUIDE.replace("Intro to the app.", "Intro, edited."))
+    commit(tmp_path / "demo-app")
+    changed = sync_build(project)
+    assert not changed.skipped and changed.content_hash != first.content_hash
+
+
+def test_link_runs_again_only_for_the_items_whose_reads_changed(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "docs/later.md", "# Later\n\nWill call `fresh_helper` once it exists.\n")
+    commit(app)
+    first = sync_build(project)
+    store = Store.for_project(project)
+    assert not any(e[2].endswith("::fresh_helper") for e in edge_keys(store, first.build_id))
+
+    # A body changes, no name does: only that file links again, besides the item of the new commit.
+    search = (app / "app/search.py").read_text()
+    write(app / "app/search.py", search.replace("return sorted(items)", "return sorted(items, reverse=True)"))
+    commit(app)
+    body = sync_build(project, verify=True, cold=True)
+    assert body.verify["match"], body.verify
+    assert body.memo["link"]["misses"] == 2 and body.memo["link"]["hits"] == first.memo["link"]["misses"] - 1
+
+    # A new name: the document that looked it up in vain links again, and now to it.
+    write(app / "app/search.py", search + "\n\ndef fresh_helper():\n    return 1\n")
+    commit(app)
+    named = sync_build(project, verify=True, cold=True)
+    assert named.verify["match"], named.verify
+    assert named.memo["link"]["misses"] == 3  # app/search.py, docs/later.md and the new commit
+    later = ("app:file:docs/later.md#later", "mentions", "symbol:app:app/search.py::fresh_helper")
+    assert later in edge_keys(Store.for_project(project), named.build_id)
+
+
+def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_above_the_sink(
+    tmp_path, kg_env, monkeypatch
+):
+    project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
+    sync_build(project)
+    wide, narrow = Session(project, "wide"), Session(project, "agent")
+    store, _ = wide._store()
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        store.db.execute("CREATE TABLE probe (x)")
+    assert wide.sees_all  # a customer clearance covers the highest label of the build
+    narrow._store()
+    assert not narrow.sees_all  # an internal one does not: customer-level files stay hidden
+
+    calls = [
+        ("kg_search", {"query": "search"}),
+        ("kg_context", {"query": "search rank"}),
+        ("kg_node", {"id": "app:file:app/search.py"}),
+        ("kg_node", {"id": "plan:demo/step:2"}),
+        ("kg_impact", {"paths": ["app/search.py"]}),
+    ]
+
+    def answers() -> dict:
+        return {sink: [Session(project, sink).call(name, args) for name, args in calls] for sink in ("wide", "agent")}
+
+    skipping = answers()
+    monkeypatch.setattr(Store, "top_label", lambda self, b: None)  # every label compared, as before
+    assert answers() == skipping
+    assert skipping["wide"][2]["structuredContent"]["node"]["id"] == "app:file:app/search.py"
+    assert skipping["agent"][2].get("isError")
+    assert not any(n["id"].startswith("app:") for n in skipping["agent"][0]["structuredContent"]["results"])
+
+
+def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_env, monkeypatch):
+    from evo_agents.kg.connectors import github
+
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "app/suggest.py", "def suggest(query):\n    return query\n")  # a file nothing else names
+    commit(app, "search: suggest")
+    sha = git(app, "rev-parse", "HEAD").strip()
+    plan = project.harness.root / "plans/active/demo.yaml"
+    plan.write_text(
+        plan.read_text().replace(
+            "evidence: app@1a2b3c4d", f"evidence: 'app@1a2b3c4d; {sha[:7]} adds suggest, merged through PR #12'"
+        )
+    )
+    pull = {
+        "number": 12,
+        "title": "Search suggestions",
+        "state": "closed",
+        "merged_at": "2026-10-01T03:00:00Z",
+        "merge_commit_sha": sha,
+        "head": {"ref": "feat/suggest"},
+        "base": {"ref": "main"},
+        "html_url": "https://github.com/acme/demo-app/pull/12",
+        "updated_at": "2026-10-01T03:00:00Z",
+    }
+    monkeypatch.setattr(github, "enabled", lambda env=None: True)
+    monkeypatch.setattr(github, "token", lambda env=None: "test-token")
+    monkeypatch.setattr(github, "_page", lambda project, page, secret: [pull] if page == 1 else [])
+    report = sync_build(project, verify=True, cold=True)
+    assert report.verify["match"], report.verify
+    store = Store.for_project(project)
+    edges = edge_keys(store, report.build_id)
+    step, found, pr = "plan:demo/step:1", f"app:commit:{sha}", "app:pr:12"
+    assert (step, "mentions", found) in edges  # the bare SHA of the evidence, among the commits of the step's repo
+    assert (found, "changes", "app:file:app/suggest.py") in edges
+    assert (step, "mentions", pr) in edges and (pr, "merged_as", found) in edges
+    assert (step, "mentions", "commit:app@1a2b3c4d") in edges  # a SHA no source read keeps a node of its own
+    assert store.node(found, report.build_id)["kind"] == "Commit"
+
+    path = Session(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
+    data = path["structuredContent"]
+    assert data["found"] and data["hops"] == 2
+    assert [n["id"] for n in data["nodes"]] == [step, found, "app:file:app/suggest.py"]

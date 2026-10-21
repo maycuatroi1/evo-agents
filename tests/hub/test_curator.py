@@ -131,7 +131,8 @@ def status_of(client, headers) -> dict:
 
 
 def fire(client, now: datetime) -> dict:
-    return client.portal.call(partial(fire_schedules, client.app.state.engine, now=now))
+    has_app = getattr(client.app.state, "curator_app", None) is not None
+    return client.portal.call(partial(fire_schedules, client.app.state.engine, curator_app=has_app, now=now))
 
 
 def count(db, table, *conditions) -> int:

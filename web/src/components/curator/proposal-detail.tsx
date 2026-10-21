@@ -13,6 +13,7 @@ import { runHref } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { ChangeBadge } from "@/components/status/change-badge";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
@@ -23,13 +24,15 @@ import { cn } from "@/lib/utils";
 
 import { AnswerButtons, AnswerDialog } from "./answer-dialog";
 import { KindTag, LensTag, TierTag } from "./badges";
+import { ChangeFacts } from "./change-card";
 import { DraftPlan } from "./draft-plan";
 import { EvidenceList } from "./evidence";
 import { useCuratorViewer } from "./hooks";
 import { LedgerCard } from "./ledger";
+import { ReplayCard } from "./replay-card";
 import type { RepoInfo } from "./model";
 import { TEXT_LINK } from "./parts";
-import { type Finding, findingQuery, type Proposal, type ProposalAction, proposalHref, proposalQuery } from "./queries";
+import { type Change, type Finding, findingQuery, type Proposal, type ProposalAction, proposalHref, proposalQuery } from "./queries";
 
 /** The repos of the project, for links to code; none while they load or when the project cannot be read. */
 function useRepos(project: string): RepoInfo[] {
@@ -172,7 +175,11 @@ function AnswerCard({ project, proposal, admin }: { project: string; proposal: P
             {proposal.note}
           </p>
         ) : null}
-        {proposal.state === "accepted" ? <p className="text-xs text-fg-subtle">{t("acceptedNext")}</p> : null}
+        {proposal.state === "accepted" ? (
+          <p className="text-xs text-pretty text-fg-subtle" data-testid="proposal-accepted-next">
+            {t("acceptedNext", { tier: String(proposal.tier) })}
+          </p>
+        ) : null}
       </div>
     );
   } else {
@@ -190,10 +197,21 @@ function AnswerCard({ project, proposal, admin }: { project: string; proposal: P
   );
 }
 
+/** What accepting the proposal made (change-card.tsx), its state in the card's head; no card without one. */
+function ChangeCard({ project, change, repos }: { project: string; change: Change; repos: RepoInfo[] }) {
+  const t = useTranslations("curator.proposal.change");
+  return (
+    <HomeCard title={t("title", { id: change.id })} action={<ChangeBadge status={change.state} />} testId="proposal-change">
+      <ChangeFacts project={project} change={change} repos={repos} />
+    </HomeCard>
+  );
+}
+
 /**
  * The body of a proposal, the same on its page and in the Inbox's sheet: its summary, its evidence and the findings
- * it rests on, its draft plan; and beside them from xl (under them below, two by two from md) the answer and why it
- * has its tier. The state and the answer buttons are in the head, so the page reads the proposal first.
+ * it rests on, its draft plan; and beside them from xl (under them below, two by two from md) the answer, the change
+ * accepting it made, and why it has its tier. The state and the answer buttons are in the head, so the page reads the
+ * proposal first.
  */
 export function ProposalBody({ project, proposal, admin, compact = false }: { project: string; proposal: Proposal; admin: boolean; compact?: boolean }) {
   const t = useTranslations("curator.proposal");
@@ -225,6 +243,8 @@ export function ProposalBody({ project, proposal, admin, compact = false }: { pr
       </div>
       <div className={cn("grid min-w-0 items-start gap-4", !compact && "md:grid-cols-2 xl:col-start-2 xl:row-start-1 xl:grid-cols-1")}>
         <AnswerCard project={project} proposal={proposal} admin={admin} />
+        {proposal.change ? <ChangeCard project={project} change={proposal.change} repos={repos} /> : null}
+        {proposal.change ? <ReplayCard project={project} change={proposal.change} proposalTier={proposal.tier} /> : null}
         <TierCard proposal={proposal} />
       </div>
     </div>
@@ -283,9 +303,9 @@ function RevertNote({ project, of }: { project: string; of: number }) {
 
 /**
  * One proposal of the Curator: what it would change and why, the evidence behind it (each piece a link to the run,
- * the digest's entry or the line of code), the findings it rests on, its draft plan, its ledger (what happened to it,
- * line by line), and for an admin of the project Accept, Defer and Reject, each confirmed in a dialog with an optional
- * note. A proposal the visitor may not read is not found.
+ * the digest's entry or the line of code), the findings it rests on, its draft plan, the change accepting it made, its
+ * ledger (what happened to it, line by line), and for an admin of the project Accept, Defer and Reject, each confirmed
+ * in a dialog with an optional note. A proposal the visitor may not read is not found.
  */
 export function ProposalPage({ project, id, initialError }: { project: string; id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("curator.proposal");

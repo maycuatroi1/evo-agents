@@ -26,6 +26,15 @@
     "created_at": {
       "type": "string"
     },
+    "abandoned_at": {
+      "type": "string"
+    },
+    "abandoned_reason": {
+      "type": "string"
+    },
+    "superseded_by": {
+      "type": "string"
+    },
     "context": {
       "type": "string"
     },
@@ -187,18 +196,23 @@
           "type": "array"
         },
         "verify": {
-          "type": "string"
+          "type": "string",
+          "description": "One shell command line that exits 0 when the step is done; a worker runs it. A manual check goes in note, and verify checks something machine-readable instead (an answered hub decision, a line in a report file). The hub refuses a new verify of a step not done that is not shell: one that does not parse, or runs a word that is not a command name (Từ, Manual:)."
         },
         "status": {
           "enum": [
             "done",
             "in_progress",
             "pending",
-            "blocked"
+            "blocked",
+            "descoped"
           ],
           "x-severity": "warning"
         },
         "done_at": {
+          "type": "string"
+        },
+        "descoped_at": {
           "type": "string"
         },
         "evidence": {

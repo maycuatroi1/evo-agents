@@ -105,8 +105,59 @@ def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     return times
 
 
+def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
+    """The commits reachable from ``commit`` and not from ``since``, newest first, each
+    ``{sha, parents, time, author_email, paths}``: the committer time, the author's email as the commit object holds
+    it (``%ae``, never mapped through a ``.mailmap``, which the working tree may hold half-edited; ``""`` when the
+    commit names none), and the paths it changed, a merge's against its first parent, a rename as a delete and an add.
+    GitError when ``since`` is not a commit of the clone."""
+    args = ["-c", "core.quotePath=false", "log", "--format=%x01%H %P%x01%cI%x01%ae", "--name-only", "--no-renames"]
+    args += ["--diff-merges=first-parent", commit]
+    if since:
+        args.append(f"^{since}")
+    found: list[dict] = []
+    for line in git(repo, *args).splitlines():
+        if line.startswith("\x01"):
+            shas, _, rest = line[1:].partition("\x01")
+            time, _, email = rest.partition("\x01")
+            sha, *parents = shas.split()
+            found.append({"sha": sha, "parents": parents, "time": time, "author_email": email.strip(), "paths": []})
+        elif line and found:
+            found[-1]["paths"].append(line)
+    return found
+
+
+def is_ancestor(repo: Path, older: str, newer: str) -> bool:
+    """Whether ``older`` is ``newer`` or one of its ancestors. GitError when either is not a commit of the clone."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", older, newer], capture_output=True, text=True
+    )
+    if result.returncode not in (0, 1):
+        raise GitError(f"git merge-base --is-ancestor {older} {newer} failed in {repo}: {result.stderr.strip()}")
+    return result.returncode == 0
+
+
 def commit_time(repo: Path, commit: str) -> str:
     return git(repo, "show", "-s", "--format=%cI", commit).strip()
+
+
+def remote_head(repo: Path, remote: str = "origin") -> str | None:
+    """The default branch of ``remote`` as the clone recorded it (``refs/remotes/<remote>/HEAD``), or None."""
+    try:
+        name = git(repo, "symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD").strip()
+    except GitError:
+        return None
+    prefix = f"{remote}/"
+    return name[len(prefix) :] if name.startswith(prefix) and len(name) > len(prefix) else None
+
+
+def behind(repo: Path, commit: str, base: str) -> int | None:
+    """How many commits ``base`` (a remote-tracking branch such as ``origin/main``) has that ``commit`` lacks, as the
+    clone has them now: no fetch. None when the clone has no such branch or either commit is missing."""
+    try:
+        return int(git(repo, "rev-list", "--count", f"{commit}..refs/remotes/{base}").strip())
+    except (GitError, ValueError, OSError):
+        return None
 
 
 def tracked_clean(repo: Path) -> set[str]:
@@ -134,3 +185,14 @@ def web_url(origin: str, branch: str, path: str) -> str | None:
     if host == "github.com":
         return f"https://{host}/{project}/blob/{branch}/{path}"
     return f"https://{host}/{project}/-/blob/{branch}/{path}"
+
+
+def commit_url(origin: str, sha: str) -> str | None:
+    """Browser URL of one commit on its forge."""
+    m = _REMOTE.match(origin.strip())
+    if not m:
+        return None
+    host, project = m.group(1), m.group(2)
+    if host == "github.com":
+        return f"https://{host}/{project}/commit/{sha}"
+    return f"https://{host}/{project}/-/commit/{sha}"

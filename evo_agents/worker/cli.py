@@ -12,11 +12,18 @@
 - ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
   verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
   and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
-  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker.
+  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker; ``ask`` and
+  ``plan`` work inside an author run too, whose agent asks its owner a question with options as a decision. ``ask``
+  notes the decision's id in the run's file of decisions (``home.decisions_path``), which the daemon waits on.
 - ``finding`` and ``propose``: the commands of a review run's agent (the Curator's Reviewer), which record a finding
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
+- ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
+- ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
+  prints its worktree's path (``chat_cli``).
+- ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
+- ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -43,6 +50,7 @@ import logging
 import os
 import platform
 import re
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -53,12 +61,16 @@ from urllib.parse import quote
 from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
+from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.worker import chat_cli, playbook_cli, triage_cli
+from evo_agents.worker.agent_input import evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
+from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
-MAX_SLOTS = 8
+MAX_SLOTS = runs.MAX_SLOTS  # 16, as the hub bounds workers.slots
 
 
 class _MissingExtra(Exception):
@@ -318,16 +330,16 @@ def cmd_attach(args) -> int:
 
 @_worker_command
 def cmd_git_credential(args) -> int:
-    from evo_agents.worker import credentials
+    from evo_agents.worker import credential_commands
 
-    return credentials.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
+    return credential_commands.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
 
 
 @_worker_command
 def cmd_env(args) -> int:
-    from evo_agents.worker import credentials
+    from evo_agents.worker import credential_commands
 
-    return credentials.print_env(args.run, sys.stdout, sys.stderr)
+    return credential_commands.print_env(args.run, sys.stdout, sys.stderr)
 
 
 @_worker_command
@@ -343,8 +355,7 @@ def cmd_status(args) -> int:
     found = discover(config)
     records = home.load_runs()
     pid = home.read_pid()
-    hub_view = None
-    hub_error = None
+    hub_view = hub_error = None
     member = _member_hub(config.url)
     if member is not None:
         try:
@@ -368,6 +379,7 @@ def cmd_status(args) -> int:
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
         "hub": hub_view,
         "hub_error": hub_error,
+        "kg_sync": home.kg_sync(),
         "state_dir": str(home.root),
     }
     if args.json:
@@ -402,7 +414,7 @@ def cmd_status(args) -> int:
         print("  no checkout of the worker's projects found")
     unfinished = [r for r in records if not r.get("finished_at")]
     print(f"  runs kept here: {len(records)} ({len(unfinished)} not ended); spool: {status['spool_bytes']} bytes")
-    print(f"  state: {home.root}")
+    print(*(f"  {line}" for line in [*home.kg_sync_lines(), f"state: {home.root}"]), sep="\n")
     return 0
 
 
@@ -492,8 +504,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside a {kinds[0]} run of this worker: {RUN_VARIABLE} is not "
-            "set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
+            f"`evo-agents worker {command}` works only inside {kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
+            "not set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
     home = WorkerHome()
@@ -507,30 +519,7 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         )
     kind = record.get("kind") or "step"
     if kind not in kinds:
-        if kinds in (("review",), ("author",)):
-            raise WorkerStateError(
-                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of "
-                f"{'an' if kinds[0][:1] in 'aeiou' else 'a'} {kinds[0]} run uses `evo-agents worker {command}`"
-            )
-        if kind == "review":
-            raise WorkerStateError(
-                f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
-                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`"
-            )
-        if kind == "author":
-            raise WorkerStateError(
-                f"run {run_id} is an author run, which writes a plan and changes nothing: it does not use "
-                f"`evo-agents worker {command}`"
-            )
-        if kind == "judge":
-            raise WorkerStateError(
-                f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
-                f"the agent's last message, not `evo-agents worker {command}`"
-            )
-        raise WorkerStateError(
-            f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
-            f"run of one step writes {runs.RESULT_FILE} instead"
-        )
+        raise WorkerStateError(kind_refusal(run_id, kind, kinds, command))
     return _AgentRun(run_id, home, config, token, record)
 
 
@@ -586,8 +575,40 @@ def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
     return next(iter(workspaces)) if len(workspaces) == 1 else None
 
 
-async def _verify(path: Path, commands: list[str]) -> list[dict]:
-    """Run each command with /bin/sh in ``path``, every one even after a failure; each one's exit code."""
+async def _verify_env(agent: _AgentRun, name: str, path: Path) -> dict[str, str] | None:
+    """The environment of the verify of a done step in repo ``name``, whose worktree is ``path``: when the daemon made
+    the repo's Python environment (``evo_agents.worker.venvs``), it is made again, so what the step changed in
+    pyproject.toml is in it, and its bin directory goes first on PATH; else None, the agent's own environment."""
+    from evo_agents.worker import venvs
+
+    made = agent.record.get("venvs")
+    bin_dir = made.get(name) if isinstance(made, dict) else None
+    if not isinstance(bin_dir, str) or not bin_dir:
+        return None
+    env = venvs.uv_env(os.environ)
+    try:
+        want = venvs.wanted(path)
+    except ValueError as exc:
+        raise WorkerStateError(f"{name}: {exc}") from None
+    uv = shutil.which("uv", path=env.get("PATH"))
+    if want is not None and uv is None:
+        print(f"warning: uv is not on PATH: the Python environment of {name} is not made again", file=sys.stderr)
+    elif want is not None:
+        command, code, output = await venvs.make(path, want, uv, env)
+        if code != 0:
+            tail = output.rstrip()[-OUTPUT_TAIL:]
+            raise WorkerStateError(
+                f"`{venvs.shown(command)}` in {name} exited {code}, so the verify did not run:\n{tail}"
+            )
+        said = ", ".join(f"`{venvs.shown(command)}`" for command in want.commands())
+        print(f"Made the Python environment of {name} again: {said}.")
+    env["PATH"] = venvs.front(env.get("PATH"), [bin_dir])
+    return env
+
+
+async def _verify(path: Path, commands: list[str], env: dict[str, str] | None = None) -> list[dict]:
+    """Run each command with /bin/sh in ``path``, in ``env`` (this process's when None), every one even after a
+    failure; each one's exit code."""
     results = []
     for command in commands:
         started = time.monotonic()
@@ -597,6 +618,7 @@ async def _verify(path: Path, commands: list[str]) -> list[dict]:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=env,
         )
         output, _ = await proc.communicate()
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -674,7 +696,7 @@ def cmd_step(args) -> int:
             if name is None:
                 raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
             workspace = workspaces[name]
-            results = await _verify(workspace.worktree, verify)
+            results = await _verify(workspace.worktree, verify, await _verify_env(agent, name, workspace.worktree))
             failed = [item for item in results if item["exit_code"] != 0]
             if failed:
                 print(
@@ -701,9 +723,9 @@ def cmd_step(args) -> int:
             curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
             if curator is not None and curator.get("role") == "builder":
                 # A Builder of the Curator holds no credential: the daemon pushes the run's branch for it.
-                from evo_agents.worker import credentials
+                from evo_agents.worker import credential_commands
 
-                answer = await asyncio.to_thread(credentials.ask_push, agent.home, agent.run_id, name, title)
+                answer = await asyncio.to_thread(credential_commands.ask_push, agent.home, agent.run_id, name, title)
                 if answer.get("error") or not isinstance(answer.get("head"), str):
                     why = answer.get("error") or "the daemon did not say what it pushed"
                     raise WorkerStateError(f"{name}: {why}; step {args.key} is not reported done")
@@ -724,7 +746,11 @@ def cmd_step(args) -> int:
                         f"{workspace.branch} of {name} moved on at origin: the run's commits were put on top of it, "
                         f"and the verify of step {args.key} runs again at {head[:12]}."
                     )
-                    again[:] = await _verify(path, verify)
+                    try:
+                        env = await _verify_env(agent, name, path)
+                    except WorkerStateError as exc:
+                        return str(exc)
+                    again[:] = await _verify(path, verify, env)
                     failed = [item for item in again if item["exit_code"] != 0]
                     return "; ".join(f"`{item['command']}` exited {item['exit_code']}" for item in failed) or None
 
@@ -800,7 +826,7 @@ def _option(text: str) -> dict:
 
 @_worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask")
+    agent = _agent_run("ask", runs.RESUME_KINDS)
     options = [_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -834,6 +860,14 @@ def cmd_ask(args) -> int:
     with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:  # the daemon waits on it
         handle.write(noted + "\n")
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
+    if agent.record.get("kind") == "author":
+        print(
+            "Ask the other decisions of this turn now, then end your turn with your message to the member in the chat: "
+            "what you found, what you decided yourself and the decisions you asked. The run waits until the member "
+            "answered each one or replied in the chat, and your next turn in this session takes the answers, each as a "
+            f"message naming its decision, #{decision_id} among them."
+        )
+        return 0
     print(
         "Go on with the work that does not depend on the answer. When none is left, end your turn: the run waits "
         f"for its owner, and the answer comes back in this session as a message naming decision #{decision_id}."
@@ -883,29 +917,6 @@ def cmd_plan(args) -> int:
 # The commands of a review run's agent
 
 
-def _read_text(source: str, what: str, limit: int) -> str | None:
-    """The text of file ``source`` (``-``: stdin), at most ``limit`` bytes of UTF-8; None when it holds only blanks."""
-    try:
-        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise WorkerStateError(f"cannot read {source}: {exc}") from None
-    if len(text.encode()) > limit:
-        raise WorkerStateError(f"the {what} is at most {limit} bytes of UTF-8")
-    return text if text.strip() else None
-
-
-def _evidence(texts: list[str]) -> list[dict]:
-    from evo_agents.hub.review import EvidenceProblem, parse_evidence
-
-    found = []
-    for text in texts:
-        try:
-            found.append(parse_evidence(text))
-        except EvidenceProblem as exc:
-            raise WorkerStateError(str(exc)) from None
-    return found
-
-
 async def _attest(evidence: list[dict], workspaces: dict) -> None:
     """Check each piece of code evidence against the run's worktree of its repo: the file is there, with the line;
     and add the commit the worktree is at. The hub checks the rest."""
@@ -942,10 +953,10 @@ def cmd_finding(args) -> int:
     agent = _agent_run("finding", ("review",))
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
-        text = _read_text(args.body_file, "body", MAX_BODY_BYTES)
+        text = read_text(args.body_file, "body", MAX_BODY_BYTES)
         if text is not None:
             body["body"] = text
-    body["evidence"] = _evidence(args.evidence)
+    body["evidence"] = evidence_items(args.evidence)
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
@@ -962,7 +973,7 @@ def _plan_file(source: str) -> dict:
 
     from evo_agents.hub.review import MAX_DRAFT_BYTES
 
-    text = _read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
+    text = read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -984,7 +995,7 @@ def cmd_propose(args) -> int:
         if found is None:
             raise WorkerStateError(f"--path takes REPO:PATH, a path within a repo, not {text!r}")
         paths.append({"repo": found[0], "path": found[1]})
-    evidence = _evidence(args.evidence or [])
+    evidence = evidence_items(args.evidence or [])
     if not evidence and not args.finding:
         raise WorkerStateError("a proposal rests on --finding ID, --evidence SPEC, or both: give at least one")
     body: dict = {
@@ -997,7 +1008,7 @@ def cmd_propose(args) -> int:
         "plan": _plan_file(args.plan_file),
     }
     if args.summary_file:
-        text = _read_text(args.summary_file, "summary", MAX_BODY_BYTES)
+        text = read_text(args.summary_file, "summary", MAX_BODY_BYTES)
         if text is not None:
             body["summary"] = text
     workspaces = _workspaces(agent)
@@ -1029,7 +1040,7 @@ def cmd_put(args) -> int:
     from evo_agents.hub.plans import MAX_PLAN_BYTES
 
     agent = _agent_run("put", ("author",))
-    text = _read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
+    text = read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -1091,7 +1102,7 @@ def register(sub) -> None:
     reg.add_argument(
         "--project", required=True, action="append", help="a project it takes runs of; repeat it for each one"
     )
-    reg.add_argument("--slots", type=_slots, default=1, help="runs it holds at once, 1 to 8 (default 1)")
+    reg.add_argument("--slots", type=_slots, default=1, help=f"runs it holds at once, 1 to {MAX_SLOTS} (default 1)")
     reg.add_argument("--label", action="append", help="a label; repeat it for each one")
     reg.add_argument(
         "--allow-web-terminal", action="store_true", help="let the owner open a terminal on it from the web"
@@ -1113,13 +1124,10 @@ def register(sub) -> None:
     status.add_argument("--json", action="store_true", help="machine-readable output")
     status.set_defaults(func=cmd_status)
 
-    from evo_agents.worker.doctor import add_parser as add_doctor  # `doctor [--json]`
+    from evo_agents.worker import doctor, selftest
 
-    add_doctor(wsub)
-
-    from evo_agents.worker.selftest import add_parser as add_selftest  # `selftest --runtime NAME`
-
-    add_selftest(wsub)
+    doctor.add_parser(wsub)  # `doctor [--json]`
+    selftest.add_parser(wsub)  # `selftest --runtime NAME`
 
     attach = wsub.add_parser(
         "attach", help="put this terminal on the tmux session of an interactive run (evo-run-N), as tmux attach does"
@@ -1153,7 +1161,7 @@ def register(sub) -> None:
     env.add_argument("--run", type=int, required=True, help="the run's id")
     env.set_defaults(func=cmd_env)
 
-    # The agent of a plan run runs these; outside one they refuse.
+    # The agent of a plan run runs these, and of an author run ask and plan; outside one they refuse.
     step = wsub.add_parser(
         "step", help="inside a plan run: report a step of the plan; done runs its verify commands again and pushes"
     )
@@ -1169,8 +1177,10 @@ def register(sub) -> None:
     )
     step.set_defaults(func=cmd_step)
 
-    ask = wsub.add_parser("ask", help="inside a plan run: ask the run's owner a decision; prints its id")
-    ask.add_argument("--category", required=True, choices=runs.DECISION_CATEGORIES, help="what kind of decision")
+    ask = wsub.add_parser(
+        "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
+    )
+    ask.add_argument("--category", required=True, choices=runs.ASKED_DECISION_CATEGORIES, help="what kind of decision")
     ask.add_argument("--question", required=True, help="the question, in a sentence or two")
     ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
     ask.add_argument(
@@ -1181,7 +1191,7 @@ def register(sub) -> None:
         help="an option; repeat it, 2 to 6 times",
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
-    ask.add_argument("--step", help="the step of the plan it is about")
+    ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
     ask.set_defaults(func=cmd_ask)
 
     notify = wsub.add_parser(
@@ -1207,7 +1217,7 @@ def register(sub) -> None:
         action="append",
         required=True,
         metavar="SPEC",
-        help="session:ID[:FIELD:INDEX], run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
+        help="session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
     )
     finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
     finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
@@ -1231,7 +1241,6 @@ def register(sub) -> None:
     plan = wsub.add_parser(
         "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
     )
-    from evo_agents.hub.contract import json_option, returns_object
     from evo_agents.hub.plan_cli import PLAN_KEYS, WRITTEN
 
     json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
@@ -1253,3 +1262,6 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
+    chat = (chat_cli.register_chat, chat_cli.register_repo)  # a run's agent in group chats, `repo open` of a chat run's
+    for extra in (*chat, triage_cli.register_triage, playbook_cli.register_playbook):
+        extra(wsub)  # and a triage thread's for a failed run, a review run's on the playbook

@@ -1,8 +1,8 @@
 """Runs and workers as the hub models them: the states of a run and who may move a run between them, a worker's
 status as its heartbeats show it, the kinds of a run's events, which steps of a plan are ready to run, the prompt a
-run hands its agent, and the decisions and notices a plan run sends its owner. Pure functions over JSON values and
-datetimes, standard library only, so the api and the worker daemon share them. ``docs/workers.md`` describes the
-protocol built on them, and ``docs/notifications.md`` how decisions and notices reach the owner.
+run hands its agent, and the decisions and notices a plan run or an author run sends its owner. Pure functions over
+JSON values and datetimes, standard library only, so the api and the worker daemon share them. ``docs/workers.md``
+describes the protocol built on them, and ``docs/notifications.md`` how decisions and notices reach the owner.
 
 A run is of one of RUN_KINDS. A ``step`` run is one attempt at one plan step on one worker. A ``plan`` run is one long
 session on one worker that does every step of a plan that is not done yet, in the order ``depends_on`` allows, and
@@ -14,10 +14,19 @@ proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is t
 Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
 checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
 (``evo_agents.hub.judge``). An ``author`` run writes an execution plan from a member's request with the create-exec-plan
-skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A worker takes a kind of run
-only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the review run reads every
-run as a step or plan run. Likewise it takes a plan run with a session per step only once its heartbeat lists
-SESSION_PER_STEP among its ``features``, since an older daemon would run it in one session.
+skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A ``chat`` run is one turn
+of an agent someone mentioned in a group chat, which answers in the thread, may change code on a branch ``chat/<run>``
+and ends done with its turn; a reply in the thread starts the next turn as a new run in the same session
+(``evo_agents.hub.chat_runs``). A ``task`` run is the work a plugin hands an agent type of its own that a project
+enabled (``evo_agents.hub.task_runs``): one headless turn on a branch ``task/<run>``, whose pull request the hub opens
+as a draft, never merged, with its result told back to that plugin. A ``release`` run is a cut or a fix of a cycle
+of a project's daily release, which its release schedule queues (``evo_agents.hub.releases``), dispatched as the
+schedule's owner and pinned to no worker. A ``local`` run is a Claude Code session on a
+member's own machine, which no worker runs and the hub only watches and asks decisions for (LOCAL_STATES;
+``evo_agents.hub.server.local_runs``). A worker takes a kind of run only once its heartbeat says its daemon runs that
+kind (``run_kinds``): a daemon older than the review run reads every run as a step or plan run. Likewise it takes a plan
+run with a session per step only once its heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon
+would run it in one session.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -32,9 +41,15 @@ same session, and the run is ``running`` again. A run that waited DECISION_WAIT_
 it go and frees the slot, and keeps the agent's session and the worktrees. An answer then queues a new plan run on the
 same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
 ``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES.
-An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat rather than an
-answer to a decision (``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done``
-when its owner ends the chat (the control ``finish``).
+A chat run's agent asks its owner decisions of CHAT_DECISION_CATEGORY too, and the run waits for the answers as a
+plan run does, but is parked after CHAT_DECISION_WAIT_SECONDS; a chat run that asked none ends done with its turn.
+An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat
+(``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done`` when its owner ends
+the chat (the control ``finish``). On a daemon that lists AUTHOR_DECISIONS among its ``features``, an author run's
+agent asks decisions too (its prompt names ``scope`` and ``architecture``), before its run has a plan (the decision's
+``plan_id`` is then null) or after; a turn that ends with one of them open waits until each is answered, the owner
+replies in the chat or ends it, so one answer alone does not wake the agent, and a parked author run resumes only once
+none of its decisions is open, or on a reply. A plan run wakes at the first answer, as before.
 
 TRANSITIONS names, for each move, who may do it: the ``worker`` that holds the run, the ``owner`` (the member who
 dispatched it, who is the owner of the worker), or the ``reaper``, the hub itself acting on an expired lease, a revoked
@@ -65,6 +80,8 @@ HEARTBEAT_SECONDS = 15  # how often the daemon sends a heartbeat
 OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this is offline
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
+MAX_SLOTS = 16  # runs a worker holds at once at most (workers.slots, as schema 0026 bounds it); 1 is the least
+MAX_WORKER_PLUGINS = 16  # plugins whose runtimes and environments a worker takes (workers.plugins, schema 0039)
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
 # The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
 # come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
@@ -88,26 +105,90 @@ FAILURE_CAUSES = (
     "checkout",  # the checkout, the fetch or a worktree of the run went wrong
     "runtime",  # the worker has no adapter for the runtime, or cannot start the agent as the run asks
     "worker_stopped",  # the daemon was stopped, or failed, while the run was held
+    "branch_mismatch",  # the worktree is on another branch than the run's, compared by full ref
+    "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
+    "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
+    "environment",  # preflight: the worker cannot run the agent in the environment its claim names (no container engine)
+    # the remote declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset),
+    # not for its credential nor because the branch moved on: the run's commits are still in its worktree
+    "push_declined",
 )
-PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool")  # what a run checks before its agent starts
+PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
 
 MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST
 MAX_EVENT_BODY_BYTES = 64 * 1024  # one event's body as JSON; a longer one is cut and marked truncated
 MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
+MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
-# plan written from a member's request
-RUN_KINDS = ("step", "plan", "review", "judge", "author")
+# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
+# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
+# branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
+# sessions and runs with a cheap model (``evo_agents.hub.history``); a cut or a fix of a project's release cycle
+# (``evo_agents.hub.releases``); a Claude Code session on a member's own machine, which no worker runs (LOCAL_KIND,
+# besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a claim hands
+# out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release")
+LOCAL_KIND = "local"
+SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
+CURATOR_KINDS = ("review", "judge", "replay", "history")  # the kinds only the night shift queues, and the Builder
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
-WORKER_FEATURES = (SESSION_PER_STEP,)  # what a heartbeat may say a daemon does besides its kinds of run (features)
-RUNTIMES = ("claude-code", "opencode", "codex")
+# a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
+AUTHOR_DECISIONS = "author_decisions"
+# a daemon whose adapters apply a run's agent profile (evo_agents.hub.profiles): tool, skill and model, instructions
+AGENT_PROFILES = "agent_profiles"
+# a daemon that takes the runtimes of the plugins its owner accepted, each an ACP agent run by its adapter of ACP
+# (evo_agents.plugins.runtimes, evo_agents.worker.runtimes.acp); the hub hands a run of such a runtime to no other
+PLUGIN_RUNTIMES = "plugin_runtimes"
+# a daemon that runs a run's agent in the environment its claim names (evo_agents.worker.environments): a container of
+# a plugin's environment, through Docker or Podman; the hub hands a run of such an environment to no other
+ENVIRONMENTS = "environments"
+# a daemon that builds the agent packs of a run's profile, of the plugins its owner accepted, into the run's directory
+# and hands them to its runtime (evo_agents.worker.packs); the hub hands a run whose profile attaches one to no other
+AGENT_PACKS = "agent_packs"
+# a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
+CHAT_DECISIONS = "chat_decisions"
+# a daemon that keeps the graph of each project whose night shift it is on duty for fresh on the hub: it syncs the git
+# sources whose ref is origin/<branch>, fetching it first, and pushes their runs with its own token, no model involved
+# (evo_agents.worker.kg_sync); the heartbeat answer names those projects (kg_sync) only to a daemon that says it
+KG_SYNC = "kg_sync"
+# a daemon whose chat run starts with the project's harness alone and whose agent opens each other repo it needs
+# (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
+# every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
+LAZY_CHAT_REPOS = "lazy_chat_repos"
+# a daemon that acts on its owner's Update now (update_now of the heartbeat answer): it claims no new run, lets the
+# ones it holds end, updates itself to the tag nightly and claims again, and reports in self_update.update_now how a
+# request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
+UPDATE_NOW = "update_now"
+# a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
+# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
+MERGE_JUDGE = "merge_judge"
+# what this package's daemon says it does besides its kinds of run (features of its heartbeat)
+WORKER_FEATURES = (
+    SESSION_PER_STEP,
+    AUTHOR_DECISIONS,
+    AGENT_PROFILES,
+    PLUGIN_RUNTIMES,
+    ENVIRONMENTS,
+    AGENT_PACKS,
+    CHAT_DECISIONS,
+    KG_SYNC,
+    LAZY_CHAT_REPOS,
+    UPDATE_NOW,
+    MERGE_JUDGE,
+)
+HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
+RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
+# A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub
+# takes a run of a runtime registered in its project (evo_agents.hub.server.runs.service.plugin_runtimes), not every
+# name of this shape; schema 0039 holds runs to it.
+RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$"
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
@@ -119,13 +200,31 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 
 DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
-RESUME_KINDS = ("plan", "author")  # the kinds of run that wait for their owner, are parked and resumed
+# a chat run waits only for the answer to a decision its agent asked (category CHAT_DECISION_CATEGORY): the hub parks
+# it after CHAT_DECISION_WAIT_SECONDS, not DECISION_WAIT_SECONDS, so a worker's slot is not held for long
+CHAT_DECISION_WAIT_SECONDS = 10 * 60
+RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for their owner, are parked and resumed
+# the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
+# waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)
+SESSION_KINDS = RESUME_KINDS
 PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
 
 HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
 ACTIVE_STATES = ("queued", *HELD_STATES, "review", "parked")  # at most one run of a step, or plan run of a plan
 TERMINAL_STATES = ("done", "failed", "lost", "cancelled")
 RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
+# A ``local`` run (``evo_agents.hub.server.local_runs``) is a Claude Code session on a member's machine, which the
+# hub only watches: no worker holds it, so it has no lease, no slot and no attempts, and the moves above are not its
+# own. Its state is the session's: running (a turn is under way), waiting (the agent asked a decision and waits for
+# it), idle (the turn ended, the person has the word) or ended (the session is over, or went silent for
+# LOCAL_SILENT_SECONDS).
+# ``running`` and ``waiting`` are states of RUN_STATES; idle and ended are only a local run's, and ended is final
+# until the session registers again.
+LOCAL_STATES = ("running", "waiting", "idle", "ended")
+LOCAL_ONLY_STATES = ("idle", "ended")
+SHOWN_STATES = RUN_STATES + LOCAL_ONLY_STATES  # every state a run may be shown in, local runs included
+LOCAL_SILENT_SECONDS = 24 * 3600  # a local run that sent nothing for this long is ended; the session may register again
+MAX_LOCAL_FIELD = 500  # a local run's machine, cwd and account, one line each
 # The time a run spends in these counts toward its timeout; waiting for an answer, parked, queued and review do not.
 CLOCK_STATES = ("leased", "running", "interactive", "verifying")
 TAKEOVER_STATES = ("leased", "running")  # the owner may ask for a takeover while the agent is not driven by a person
@@ -173,6 +272,16 @@ DECISION_CATEGORY_TEXT = {
     "architecture": "an architectural choice the plan leaves open",
     "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
 }
+# What the prompt of a plan run tells its agent to ask: every category but deploy, since merging, deploying and releasing
+# are the agent's to do (main deploys on every push, deploy.yml). A worker of an older prompt may still ask a deploy.
+PROMPTED_DECISION_CATEGORIES = tuple(name for name in DECISION_CATEGORIES if name != "deploy")
+LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
+LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
+CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
+ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
+# what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
+RELEASE_DECISION_CATEGORY = "release"
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, RELEASE_DECISION_CATEGORY)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -185,13 +294,57 @@ MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
 # curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
 # curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too;
-# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits
-NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting")
+# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
+# chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``);
+# plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
+# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
+# canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
+# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
+NOTICE_KINDS = (
+    *WORKER_NOTICE_KINDS,
+    "curator_brief",
+    "curator_paused",
+    "author_waiting",
+    "chat_mention",
+    "chat_added",
+    "plugin_disabled",
+    "builder_proposal",
+    "canvas_baseline",
+    "merge_paused",
+    "release",
+)
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5
 
 WORKER_STATUSES = ("online", "offline", "draining", "revoked")
+# What a daemon says of updating itself to the tag nightly (self_update.state of its heartbeat): current, it runs the
+# commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is
+# idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version;
+# unsupported, it cannot update itself, and self_update.reason says why. The hub keeps a state it does not know as the
+# daemon names it.
+SELF_UPDATE_STATES = ("current", "waiting", "updating", "locked", "unsupported")
+SELF_UPDATE_REASON_CHARS = 500  # the most characters of self_update.reason a heartbeat carries
+SELF_UPDATE_ERROR_CHARS = 2000  # and of self_update.error
+# What a daemon of feature KG_SYNC last did for each git source of a project it is on duty for (kg_sync of its
+# heartbeat): ok, the source was read or found at the commit read last, and every run of it is on the hub; failed, the
+# sync, the pull of the hub's runs or the push went wrong, and error says how; skipped, the worker does not read it
+# (a ref that is not origin/<branch>, a path: source, no checkout of its repo here), and error says why.
+KG_SYNC_STATES = ("ok", "failed", "skipped")
+KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
+MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
+MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
+# The repository and the tag the daemons update themselves to, and whose commit the hub reads once a minute and hands
+# every daemon in its heartbeat answer (nightly; evo_agents.hub.nightly).
+NIGHTLY_REPO_URL = "https://github.com/maycuatroi1/evo-agents"
+NIGHTLY_TAG = "nightly"
+# How an owner's Update now of a worker ended (workers.update_outcome): current, its daemon runs the commit of nightly
+# the hub read; cancelled, the owner or a hub admin cancelled it; failed, the install failed (self_update.error says
+# how); impossible, the daemon cannot update itself (locked, an install it cannot update, a daemon of its install
+# locked or run by hand; self_update.reason says why). A daemon reports the last two in self_update.update_now.
+UPDATE_NOW_OUTCOMES = ("current", "cancelled", "failed", "impossible")
+UPDATE_NOW_DAEMON_ENDS = ("failed", "impossible")  # the outcomes a daemon reports
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",
@@ -595,7 +748,7 @@ def _decision_lines(where: str) -> list[str]:
     """The categories of decision the agent of a plan run may ask its owner, and where it writes the others."""
     return [
         "- Ask the run's owner only a decision of one of these categories:",
-        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in DECISION_CATEGORIES),
+        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in PROMPTED_DECISION_CATEGORIES),
         f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
         'line that starts with "Decision:".',
     ]
@@ -610,7 +763,8 @@ def _plan_rules() -> list[str]:
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
         "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
-        "until every step is done. Checkpoint steps (a verification, a review, a deploy) are yours too.",
+        "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
+        "yours too, with no question to the owner.",
         "- Record progress only with `evo-agents worker step`: `evo-agents worker step KEY in_progress --repo REPO` "
         "when you start a step, and `evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND` "
         "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "
@@ -623,11 +777,16 @@ def _plan_rules() -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
+        "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
+        "what the owner must do, with a way around the block among the options when there is one, and end your "
+        "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
-        f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because every step is done or because you cannot "
-        f'go on, write {RESULT_FILE} as a JSON object whose "summary" says which steps you finished, what you '
-        "decided yourself, and what is left and why. The worker runs no verify command at the end of a plan run: "
-        "`evo-agents worker step` ran each step's.",
+        f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
+        "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
+        f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
+        "you finished, what you decided yourself, and what is left and why. The worker runs no verify command at "
+        "the end of a plan run: `evo-agents worker step` ran each step's.",
     ]
 
 

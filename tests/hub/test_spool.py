@@ -1,14 +1,15 @@
 """The PostToolUse hook of the evo-hub plugin (``evo-agents hub hook post-tool-use``, ``evo_agents.hub.spool``).
 
-A result of Bash, Read, Grep or an MCP tool longer than the threshold is written whole to ~/.evo/tool-output (the
+A result of Bash, Grep, WebFetch or an MCP tool longer than the threshold is written whole to ~/.evo/tool-output (the
 directories 0700, the file 0600) and the model gets its head, its tail and the file's path, in the shape the tool
-returns, which Claude Code needs. Everything else passes unchanged: a short result, a failed one, an image, a Read of a
-range, a call that reads a spool file, Codex's payloads, a hook that runs out of time or meets an error. The hook exits
-0 whatever happens, prints the replacement or nothing, never names the middle of a result on stderr, talks to no hub,
-and deletes spool files older than EVO_SPOOL_DAYS.
+returns, which Claude Code needs; a Read without offset or limit has a higher threshold of its own and keeps a larger
+head. Everything else passes unchanged: a short result, a failed one, an image, a Read of a range, a call that reads a
+spool file, a tool of evo-hub or evo-kg, a Bash call that prints a plan's handoff, Codex's payloads, a hook that runs
+out of time or meets an error. The hook exits 0 whatever happens, prints the replacement or nothing, never names the
+middle of a result on stderr, talks to no hub, and deletes spool files older than EVO_SPOOL_DAYS.
 
-The payloads follow what Claude Code 2.1.294 handed a hook on 2026-10-12 (the shapes are in spool's docstring). Every
-test runs with a home directory of its own."""
+The payloads follow what Claude Code 2.1.294 handed a hook on 2026-10-12, and WebFetch's what its transcripts of 2.1.286
+to 2.1.299 hold (the shapes are in spool's docstring). Every test runs with a home directory of its own."""
 
 import io
 import json
@@ -29,7 +30,13 @@ from evo_agents.hub import spool
 MIDDLE = "Wombat-Middle-Marker"  # in the middle of a long output only: must never reach the hook's output
 SESSION = "bbedc7e6-0ef8-453f-ae51-64f3fdc18f19"
 CALL = "toolu_01ABCdef234"
-VARIABLES = (spool.THRESHOLD_VARIABLE, spool.DAYS_VARIABLE, "CLAUDE_PROJECT_DIR", "EVO_RUN_ID")
+VARIABLES = (
+    spool.THRESHOLD_VARIABLE,
+    spool.READ_THRESHOLD_VARIABLE,
+    spool.DAYS_VARIABLE,
+    "CLAUDE_PROJECT_DIR",
+    "EVO_RUN_ID",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -179,31 +186,60 @@ def test_a_successful_commands_stderr_stays_whole_when_short_and_goes_to_the_fil
 
 
 def test_a_long_read_keeps_whole_first_lines_and_says_where_to_read_on(own_home, monkeypatch, capsys):
-    content = long_text(22_861)
+    content = long_text(52_861)
     lines = content.split("\n")
-    file = {"filePath": "big.txt", "content": content, "numLines": len(lines), "startLine": 1, "totalLines": 901}
+    file = {"filePath": "big.txt", "content": content, "numLines": len(lines), "startLine": 1, "totalLines": 1901}
     response = {"type": "text", "file": {**file, "truncatedByTokenCap": True}}
     output = replaced(run_hook(payload("Read", response, {"file_path": "/w/big.txt"}), monkeypatch, capsys)[1])
     assert output["type"] == "text" and output["file"]["truncatedByTokenCap"] is True
     shown = output["file"]["content"].split("\n")
     kept = len(shown) - 1
     assert shown[:-1] == lines[:kept], "whole lines, numbered from startLine as before"
-    assert output["file"]["numLines"] == len(shown) and output["file"]["totalLines"] == 901
-    assert shown[-1].startswith(f"[evo-hub: the read returned {len(lines):,} lines (22,861 characters) and only ")
-    assert f"only lines 1 to {kept} are shown here: Read the file with offset {kept + 1} and a limit" in shown[-1]
+    assert spool.READ_HEAD - 60 < len("\n".join(shown[:-1])) <= spool.READ_HEAD, "the head of a Read, not of Bash"
+    assert MIDDLE not in output["file"]["content"], "no tail: its lines would carry wrong numbers"
+    assert output["file"]["numLines"] == len(shown) and output["file"]["totalLines"] == 1901
+    assert shown[-1].startswith(f"[evo-hub: the read returned {len(lines):,} lines (52,861 characters) and only ")
+    assert (
+        f"only lines 1 to {kept} are shown here. If you need the rest, Read the file with offset {kept + 1} and a "
+        in (shown[-1])
+    )
     assert str(spool_file(own_home)) in shown[-1]
     assert spool_file(own_home).read_text(encoding="utf-8") == content
 
-    minified = {"type": "text", "file": {**file, "content": "{" + "x" * 30_000 + "}", "startLine": 5, "numLines": 1}}
+    minified = {"type": "text", "file": {**file, "content": "{" + "x" * 50_000 + "}", "startLine": 5, "numLines": 1}}
     output = replaced(run_hook(payload("Read", minified, {"file_path": "/w/min.json"}), monkeypatch, capsys)[1])
     first, note = output["file"]["content"].split("\n")
-    assert first == "{" + "x" * (spool.HEAD - 1)
-    assert "only lines 5 to 5 are shown here, the last of them cut: Read the file with offset 5 and" in note
+    assert first == "{" + "x" * (spool.READ_HEAD - 1)
+    assert (
+        "only lines 5 to 5 are shown here, the last of them cut. If you need the rest, Read the file with offset 5"
+        in (note)
+    )
 
     ranged = payload("Read", response, {"file_path": "/w/big.txt", "offset": 300, "limit": 400})
     assert run_hook(ranged, monkeypatch, capsys) == (0, "", ""), "a range asked for on purpose"
     image = {"type": "image", "file": {"base64": "x" * 50_000, "type": "image/png"}}
     assert run_hook(payload("Read", image, {"file_path": "/w/a.png"}), monkeypatch, capsys) == (0, "", "")
+
+
+def test_a_read_under_its_own_threshold_stays_whole_though_longer_than_bashs(own_home, monkeypatch, capsys):
+    content = long_text(spool.READ_THRESHOLD)
+    file = {"filePath": "mid.txt", "content": content, "numLines": content.count("\n") + 1, "startLine": 1}
+    data = payload("Read", {"type": "text", "file": file}, {"file_path": "/w/mid.txt"})
+    assert spool.THRESHOLD < len(content) <= spool.READ_THRESHOLD
+    assert run_hook(data, monkeypatch, capsys) == (0, "", "")
+    assert not (own_home / ".evo").exists()
+
+    monkeypatch.setenv(spool.READ_THRESHOLD_VARIABLE, "15000")
+    shown = replaced(run_hook(data, monkeypatch, capsys)[1])["file"]["content"]
+    assert len(shown) < 7_500 + 600, "the head shrinks to half a lower threshold"
+    monkeypatch.setenv(spool.THRESHOLD_VARIABLE, "100000")
+    assert "If you need the rest" in replaced(run_hook(data, monkeypatch, capsys)[1])["file"]["content"]
+    for off in ("0", "off"):
+        monkeypatch.setenv(spool.READ_THRESHOLD_VARIABLE, off)
+        assert run_hook(data, monkeypatch, capsys) == (0, "", ""), "no Read is cut"
+    monkeypatch.setenv(spool.READ_THRESHOLD_VARIABLE, "2000")
+    monkeypatch.setenv(spool.THRESHOLD_VARIABLE, "off")
+    assert run_hook(data, monkeypatch, capsys) == (0, "", ""), "EVO_SPOOL_THRESHOLD=off turns the whole hook off"
 
 
 def test_long_grep_results_keep_their_shape(own_home, monkeypatch, capsys):
@@ -234,6 +270,31 @@ def test_a_long_mcp_result_becomes_one_text_block_and_keeps_its_other_blocks(own
     as_string = replaced(run_hook(payload(tool, text), monkeypatch, capsys)[1])
     assert isinstance(as_string, str) and "this output has 50,000 characters" in as_string
 
+    for named_alike in ("mcp__evo-hub-copy__plan_show", "mcp__plugin_other_evo-hub__plan_show"):
+        assert "this output has" in replaced(run_hook(payload(named_alike, text), monkeypatch, capsys)[1])
+
+
+def test_a_long_web_fetch_result_keeps_its_shape_and_its_head_and_tail(own_home, monkeypatch, capsys):
+    page = long_text(42_697)
+    response = {
+        "bytes": 42_697,
+        "code": 200,
+        "codeText": "OK",
+        "result": page,
+        "durationMs": 1047,
+        "url": "https://x.y/",
+    }
+    output = replaced(
+        run_hook(payload("WebFetch", response, {"url": "https://x.y/", "prompt": "all"}), monkeypatch, capsys)[1]
+    )
+    assert {**output, "result": None} == {**response, "result": None}
+    assert output["result"].startswith(page[:1000]) and output["result"].endswith(page[-1000:])
+    assert "this output has 42,697 characters" in output["result"] and MIDDLE not in output["result"]
+    assert spool_file(own_home).read_text(encoding="utf-8") == page
+
+    short = {**response, "result": page[: spool.THRESHOLD], "bytes": spool.THRESHOLD}
+    assert run_hook(payload("WebFetch", short), monkeypatch, capsys) == (0, "", "")
+
 
 # What passes unchanged
 
@@ -242,7 +303,19 @@ def test_a_long_mcp_result_becomes_one_text_block_and_keeps_its_other_blocks(own
     "data",
     [
         payload("Write", {"type": "create", "filePath": "/w/a", "content": "x" * 50_000}),
-        payload("WebFetch", {"result": "x" * 50_000}),
+        payload("WebFetch", {"result": None, "bytes": 50_000}),
+        payload("WebFetch", {"result": "x" * 50_000}, hook_event_name="PostToolUseFailure"),
+        payload("mcp__plugin_evo-hub_evo-hub__plan_show", [{"type": "text", "text": "x" * 50_000}]),
+        payload("mcp__plugin_evo-hub_evo-hub__kg_more", [{"type": "text", "text": "x" * 50_000}]),
+        payload("mcp__plugin_evo-kg_evo-kg__kg_context", [{"type": "text", "text": "x" * 50_000}]),
+        payload("mcp__evo-hub__run_events", "x" * 50_000),
+        payload("mcp__evo-kg__kg_search", [{"type": "text", "text": "x" * 50_000}]),
+        payload("Bash", bash_response("x" * 50_000), {"command": "evo-agents hub plan handoff rollout --step 3"}),
+        payload(
+            "Bash",
+            bash_response("x" * 50_000),
+            {"command": "cd ~/h && uvx --from evo-ak==0.18.0 evo-agents hub plan handoff rollout --project p"},
+        ),
         payload("Bash", "x" * 50_000),  # not Claude Code's shape
         payload("Bash", bash_response("x" * 50_000, isImage=True)),
         payload("Grep", {"mode": "count", "numFiles": 3}),
@@ -261,7 +334,9 @@ def test_a_long_mcp_result_becomes_one_text_block_and_keeps_its_other_blocks(own
         "",
     ],
     ids=lambda data: (
-        data.get("tool_name", "") + ":" + data.get("hook_event_name", "") if isinstance(data, dict) else ""
+        data.get("tool_name", "") + ":" + data.get("hook_event_name", "") + ":" + str(data.get("tool_input"))[:40]
+        if isinstance(data, dict)
+        else ""
     ),
 )
 def test_anything_else_passes_unchanged(data, own_home, monkeypatch, capsys):
@@ -373,8 +448,8 @@ def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, 
     from tests.hub import pg
     from tests.hub.test_hooks import SH, fake_uvx, plugin_hooks
 
-    (group,) = plugin_hooks()["PostToolUse"]
-    assert group["matcher"] == "Bash|Read|Grep|mcp__.*"
+    group = plugin_hooks()["PostToolUse"][0]  # the second group is the local-tool hook: tests/hub/test_local_sync.py
+    assert group["matcher"] == "Bash|Read|Grep|WebFetch|mcp__.*"
     (hook,) = group["hooks"]
     assert hook["command"].endswith(" evo-agents hub hook post-tool-use || true")
     assert hook["timeout"] >= spool.BUDGET + 5  # uvx and the interpreter start inside Claude Code's limit

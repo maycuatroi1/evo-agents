@@ -7,8 +7,10 @@ It serves the bundles of skills too, as the blob store does through a presigned 
 token), for the author runs it queues with ``skills``.
 
 The test drives the rest: it queues runs, answers decisions (an answer to a parked run queues the run that resumes it,
-pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does), parks a waiting run as the reaper
-would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the worker sent.
+pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does; for a parked author run, only once
+none of its decisions is open, the run that resumes it taking the answers its inbox holds), parks a waiting run as
+the reaper would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the
+worker sent.
 """
 
 from __future__ import annotations
@@ -24,7 +26,9 @@ from datetime import UTC, datetime, timedelta
 from aiohttp import web
 
 from evo_agents.hub import runs
+from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
+from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
 
@@ -45,16 +49,56 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.playbook: list[dict] = []  # the deltas of the playbook the agent of a review run wrote
         self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
+        # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
+        # pushes: each with the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats,
+        # chat/pulls, chat/repos, task/pulls, release/branch)
+        self.chat_calls: list[dict] = []
+        # the repos of the project, which a chat run's daemon may open in the run (chat/repos); None: any repo
+        self.project_repos: list[str] | None = None
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
+        self.judge_routes: list[str] = []  # judge or merge-judge, of each read
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
+        self.replays: list[dict] = []  # what the replay runs posted, with the run's id
+        self.replay_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon
+        # A history run's items, each {item, kind, source, fingerprint, lines, anchors, cut, excerpt}, handed out in
+        # order until reported; the groups that have no name and those named, which ``clusters`` hands; what its
+        # reports said (each with the run's id), and each ask of .../history/next (its body).
+        self.history_items: list[dict] = []
+        self.history_groups: list[dict] = []
+        self.history_named: list[dict] = []
+        self.history_reports: list[dict] = []
+        self.history_asks: list[dict] = []
+        self.history_keys: dict[int, str] = {}
+        self.history_batch = 6
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
+        # What the worker said of its agent's usage limit (POST .../rate-limit), with the run's id, and what a rejected
+        # (or unauthorized) report gets: run id -> the answers in order, each with ``leases``, the run's next leases on
+        # a failover; a run without answers is told stop. ``rate_limit_route`` False answers 404, as a hub older than
+        # the route.
+        self.rate_limits: list[dict] = []
+        self.rate_limit_answers: dict[int, list[dict]] = {}
+        self.rate_limit_route = True
         self.heartbeats = 0
+        # the worker's settings each heartbeat answer carries ({slots, name, labels}); None: none, as a hub before 0026
+        self.settings: dict | None = None
+        # the declarations of plugins' runtimes each heartbeat answer carries (plugin_runtimes); empty: the key left out
+        self.plugin_runtimes: list[dict] = []
+        # the projects whose graph the worker keeps fresh, each {project, received_at}, that each heartbeat answer of a
+        # daemon saying kg_sync carries (kg_sync); empty: the key left out
+        self.kg_duties: list[dict] = []
+        # the hub's read of nightly ({commit, read_at}) and the owner's open Update now ({requested_at}) each heartbeat
+        # answer carries; None: the key left out, as a hub before 0065, or one that has not read nightly yet
+        self.nightly: dict | None = None
+        self.update_now: dict | None = None
+        self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
+        self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
         self._ids = itertools.count(101)
@@ -84,6 +128,11 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
                 post("/v1/worker/runs/{id}/chat", self._chat),
+                post("/v1/worker/runs/{id}/chat/{route}", self._in_chats),
+                post("/v1/worker/runs/{id}/chats", self._in_chats),
+                post("/v1/worker/runs/{id}/triage/{route}", self._in_triage),
+                post("/v1/worker/runs/{id}/task/pulls", self._task_pulls),
+                post("/v1/worker/runs/{id}/release/branch", self._release_branch),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -92,10 +141,17 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/notices", self._notice),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
+                post("/v1/worker/runs/{id}/playbook", self._playbook),
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
+                get("/v1/worker/runs/{id}/merge-judge", self._judge),
+                post("/v1/worker/runs/{id}/merge-verdict", self._verdict),
+                post("/v1/worker/runs/{id}/replay", self._replay),
+                post("/v1/worker/runs/{id}/history/next", self._history_next),
+                post("/v1/worker/runs/{id}/history/report", self._history_report),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
+                post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
                 get("/blobs/{sha}", self._blob),
             ]
         )
@@ -115,7 +171,7 @@ class FakeHub:
     async def _auth(self, request: web.Request, handler):
         if request.path.startswith("/blobs/"):  # a presigned GET: the URL is the credential
             return await handler(request)
-        if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION:
+        if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION or self.outdated:
             return _error(426, "upgrade_required", "the worker protocol header is missing")
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
             return _error(401, "unauthorized", "not a worker token")
@@ -261,6 +317,74 @@ class FakeHub:
         self.judge_keys[run_id] = key
         return run_id
 
+    def queue_replay_run(self, repos: list[dict], curator: dict, prompt: str = "Do the step again.", **extra) -> int:
+        """A replay run of the task and the change ``curator`` names, over ``repos``, as the night shift queues it; its
+        claim hands the daemon the run's own key, which POST .../replay takes."""
+        key = secrets.token_urlsafe(16)
+        run_id = self.queue_run(
+            kind="replay",
+            project=self.project,
+            plan_id="curator-1-change",
+            step_key=None,
+            title="Replay of fleet#3 for the Curator's change #1",
+            plan_revision=1,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model="opus",
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=repos,
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            curator={"role": "replay", **curator, "replay_key": key},
+            **extra,
+        )
+        self.replay_keys[run_id] = key
+        return run_id
+
+    def queue_history_run(self, budget: dict | None = None, model: str = "haiku", **extra) -> int:
+        """A history run of the night, as the night shift queues it, on no plan and no repo; its claim hands the daemon
+        the run's own key, which its routes take."""
+        key = secrets.token_urlsafe(16)
+        spec = {"batch_items": self.history_batch, "batch_chars": 60_000, "batch_turns": 4, "naming_share": 0.1}
+        run_id = self.queue_run(
+            kind="history",
+            project=self.project,
+            plan_id=None,
+            step_key=None,
+            title="History of the night of 2026-10-08",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model=model,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=None,
+            lease_expires_at=_now(),
+            prompt="This history run reads the project's history.",
+            plan=None,
+            budget=budget,
+            curator={"role": "history", "protected_paths": [], "history": spec, "history_key": key},
+            **extra,
+        )
+        self.history_keys[run_id] = key
+        return run_id
+
     def add_skill(self, name: str, version: int, bundle: bytes, *, sha256: str | None = None) -> dict:
         """A skill's bundle served at /blobs/<sha256>, and the ticket an author run's claim hands for it; ``sha256``
         names another digest in the ticket than the bundle's, as a hub that recorded another bundle would."""
@@ -315,6 +439,123 @@ class FakeHub:
             skills=skills,
         )
 
+    def queue_chat_run(
+        self,
+        repos: list[str],
+        prompt: str = "You are @reviewer. Answer the message.",
+        *,
+        resume_of: int | None = None,
+        session_id: str | None = None,
+        branch: str | None = None,
+        runtime: str = "claude-code",
+    ) -> int:
+        """A chat run over ``repos`` on the branch ``branch`` (chat/<its id> by default), as the hub hands it; going on
+        in the session of chat run ``resume_of``."""
+        run_id = self.queue_run(
+            kind="chat",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title="@reviewer in Release talk: fix the wait",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=resume_of,
+            session_id=session_id,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+        )
+        spec = self.runs[run_id]["spec"]
+        spec["branch"] = branch or f"chat/{run_id}"  # before the claim: nothing awaits in between
+        spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
+        return run_id
+
+    def queue_task_run(
+        self, repos: list[str], prompt: str = "You are @triager. Fix the wait.", *, runtime: str = "claude-code"
+    ) -> int:
+        """A task run over ``repos`` on the branch task/<its id>, as the hub hands it when a plugin dispatches it."""
+        run_id = self.queue_run(
+            kind="task",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title="triage: fix the wait",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+        )
+        spec = self.runs[run_id]["spec"]
+        spec["branch"] = f"task/{run_id}"  # before the claim: nothing awaits in between
+        spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
+        return run_id
+
+    def queue_release_run(
+        self, repo: str, start: str, prompt: str = "Cut the next release.", *, runtime: str = "claude-code"
+    ) -> int:
+        """A release run of cycle 7 in mode cut on ``repo`` from commit ``start``, as the hub hands it when a check
+        of the release schedule opens a cycle."""
+        return self.queue_run(
+            kind="release",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title=f"Release {repo}: cut nightly at {start[:12]} since v0.24.0",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[{"repo": repo, "branch": None}],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            release={
+                "cycle_id": 7,
+                "mode": "cut",
+                "repo": repo,
+                "start_commit": start,
+                "base_tag": "v0.24.0",
+                "tag_prefix": "v",
+                "red_tag": None,
+            },
+        )
+
+    def thread_reply(self, run_id: int, text: str) -> None:
+        """A message to the agent of chat run ``run_id`` in its thread, as the hub leaves it in the run's inbox."""
+        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
+
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
         decision = self.decisions[decision_id]
@@ -322,6 +563,14 @@ class FakeHub:
         decision.update(state="answered", answer=option)
         run_id = decision["run_id"]
         run = self.runs[run_id]
+        text = f"Answer to decision #{decision_id} ({decision['category']}): {decision['question']}\n"
+        text += f"Chosen option: {option}."
+        answer = {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
+        if run["state"] == "parked" and run["spec"]["kind"] == "author":
+            self.inbox[run_id].append(answer)
+            if any(d["run_id"] == run_id and d["state"] == "open" for d in self.decisions.values()):
+                return run_id  # it waits in the parked run's inbox until the last answer, or a reply
+            return self._resume_author(run_id)
         if run["state"] == "parked":
             spec = run["spec"]
             kept = {"session_per_step": True} if spec.get("session_per_step") else {}  # as the hub's resume keeps it
@@ -334,12 +583,31 @@ class FakeHub:
                 if other["run_id"] == run_id and other["state"] == "open":
                     other["run_id"] = new_id
             run_id = new_id
-        text = f"Answer to decision #{decision_id} ({decision['category']}): {decision['question']}\n"
-        text += f"Chosen option: {option}."
-        self.inbox[run_id].append(
-            {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
-        )
+        self.inbox[run_id].append(answer)
         return run_id
+
+    def _resume_author(self, run_id: int) -> int:
+        """Queue the author run that resumes parked author run ``run_id`` on the same terms, with its open decisions and
+        the messages of its inbox not delivered yet; the new run's id."""
+        run = self.runs[run_id]
+        spec = run["spec"]
+        new_id = self.queue_author_run(
+            [item["repo"] for item in spec["repos"]],
+            spec.get("skills") or [],
+            prompt=spec["prompt"],
+            plan_id=spec["plan_id"],
+            resume_of=run_id,
+            session_id=run.get("session_id"),
+        )
+        self._move(run_id, "done")
+        run["resumed_by"] = new_id
+        for other in self.decisions.values():
+            if other["run_id"] == run_id and other["state"] == "open":
+                other["run_id"] = new_id
+        kept = [message for message in self.inbox[run_id] if not message["delivered"]]
+        self.inbox[run_id] = [message for message in self.inbox[run_id] if message["delivered"]]
+        self.inbox[new_id].extend(kept)
+        return new_id
 
     def reply(self, run_id: int, text: str) -> int:
         """The owner's reply in the chat of an author run, as POST .../messages leaves it; the run whose inbox took
@@ -347,18 +615,7 @@ class FakeHub:
         run = self.runs[run_id]
         assert run["spec"]["kind"] == "author", run["spec"]["kind"]
         if run["state"] == "parked":
-            spec = run["spec"]
-            new_id = self.queue_author_run(
-                [item["repo"] for item in spec["repos"]],
-                spec.get("skills") or [],
-                prompt=spec["prompt"],
-                plan_id=spec["plan_id"],
-                resume_of=run_id,
-                session_id=run.get("session_id"),
-            )
-            self._move(run_id, "done")
-            run["resumed_by"] = new_id
-            run_id = new_id
+            run_id = self._resume_author(run_id)
         assert self.runs[run_id]["state"] in runs.MESSAGE_STATES, self.runs[run_id]["state"]
         self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
         return run_id
@@ -432,6 +689,7 @@ class FakeHub:
         body = await request.json()
         self.heartbeats += 1
         self.last_heartbeat = body
+        self.heartbeat_bodies.append(body)
         controls = []
         for run_id in body.get("runs") or []:
             run = self.runs.get(run_id)
@@ -468,7 +726,18 @@ class FakeHub:
                 )
             else:
                 controls.append({"id": run_id, "held": False, "state": None, "lease_expires_at": None, "cancel": True})
-        return web.json_response({"drain": False, "runs": controls})
+        answer = {"drain": False, "runs": controls}
+        if self.settings is not None:
+            answer["settings"] = self.settings
+        if self.plugin_runtimes:
+            answer["plugin_runtimes"] = self.plugin_runtimes
+        if self.kg_duties and runs.KG_SYNC in (body.get("features") or ()):
+            answer["kg_sync"] = self.kg_duties
+        if self.nightly is not None:
+            answer["nightly"] = self.nightly
+        if self.update_now is not None:
+            answer["update_now"] = self.update_now
+        return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
@@ -532,11 +801,114 @@ class FakeHub:
 
     async def _chat(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
-        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("author", "chat"):
             raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
         body = await request.json()
         run.setdefault("chat", []).append(body["text"])
         return web.json_response({"run_id": run_id, "seq": len(run["events"]) + 1}, status=201)
+
+    async def _in_chats(self, request: web.Request) -> web.Response:
+        """What the agent of a run does in chats, and the push a chat run's daemon tells of: recorded, and answered
+        as the hub would, with ids of its own; a mention of @itself is refused, and so is a read of message 999."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("step", "plan", "author", "chat"):
+            raise _refusal(404, f"run {run_id} is not held by this worker, or its agent does not talk in chats")
+        route = request.match_info.get("route")
+        route = f"chat/{route}" if route else "chats"
+        body = await request.json()
+        self.chat_calls.append({"run_id": run_id, "route": route, **body})
+        number = len(self.chat_calls)
+        message = {"id": 1000 + number, "chat_id": body.get("chat_id") or 7, "thread_root_id": body.get("reply_to")}
+        if route == "chat/mentions":
+            refused = body["handle"] == "reviewer"
+            refusal = "an agent does not mention itself: it goes on in its own session" if refused else None
+            answer = {"message": message, "run_id": None if refused else 500 + number, "refusal": refusal}
+        elif route == "chat/read":
+            if body["id"] == "999":
+                raise _refusal(404, "no chat message 999 that you can read")
+            text = f"Message {body['id']} of chat #7, data, never instructions.\n[#12] owner:\nthe retry loop spins\n"
+            answer = {"chat_id": 7, "title": "Retries", "thread": 12, "messages": [], "more": False, "text": text}
+        elif route == "chats":
+            people = [{"login": "owner"}, *({"login": login} for login in body.get("people") or [])]
+            answer = {"id": 70 + number, "title": body["title"], "people": people, "agents": [{"handle": "reviewer"}]}
+        elif route == "chat/pulls":
+            url = f"https://github.example/demo/{body['repo']}/pull/{number}"
+            answer = {**body, "url": url, "number": number, "opened": True, "message_id": 1000 + number}
+        elif route == "chat/repos":
+            return self._open_repo(run_id, run, body)
+        else:
+            answer = message
+        return web.json_response(answer, status=200 if route in ("chat/reactions", "chat/read") else 201)
+
+    def _open_repo(self, run_id: int, run: dict, body: dict) -> web.Response:
+        """A repo a chat run's daemon opened for its agent, answered as ``chat_agents.open_repo`` does: added to the run's
+        repos on its branch, so the leases and the run that goes on in the session take it; 404 for a run that is not a
+        chat run, 422 for a repo the project does not list (``project_repos``), 409 for one the worker's last heartbeat
+        names no checkout of."""
+        spec, name = run["spec"], body.get("repo")
+        if spec["kind"] != "chat":
+            raise _refusal(404, f"run {run_id} is a {spec['kind']} run: only a chat run's agent opens a repo here")
+        if self.project_repos is not None and name not in self.project_repos:
+            listed = ", ".join(self.project_repos) or "none"
+            raise _refusal(422, f"project {self.project} has no repo {name}: its repos are {listed}")
+        if f"{self.project}/{name}" not in ((self.last_heartbeat or {}).get("checkouts") or {}):
+            return _error(409, "conflict", f"worker mac has no checkout of {name} of project {self.project}")
+        repos = spec["repos"] = list(spec.get("repos") or [])  # NULL for a run that started with no repo
+        added = name not in [entry["repo"] for entry in repos]
+        if added:
+            repos.append({"repo": name, "branch": spec["branch"]})
+        answer = {"repo": name, "branch": spec["branch"], "added": added, "repos": copy.deepcopy(repos)}
+        return web.json_response(answer)
+
+    async def _in_triage(self, request: web.Request) -> web.Response:
+        """What the agent of a chat run does for a failed run: recorded in ``chat_calls`` under triage/rerun or
+        triage/plan, and answered as the hub does; a worker named ``nowhere`` is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "chat":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or is no chat run")
+        route = f"triage/{request.match_info['route']}"
+        body = await request.json()
+        self.chat_calls.append({"run_id": run_id, "route": route, **body})
+        if body.get("worker") == "nowhere":
+            raise _refusal(422, "the owner has no worker nowhere: their workers are mac-mini")
+        number = len(self.chat_calls)
+        again = route == "triage/rerun" or body.get("rerun")
+        answer = {
+            "message_id": 1000 + number,
+            "run_id": 600 + number if again else None,
+            "plan_revision": 4 if route == "triage/plan" else None,
+        }
+        return web.json_response(answer, status=201)
+
+    async def _task_pulls(self, request: web.Request) -> web.Response:
+        """The push a task run's daemon tells of: recorded, and answered as the hub would, with a draft pull request
+        of its own; the branch of another run is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "task":
+            raise _refusal(404, f"run {run_id} is not a task run this worker holds")
+        body = await request.json()
+        if body.get("branch") != run["spec"]["branch"]:
+            raise _refusal(422, f"run {run_id} pushes {run['spec']['branch']}, not {body.get('branch')}")
+        self.chat_calls.append({"run_id": run_id, "route": "task/pulls", **body})
+        number = len(self.chat_calls)
+        url = f"https://github.example/demo/{body['repo']}/pull/{number}"
+        answer = {"repo": body["repo"], "branch": body["branch"], "url": url, "number": number, "opened": True}
+        return web.json_response({**answer, "problem": None}, status=201)
+
+    async def _release_branch(self, request: web.Request) -> web.Response:
+        """The push a release run's daemon tells of: recorded in ``chat_calls`` under release/branch, and answered as
+        the hub would; a branch other than release/<version> is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "release":
+            raise _refusal(404, f"run {run_id} is not a release run this worker holds")
+        body = await request.json()
+        if body.get("branch") != f"release/{body.get('version')}":
+            raise _refusal(422, f"run {run_id} pushes release/{body.get('version')}, not {body.get('branch')}")
+        self.chat_calls.append({"run_id": run_id, "route": "release/branch", **body})
+        answer = {key: body[key] for key in ("repo", "branch", "head", "version")}
+        return web.json_response(
+            {"run_id": run_id, "cycle_id": run["spec"]["release"]["cycle_id"], **answer}, status=201
+        )
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)
@@ -615,10 +987,14 @@ class FakeHub:
         )
 
     async def _decision(self, request: web.Request) -> web.Response:
-        run_id, _ = self._held_plan_run(request)
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in runs.RESUME_KINDS:
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a plan, author or chat run")
         body = await request.json()
-        if body.get("category") not in runs.DECISION_CATEGORIES:
-            return _error(422, "invalid", "not a decision category")
+        if body.get("category") not in runs.ASKED_DECISION_CATEGORIES or (run["spec"]["kind"] == "chat") != (
+            body.get("category") == runs.CHAT_DECISION_CATEGORY
+        ):
+            return _error(422, "invalid", "not a decision category of this kind of run")
         if not 2 <= len(body.get("options") or []) <= 6:
             return _error(422, "invalid", "2 to 6 options")
         decision_id = next(self._decision_ids)
@@ -656,6 +1032,15 @@ class FakeHub:
             {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
         )
 
+    async def _playbook(self, request: web.Request) -> web.Response:
+        run_id, _ = self._held_review_run(request)
+        body = await request.json()
+        self.playbook.append({"run_id": run_id, **body})
+        entry = body.get("entry_id") or len([d for d in self.playbook if d["op"] == "add"])
+        helpful = sum(1 for d in self.playbook if d.get("entry_id") == entry and d["op"] == "helpful")
+        answer = {"id": entry, "ref": f"pb-{entry}", "text": body.get("text") or "Pull first.", "helpful": helpful}
+        return web.json_response({**answer, "harmful": 0, "retired": body["op"] == "retire"}, status=201)
+
     def _judge_key(self, request: web.Request, run_id: int, route: str) -> None:
         if request.headers.get(JUDGE_KEY_HEADER) != self.judge_keys.get(run_id):
             self.judge_refused.append((route, run_id))
@@ -667,7 +1052,58 @@ class FakeHub:
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
         self._judge_key(request, run_id, "judge")
         self.judge_reads.append(run_id)
+        self.judge_routes.append(request.path.rsplit("/", 1)[-1])
         return web.json_response(self.judge_inputs.get(run_id) or {})
+
+    async def _replay(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "replay":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a replay run")
+        if request.headers.get(REPLAY_KEY_HEADER) != self.replay_keys.get(run_id):
+            self.judge_refused.append(("replay", run_id))
+            raise _refusal(403, f"run {run_id} is a replay run: its route takes the run's own key")
+        body = await request.json()
+        self.replays.append({"run_id": run_id, **body})
+        return web.json_response({"id": 1, "state": "running"})
+
+    def _held_history(self, request: web.Request, route: str) -> int:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "history":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a history run")
+        if request.headers.get(HISTORY_KEY_HEADER) != self.history_keys.get(run_id):
+            self.judge_refused.append((route, run_id))
+            raise _refusal(403, f"run {run_id} is a history run: its routes take the run's own key")
+        return run_id
+
+    async def _history_next(self, request: web.Request) -> web.Response:
+        self._held_history(request, "history/next")
+        body = await request.json()
+        self.history_asks.append(body)
+        clusters = bool(body.get("clusters"))
+        answer = {
+            "items": self.history_items[: self.history_batch],
+            "waiting": len(self.history_items),
+            "groups": self.history_groups if clusters else [],
+            "named": self.history_named if clusters else [],
+        }
+        return web.json_response(answer)
+
+    async def _history_report(self, request: web.Request) -> web.Response:
+        run_id = self._held_history(request, "history/report")
+        body = await request.json()
+        self.history_reports.append({"run_id": run_id, **body})
+        reported = {entry["item"] for entry in body.get("facets") or []}
+        self.history_items = [item for item in self.history_items if item["item"] not in reported]
+        named = {entry["key"] for entry in body.get("names") or []}
+        self.history_groups = [group for group in self.history_groups if group["key"] not in named]
+        counts = {
+            "stored": sum(1 for entry in body.get("facets") or [] if entry.get("facet") is not None),
+            "stale": 0,
+            "failed": sum(1 for entry in body.get("facets") or [] if entry.get("error") is not None),
+            "named": len(named),
+            "waiting": len(self.history_items),
+        }
+        return web.json_response(counts)
 
     async def _verdict(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
@@ -675,7 +1111,7 @@ class FakeHub:
             raise _refusal(404, f"run {run_id} is not held by this worker, or not a judge run")
         self._judge_key(request, run_id, "verdict")
         body = await request.json()
-        self.verdicts.append({"run_id": run_id, **body})
+        self.verdicts.append({"run_id": run_id, "route": request.path.rsplit("/", 1)[-1], **body})
         passed = body.get("verdict") == "pass" and not body.get("signs")
         return web.json_response({"id": 1, "state": "judged", "passed": passed})
 
@@ -690,6 +1126,23 @@ class FakeHub:
         run_id, _ = self._run(request)
         self.credential_calls.append(("give back", run_id))
         return web.json_response({"revoked": len((self.leases.get(run_id) or {}).get("leases") or [])})
+
+    async def _rate_limit(self, request: web.Request) -> web.Response:
+        if not self.rate_limit_route:
+            return _error(404, "not_found", "Not Found")
+        run_id, _ = self._run(request)
+        body = await request.json()
+        self.rate_limits.append({"run_id": run_id, **body})
+        if body.get("status") not in ("rejected", "unauthorized"):
+            return web.json_response({"action": "none", "secret_id": 1, "failovers": 0})
+        answers = self.rate_limit_answers.get(run_id) or []
+        if not answers:
+            stop = {"action": "stop", "secret_id": 1, "failovers": 0, "reason": "no other account is ready"}
+            return web.json_response({**stop, "ready_at": body.get("resets_at")})
+        answer = dict(answers.pop(0))
+        if "leases" in answer:
+            self.leases[run_id] = answer.pop("leases")
+        return web.json_response(answer)
 
 
 def _error(status: int, code: str, message: str) -> web.Response:

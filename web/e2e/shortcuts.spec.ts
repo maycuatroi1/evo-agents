@@ -78,8 +78,8 @@ test("the second key must come within a second, and a hint shows while G waits",
 
   await page.keyboard.press("g");
   const hint = page.getByTestId("shortcuts-lead");
-  await expect(hint).toBeVisible();
-  await expect(hint).toContainText("Inbox");
+  // One assertion for both: the hint shows for well under a second, which a loaded runner can spend between two.
+  await expect(hint.filter({ hasText: "Inbox" })).toBeVisible();
   await expect(hint).toBeHidden({ timeout: 2_000 }); // the second passed
   await page.keyboard.press("i");
   await page.waitForTimeout(300); // a navigation would have started by now
@@ -195,7 +195,9 @@ test("? lists every key; single keys turn off and on, and stay so after a reload
   const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(dialog).toBeVisible();
   const rows = dialog.getByTestId("shortcut-row");
-  await expect(rows).toHaveCount(13);
+  await expect(rows).toHaveCount(15);
+  await expect(dialog.locator('[data-shortcut="chatSend"]')).toContainText("In a chat's message box");
+  await expect(dialog.locator('[data-shortcut="chatLine"]')).toContainText("Shift Enter");
   await expect(dialog.locator('[data-shortcut="goRuns"]')).toContainText("G then R");
   await expect(dialog.locator('[data-shortcut="goCurator"]')).toContainText("G then C");
   await expect(dialog.locator('[data-shortcut="palette"]')).toContainText(/(Command|Control) K/);

@@ -2,6 +2,7 @@
 
 import { ArrowRight, Check, ChevronDown, GitBranch, GitCommitHorizontal, Lightbulb, MessageCircleQuestionMark } from "lucide-react";
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type MouseEvent, useId, useState } from "react";
@@ -16,8 +17,11 @@ import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
 import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
-import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, noticeFacts, shortCommit } from "./model";
+import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, mergeAsk, noticeFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
+
+/** The answer a notice of the merge queue asks of an admin: loaded only with such a notice, so the Inbox stays light. */
+const MergeNoticeActions = dynamic(() => import("./merge-notice").then((module) => module.MergeNoticeActions));
 
 /** A body longer than this, or of more lines, folds to three lines with a button to show the rest. */
 const FOLD_CHARS = 240;
@@ -107,8 +111,16 @@ function BranchFacts({ notification }: { notification: Notification }) {
   );
 }
 
+/** The triage thread a `run_failed` notice links to (the hub's /chats/ID?message=ID), or null: the run's page is its target. */
+function triageThread(notification: Notification): Route | null {
+  const link = notification.link ?? "";
+  return notification.notice_kind === "run_failed" && link.startsWith("/chats/") ? (link as Route) : null;
+}
+
 /** Where a notice leads: the run's page, or the hub page its link names (never another site). */
 function noticeHref(notification: Notification): Route | null {
+  const thread = triageThread(notification);
+  if (thread) return thread;
   if (notification.project && notification.run_id !== null) return runHref(notification.project, notification.run_id);
   const link = notification.link ?? "";
   return link.startsWith("/") && !link.startsWith("//") ? (link as Route) : null;
@@ -117,7 +129,8 @@ function noticeHref(notification: Notification): Route | null {
 /**
  * One notification of the Inbox. A decision opens in a sheet over the list (its title is a link to
  * `/inbox?decision=ID`, which `onOpenDecision` follows without leaving the page), and so does a tier 2 proposal of the
- * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run. An unread one is marked by a dot, a
+ * Curator (`/inbox?proposal=ID`, `onOpenProposal`); a notice links to its run, and a Lean Canvas baseline that waits
+ * for review (canvas_baseline) to its review page. An unread one is marked by a dot, a
  * heavier title and the words "Unread" for screen readers, and offers Mark as read.
  */
 export function NotificationItem({
@@ -229,6 +242,7 @@ export function NotificationItem({
         )}
         {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
         {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
+        {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
           {decision && href && notification.decision_id !== null ? (
             <Button asChild size="sm" variant={open ? "default" : "outline"}>
@@ -270,7 +284,20 @@ export function NotificationItem({
               className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
-              {t("openRun", { id: notification.run_id })}
+              {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
+              <ArrowRight className="size-3.5" aria-hidden="true" />
+            </Link>
+          ) : null}
+          {target && notification.run_id === null && notification.notice_kind === "canvas_baseline" ? (
+            <Link
+              href={target}
+              onClick={() => {
+                if (unread) onRead(notification.id);
+              }}
+              className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
+              data-testid="notification-link"
+            >
+              {t("openBaseline")}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
-import { Activity, CircleCheck, CircleX, Clock, Eye, type LucideIcon, MonitorPlay, Play, Send } from "lucide-react";
+import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, MonitorPlay, Play, Send } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -24,12 +25,14 @@ import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { DispatchDialog } from "./dispatch-dialog";
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { MAX_QUERY, runsQuery, runsSummaryQuery } from "./queries";
-import { facetCount, filtersSearch, isFiltered, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
+import { facetCount, filtersSearch, isFiltered, KIND_FILTERS, type KindFilter, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
 import { type RunsSummary, summarizeRuns } from "./runs-summary";
 import { RunsTable } from "./runs-table";
+
+/** The Dispatch dialog, whose code loads after the page: the runs page does not carry its form in its first load. */
+const DispatchDialog = dynamic(() => import("./dispatch-dialog").then((module) => module.DispatchDialog), { ssr: false });
 
 /** The filters in the URL, changed through the History API (Next.js syncs useSearchParams with it). */
 function useFilters(): [RunFilters, (next: RunFilters) => void] {
@@ -123,6 +126,8 @@ function RunList({ project }: { project: string }) {
   const caption = t("caption", { project });
   const inUse: ActiveFilter[] = [
     ...(filters.facet ? [{ label: t("facets.label"), value: t(`facets.${filters.facet}`) }] : []),
+    ...(filters.kind ? [{ label: t("local.kindLabel"), value: t(`local.${filters.kind}`) }] : []),
+    ...(filters.account ? [{ label: t("local.accountLabel"), value: filters.account }] : []),
     ...(filters.q ? [{ label: tStates("search"), value: filters.q }] : []),
   ];
 
@@ -145,9 +150,9 @@ function RunList({ project }: { project: string }) {
         testId="runs-search"
       />
       <ToolbarFilters
-        active={filters.facet ? 1 : 0}
+        active={(filters.facet ? 1 : 0) + (filters.kind ? 1 : 0) + (filters.account ? 1 : 0)}
         summary={count}
-        onClear={() => setFilters({ ...filters, facet: null, page: 1 })}
+        onClear={() => setFilters({ ...filters, facet: null, kind: null, account: "", page: 1 })}
         testId="runs-filters"
       >
         <FacetGroup
@@ -167,6 +172,26 @@ function RunList({ project }: { project: string }) {
           onSelect={(facet) => setFilters({ ...filters, facet: facet as RunFacet | null, page: 1 })}
           countLabel={(n) => t("count", { count: n })}
           testId="runs-facets"
+        />
+        <FacetGroup
+          label={t("local.kindLabel")}
+          options={[
+            { value: null, label: t("local.all") },
+            ...KIND_FILTERS.map((kind): FacetOption => ({ value: kind, label: t(`local.${kind}`), icon: Laptop })),
+          ]}
+          selected={filters.kind}
+          onSelect={(kind) => setFilters({ ...filters, kind: kind as KindFilter | null, page: 1 })}
+          countLabel={(n) => t("count", { count: n })}
+          testId="runs-kinds"
+        />
+        <SearchField
+          value={filters.account}
+          onCommit={(account) => setFilters({ ...filters, account, page: 1 })}
+          label={t("local.accountLabel")}
+          placeholder={t("local.accountPlaceholder")}
+          clearLabel={t("local.accountClear")}
+          maxLength={MAX_QUERY}
+          testId="runs-account"
         />
       </ToolbarFilters>
     </DataToolbar>
@@ -202,7 +227,7 @@ function RunList({ project }: { project: string }) {
             list.runs.length === 0 ? (
               <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters(NO_FILTERS)} />
             ) : (
-              <RunsTable runs={list.runs} caption={caption} viewer={viewer} />
+              <RunsTable runs={list.runs} caption={caption} viewer={viewer} grouped />
             )
           }
         </QueryView>

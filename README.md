@@ -16,7 +16,10 @@ Status: early prototype. Interfaces will change.
 ```sh
 uv tool install 'evo-ak[graphify]'   # or: pip install 'evo-ak[graphify]' (PyPI name; the command is evo-agents)
 uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents'   # unreleased main
+uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night
 # or, from a checkout: python -m pip install -e '.[test,graphify]'
+# the hub's tests also take the core plugins the hub's image pins, after evo-ak:
+#   python -m pip install --no-deps --require-hashes -r deploy/hub/core-plugins.txt
 ```
 
 The core needs Python 3.11+ and PyYAML; nothing else. The `graphify` extra adds graphify's tree-sitter
@@ -71,7 +74,19 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 `fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
-is fetched.
+is fetched. Without `ref:` a source reads HEAD of its checkout, whatever branch that has, and
+`harness validate` warns about it.
+A git source also reads the history of its ref, one `Commit` node per commit with `changes` edges to the files it
+changed, and, for a repo whose origin is on GitHub, the pull requests with their number, title, state, branches and
+merge commit, never their body or comments (`pulls: false` turns that off; the token comes from `GH_TOKEN`,
+`GITHUB_TOKEN` or `gh auth token`). A SHA or "PR #57" in a plan step's evidence then links the step to that commit
+or pull request, and through it to the files: `docs/kg.md`, section Plans of the hub, commits and pull requests.
+In a harness whose harness.yaml names a hub project, `kg sync` reads the plans at the revision the hub holds, with
+the hub's label, rather than the copies in `plans/`; a machine not signed in to a hub reads the copies.
+The graph says which commit each git source read and how many commits that is behind the remote's default
+branch (`origin/<default_branch>`, counted from the clone without fetching): `kg status`, `kg_status`, the
+SessionStart note and the hub's graph page show it, and `kg_node` links a file at that commit, so the lines
+of a span match what the link opens.
 Changing where a source reads from (a git source's `ref:`, `repo:` or `path:`, an exec source's `command:`)
 makes its next run replace what the source read before, even when the old ref has newer commits; within
 one ref, a file keeps the copy whose last commit is newest. Keys such as `refresh:`, `label:`, `include:`
@@ -96,23 +111,42 @@ evo-agents kg status                 # freshness, coverage and held deletions pe
 evo-agents kg build --verify         # rebuild from scratch and compare hashes
 evo-agents kg query kg_search "KB-01"
 evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
+evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
+
+A harness's CI runs `harness validate` with the evo-agents of the tag `nightly`, the tip of main, which a workflow
+moves every night:
+
+```yaml
+      - name: Install evo-agents
+        run: python -m pip install "evo-ak @ git+https://github.com/maycuatroi1/evo-agents@nightly"
+      - name: Validate manifest, contracts, knowledge and plans
+        run: evo-agents harness validate .
+```
+
+A harness that must stay on one release pins it instead, `python -m pip install "evo-ak==<version>"`: the pin is
+that harness's lock, and only an edit of the workflow moves it. The worker daemon follows the same tag unless its
+owner locks its version ([docs/workers.md](docs/workers.md#updating-itself-to-nightly)).
 
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
-never their values.
+never their values. A build that finds nothing changed builds nothing and adds no line (see below).
 
 A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
 and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
 them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
 secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
-sync of its source replaces it with a redacted copy, so sync and build first), and kept when only an older record of
-a run still in use names it. Counting changes nothing. `--purge` says what it is about to delete and asks first
-(`--yes` when no terminal can answer). It then deletes the old blobs, the run logs of old runs that name them and
-the memo rows holding a secret, compacts the memo and the graph so no free page keeps the text, and appends a
-`scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus uses, and it holds every source's
-lock meanwhile, so a sync started then stops at once instead of writing:
+sync of its source replaces it with a redacted copy, so sync and build first), and kept when only records the corpus
+no longer holds name it, in the log of a run still in use (an item or a tombstone of that run still wins). Counting
+changes nothing. `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer). It
+then rewrites each run log in use that names a kept blob, keeping of its item and tombstone records only those the
+corpus holds (the log keeps its name and format, and replays to the same state), deletes the old and kept blobs, the
+run logs of old runs that name them and the memo rows holding a secret, compacts the memo and the graph so no free
+page keeps the text, and appends a `scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus
+uses, and it holds every source's lock meanwhile, so a sync started then stops at once instead of writing.
+`hub kg push` never sends a run the hub already holds, so a rewritten log leaves the machine only for a run the hub
+lacks. In order:
 
 ```sh
 evo-agents kg sync --build                   # live copies become old ones
@@ -127,6 +161,34 @@ has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent 
 removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
 gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
 
+Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
+with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
+the cursor, and `--due --build` builds only when a source read something. A harness source is always read, so
+files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state, config,
+code and cursors are those of the latest build (`--force` builds anyway; the hub's worker skips the same way). A
+build that runs links again only the items whose text or structure changed or that looked up a name or path that
+now resolves elsewhere, and rewrites only the rows of the full-text index that changed. `kg serve` opens the store
+read-only.
+
+Old data on the machine goes by retention periods (`evo-agents kg prune`): `logs` (default 1d) for run logs, blobs
+and rows of the runs table, `history` (1d) for the builds of the graph, and `memo` (14d) for memo rows after their
+last use. An old run log is deleted once no record of it is the one the corpus holds, and one still in use is
+rewritten without the records the corpus no longer holds, as `kg scrub --purge` does. A log the hub has not received
+is never touched: `hub kg push` records which runs the hub holds, and a run of a source above the hub sink never goes
+there. A blob goes once no log left and no item refers to it, the graph keeps its latest two builds and the builds of
+the period, and a memo row goes when neither the period nor the latest build used it. None of it changes what a build
+makes: `kg build --verify --cold` gives the same hash before and after. `kg prune` counts and changes nothing,
+`--delete` deletes after a yes (`--yes` when no terminal can answer), and `--logs`, `--history` and `--memo` set the
+periods of one pass. `kg prune --schedule on` counts, asks, and saves the periods in `~/.evo/kg/retention.json`: from
+then on every `kg sync --due --all`, the LaunchAgent's command, prunes each project once a day and appends a `prune`
+line with the counts to its `audit.jsonl`. The schedule is off until the owner turns it on.
+
+```sh
+evo-agents kg prune --all                    # count, change nothing
+evo-agents kg prune --all --delete           # delete what the periods make old, after a yes
+evo-agents kg prune --schedule on            # count, ask, then prune with every scheduled sync
+```
+
 ## Using it from Claude Code
 
 ```sh
@@ -139,7 +201,9 @@ server binds to the project of the session directory; pass `--project` in `.mcp.
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
 (`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
 hub that has a graph of the project, the server answers from the hub with the same tools
-(`kg serve --backend auto`, the default; `local` and `hub` force one or the other).
+(`kg serve --backend auto`, the default; `local` and `hub` force one or the other). Inside a run of a worker,
+`auto` and `hub` ask the hub with the run's worker token, signed in or not, and only `local` reads a graph built on
+the machine ([docs/credentials.md](docs/credentials.md)).
 
 | Tool | Use |
 |---|---|
@@ -154,17 +218,24 @@ hub that has a graph of the project, the server answers from the hub with the sa
 `kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
 importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
 Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
-names a seed with more incoming edges than it reads (2,000), with their number. [docs/kg.md](docs/kg.md) has the
-coverage table per language and the fields of the result.
+names a seed with more incoming edges than it reads (2,000), with their number. Its text lists the first 20 dependents
+of each hop and counts the rest (`limit` raises it). [docs/kg.md](docs/kg.md) has the coverage table per language, the
+fields of the result, and how the text of every tool is written.
 
 Hooks:
 
-- SessionStart prints a short note: the bound project and the snapshot age.
+- SessionStart prints a short note: the bound project, the snapshot age, and the commit each git source
+  read with how far behind its remote's default branch that is now (`commits read: app 1550c7a (3 behind
+  origin/main)`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
-  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
-- PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
-  nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
-  off.
+  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
+  `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
+- PostToolUse, after Grep, or `rg` or `grep` at the head of a Bash command, adds a note beside the
+  result when a matched line falls in a symbol or file of the graph: at most four lines after its
+  header, each naming by id who calls it (or imports the file), its tests and the plan steps that
+  name it. It never changes, cuts or blocks the result, and says nothing when there is nothing to
+  add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
+  matched line.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
 `plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version
@@ -179,16 +250,17 @@ claude plugin install evo-hub@evo-agents
 ```
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
-hub's `/mcp`), a `using-agent-hub` skill, and three hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools are the seven `kg_*` tools and `memory_search`,
 `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
-`run_tool_stats`. In a harness
+`run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
+evo-kg alone: evo-hub leaves them out (it reads `enabledPlugins` of Claude Code's settings). In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a
 plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub plan handoff PLAN --step KEY`) rather
 than your history: the plan's goal, each step done with its commits and `Decision:` lines, and the steps left, within a
 token budget.
 
-Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `|| true` as evo-kg):
+Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-tool|session-end`, same pins and `|| true` as evo-kg):
 
 - SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
   plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
@@ -198,14 +270,32 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `||
   them (state in `~/.evo/hub/memory-state.json`).
 - Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
   per tool and per Bash program, what the person wrote, model and tokens, the largest context one model call read
-  (`peak_context_tokens`), the compactions and the characters of each tool's results, with every string that looks
-  like a secret replaced on the machine first. A digest the hub did not take waits for a later Stop
+  (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
+  below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
+  replaced on the machine first. A digest the hub did not take waits for a later Stop
   (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
-- PostToolUse writes a result of Bash, Read, Grep or an MCP tool longer than 10,000 characters (`EVO_SPOOL_THRESHOLD`)
-  to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
-  tail, its size and the file's path instead.
+- PostToolUse writes a result of Bash, Grep, WebFetch or an MCP tool longer than 10,000 characters
+  (`EVO_SPOOL_THRESHOLD`), and a Read longer than 40,000 (`EVO_SPOOL_READ_THRESHOLD`), to
+  `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
+  tail, its size and the file's path instead; the tools of evo-hub and evo-kg, which cut their own text, and a plan's
+  handoff pass whole.
 
-All three exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
+- UserPromptSubmit, a second PostToolUse hook (`local-tool`), Stop and SessionEnd put a local Claude Code session
+  of a hub project on the hub as a run of kind `local` (shown as local in the runs list): `running` while the agent
+  works, `idle` while it waits for you, `ended` at session end, with its last activity, the plan and step it marks
+  (`evo harness step`, `hub plan step` and `plan_step` name the run), and a live log. The log holds the agent's words,
+  and each tool's name, its input (300 characters) and its result (400 characters), with every string that looks like a
+  secret replaced on the machine first (the digest's redaction). The run also carries the session id, directory,
+  machine, the first line of your first prompt (120 characters), and the Claude account: for the Code tab of Claude
+  Desktop the email of the session record plus the claude-profiles profile name, for the CLI `oauthAccount.emailAddress`
+  of the Claude Code configuration, else `unknown`. `EVO_HUB_LOCAL_SYNC=0` turns all of this off (Stop still pushes the
+  digest and the memories). A session outside a hub project, and the agent of a worker run (`EVO_RUN_ID`), sends
+  nothing. When the hub does not answer, events wait in `~/.evo/hub/local/<session>.json` (500 at most, kept 7 days)
+  and a later hook sends them. [Unverified] The layout of Desktop's session record and of `profiles.json` follows
+  claude-profiles' README and was not checked on a Mac; `EVO_CLAUDE_DESKTOP_DIRS` (`name=path`, separated like PATH)
+  names the data folders when the defaults miss, and a record that cannot be read gives `unknown`.
+
+All of them exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
 tokens or memory text and send nothing when the machine is not signed in; PostToolUse prints the shortened result or
 nothing.
 
@@ -228,6 +318,12 @@ evo-agents worker register --name mac-mini --project demo --slots 1    # or this
 evo-agents worker service install   # keep the daemon running in the background
 evo-agents worker doctor            # what the machine still holds that a worker should not; exit 2 on a high finding
 ```
+
+A daemon that `worker service install` runs from a `uv tool install` of evo-ak, from git or from PyPI, updates itself
+to the tag `nightly` once it and every daemon of its install are idle, and starts again on the new version; lock its
+version on the worker's page to keep it where it is. A team that follows nightly installs from it:
+`uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'`.
+[docs/workers.md](docs/workers.md#updating-itself-to-nightly) has the conditions, the states and how to turn it off.
 
 Then, from any machine signed in to the hub:
 
@@ -254,7 +350,10 @@ evo-agents hub notifications --unread
 A plan run does every step in one agent session unless it is dispatched with `--session-per-step`: then each step
 gets a new session whose prompt carries the plan's handoff instead of what the sessions before it read, and the run's
 usage lists the session of each step. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
-(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window).
+(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window). A Codex agent compacts there too and
+keeps 8,000 tokens of each tool output (`EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT`,
+`EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT`), and opencode clears old tool outputs (`EVO_WORKER_OPENCODE_COMPACTION_PRUNE`
+turns that off); what the owner's own codex or opencode config sets stays.
 
 The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
 [docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`
@@ -270,14 +369,36 @@ evo-agents hub secret list
 evo-agents hub run credentials 41 --project demo   # the leases run 41 got, given back or not; never their values
 ```
 
+Several `env` secrets for the same variable bound to one project are accounts, such as two Claude subscriptions: each
+run takes one of them by the rotation you set for the project (round-robin by default, weighted-round-robin or
+fill-first) and keeps it, and a headless Claude Code run whose account hits its usage limit goes on in the same session
+with the next one. `hub account login` adds a Claude account: it runs Anthropic's own `claude setup-token`, where you
+approve in the browser, and puts the token it prints on the hub without showing it, ending a year from today less a
+day. Run it again with the same name to renew the token, or use Add Claude account and Renew token on the web's
+Accounts page. `hub account` shows and weighs the accounts, and `--account` picks one by hand
+([docs/credentials.md](docs/credentials.md), section "Accounts"):
+
+```sh
+evo-agents hub account login claude-b --project demo  # claude setup-token, then the token goes to the hub sealed
+evo-agents hub account list                        # state, usage, runs and cost of each account; never a value
+evo-agents hub account policy demo --strategy fill-first --cooldown 1800
+evo-agents hub account pause claude-a
+evo-agents hub run dispatch rollout 2 --account claude-b --project demo
+```
+
 ### Running a hub
 
 The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run
-with `deploy/hub/docker-compose.yml` next to a Postgres database and a Cloudflare R2 bucket. `evo-agents hub serve`
+with `deploy/hub/docker-compose.yml`, which can also build them from source, next to a Postgres database and a
+Cloudflare R2 bucket. `evo-agents hub serve`
 and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
 workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
-health checks.
+health checks. [docs/plugins.md](docs/plugins.md) covers plugins: their extension points, the plugin host and the
+`plugin/1` protocol, pages and signing; [docs/hub-deployment.md](docs/hub-deployment.md) a hub for a client, from the
+same images, with its own branding, publishers and plugins. [docs/srs-plugin.md](docs/srs-plugin.md) and
+[docs/tasks-plugin.md](docs/tasks-plugin.md) cover the core plugins srs (BA documents with versions, approval and
+@ba) and tasks (a backlog linked to use cases and plan steps).
 
 ### The web
 
@@ -296,6 +417,8 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN
 - Monitor (`/monitor`) lists every run in flight over your projects and watches the ones you pick in a grid of live
   tiles that shares out the window: each tile a run's state, worker, time, plan steps and the tail of its trace, for
   viewing only. The tiles are in the URL (`?runs=project:id,...`), so a link opens the same grid.
+- A plan's page shows its steps as Board, List or Graph (`?view=graph`): the graph draws each step under the steps it
+  waits for, marks the Ready ones, and a step selected (`&step=11`) opens its details beside the graph, read only.
 - Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens
   (`GET /v1/projects/{project}/runs/stats`), each chart with its table.
 - Administration lists what needs a hub admin (`GET /v1/admin/overview`): tokens expiring or unused, failed graph
@@ -370,8 +493,12 @@ scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
-              its coverage per language
+              and size budgets that CI checks, and how to split a module; kg.md: the knowledge graph's tools
+              (what kg_impact follows and covers per language, the text of every tool, search, the note after
+              grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
+              retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
+              hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
+              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab
 ```
 
 ## License

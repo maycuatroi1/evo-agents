@@ -58,6 +58,40 @@ HUB_TABLES |= pg.REVIEW_TABLES  # migration 0014
 HUB_TABLES |= pg.BRIEF_TABLES  # migration 0015
 HUB_TABLES |= pg.CHANGE_TABLES  # migration 0017
 HUB_TABLES |= pg.LEDGER_TABLES  # migration 0018
+HUB_TABLES |= pg.ACCOUNT_TABLES  # migration 0027
+HUB_TABLES |= pg.PROFILE_TABLES  # migration 0030
+HUB_TABLES |= pg.CHAT_TABLES  # migration 0031
+HUB_TABLES |= pg.PLUGIN_TABLES  # migration 0034
+HUB_TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0035
+HUB_TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
+HUB_TABLES |= pg.SETTINGS_TABLES  # migration 0037
+HUB_TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
+HUB_TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
+HUB_TABLES |= pg.BUILDER_TABLES  # migration 0043
+HUB_TABLES |= pg.TRIAGE_TABLES  # migration 0044
+HUB_TABLES |= pg.SRS_TABLES  # migration 0046
+HUB_TABLES |= pg.TASKS_TABLES  # migration 0047
+HUB_TABLES |= pg.TRANSCRIPT_TABLES  # migration 0052
+HUB_TABLES |= pg.FACET_TABLES  # migration 0054
+HUB_TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
+HUB_TABLES |= pg.REPLAY_TABLES  # migration 0056
+HUB_TABLES |= pg.HISTORY_TABLES  # migration 0059
+HUB_TABLES |= pg.SEARCH_TABLES  # migration 0060
+HUB_TABLES |= pg.NIGHTLY_TABLES  # migration 0065
+HUB_TABLES |= pg.RELEASE_TABLES  # migration 0067
+HUB_TABLES |= pg.USER_EMAIL_TABLES  # migration 0068
+HUB_TABLES |= pg.SRS_FINDING_TABLES  # migration 0069
+HUB_TABLES |= pg.SRS_SETTLE_TABLES  # migration 0070
+HUB_TABLES |= pg.SRS_APPROVAL_TASK_TABLES  # migration 0071
+HUB_TABLES |= pg.CANVAS_TABLES  # migration 0073
+HUB_TABLES |= pg.SIGNAL_TABLES  # migration 0074
+HUB_TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0075
+HUB_TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0076
+HUB_TABLES |= pg.CANVAS_BASELINE_TABLES  # migration 0077
+HUB_TABLES |= pg.POLICY_TABLES  # migration 0079
+HUB_TABLES |= pg.MERGE_TABLES  # migration 0081
+HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0083
+HUB_TABLES |= pg.BREAKER_TABLES  # migration 0084
 
 
 @pytest.fixture
@@ -77,6 +111,7 @@ def audit_rows(db) -> list[tuple]:
         db,
         select(users.c.login, audit.c.token_id, audit.c.action, audit.c.target)
         .select_from(audit.outerjoin(users, users.c.id == audit.c.actor_id))
+        .where(live.not_by_the_image())
         .order_by(audit.c.id),
     )
 
@@ -407,7 +442,8 @@ def test_admin_stats_counts_the_rows_of_every_table(client, github, hub_db):
     admin = sign_in(client, github, ADMIN, 302)
     stats = client.get("/v1/admin/stats", headers=bearer(admin["token"])).json()
     assert set(stats) == HUB_TABLES
-    assert stats["users"] == 2 and stats["tokens"] == 1 and stats["projects"] == 1 and stats["audit"] == 1
+    assert stats["users"] == 2 and stats["tokens"] == 1 and stats["projects"] == 1
+    assert stats["audit"] == 1 + live.image_installs()
     assert stats["memories"] == 0
 
 
@@ -579,6 +615,42 @@ def test_credentials_are_written_atomically_with_exact_modes(tmp_path, monkeypat
     hub_client.remove_credentials()
     with pytest.raises(hub_client.NotSignedIn, match="evo-agents hub login"):
         hub_client.load_credentials()
+
+
+def test_evo_hub_home_holds_the_login_of_another_hub_and_leaves_the_default_alone(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    default = tmp_path / ".evo" / "hub"
+    assert hub_client.hub_dir() == default
+    hub_client.save_credentials("https://hub.test", "octo", "evh_default")
+
+    # As Claude Code passes it from the env of .claude/settings.json: unexpanded, ~ and all.
+    monkeypatch.setenv("EVO_HUB_HOME", "~/.evo/hub-lumen")
+    other = tmp_path / ".evo" / "hub-lumen"
+    assert hub_client.hub_dir() == other
+    with pytest.raises(hub_client.NotSignedIn, match="evo-agents hub login"):
+        hub_client.load_credentials()
+    assert hub_client.save_credentials("https://lumen.test", "octo", "evh_m1") == other
+    assert mode(other) == 0o700 and mode(other / "token") == 0o600 and mode(other / "config.json") == 0o600
+    assert hub_client.load_credentials() == hub_client.Credentials("https://lumen.test", "octo", "evh_m1")
+    hub_client.remove_credentials()
+    assert list(other.iterdir()) == []
+    assert (default / "token").read_text() == "evh_default\n"  # the default login was never touched
+
+    monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path / "elsewhere"))
+    assert hub_client.hub_dir() == tmp_path / "elsewhere"
+    monkeypatch.setenv("EVO_HUB_HOME", "  ")  # blank is unset
+    assert hub_client.load_credentials() == hub_client.Credentials("https://hub.test", "octo", "evh_default")
+
+    # A relative directory would follow the working directory of each hook, into a checkout perhaps.
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.chdir(checkout)
+    monkeypatch.setenv("EVO_HUB_HOME", ".evo/hub-lumen")
+    with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
+        hub_client.load_credentials()
+    with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
+        hub_client.save_credentials("https://lumen.test", "octo", "evh_m1")
+    assert list(checkout.iterdir()) == []
 
 
 def test_the_client_refuses_plain_http_to_other_hosts_and_never_follows_redirects(github):

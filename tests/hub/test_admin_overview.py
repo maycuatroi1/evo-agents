@@ -299,7 +299,7 @@ def test_the_counts_match_the_rows_on_each_side_of_every_window(client, hub_db, 
             ],
         },
         "workers": {"live": 4, "offline": 3, "offline_after_seconds": 300},
-        "audit": {"rows": 3, "hours": 24},
+        "audit": {"rows": 3 + live.image_installs(), "hours": 24},
     }
 
 
@@ -334,5 +334,5 @@ def test_a_new_hub_has_nothing_to_report(client, admin):
         "storage": {"objects": 0, "bytes": 0, "pending_deletions": 0, "pending_bytes": 0},
         "kg_builds": {"failed": 0, "days": 7, "projects": []},
         "workers": {"live": 0, "offline": 0, "offline_after_seconds": 300},
-        "audit": {"rows": 0, "hours": 24},
+        "audit": {"rows": live.image_installs(), "hours": 24},  # the hub's own, of the core plugins of its image
     }

@@ -60,6 +60,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import BigInteger, func, insert, literal, select
 
 from evo_agents.hub import tables
+from evo_agents.kg.sessions import READ_META
 from tests.hub import live
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer
@@ -672,11 +673,14 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     assert set(replies) == {1, 2, 3, 4, 5}, replies
     found = replies[2]["result"]
     assert not found.get("isError"), found
-    assert found["structuredContent"]["project"] == PROJECT
-    assert KG_QUERY in json.dumps(found["structuredContent"]["results"][0])
-    projects = replies[3]["result"]["structuredContent"]
-    assert projects["session_project"] == PROJECT
-    assert [project["name"] for project in projects["projects"]] == [PROJECT], "the owner's other project is hidden"
+    assert "structuredContent" not in found  # the agent's model reads the text, the labels ride in its _meta
+    assert found["content"][0]["_meta"][READ_META]["project"] == PROJECT
+    head, labels, first, *_ = found["content"][0]["text"].splitlines()  # the label all its nodes share comes once
+    assert f"for {KG_QUERY!r} in project {PROJECT}" in head and labels.startswith("label of every node")
+    assert KG_QUERY in first, first  # the first result
+    projects = replies[3]["result"]["content"][0]["text"]
+    assert projects.startswith(f"{PROJECT} (this session): ")
+    assert OTHER_PROJECT not in projects, "the owner's other project is hidden"
     assert PLAN in replies[4]["result"]["content"][0]["text"]
     refused = replies[5]["result"]
     assert refused["isError"] and f"no project {OTHER_PROJECT} that you can see" in refused["content"][0]["text"]

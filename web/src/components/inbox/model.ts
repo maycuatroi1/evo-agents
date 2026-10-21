@@ -135,9 +135,16 @@ export function noticeFacts(details: Notification["details"]): NoticeFacts {
   return { repo: text(details?.repo), branch: text(details?.branch), commits };
 }
 
-/** A notice of a push or merge into a default branch: it names the repo, branch and commits. */
+/**
+ * A notice of a push or merge into a default branch, or of a repo's merge queue that stopped: it names the repo, the
+ * branch and the commits.
+ */
 export function isBranchNotice(notification: Pick<Notification, "notice_kind">): boolean {
-  return notification.notice_kind === "push_default_branch" || notification.notice_kind === "merge_default_branch";
+  return (
+    notification.notice_kind === "push_default_branch" ||
+    notification.notice_kind === "merge_default_branch" ||
+    notification.notice_kind === "merge_paused"
+  );
 }
 
 /** Commits a notice lists before the rest fold under "and N more". */
@@ -168,15 +175,16 @@ export function answerBody(option: string | null, text: string): { option?: stri
 
 /**
  * Whether the visitor may answer a decision, and if not why: only its run's owner answers, only while it is open, and
- * only while its run is queued or held by a worker (an agent may still read the answer) or parked (the answer resumes
- * it). The API decides again on every answer.
+ * only while its run is queued or held by a worker (an agent may still read the answer), parked (the answer resumes
+ * it) or, for a local session, idle (it takes the answer at its next turn). The API decides again on every answer.
  */
 export type AnswerAccess = "answer" | "notOwner" | "closed" | "runGone";
 
 export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_state">, login: string | null): AnswerAccess {
   if (decision.state !== "open") return "closed";
   if (login === null || login !== decision.owner) return "notOwner";
-  if (decision.run_state !== "parked" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
+  // idle: a local session whose turn ended; it takes the answer at its next turn.
+  if (decision.run_state !== "parked" && decision.run_state !== "idle" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
   return "answer";
 }
 
@@ -206,4 +214,19 @@ export function parkTiming(decision: Pick<Decision, "state" | "run_state">, park
   if (decision.run_state === "parked") return { kind: "parked", at: parksAt };
   if (decision.run_state !== "waiting" || now === null) return null;
   return { kind: "parksIn", ms: Math.max(0, Date.parse(parksAt) - now) };
+}
+
+/** What the hub asks an admin in a notice of its merge queue (`components/inbox/merge-notice.tsx` answers it). */
+export type MergeAsk = "sample" | "release" | "revert" | "resume";
+
+/**
+ * The question of a notice of the merge queue: an audit sample to answer (`details.ask` sample), a PROD release to
+ * approve (release), a suspect to revert (revert), or, in a `merge_paused` notice, a breaker to reset; null otherwise.
+ */
+export function mergeAsk(notification: Pick<Notification, "notice_kind" | "details" | "project">): MergeAsk | null {
+  if (!notification.project) return null;
+  if (notification.notice_kind === "merge_paused") return typeof notification.details?.repo === "string" ? "resume" : null;
+  if (notification.notice_kind !== "merge_default_branch") return null;
+  const ask = notification.details?.ask;
+  return ask === "sample" || ask === "release" || ask === "revert" ? ask : null;
 }

@@ -32,19 +32,55 @@ Jobs (names in ``evo_agents.hub.jobs``):
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
   it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
   row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
-- ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
-  without any model, and its review run; and the deferred proposals whose time has passed open again
-  (``evo_agents.hub.server.collect``).
+- ``curator.collect``, every minute: the health of each charter's knowledge graph, measured every 6 hours against the
+  default branches on GitHub (``evo_agents.hub.server.kg_health``); in each charter's window, the night's figures of
+  the project, counted once without any model, and its review run; and the deferred proposals whose time has passed
+  open again (``evo_agents.hub.server.collect``).
+- ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
+  takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
+- ``hub.value_check``: deferred with each batch of a project's signals that stored any (``evo_agents.hub.signals``),
+  one at a time per project and at most one waiting: the plugins' jobs named value_check of that project, for it alone
+  (``evo_agents.hub.plugin_jobs.run_on_signals``).
+- ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
+  again with a backoff (``evo_agents.hub.plugin_events``).
+- ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
+  whatever its number of workers, kept in hub_nightly with the time of the read for the api to hand every daemon in
+  its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
+- ``hub.release_schedules``, every minute, one pass at a time: each project's release schedule whose local time came
+  within the hour gets the check of that day, once: without any model, the newest release tag and the commit of the
+  target ref are compared on the packaging paths, and a change opens a cycle and queues its cut run, with the workers'
+  App reading GitHub (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``); then each release run
+  that is done with its branch is landed: its pull request opened and merged, and its merge commit tagged, with the
+  same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
+  down (``HubContext.release_pass``), since this module imports no server module beyond its job list
+  (docs/structure.md, section Package boundaries).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
+- ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
+  EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.prune_signals``, daily: the signals measured more than EVO_HUB_SIGNAL_DAYS days ago, 400 by default
+  (``evo_agents.hub.signals``).
+- ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
+  or digest came, and of each run that ended, made once and again when its content or the facet's version changed
+  (``evo_agents.hub.facet_job``).
+- ``hub.index_history``, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
+  that ended, for search, once (``evo_agents.hub.history_index``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
   written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
-  hourly for a merge or a close by hand; and the rulesets checked again once a day (``evo_agents.hub.server.changes``).
+  hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits for at the next
+  pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``, ``.protection``).
+- ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
+  policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
+  until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
+  (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
+- ``curator.replay_suite``, hourly, one pass at a time: each project with a charter gets a replay task for each step
+  of its plans that is done, has a verify of one line and names its commits, added once with its fixed split (keyed by
+  the session secret, none without it) and never changed (``evo_agents.hub.replay_suite``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -78,6 +114,8 @@ from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from evo_agents.hub.server.github_app import GitHubApp
@@ -107,6 +145,9 @@ class HubContext:
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
     engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
     curator_app: GitHubApp | None = None  # None without EVO_HUB_CURATOR_APP_*: no ruleset checked
+    # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
+    # None checks and lands no release
+    release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -209,7 +250,8 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
 async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.curator import fire_schedules as fire
 
-    return await fire(hub(context).engine)
+    found = hub(context)
+    return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)
 
 
 @queue.periodic(cron="* * * * *")
@@ -217,7 +259,9 @@ async def fire_schedules(context: JobContext, timestamp: int | None = None) -> d
 async def curator_collect(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.collect import collect
 
-    return await collect(hub(context).engine)
+    found = hub(context)
+    app = found.github_app or found.curator_app
+    return await collect(found.engine, github_app=app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="* * * * *")
@@ -234,7 +278,17 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
     from evo_agents.hub.server.changes import advance
 
     found = hub(context)
-    return await advance(found.engine, found.github_app, getattr(found, "curator_app", None))
+    curator_app = getattr(found, "curator_app", None)
+    return await advance(found.engine, found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.MERGE_QUEUE, pass_context=True, lock=jobs.MERGE_QUEUE, queueing_lock=jobs.MERGE_QUEUE)
+async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.changes import merge_gate  # the queue's job, through the module of the Curator's changes
+
+    found = hub(context)
+    return await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="*/10 * * * *")
@@ -243,6 +297,60 @@ async def curator_outcomes(context: JobContext, timestamp: int | None = None) ->
     from evo_agents.hub.server.outcomes import measure_outcomes
 
     return await measure_outcomes(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.PLUGIN_JOBS, pass_context=True, queueing_lock=jobs.PLUGIN_JOBS)
+async def plugin_jobs(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.plugin_jobs import fire
+
+    return await fire(hub(context).engine, context.app.job_manager, timestamp)
+
+
+@queue.task(name=jobs.PLUGIN_JOB, pass_context=True)
+async def plugin_job(context: JobContext, plugin: str, job: str) -> dict:
+    from evo_agents.hub.plugin_jobs import run_job
+
+    found = hub(context)
+    return await run_job(found.engine, found.config, plugin, job)
+
+
+@queue.task(name=jobs.VALUE_CHECK, pass_context=True)
+async def value_check(context: JobContext, project_id: int) -> dict:
+    from evo_agents.hub.plugin_jobs import run_on_signals
+
+    found = hub(context)
+    return await run_on_signals(found.engine, found.config, project_id)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.DELIVER_PLUGIN_EVENTS, pass_context=True, queueing_lock=jobs.DELIVER_PLUGIN_EVENTS)
+async def deliver_plugin_events(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.plugin_events import deliver
+
+    found = hub(context)
+    return await deliver(found.engine, config=found.config)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.READ_NIGHTLY, pass_context=True, queueing_lock=jobs.READ_NIGHTLY)
+async def read_nightly(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.nightly import refresh
+
+    return await refresh(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(
+    name=jobs.RELEASE_SCHEDULES, pass_context=True, lock=jobs.RELEASE_SCHEDULES, queueing_lock=jobs.RELEASE_SCHEDULES
+)
+async def release_schedules(context: JobContext, timestamp: int | None = None) -> dict:
+    found = hub(context)
+    release_pass = getattr(found, "release_pass", None)
+    if release_pass is None:
+        log.warning("no release pass was handed to this worker: no release schedule is checked")
+        return {"no_release_pass": 1}
+    return await release_pass(found.engine, found.github_app)
 
 
 @queue.periodic(cron="13 4 * * *")
@@ -267,6 +375,50 @@ async def prune_digests(context: JobContext, timestamp: int | None = None) -> di
     from evo_agents.hub.server.digests import prune_digests as prune
 
     return await prune(hub(context).engine)
+
+
+@queue.periodic(cron="53 4 * * *")
+@queue.task(name=jobs.PRUNE_TRANSCRIPTS, pass_context=True, queueing_lock=jobs.PRUNE_TRANSCRIPTS)
+async def prune_transcripts(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.transcript_prune import prune_transcripts as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="3 5 * * *")
+@queue.task(name=jobs.PRUNE_SIGNALS, pass_context=True, queueing_lock=jobs.PRUNE_SIGNALS)
+async def prune_signals(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.signals import prune_signals as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.config.signal_days)
+
+
+@queue.periodic(cron="41 * * * *")
+@queue.task(name=jobs.REPLAY_SUITE, pass_context=True, lock=jobs.REPLAY_SUITE, queueing_lock=jobs.REPLAY_SUITE)
+async def replay_suite(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.replay_suite import build_suites
+
+    return await build_suites(hub(context).engine, hub(context).config.session_secret)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.ANALYZE_FACETS, pass_context=True, lock=jobs.ANALYZE_FACETS, queueing_lock=jobs.ANALYZE_FACETS)
+async def analyze_facets(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.facet_job import analyze_facets as analyze
+
+    found = hub(context)
+    return await analyze(found.engine, found.blobs, scratch=found.data_dir / "facets")
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.INDEX_HISTORY, pass_context=True, lock=jobs.INDEX_HISTORY, queueing_lock=jobs.INDEX_HISTORY)
+async def index_history(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.history_index import index_history as index
+
+    found = hub(context)
+    return await index(found.engine, found.blobs, scratch=found.data_dir / "history")
 
 
 @queue.periodic(cron="43 3 * * *")
@@ -320,9 +472,9 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1) -> int:
+async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself."""
+    it could not start or stopped by itself. ``release_pass`` is the server's (``HubContext.release_pass``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -376,6 +528,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                     github_app,
                     engine,
                     curator_app,
+                    release_pass,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -400,7 +553,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1) -> int:
+def main(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
-    return asyncio.run(run(config, concurrency))
+    return asyncio.run(run(config, concurrency, release_pass=release_pass))

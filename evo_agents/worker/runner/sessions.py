@@ -20,7 +20,8 @@ the run that ran it, when it started and ended, the step's status after it, and 
 one takes over that list (``Conversation.adopt``) and goes on first with the step whose session was parked, in that
 session, with its owner's messages. The usage the run reports adds the sessions' up (``sessions_usage``): their
 numbers summed, the largest peak_context_tokens, and ``sessions``, each session with its step, id, run and usage, so
-the hub's record of the run names the session of every step.
+the hub's record of the run names the session of every step. A session's usage holds the cache read and cache
+creation tokens of its first request (``common.FIRST_REQUEST``), and the run's those of its first session.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner.common import RunFailed, cut, now, wait_or
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS, summary_of
 from evo_agents.worker.runner.verify import RESULT_MAX_BYTES
+from evo_agents.worker.runtimes.common import FIRST_REQUEST, reports_first_request
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -49,7 +51,8 @@ PLAN_TRIES = 5  # reads of the plan before the run fails, while the hub does not
 STEP_ANSWER_PROMPT = (
     "The owner of this plan run wrote while your turn was over; a message that answers a decision names it. Go on "
     "with step {key} in this session from where you stopped: read the plan as the hub holds it now with "
-    "`evo-agents worker plan` first."
+    "`evo-agents worker plan` first. When what the answer let you try still fails, ask again with what you found "
+    "rather than ending the run: a turn that ends with no decision open ends it."
 )
 # And when a run parked while it waited for its owner goes on, as a new run, in the session of the step it was on.
 STEP_RESUME_PROMPT = (
@@ -69,14 +72,20 @@ def _number(value) -> bool:
 
 def add_usage(total: dict | None, usage, *, largest: tuple[str, ...]) -> dict | None:
     """``total`` with the numbers of ``usage`` added, key by key, but for the keys of ``largest``, whose larger value
-    is kept. A key reported as null (peak_context_tokens a runtime cannot report) stays null until a number comes; other
-    values are left out. None while neither has any number or null."""
+    is kept, and the FIRST_REQUEST keys, which stay those of the first usage that reports them (the first request of
+    the earliest turn or session). A key reported as null (peak_context_tokens a runtime cannot report) stays null
+    until a number comes; other values are left out. None while neither has any number or null."""
     if not isinstance(usage, dict):
         return total
     merged = dict(total or {})
+    if reports_first_request(usage) and not reports_first_request(merged):
+        merged.update({key: usage.get(key) for key in FIRST_REQUEST})
     for key, value in usage.items():
         old = merged.get(key)
-        if value is None:
+        if key in FIRST_REQUEST:  # taken above from the first usage that reports them; null until one does
+            if value is None or _number(value):
+                merged.setdefault(key, None)
+        elif value is None:
             merged.setdefault(key, None)
         elif not _number(value):
             continue
@@ -89,7 +98,8 @@ def add_usage(total: dict | None, usage, *, largest: tuple[str, ...]) -> dict | 
 
 def session_usage(usages: list) -> dict | None:
     """The usage of one session from the usages its turns reported, each turn an agent of its own: their numbers
-    summed, but the largest peak, context window and running total of the session's cost."""
+    summed, but the largest peak, context window and running total of the session's cost, and the first request of
+    the first turn that reports one."""
     total = None
     for usage in usages:
         total = add_usage(total, usage, largest=(*LARGEST, *SESSION_TOTALS))
@@ -98,9 +108,10 @@ def session_usage(usages: list) -> dict | None:
 
 def sessions_usage(sessions: list[dict]) -> dict | None:
     """The usage a plan run with a session per step reports, from the sessions of its record: their numbers summed
-    (tokens, and the cost of each session), the largest peak_context_tokens (null when no runtime reported one), and
-    ``sessions``, the latest MAX_LISTED of them, each its step, session id, run and usage, with
-    ``sessions_left_out`` counting the others. None for a run that had no session."""
+    (tokens, and the cost of each session), the largest peak_context_tokens (null when no runtime reported one), the
+    first request of the first session that reports one, and ``sessions``, the latest MAX_LISTED of them, each its
+    step, session id, run and usage (its own first request among it), with ``sessions_left_out`` counting the others.
+    None for a run that had no session."""
     if not sessions:
         return None
     total: dict = {}

@@ -7,6 +7,7 @@ import { ranFor } from "@/components/home/model";
 import { Relative, useDuration } from "@/components/home/parts";
 import { useNow } from "@/components/kg/use-now";
 import { StepBar } from "@/components/plans/progress";
+import { localAccount } from "@/components/local-run";
 import { isTerminalState, type RunState } from "@/components/runs/queries";
 
 /** What the Monitor's list and tiles say of a run besides its state: its worker, its time and its plan's steps. */
@@ -40,6 +41,28 @@ export function RunTime({ run }: { run: TimedRun }) {
 export function WorkerName({ worker }: { worker: string | null }) {
   const t = useTranslations("monitor.tile");
   return worker ? <Identifier value={worker} className="h-[18px] max-w-40 truncate" /> : <span>{t("noWorker")}</span>;
+}
+
+/** The machine and Claude account of a local run, as chips, in the place of a worker's name. */
+export function LocalName({ run }: { run: { machine?: string | null; claude_email?: string | null; claude_profile?: string | null; plan_id?: string; step_key?: string | null } }) {
+  const t = useTranslations("monitor.tile");
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="local-name">
+      <Identifier value={run.machine ?? "-"} className="h-[18px] max-w-40 truncate" />
+      <span className="min-w-0 truncate font-mono" title={localAccount(run)} data-testid="local-account">
+        {localAccount(run)}
+      </span>
+      {run.plan_id ? (
+        <span data-testid="local-plan">{t("localPlan", { plan: run.plan_id, step: run.step_key || "none" })}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** When a local run's session last gave a sign of life: its own time, as it has no queue or worker. */
+export function LocalTime({ run }: { run: { last_activity_at?: string | null; queued_at: string } }) {
+  const t = useTranslations("monitor.tile");
+  return <span data-testid="run-last-activity">{t.rich("lastActivity", { time: () => <Relative value={run.last_activity_at ?? run.queued_at} /> })}</span>;
 }
 
 /** A plan run's steps done of the total, as a bar and "3/11"; the whole sentence for screen readers. */

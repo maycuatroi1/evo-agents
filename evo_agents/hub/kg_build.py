@@ -8,12 +8,20 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
 - ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite), its memo and its
   latest graph.sqlite.
 
-Each run in ``kg_ingests`` that corpus.sqlite does not list yet is fetched (its log, checked against its SHA-256),
-merged with the corpus's own merge, and listed; the merge is order-independent, so the runs of several machines in
-any order give one state. Then every blob a live item refers to and the cache lacks is fetched, checked, and moved
-into place. The graph is built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces
-graph.sqlite in one rename: a single file, the artifact. Anything that fails marks the build failed with a message
-naming no content, and the worker goes on with the next job.
+The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
+first: the config written into the cache names them and their identifiers, and their items and cursors in the corpus
+become those they give now, written only when something changed. Each run in ``kg_ingests`` that corpus.sqlite does not list yet
+is fetched (its log, checked against its SHA-256), merged with the corpus's own merge, and listed; the merge is
+order-independent, so the runs of several machines in any order give one state; the cursor a run ended with is kept
+unless a later run's is, so a git source's coverage names the commit its newest run read (``evo_agents.kg.freshness``).
+Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
+built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces graph.sqlite in one rename: a
+single file, the artifact. Anything that fails marks the build failed with a message naming no content, and the worker
+goes on with the next job.
+
+A build whose corpus state and inputs (the knowledge config, the code, the cursors) are those of the graph.sqlite
+in the cache builds nothing (``skipped``): it takes that file, whose content hash is the latest build's, so it
+uploads nothing either. Most pushes carry runs that changed nothing, and such a build takes seconds, not minutes.
 
 The artifact's bytes are not reproducible (SQLite pages carry more than the content), so two builds of one corpus
 give two files with one content hash. A build whose content hash equals that of the project's latest build still
@@ -23,6 +31,12 @@ the file is uploaded, its SHA-256 names it in the bucket and in ``blobs`` (kind 
 it), and the build row gets it with the content hash and the counts. Either way the row is written holding the blob
 lock shared (``evo_agents.hub.blob_gc``), so the retention of old artifacts (``evo_agents.hub.kg_prune``) never runs
 in between, and an uploaded artifact whose hash waits for deletion is written again before the row names it.
+
+A build that succeeds also keeps what it covers (``kg_builds.coverage``, ``evo_agents.hub.kg_coverage.build_coverage``:
+mentions resolved, ambiguous and dangling per source, the commit each git source read, the Python functions and
+methods no call edge reaches), and the files each git source holds in it, path and blob SHA (kg_source_files, one row a
+source, replaced by each build), which the measure of the graph's health compares with the default branches
+(``evo_agents.hub.server.kg_health``).
 
 The cache can be deleted at any time: the next build fetches everything again and gets the same content hash.
 """
@@ -45,7 +59,7 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, tables
+from evo_agents.hub import blob_gc, kg_coverage, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
@@ -105,6 +119,9 @@ class Built:
     edges: int
     runs: int
     merged: int  # runs merged by this build; the others were in the cache already
+    skipped: bool = False  # the cache's graph was current: nothing was built
+    coverage: dict | None = None  # what kg_builds.coverage keeps (``kg_coverage.build_coverage``)
+    files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
 
 
 @dataclass(frozen=True)
@@ -180,8 +197,11 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
         raise BuildFailure(f"the log of run {ingest.run_id} names run {run_id}")
     header = records[0]
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
+    state = next((r for r in reversed(records) if r.get("type") == "state"), None)
     with corpus.db:
         corpus.merge(records, run_id)
+        if state is not None and header.get("source"):  # the commit a git source read, for the build's coverage
+            corpus.record_cursor(header["source"], state.get("cursor"), run_id)
         corpus.record_run(
             run_id,
             source=header.get("source") or "",
@@ -229,11 +249,16 @@ def _sha256(path: Path) -> str:
 
 def build_graph(project: Project) -> tuple[Path, object]:
     """Build ``project`` into a fresh store and make it its graph.sqlite: one file, out of WAL mode. The path and the
-    build report; BuildFailure when the build reports errors."""
-    from evo_agents.kg.build import build_project
+    build report; BuildFailure when the build reports errors. When the graph.sqlite of the cache was built from the
+    corpus state and the inputs ``project`` has now (``evo_agents.kg.build.unchanged``), nothing is built: that file
+    and the report of its build, ``skipped``."""
+    from evo_agents.kg.build import build_project, unchanged
     from evo_agents.kg.store import Store
 
     target = project.root / "graph.sqlite"
+    current = unchanged(project) if not Path(f"{target}-wal").exists() else None  # a WAL: written by hand since
+    if current is not None:
+        return target, current
     stage = Store.staging(target)
     try:
         report = build_project(project, store=stage)
@@ -249,23 +274,53 @@ def build_graph(project: Project) -> tuple[Path, object]:
     return target, report
 
 
-def build_in_cache(store: BlobStore, data_dir: Path, name: str, config: dict, ingests: list[Ingest]) -> Built:
-    """Everything a build does on disk: the config, the corpus fetched from the blob store, and the graph, which
-    ``record`` uploads unless an earlier build has its content. Blocking."""
-    write_config(data_dir, name, config["knowledge"], config.get("ontology"))
+def graph_reach(path: Path) -> dict | None:
+    """The call reach of the graph in the store at ``path`` (``evo_agents.kg.health.call_reach``); None when it has no
+    ready build."""
+    from evo_agents.kg.health import call_reach
+    from evo_agents.kg.store import Store
+
+    graph = Store.open_file(path)
+    try:
+        b = graph.latest_ready()
+        return call_reach(graph, b) if b is not None else None
+    finally:
+        graph.close()
+
+
+def build_in_cache(
+    store: BlobStore, data_dir: Path, name: str, config: dict, ingests: list[Ingest], sources: list | None = None
+) -> Built:
+    """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
+    from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
+    build covers with the files of each git source, which ``record`` keeps. Blocking."""
+    sources = sources or []
+    write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
+    kg_sources.keep_sources(project, sources)
     merged = prepare_corpus(store, project, ingests)
     path, report = build_graph(project)
     sha256 = _sha256(path)
+    coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
     return Built(
-        path, sha256, path.stat().st_size, report.content_hash, report.nodes, report.edges, len(ingests), merged
+        path,
+        sha256,
+        path.stat().st_size,
+        report.content_hash,
+        report.nodes,
+        report.edges,
+        len(ingests),
+        merged,
+        report.skipped,
+        coverage,
+        kg_coverage.source_files(project),
     )
 
 
 def describe_failure(exc: BaseException) -> str:
     """What kg_builds.error says about ``exc``: its own message for the failures this module names, the type and a
     short message otherwise."""
-    if isinstance(exc, (BuildFailure, BlobStoreUnavailable)):
+    if isinstance(exc, (BuildFailure, BlobStoreUnavailable, kg_sources.SourceFailure)):
         text = str(exc)
     else:
         text = f"{type(exc).__name__}: {exc}"
@@ -383,10 +438,35 @@ async def record(
                 edges=built.edges,
                 error=None,
                 finished_at=func.now(),
+                coverage=built.coverage,
             )
             .where(builds.c.id == build_id)
         )
+        await keep_source_files(conn, project_id, build_id, built.files)
     return artifact
+
+
+async def keep_source_files(conn: AsyncConnection, project_id: int, build_id: int, files: dict | None) -> None:
+    """Make kg_source_files the files of each git source of build ``build_id`` (``kg_coverage.source_files``): a row
+    each, and none for a source the build no longer has. Nothing when the build says nothing of them."""
+    if files is None:
+        return
+    held = tables.kg_source_files
+    await conn.execute(delete(held).where(held.c.project_id == project_id, held.c.source.not_in(list(files))))
+    for source, found in sorted(files.items()):
+        values = {
+            "build_id": build_id,
+            "read_commit": found.get("commit"),
+            "files": found.get("files") or {},
+            "file_count": len(found.get("files") or {}),
+            "truncated": bool(found.get("truncated")),
+            "updated_at": func.now(),
+        }
+        await conn.execute(
+            pg_insert(held)
+            .values(project_id=project_id, source=source, **values)
+            .on_conflict_do_update(index_elements=[held.c.project_id, held.c.source], set_=values)
+        )
 
 
 async def _failed(engine, digest: str | None, runs: int, error: str, build_id: int) -> None:
@@ -445,7 +525,10 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
                 f"project {project} has no knowledge config on the hub yet: run `evo-agents hub kg push`"
             )
         config = {"knowledge": found[1], "ontology": found[2]}
-        built = await asyncio.to_thread(build_in_cache, context.blobs, context.data_dir, project, config, ingests)
+        sources = await kg_sources.read_sources(engine, context.config, project_id, project, found[1])
+        built = await asyncio.to_thread(
+            build_in_cache, context.blobs, context.data_dir, project, config, ingests, sources
+        )
         artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
         await asyncio.shield(_stopped(engine, digest, len(ingests), build_id, project_id, project, manager))
@@ -467,6 +550,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             "job_id": job_id,
             "runs": built.runs,
             "merged": built.merged,
+            "skipped": built.skipped,
             "nodes": built.nodes,
             "edges": built.edges,
             "content_hash": built.content_hash,
@@ -479,6 +563,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         "build_id": build_id,
         "content_hash": built.content_hash,
         "artifact_reused_from": artifact.reused_from,
+        "skipped": built.skipped,
     }
 
 
@@ -518,6 +603,20 @@ async def queue_build(
             return waiting.build_id, False
         # The waiting job started in between: queue another, which will see this transaction's rows.
     raise QueueBusy(f"a build of project {project} could not be queued; try again shortly")
+
+
+async def queue_if_configured(job_queue: JobQueue, conn: AsyncConnection, project_id: int, project: str) -> None:
+    """Queue a build of ``project`` in ``conn``'s transaction, joining one that waits, when the project has a knowledge
+    config on the hub: what a core plugin calls once the data its kg source gives changed
+    (``evo_agents.hub.kg_sources``). A queue that stays busy is logged, never raised: a build follows the next push."""
+    configs = tables.kg_configs
+    found = await conn.execute(select(configs.c.project_id).where(configs.c.project_id == project_id))
+    if found.first() is None:
+        return
+    try:
+        await queue_build(job_queue, conn, project_id, project, None)
+    except QueueBusy:
+        log.warning("kg build not queued after a plugin's change: the queue was busy", extra={"project": project})
 
 
 async def recover_stalled(context, manager) -> dict:

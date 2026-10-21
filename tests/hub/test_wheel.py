@@ -17,9 +17,10 @@ from tests.hub import live, pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import Text, column, func, select, table
+from sqlalchemy import Text, column, select, table
 
 from evo_agents.hub.migrate import revisions
+from tests.hub.test_migrate import TABLES  # the tables at head, which test_migrate keeps by migration
 
 ROOT = Path(__file__).parents[2]
 MIGRATIONS = ROOT / "evo_agents" / "hub" / "migrations"
@@ -96,9 +97,5 @@ def test_the_wheel_ships_the_migrations_and_migrates_from_its_own_venv(hub_db, t
     applied = [line["applied"] for line in pg.log_lines(migrated.stderr) if line["msg"] == "migrations applied"]
     assert applied == [list(REVISIONS)]
     assert live.sql(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(REVISIONS[-1],)]
-    added = pg.BLOB_TABLES | pg.QUEUE_TABLES | pg.KG_TABLES | pg.RETENTION_TABLES | pg.RUN_TABLES
-    later = pg.NOTIFICATION_TABLES | pg.CREDENTIAL_TABLES | pg.CURATOR_TABLES | pg.DIGEST_TABLES | pg.REVIEW_TABLES
-    later |= pg.BRIEF_TABLES | pg.CHANGE_TABLES | pg.LEDGER_TABLES
-    tables = 15 + len(added | later)
-    public = select(func.count()).select_from(PG_TABLES).where(PG_TABLES.c.schemaname == "public")
-    assert live.sql(hub_db, public) == [(tables,)]
+    public = select(PG_TABLES.c.tablename).where(PG_TABLES.c.schemaname == "public")
+    assert {name for (name,) in live.sql(hub_db, public)} == TABLES | {"alembic_version"}

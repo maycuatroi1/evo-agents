@@ -17,9 +17,11 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 /skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
-(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago} records what a worker
-daemon's heartbeat would (its time, and the runtimes and checkouts it reports), since this release of the API has
-no heartbeat route yet.
+(``kg_seed.py``). POST /merge-queue/seed writes a project's merge queue on GitLab as the hub's job would leave it
+(``merge_seed.py``), since no GitLab answers the stack. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
+reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
+``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
 
 The terminal specs need the worker's end of a run's terminal: POST /terminal/worker {run_id, token} connects it the way
 the daemon does (``FakeTerminal``: the worker's token and protocol header, retried until a browser waits on the run)
@@ -33,20 +35,49 @@ The Insights specs need runs that ended on earlier days: POST /runs/backdate {ru
 The Curator specs need the night's review run without waiting for the hub's worker: POST /curator/collect runs one pass
 of the job curator.collect (``evo_agents.hub.server.collect.collect``) on the stack's database, as that worker does
 every minute: in each charter's window it counts the night's figures and queues the night's review run. POST
-/curator/brief {project, at} sends that project's morning brief as the job curator.brief would at ``at``.
+/curator/brief {project, at} sends that project's morning brief as the job curator.brief would at ``at``. POST
+/curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
+on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
+
+The canvas specs need the value check without the hub's worker: POST /canvas/value-check {project} runs one pass of the
+core plugin canvas's job value_check for that project alone (``evo_agents.core_plugins.canvas.value_check``), as the
+worker does on each batch of its signals: each test card against the signals of its metric, as evidence the hub writes
+and proposals of a change of status.
+
+The SRS specs need the settle chat a review of @ba opens without waiting for the hub's worker: POST /plugins/deliver
+{project} runs one pass of the job hub.deliver_plugin_events (``evo_agents.hub.plugin_events``) over that project's
+pending deliveries alone, so other specs' deliveries stay as they expect. The stack has no plugin host, so only a core
+plugin's contribution, which runs in the hub, is delivered: the srs contribution reviews, which opens the chat. The
+handle of @ba is the hub's, so one project of a stack enables it; the pages that only need a review with findings get
+them from POST /srs/findings {project, slug, findings}, which writes them as @ba's tool does (``srs_findings``, on the
+document's latest version, with its label), each {kind, level, summary, sources, item (a code), status, resolution,
+resolution_sources, settled_by (a login), chat_link}, and answers their ids.
+
+The Releases specs need cycles without a GitHub App to read tags or CI: POST /releases/seed {project, worker_id,
+stopped} plays the release job for that project's schedule (``release_seed.py``): two cycles that ended, and one open
+whose tag is red and whose fix run is queued, or with ``stopped`` one stopped on its red test with a decision for its
+owner and a thread in the project's triage chat.
 
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
 since a use moves both forward.
 
-The Telegram specs need the hub's bot without Telegram: the stack serves the fake Bot API of the Python tests
-(``tests.hub.fake_telegram``) on a free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and
-webhook secret, so the channel is on. POST /telegram/start {code, chat_id, username} plays the member pressing Start in
-Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the secret header, and
-answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
+The Telegram specs need the hub's bot without Telegram: the stack serves a fake Bot API (``fake_telegram.py``) on a
+free port, points EVO_HUB_TELEGRAM_API_URL at it, and sets the fake's token and webhook secret, so the channel is on.
+The bot is the core plugin telegram of evo-agents-core-plugins: the stack's Python has deploy/hub/core-plugins.txt
+installed after evo-ak, as CI's web-e2e job has. POST /telegram/start {code, chat_id, username} plays the member
+pressing Start in Telegram: it posts the update ``/start <code>`` from that private chat to the hub's webhook, with the
+secret header, and answers what the hub did with it. GET /telegram/sent lists the messages the bot sent.
 
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
+
+The plugin specs need a plugin to publish and the tests' core plugin. The hub trusts the publisher acme with the
+Ed25519 key of the Python tests (``tests.plugins.samples``), and POST /plugins/bundle {id, version} packs the sample
+plugin of tests/fixtures/plugins/sample under that id and version and signs it with that key, answering the bundle as
+base64 with its SHA-256 and the signature, which a spec publishes and installs through the real API. The hub runs
+through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
+chain of migrations and its native page, which the web's end-to-end build carries.
 
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
@@ -76,15 +107,18 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parents[2]  # the evo-agents checkout this web/ belongs to
 sys.path.insert(0, str(ROOT))
 
+from fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
+from fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
+from fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
+from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
+from merge_seed import seed as seed_merge_queue  # noqa: E402
+from release_seed import seed_release  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
 from tests.hub.fake_github import Account, FakeGitHub, Recorded  # noqa: E402
-from tests.hub.fake_telegram import SECRET as TELEGRAM_SECRET  # noqa: E402
-from tests.hub.fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # noqa: E402
-from tests.hub.fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
-from tests.hub.fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from tests.hub.s3 import fake_s3  # noqa: E402
+from tests.plugins.samples import ed25519_publishers  # noqa: E402
 
 LOGIN_COOKIE = "fake_github_login"
 STATE_DIR = Path(__file__).resolve().parent / ".stack"
@@ -184,20 +218,62 @@ def skill_bundle(body: dict) -> dict:
     return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
 
 
+def plugin_bundle(body: dict) -> dict:
+    """The sample plugin of tests/fixtures/plugins/sample as plugin ``id`` at ``version``, packed as `evo-agents plugin
+    pack` packs it and signed with the key of publisher acme, which this hub trusts."""
+    import shutil
+
+    from evo_agents.plugins.bundle import pack
+    from tests.plugins.samples import ed25519_signature
+
+    with tempfile.TemporaryDirectory(prefix="e2e-plugin-") as root:
+        directory = Path(root) / "plugin"
+        shutil.copytree(ROOT / "tests" / "fixtures" / "plugins" / "sample", directory)
+        manifest_path = directory / "evo-plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest.update({key: str(body[key]) for key in ("id", "version", "name") if body.get(key)})
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        bundle = pack(directory)
+    return {
+        "data": base64.b64encode(bundle.data).decode(),
+        "sha256": bundle.sha256,
+        "size": len(bundle.data),
+        "signature": ed25519_signature(bundle.data),
+    }
+
+
 def stamp_heartbeat(dsn: str, body: dict) -> dict:
     """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
-    checkouts it reports. 404 for a worker the stack does not have."""
+    checkouts it reports. ``agent_commit``, ``self_update`` and ``features`` are set when the body names them, as
+    the heartbeat route sets them from each heartbeat; ``self_update_hours`` backdates when the hub first got that
+    state, so a long wait need not take hours. 404 for a worker the stack does not have."""
     import psycopg
     from psycopg.types.json import Jsonb
 
     runtimes = Jsonb(body["runtimes"]) if isinstance(body.get("runtimes"), dict) else None
     checkouts = Jsonb(body["checkouts"]) if isinstance(body.get("checkouts"), dict) else None
+    sets, params = [], []
+    if "agent_commit" in body:
+        sets.append("agent_commit = %s")
+        params.append(body["agent_commit"])
+    if "features" in body:
+        sets.append("features = %s")
+        params.append(list(body["features"]) if isinstance(body["features"], list) else None)
+    if "self_update" in body:
+        report = body["self_update"] if isinstance(body["self_update"], dict) else None
+        sets.append("self_update = %s, self_update_since = CASE WHEN %s THEN now() - make_interval(secs => %s) END")
+        params += [
+            Jsonb(report) if report else None,
+            report is not None,
+            float(body.get("self_update_hours") or 0) * 3600,
+        ]
     with psycopg.connect(dsn, autocommit=True) as conn:
         row = conn.execute(
             "UPDATE workers SET last_heartbeat_at = now() - make_interval(secs => %s), "
-            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts) "
-            "WHERE id = %s RETURNING id, last_heartbeat_at",
-            (float(body.get("seconds_ago") or 0), runtimes, checkouts, int(body["worker_id"])),
+            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts)"
+            + "".join(f", {part}" for part in sets)
+            + " WHERE id = %s RETURNING id, last_heartbeat_at",
+            (float(body.get("seconds_ago") or 0), runtimes, checkouts, *params, int(body["worker_id"])),
         ).fetchone()
     if row is None:
         raise LookupError(f"no worker {body['worker_id']}")
@@ -290,6 +366,26 @@ def collect_curator(dsn: str) -> dict:
     return asyncio.run(once())
 
 
+def value_check(dsn: str, body: dict) -> dict:
+    """One pass of the value check over the canvases of one project, as the hub's worker runs it on a batch of the
+    project's signals; what it did, counted. Other specs' projects are left alone."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.core_plugins.canvas.value_check import check_project
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            return await check_project(engine, None, str(body["project"]))
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
 def brief_curator(dsn: str, body: dict) -> dict:
     """The morning brief of one project, as the job curator.brief sends it at ``at`` (an ISO time with its zone): the
     words it answers for that project's schedule. Other specs' projects are left alone, so their Inboxes stay as they
@@ -319,6 +415,123 @@ def brief_curator(dsn: str, body: dict) -> dict:
             await engine.dispose()
 
     return asyncio.run(once())
+
+
+def fire_curator(dsn: str, body: dict) -> dict:
+    """One pass of the night shift for one project's schedule, as ``hub.fire_schedules`` runs it every minute at the
+    database's now (``evo_agents.hub.server.curator._fire``): the night's review run, a judge run or a Builder, each
+    when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and keeps that as
+    its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub.server.curator import _due, _fire
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                rows = [row for row in (await conn.execute(_due(None))).all() if row.project == body["project"]]
+            outcomes = []
+            for row in rows:
+                async with engine.begin() as conn:
+                    outcomes.append(await _fire(conn, row, curator_app=False))
+            return {"outcomes": outcomes}
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
+def deliver_plugin_events(dsn: str, body: dict) -> dict:
+    """One pass of the job hub.deliver_plugin_events over the pending deliveries of project ``project`` alone, each in
+    a transaction of its own as the job tries it: how many were delivered, are to be tried again, and failed."""
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub import tables
+    from evo_agents.hub.plugin_events import _deliver_one
+
+    d, p = tables.plugin_deliveries, tables.projects
+    pending = (
+        select(d.c.id)
+        .join(p, p.c.id == d.c.project_id)
+        .where(p.c.name == str(body["project"]), d.c.state == "pending")
+        .order_by(d.c.id)
+    )
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        report = {"delivered": 0, "retried": 0, "failed": 0}
+        try:
+            async with engine.begin() as conn:
+                due = (await conn.execute(pending)).scalars().all()
+            for delivery_id in due:
+                async with engine.begin() as conn:
+                    outcome = await _deliver_one(conn, delivery_id, engine, None, None)
+                if outcome is not None:
+                    report[outcome] += 1
+            return report
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
+def seed_findings(dsn: str, body: dict) -> dict:
+    """Write the findings of ``body`` on document ``slug`` of project ``project`` as srs__finding writes them, settled
+    ones settled now: {ids}, in order. LookupError for a document, an item code or a login the hub does not hold."""
+    from sqlalchemy import create_engine, func, insert, select
+    from sqlalchemy.exc import NoResultFound
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub import tables
+
+    s, p, u = tables.srs, tables.projects, tables.users
+    d, v, i, f = s.documents, s.versions, s.items, s.findings
+    engine = create_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+    ids = []
+    try:
+        with engine.begin() as conn:
+            where = (p.c.name == str(body["project"])) & (d.c.slug == str(body["slug"]))
+            doc = conn.execute(select(d.c.id, d.c.label).join(p, p.c.id == d.c.project_id).where(where)).one()
+            version = conn.execute(select(func.max(v.c.id)).where(v.c.document_id == doc.id)).scalar_one()
+            for found in body["findings"]:
+                status = found.get("status") or "open"
+                item = settler = None
+                if found.get("item"):
+                    item = conn.execute(
+                        select(i.c.id).where(i.c.document_id == doc.id, i.c.code == found["item"])
+                    ).scalar_one()
+                if found.get("settled_by"):
+                    settler = conn.execute(select(u.c.id).where(u.c.login == found["settled_by"])).scalar_one()
+                values = {
+                    "document_id": doc.id,
+                    "version_id": version,
+                    "item_id": item,
+                    "kind": found["kind"],
+                    "level": found["level"],
+                    "summary": found["summary"],
+                    "sources": found["sources"],
+                    "status": status,
+                    "resolution": found.get("resolution"),
+                    "resolution_sources": found.get("resolution_sources") or [],
+                    "settled_by": settler,
+                    "settled_at": None if status == "open" else func.now(),
+                    "chat_link": found.get("chat_link"),
+                    "label": doc.label,
+                }
+                ids.append(conn.execute(insert(f).values(values).returning(f.c.id)).scalar_one())
+    except NoResultFound as exc:
+        raise LookupError(f"no such document, item or member in {body}") from exc
+    finally:
+        engine.dispose()
+    return {"ids": ids}
 
 
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
@@ -484,6 +697,11 @@ def control_server(
                 self._reply(200, {"token": token})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
+            elif self.path == "/plugins/bundle":
+                try:
+                    self._reply(200, plugin_bundle(body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/workers/heartbeat":
                 try:
                     self._reply(200, stamp_heartbeat(dsn, body))
@@ -516,9 +734,41 @@ def control_server(
                     self._reply(200, brief_curator(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/curator/fire":
+                try:
+                    self._reply(200, fire_curator(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/curator/collect":
                 try:
                     self._reply(200, collect_curator(dsn))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/merge-queue/seed":
+                try:
+                    self._reply(200, seed_merge_queue(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/canvas/value-check":
+                try:
+                    self._reply(200, value_check(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/plugins/deliver":
+                try:
+                    self._reply(200, deliver_plugin_events(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/srs/findings":
+                try:
+                    self._reply(200, seed_findings(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/releases/seed":
+                try:
+                    self._reply(200, seed_release(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path in ("/kg/seed", "/kg/build"):
@@ -583,9 +833,11 @@ def main() -> int:
             EVO_HUB_TELEGRAM_BOT_TOKEN=TELEGRAM_TOKEN,
             EVO_HUB_TELEGRAM_WEBHOOK_SECRET=TELEGRAM_SECRET,
             EVO_HUB_TELEGRAM_API_URL=f"http://127.0.0.1:{telegram_server.server_address[1]}",
+            EVO_HUB_PLUGIN_PUBLISHERS=ed25519_publishers(),  # acme, with the key of the Python tests
             **s3.env(),
         )
-        command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(api_port)]
+        launcher = str(Path(__file__).resolve().parent / "hub_serve.py")  # the hub, with the core plugin notes
+        command = [sys.executable, launcher, "--host", "127.0.0.1", "--port", str(api_port)]
         with open(log_path, "w", encoding="utf-8") as log_file:
             proc = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT)
         api_url = f"http://127.0.0.1:{api_port}"

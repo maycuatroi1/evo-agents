@@ -1,0 +1,13 @@
+{
+  "id": "faulty",
+  "version": "1.0.0",
+  "publisher": "acme",
+  "name": "Faulty",
+  "description": "A plugin whose backend can crash or hang on command, to test the host's timeout and backoff. Tests only.",
+  "engines": {"evo-agents": ">=0.16"},
+  "plugin_api": 1,
+  "backend": {"runtime": "python", "entry": "backend/main.py"},
+  "contributes": {
+    "mcp_tools": [{"name": "crash"}, {"name": "hang"}, {"name": "ok"}, {"name": "orphan"}, {"name": "clone_parent"}, {"name": "limits"}, {"name": "token"}]
+  }
+}

@@ -6,7 +6,8 @@ each step when it was dispatched with ``session_per_step`` (``sessions``).
    the branch the plan names for that repo (``evo-run/<run>/<repo>`` when that branch is checked out elsewhere; the
    push still goes to the plan's branch), and writes the plan as claimed to ``.evo-run/plan.yaml`` there. A repo the
    plan names no branch for fails the run before the agent starts, and so does a default branch the plan does not
-   name for the repo.
+   name for the repo. Each worktree whose repo asks for a Python environment gets it (``venv``), its ``.venv/bin``
+   first on the agent's PATH.
 2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
    each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
    the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
@@ -44,7 +45,7 @@ from evo_agents.hub.credentials import normalize_origin
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
-from evo_agents.worker.runner import access, origin, push, verify
+from evo_agents.worker.runner import access, origin, push, venv, verify
 from evo_agents.worker.runner.common import Parked, RunFailed, log, push_cause
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
@@ -131,7 +132,9 @@ class PlanRun:
 
     async def prepare(self, repos: list[dict]) -> None:
         """The run's directory with a worktree of each repo: the parked run's when this run resumes one and they are
-        still here, else new ones; and the plan as claimed in .evo-run/plan.yaml."""
+        still here, else new ones, made several at a time (``RunDirectory.make_each``); and the plan as claimed in
+        .evo-run/plan.yaml. A repo without a name, a branch or a checkout here fails the run before any new worktree
+        is made. Then the Python environment of each worktree whose repo asks for one (``venv``)."""
         run, directory = self.run, self.directory
         if self.conversation.resume_of is not None:
             self.conversation.adopt()
@@ -141,12 +144,12 @@ class PlanRun:
         named = gitops.plan_branches(self.plan_body())
         for name, workspace in list(directory.workspaces.items()):  # a default branch is pushed while the plan names it
             directory.workspaces[name] = dataclasses.replace(workspace, plan_branch=named.get(name))
-        taken = {workspace.worktree.name for workspace in directory.workspaces.values()}
+        wanted: dict[str, tuple[str, Path]] = {}  # repo -> its branch and checkout, for each worktree to make
         for entry in repos:
             name = entry.get("repo")
             if not isinstance(name, str) or not name:
                 raise RunFailed("the plan run names a repo without a name")
-            if name in directory.workspaces:
+            if name in directory.workspaces or name in wanted:
                 continue
             branch = entry.get("branch")
             if not isinstance(branch, str) or not branch:
@@ -157,10 +160,14 @@ class PlanRun:
             checkout = run.daemon.checkout_for(run.project, name)
             if checkout is None:
                 raise RunFailed(f"this worker has no checkout of {run.project}/{name}")
-            folder = gitops.folder_name(name, taken)
-            taken.add(folder)
-            directory.workspaces[name] = await self.make_worktree(name, branch, named.get(name), checkout, folder)
-            directory.save()
+            wanted[name] = (branch, checkout)
+
+        async def make(name: str, folder: str) -> gitops.Workspace:
+            branch, checkout = wanted[name]
+            return await self.make_worktree(name, branch, named.get(name), checkout, folder)
+
+        await directory.make_each(list(wanted), make)
+        await venv.prepare(run, [(name, workspace.worktree) for name, workspace in directory.workspaces.items()])
         self.write_plan()
         directory.save()
 
@@ -175,7 +182,7 @@ class PlanRun:
         async with run.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
-            await origin.fetch(run, checkout)
+            await origin.fetch(run, checkout, repo=name)
             if not await gitops.check_branch_name(checkout, branch):
                 raise RunFailed(f"the plan's branch {branch!r} for {name} is not a valid branch name")
             remote_head = await gitops.remote_default_branch(checkout)
@@ -186,8 +193,10 @@ class PlanRun:
                 default = gitops.check_push(branch, protected, kind=kind, plan_branch=plan_branch)
             except gitops.PushRefused as exc:
                 raise RunFailed(f"the run's branch for {name}: {exc}") from None
-            if self.builder:
+            if self.builder:  # the targets in the run's order of its repos, whatever order the worktrees are made in
                 self.targets[name] = remote_head or hub_default or "main"
+                order = [entry.get("repo") for entry in run.spec.get("repos") or [] if isinstance(entry, dict)]
+                self.targets = {**{repo: self.targets[repo] for repo in order if repo in self.targets}, **self.targets}
                 run.record.setdefault("curator", {})["targets"] = dict(self.targets)
             start, base = await origin.start_point(checkout, start_refs(branch))
             if base is None:
@@ -203,7 +212,11 @@ class PlanRun:
             except gitops.GitError as exc:
                 raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
         pushes = f"; pushes go to {branch}" + (", a default branch the plan names for it" if default else "")
-        run.note(f"Worktree {path} of {name} on {local_branch} at {base[:12]} ({start}){pushes}.", worktree=str(path))
+        run.note(
+            f"Worktree {path} of {name} on {local_branch} at {base[:12]} ({start}){pushes}.",
+            worktree=str(path),
+            repo=name,
+        )
         return gitops.Workspace(
             repo=name,
             branch=branch,
@@ -276,8 +289,10 @@ class PlanRun:
             raise RunFailed(f"HEAD is detached in the worktree of {name}: the worker does not push a detached HEAD")
         if head_branch != workspace.local_branch:
             raise RunFailed(
-                f"the worktree of {name} is on {head_branch}, not {workspace.local_branch}: the agent switched "
-                "branches, and the worker does not push it"
+                f"the worktree of {name} is on {gitops.branch_ref(head_branch)}, not "
+                f"{gitops.branch_ref(workspace.local_branch)}: the agent switched branches, and the worker does not "
+                "push it",
+                cause="branch_mismatch",
             )
         run.check()
         options = self.push_options(name)

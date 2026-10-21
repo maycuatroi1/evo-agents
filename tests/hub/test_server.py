@@ -149,44 +149,65 @@ def get(url: str, timeout: float = 2.0):
         return response.status, json.loads(response.read())
 
 
-@pytest.mark.empty_db
-def test_serve_logs_json_without_the_dsn_password(hub_db, tmp_path):
-    port = pg.free_port()
-    env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn, EVO_HUB_DATA_DIR=str(tmp_path / "cache"))
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(port)],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
+SERVE_TRIES = 3
+
+
+def serve_on_a_port_of_its_own(env: dict, tmp_path) -> tuple[subprocess.Popen, int, list]:
+    """``hub serve`` started, the port it listens on, and the files of the stderr of each try, this one's last.
+    pg.free_port gives the port back, and hub serve binds it only after its migrations: in between, another test's hub
+    can take it and answer a health check in this one's place. So a try counts once its own process says it runs on
+    the port, and the next try takes a new port when the process exited because another one had it, as
+    ``Hub.start_api`` of tests/worker/test_end_to_end.py does."""
+    tries = []
+    for attempt in range(SERVE_TRIES):
+        port = pg.free_port()
+        log = tmp_path / f"serve-{attempt}.log"
+        tries.append(log)
+        command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(port)]
+        with open(log, "w", encoding="utf-8") as stderr:
+            proc = subprocess.Popen(command, env=env, stdout=subprocess.DEVNULL, stderr=stderr)
         deadline = time.monotonic() + 60
         while True:
-            assert proc.poll() is None, proc.communicate()[1]
-            try:
-                status, body = get(f"http://127.0.0.1:{port}/v1/health/live")
+            written = log.read_text(encoding="utf-8", errors="replace")
+            if f"Uvicorn running on http://127.0.0.1:{port} " in written:
+                return proc, port, tries
+            if proc.poll() is not None:
+                assert "address already in use" in written.lower(), f"hub serve exited {proc.returncode}:\n{written}"
                 break
-            except OSError:
-                assert time.monotonic() < deadline, "hub serve did not answer within 60s"
-                time.sleep(0.2)
-        assert (status, body) == (200, {"status": "ok"})
+            if time.monotonic() > deadline:
+                proc.kill()
+                proc.wait()
+                pytest.fail(f"hub serve did not listen within 60s:\n{written}")
+            time.sleep(0.2)
+    pytest.fail(f"hub serve found its port taken {SERVE_TRIES} times")
+
+
+@pytest.mark.empty_db
+def test_serve_logs_json_without_the_dsn_password(hub_db, tmp_path):
+    env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn, EVO_HUB_DATA_DIR=str(tmp_path / "cache"))
+    proc, port, tries = serve_on_a_port_of_its_own(env, tmp_path)
+    try:
+        assert get(f"http://127.0.0.1:{port}/v1/health/live") == (200, {"status": "ok"})
         assert get(f"http://127.0.0.1:{port}/v1/health")[1]["schema"] == HEAD
         proc.send_signal(signal.SIGTERM)
-        _, stderr = proc.communicate(timeout=30)
+        proc.wait(timeout=30)
     finally:
         if proc.poll() is None:
             proc.kill()
-            proc.communicate()
+            proc.wait()
+    stderr = tries[-1].read_text(encoding="utf-8")
     assert proc.returncode in (0, -signal.SIGTERM), stderr  # uvicorn re-raises the signal once it has shut down
-    assert hub_db.password not in stderr
+    for log in tries:  # a try that found its port taken logged too: as JSON, and without the password
+        assert hub_db.password not in log.read_text(encoding="utf-8")
+        pg.log_lines(log.read_text(encoding="utf-8"))
     lines = pg.log_lines(stderr)
     (starting,) = [line for line in lines if line["msg"] == "hub starting"]
     assert starting["db"] == hub_db.dsn.replace(hub_db.password, "***")
     assert starting["version"] == __version__
     messages = [line["msg"] for line in lines]
-    assert "migrations applied" in messages and "hub ready" in messages
-    assert "hub stopped, connection pool closed" in messages
+    assert "hub ready" in messages and "hub stopped, connection pool closed" in messages
+    # the first try migrated the empty database; a later one, if any, found it at the head already
+    assert "migrations applied" in [line["msg"] for line in pg.log_lines(tries[0].read_text(encoding="utf-8"))]
 
 
 def test_serve_exits_nonzero_without_the_password_when_postgres_is_unreachable(tmp_path):

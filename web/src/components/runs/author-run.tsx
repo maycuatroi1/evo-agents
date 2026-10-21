@@ -1,13 +1,16 @@
 "use client";
 
 import { FilePen, FilePlus } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import { AuthorRunDialog } from "./author-run-dialog";
 import { useAuthorRunToast, useCanDispatch } from "./hooks";
+
+/** The author run dialog, whose code loads after the page: the plan pages do not carry its form in their first load. */
+const AuthorRunDialog = dynamic(() => import("./author-run-dialog").then((module) => module.AuthorRunDialog), { ssr: false });
 
 /**
  * The plan pages' side of author runs: New plan on the project's Plans page and Revise with agent on a plan's page,

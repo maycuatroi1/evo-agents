@@ -217,13 +217,40 @@ def test_killing_the_group_never_signals_the_daemons_own(monkeypatch):
     assert sent == []
 
 
+NO_FIRST = dict.fromkeys(common.FIRST_REQUEST)  # a usage whose runtime did not report its first request
+
+
 def test_a_runs_usage_holds_its_peak_context_or_null_never_zero():
     assert common.with_peak(None, None) is None and common.with_peak({}, None) is None, "nothing reported"
-    assert common.with_peak({"output_tokens": 1}, None) == {"output_tokens": 1, "peak_context_tokens": None}
-    assert common.with_peak(None, 7, context_window=None) == {"peak_context_tokens": 7}
+    assert common.with_peak({"output_tokens": 1}, None) == {"output_tokens": 1, "peak_context_tokens": None, **NO_FIRST}
+    assert common.with_peak(None, 7, context_window=None) == {"peak_context_tokens": 7, **NO_FIRST}
     assert common.larger(None, None) is None and common.larger(5, None) == 5 and common.larger(5, 3) == 5
     assert common.larger(None, 0) == 0 and common.larger(5, 9) == 9
     assert common.token_sum(None, "1", True, -2) is None and common.token_sum(1, None, 2) == 3
+
+
+def test_a_runs_usage_holds_the_cache_tokens_of_its_first_request_or_null():
+    first = common.first_request(900, 12_000)
+    assert first == {
+        "first_request_cache_read_input_tokens": 900,
+        "first_request_cache_creation_input_tokens": 12_000,
+    }
+    assert common.first_request("9", -1) == NO_FIRST, "what is not a count of tokens is not reported"
+    assert common.with_peak({"output_tokens": 1}, 50, first) == {"output_tokens": 1, "peak_context_tokens": 50, **first}
+    assert common.reports_first_request(first) and not common.reports_first_request(NO_FIRST)
+    assert not common.reports_first_request(None)
+
+
+def test_the_first_request_of_a_session_is_its_first_agents_not_the_last_ones():
+    first, later = common.first_request(0, 30_000), common.first_request(29_000, 500)
+    usage = {"input_tokens": 3, **later}
+    assert common.with_first_request(usage, [{"input_tokens": 1, **first}, usage]) == {"input_tokens": 3, **first}
+    # An agent that ended before any request reports none: the next agent's first request is the session's.
+    assert common.with_first_request(usage, [None, {"input_tokens": 0, **NO_FIRST}, usage]) == usage
+    assert common.with_first_request(usage, [usage], unseen=True) == {"input_tokens": 3, **NO_FIRST}, (
+        "the terminal UI made the first request, and reports no usage"
+    )
+    assert common.with_first_request(None, [usage]) is None
 
 
 def test_the_model_and_effort_come_from_the_run_then_the_environment(tmp_path):
@@ -301,6 +328,8 @@ class FakeCLI:
     def __init__(self, behaviour):
         self.behaviour = behaviour
         self.log: list[tuple] = []
+        self.requests: dict[str, dict] = {}  # the last control request of each subtype the SDK sent, as it sent it
+        self.answers: dict[str, dict] = {}  # the response to a control request, by subtype; {} when it has none
         self.users: asyncio.Queue = asyncio.Queue()
         self.out: asyncio.Queue = asyncio.Queue()
         self.input_closed = asyncio.Event()
@@ -320,7 +349,9 @@ class FakeCLI:
         if message["type"] == "control_request":
             subtype = message["request"]["subtype"]
             self.log.append(("control", subtype))
-            response = {"subtype": "success", "request_id": message["request_id"], "response": {}}
+            self.requests[subtype] = message["request"]
+            answer = self.answers.get(subtype, {})
+            response = {"subtype": "success", "request_id": message["request_id"], "response": answer}
             self.print({"type": "control_response", "response": response})
             if subtype == "interrupt":
                 self.interrupted.set()
@@ -385,7 +416,12 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert options.session_id == session and options.resume is None
     assert options.cwd == str(tmp_path / "worktree")
     append = f"{common.HEADLESS_NOTE}\n\n{claude_module.BACKGROUND_NOTE}\n\n{claude_module.SUBAGENT}"
-    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": append}
+    assert options.system_prompt == {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": append,
+        "exclude_dynamic_sections": True,
+    }
     assert "CLAUDECODE" not in options.env, "the agent is no child of a Claude Code session the daemon runs in"
     # The flags the SDK gives the CLI with these options (its own transport builds them; the fake took its place).
     from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
@@ -396,6 +432,25 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert f"--session-id={session}" in command and "--append-system-prompt" in command
     assert not Path(options.cli_path).exists(), "the launcher is removed with the run"
     assert adapter.cli.log == [("control", "initialize"), ("user", PROMPT), ("result", "SECOND"), ("end_input",)]
+
+
+def test_claude_codes_system_prompt_is_the_same_in_every_worktree_run_and_step(tmp_path):
+    """The preset leaves out what depends on the machine or the worktree (its auto memory path), and the text appended
+    names no worktree, run or step, so sessions anywhere share the system prompt's cache."""
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    first = _claude(tmp_path / "one", _samples, step_key="1")
+    asyncio.run(_collect(first))
+    second = _claude(tmp_path / "two", _samples, id=42, step_key="2", title="another step")
+    asyncio.run(_collect(second))
+    assert first.options.cwd != second.options.cwd
+    assert first.options.system_prompt == second.options.system_prompt
+    assert first.options.system_prompt["exclude_dynamic_sections"] is True
+    # The SDK sends the flag in its initialize request, not as a flag on the command line.
+    assert first.cli.requests["initialize"]["excludeDynamicSections"] is True
+    append = first.options.system_prompt["append"]
+    for unwanted in (str(tmp_path), "worktree", "41", "step 1", "adapters"):
+        assert unwanted not in append, unwanted
 
 
 def test_claude_codes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
@@ -432,6 +487,8 @@ def test_claude_codes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "output_tokens": 405,
         "total_cost_usd": 0.2041276,
         "peak_context_tokens": 2 + 16832 + 21553,  # the first message's; the second's usage was cut from the sample
+        "first_request_cache_read_input_tokens": 21553,  # the first message of the model, the agent's first request
+        "first_request_cache_creation_input_tokens": 16832,
     }
 
 
@@ -475,7 +532,28 @@ def test_claude_codes_usage_holds_the_largest_context_of_the_main_thread(tmp_pat
         "output_tokens": 3,
         "total_cost_usd": 0.01,
         "peak_context_tokens": 30003,
+        **common.first_request(20000, 1000),  # msg_a's
     }
+
+
+def test_claude_codes_first_request_is_the_first_message_of_the_model_in_the_main_thread(tmp_path):
+    main = {"input_tokens": 3, "cache_creation_input_tokens": 41_000, "output_tokens": 2}
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_used("msg_err", {"input_tokens": 800_000, "cache_read_input_tokens": 1}, model="<synthetic>"))
+        cli.print(_used("msg_sub", {"input_tokens": 9, "cache_read_input_tokens": 7}, parent="toolu_task"))
+        cli.print(_used("msg_a", main))
+        cli.print(_used("msg_b", {"input_tokens": 1, "cache_read_input_tokens": 41_003, "output_tokens": 2}))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
+    assert outcome.completed
+    assert outcome.usage["first_request_cache_read_input_tokens"] is None, "msg_a says no cache read"
+    assert outcome.usage["first_request_cache_creation_input_tokens"] == 41_000
 
 
 def test_claude_codes_usage_says_null_for_a_peak_context_the_stream_did_not_report(tmp_path):
@@ -487,7 +565,13 @@ def test_claude_codes_usage_says_null_for_a_peak_context_the_stream_did_not_repo
         cli.exit()
 
     events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
-    assert outcome.usage == {"input_tokens": 2, "output_tokens": 3, "total_cost_usd": 0.01, "peak_context_tokens": None}
+    assert outcome.usage == {
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "total_cost_usd": 0.01,
+        "peak_context_tokens": None,
+        **NO_FIRST,
+    }
 
 
 def test_a_message_during_a_claude_turn_goes_in_before_the_result_and_none_after_it(tmp_path):
@@ -586,6 +670,24 @@ def test_claude_ending_without_a_result_or_with_an_error_result_is_not_a_complet
     events, outcome = asyncio.run(_collect(_claude(tmp_path, failing)))
     assert not outcome.completed
     assert outcome.error == "claude-code ended its turn with error_during_execution: Prompt is too long"
+
+
+def test_claude_whose_account_fails_to_authenticate_ends_with_an_error_that_says_so_never_success(tmp_path):
+    """Claude Code 2.1 ends a turn whose token the API refused with a result of subtype success and is_error (run #58
+    of 2026-10-14): an outcome with ``auth`` set, said as an error."""
+    refused = "Failed to authenticate. API Error: 401 OAuth access token is invalid."
+
+    async def unauthorized(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_result(refused, is_error=True))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, unauthorized)))
+    assert not outcome.completed and outcome.limit is None
+    assert outcome.error == f"claude-code ended its turn with an error: {refused}"
+    assert outcome.auth == refused and "success" not in outcome.error
 
 
 def test_claude_resumes_the_runs_session_instead_of_making_one(tmp_path):
@@ -1147,7 +1249,7 @@ async def _codex_samples(codex: FakeCodex, turn: FakeTurn) -> None:
 
 
 def test_codex_starts_a_thread_with_full_access_in_the_worktree_through_its_app_server(tmp_path):
-    adapter = _codex(tmp_path, _codex_samples, effort="low")
+    adapter = _codex(tmp_path, _codex_samples, effort="low", env={"CODEX_HOME": str(tmp_path / "codex-home")})
     events, outcome = asyncio.run(_collect(adapter))
     from openai_codex import ApprovalMode, Sandbox
 
@@ -1161,7 +1263,11 @@ def test_codex_starts_a_thread_with_full_access_in_the_worktree_through_its_app_
         "cwd": worktree,
         "developer_instructions": codex_module.DEVELOPER_NOTE,
         "model": None,
-        "config": {"model_reasoning_effort": "low"},
+        "config": {
+            "model_auto_compact_token_limit": 200_000,
+            "tool_output_token_limit": 8_000,
+            "model_reasoning_effort": "low",
+        },
     }
     # On the wire these are what --dangerously-bypass-approvals-and-sandbox sets: no approval asked, no sandbox.
     from openai_codex import ApprovalMode, Sandbox
@@ -1206,6 +1312,7 @@ def test_codexs_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "reasoning_output_tokens": 0,
         "total_tokens": 63245,
         "peak_context_tokens": 63195,  # the last request's input, its cached part in it
+        **common.first_request(31360, 0),  # the cached and cache write tokens of the first ``last``
     }
 
 
@@ -1233,6 +1340,8 @@ def test_codexs_usage_holds_the_largest_input_of_one_request_and_the_context_win
     assert outcome.usage["input_tokens"] == 62_000, "the thread's total, the latest"
     assert outcome.usage["peak_context_tokens"] == 50_000, "the largest request, not the last one"
     assert outcome.usage["context_window"] == 258_400
+    assert outcome.usage["first_request_cache_read_input_tokens"] == 40_000, "the first request's, not the last one's"
+    assert outcome.usage["first_request_cache_creation_input_tokens"] == 0
 
 
 def test_codexs_usage_is_none_when_it_reported_no_tokens(tmp_path):
@@ -1441,6 +1550,7 @@ class FakeOpencode:
     def __init__(self, behaviour, config_model: str | None = None):
         self.behaviour = behaviour
         self.config_model = config_model
+        self.mcp: dict = {}  # what GET /mcp answers: the MCP servers by name
         self.requests: list[tuple] = []
         self.events: asyncio.Queue = asyncio.Queue()
         self.prompts: asyncio.Queue = asyncio.Queue()
@@ -1470,6 +1580,8 @@ class FakeOpencode:
         app.router.add_get("/config/providers", self.providers)
         app.router.add_post("/session", self.create)
         app.router.add_get("/session/{id}", self.get_session)
+        app.router.add_patch("/session/{id}", self.patch_session)
+        app.router.add_get("/mcp", self.mcp_status)
         app.router.add_get("/event", self.stream)
         app.router.add_post("/session/{id}/prompt_async", self.prompt)
         app.router.add_post("/session/{id}/abort", self.abort)
@@ -1502,6 +1614,14 @@ class FakeOpencode:
     async def get_session(self, request):
         self.requests.append(("get", request.match_info["id"]))
         return web.json_response({"id": request.match_info["id"]})
+
+    async def patch_session(self, request):
+        self.requests.append(("patch", request.match_info["id"], await request.json()))
+        return web.json_response({"id": request.match_info["id"]})
+
+    async def mcp_status(self, request):
+        self.requests.append(("mcp",))
+        return web.json_response(self.mcp)
 
     async def stream(self, request):
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
@@ -1607,6 +1727,7 @@ def test_opencodes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "cache_read": 89984,
         "cost": 0,
         "peak_context_tokens": 171 + 89984,  # the second step's input and cache read; the first read 90,010
+        **common.first_request(0, 0),  # the first step's cache: none read, none written
     }
 
 

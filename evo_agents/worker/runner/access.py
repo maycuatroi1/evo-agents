@@ -2,26 +2,35 @@
 
 Once its leases are taken, and before anything is fetched or the agent starts, a run checks what it needs
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
-pushes) with what the run holds, and each program its verify commands call is on the run's PATH. A check that does not
-pass fails the run before the agent starts, with its cause (the report's ``failure_cause``: origin, credentials or
-missing_tool).
+pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
+claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
+plugin's environment). The origins of the run's repos are asked several at a time (``parallel``). A check that does
+not pass fails the run before the agent starts, with its cause (the report's ``failure_cause``: origin, credentials,
+missing_tool or environment). The origin of a repo whose worktree the run goes on in (``fetched``: a chat run that
+adopted the worktrees of the run before it in its session) is not asked: the fetch of that worktree's checkout is the
+check that git reads it, failing the run with cause credentials or checkout (``origin.fetch``), and git is asked to
+push only by the push itself.
 
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
 ``credentials.ticketed``, its agent through ``Agent.env``, each event goes through ``credentials.scrub`` before the
 spool, and they are given back once the run ends here, whether it ended, was parked, or the daemon stops. A push of the
 daemon that fails to authenticate on a leased origin takes the leases again once and pushes once more
-(``RunCredentials.with_renewal``). The agent of a run of the Curator never holds a push credential
-(``credentials.RunCredentials.guarded``): only the daemon's own git gets the run's leases, through a ticket of one
-command.
+(``RunCredentials.with_renewal``). The agent of a run of the Curator, or of a release run, never holds a push
+credential (``credentials.RunCredentials.guarded``): only the daemon's own git gets the run's leases, through a ticket
+of one command, and it pushes such a run's repo only with a lease that covers it, never with this machine's own
+credentials.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, preflight
+from evo_agents.worker.environments import Container
+from evo_agents.worker.runner import parallel
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.transitions import MAX_ERROR_CHARS
 
@@ -35,13 +44,19 @@ def repo_names(repos: Iterable) -> list[str]:
 
 
 async def take_credentials(run: Run, repos: Iterable) -> None:
-    """Take the run's leases for ``repos``, handed to the origins of their checkouts here."""
-    origins: dict[str, list[str]] = {}
-    for name in repo_names(repos):
+    """Take the run's leases for ``repos``, handed to the origins of their checkouts here (read several at a time,
+    ``parallel.each``)."""
+    names = repo_names(repos)
+
+    async def urls_of(name: str) -> list[str] | None:
         checkout = run.daemon.checkout_for(run.project, name)
         if checkout is not None:
             with contextlib.suppress(gitops.GitError, OSError):
-                origins[name] = await gitops.remote_urls(checkout)
+                return await gitops.remote_urls(checkout)
+        return None
+
+    found = await parallel.each(run, names, urls_of)
+    origins = {name: urls for name, urls in zip(names, found, strict=True) if urls is not None}
     await run.credentials.take(run.daemon.hub, origins, stop=run.daemon.hard_stop)
 
 
@@ -58,11 +73,13 @@ async def check(
     pushes: Collection[str] = (),
     verify: Collection[str] = (),
     hidden: list[str] | None = None,
+    fetched: Collection[str] = (),
 ) -> None:
     """The preflight of the run (``preflight``): each of ``repos`` has an origin in the project and one git reads with
     what the run holds, and pushes to for those of ``pushes``; each program ``verify`` and ``hidden`` (a judge run's
-    hidden checks) call is on ``path``. RunFailed with every problem found, the cause of the first: the agent does not
-    start."""
+    hidden checks) call is on ``path``. The origins are asked several at a time (``parallel.each``), each problem in
+    the order of ``repos``; those of ``fetched`` are not asked, the fetch of their worktrees reads them. RunFailed with
+    every problem found, the cause of the first: the agent does not start."""
     names = repo_names(repos)
     problems: list[preflight.Problem] = []
     unlisted = run.credentials.unlisted
@@ -75,21 +92,45 @@ async def check(
                     "the repo with its origin to the harness and run `evo-agents hub project register` again",
                 )
             )
-    for name in names:
-        if name not in unlisted:
-            found = await reach(run, name, push=name in pushes)
-            if found is not None:
-                problems.append(found)
+    asked = [name for name in names if name not in unlisted and name not in fetched]
+    reached = await parallel.each(run, asked, lambda name: reach(run, name, push=name in pushes))
+    problems += [found for found in reached if found is not None]
     problems += preflight.verify_problems(verify, path)
     problems += preflight.hidden_problems(hidden or [], path)
+    problems += await environment_problems(run, names)
     if problems:
         for problem in problems:
             run.note(f"Preflight: {problem.message}.", cause=problem.cause)
         raise RunFailed(cut(preflight.summary(problems), MAX_ERROR_CHARS), cause=problems[0].cause)
     checked = [f"{len(names)} repo(s)"]
+    left = sum(1 for name in names if name in fetched)
+    if left:
+        checked[0] += f" ({left} left to their fetch: the run goes on in their worktrees)"
     if verify or hidden:
         checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
+    if run.agent.environment.container:
+        checked.append(f"environment {run.agent.environment.name}, its engine and image")
     run.note(f"Preflight passed: {' and '.join(checked)}.")
+
+
+async def environment_problems(run: Run, names: list[str]) -> list[preflight.Problem]:
+    """Why the run's agent cannot run in the environment its claim names, each with cause environment: none for the
+    host; for a plugin's environment, what ``Container.preflight`` finds (which may pull its image)."""
+    try:
+        environment = run.agent.environment
+    except ValueError as exc:
+        return [preflight.Problem("environment", f"the claim names an environment this worker does not read: {exc}")]
+    if not isinstance(environment, Container):
+        return []
+    checkouts = [run.daemon.checkout_for(run.project, name) for name in names]
+    said = await asyncio.to_thread(
+        environment.preflight,
+        kind=str(run.spec.get("kind") or "step"),
+        mode=run.mode,
+        runtime=run.runtime,
+        core_paths=[run.daemon.home.root, *(path for path in checkouts if path is not None)],
+    )
+    return [preflight.Problem("environment", text) for text in said]
 
 
 async def reach(run: Run, name: str, *, push: bool) -> preflight.Problem | None:
@@ -100,10 +141,11 @@ async def reach(run: Run, name: str, *, push: bool) -> preflight.Problem | None:
     if checkout is None or not urls or all(preflight.is_local(url) for url in urls):
         return None
     covered = run.credentials.covers(name)
-    if push and run.curator is not None and not covered:
+    if push and run.credentials.guarded and not covered:
+        who = "a run of the Curator" if run.curator is not None else f"a {run.spec.get('kind') or 'guarded'} run"
         return preflight.Problem(
             "credentials",
-            f"{name}: a run of the Curator pushes only with the credential the hub leased it, and no lease covers "
+            f"{name}: {who} pushes only with the credential the hub leased it, and no lease covers "
             f"{urls[0]}: this machine's own credentials are not used",
         )
     with run.credentials.ticketed(run.daemon.env) as env:

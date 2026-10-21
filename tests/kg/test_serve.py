@@ -5,7 +5,9 @@ from pathlib import Path
 from evo_agents.kg import serve
 from evo_agents.kg.build import build_project
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
+from evo_agents.kg.refs import readable, stored
 from evo_agents.kg.serve import Session, diff_lines, handle
+from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.store import Store, edge_id
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
@@ -199,6 +201,38 @@ def test_mcp_protocol_and_truncation(tmp_path, kg_env, monkeypatch):
     assert gone["isError"]
 
 
+def test_a_client_gets_the_text_alone_unless_it_asks_for_the_data(tmp_path, kg_env, monkeypatch):
+    # Claude Code 2.1.296 shows the model a result's structuredContent instead of its text when it has one: the model
+    # would read JSON 2.7 to 3.3 times longer than the text, which CAP_CHARS and the budgets bound.
+    project = built(tmp_path, kg_env)
+    session = Session(project, "agent")
+
+    def tool(id_: int, name: str, arguments: dict, meta: dict | None = None) -> dict:
+        params = {"name": name, "arguments": arguments, **({"_meta": meta} if meta else {})}
+        return handle(session, {"jsonrpc": "2.0", "id": id_, "method": "tools/call", "params": params})["result"]
+
+    full = session.call("kg_node", {"id": "plan:demo"})
+    shown = tool(1, "kg_node", {"id": "plan:demo"})
+    assert shown == {"content": full["content"]}
+    data = full["structuredContent"]
+    read = {"project": "demo", "label": data["label"], "results_read": labels_in(data)[1]}
+    assert shown["content"][0]["_meta"] == {READ_META: read} and read["results_read"] > 0
+    assert tool(2, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: True}) == full
+    assert tool(3, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: "yes"}) == shown  # only true asks
+    status = tool(4, "kg_status", {})
+    assert list(status) == ["content"] and "_meta" not in status["content"][0]  # reveals no element
+    missing = tool(5, "kg_node", {"id": "nope"})
+    assert missing == {"content": missing["content"], "isError": True}
+
+    monkeypatch.setattr(serve, "CAP_CHARS", 300)
+    cut = tool(6, "kg_node", {"id": "plan:demo"})
+    text = cut["content"][0]["text"]
+    assert list(cut) == ["content"] and "[truncated:" in text and len(text) < 400
+    assert cut["content"][0]["_meta"] == {READ_META: read}  # counted before the cut
+    more = tool(7, "kg_more", {"handle": text.rsplit("handle ", 1)[1].rstrip("]")})
+    assert list(more) == ["content"] and "_meta" not in more["content"][0] and more["content"][0]["text"]
+
+
 def test_eval_mocks_carry_the_real_tool_list():
     # The plugin evals answer from mocks; _tools.json gives the mocked tools their real descriptions and schemas.
     saved = Path(__file__).parents[2] / "plugins" / "evo-kg" / "evals" / "mocks" / "evo-kg" / "_tools.json"
@@ -232,7 +266,9 @@ def test_impact_by_id_walks_back_to_dependents_and_groups_documents(tmp_path, kg
     assert docs["plan:demo/step:2"] == [SERVER_PY]
     assert not set(docs) & set(got)
     text = result["content"][0]["text"]
-    assert f"[{SEARCH}] Symbol 'search'" in text and f"-calls-> [{RANK}] (resolved)" in text
+    # The text names nodes by their readable ids, and a symbol's name only once, in its id.
+    assert "[app:app/search.py::search] Symbol (parsed) line=" in text
+    assert "-calls-> [app:app/search.py::rank_results] (resolved)" in text
     assert "documents to re-check:" in text
     assert set(impacted(session.call("kg_impact", {"id": RANK, "depth": 1}))) == {SEARCH, SEARCH_PY}
     assert session.call("kg_impact", {})["isError"]
@@ -334,7 +370,7 @@ def test_path_takes_the_shortest_then_the_strongest(tmp_path, kg_env):
     data = result["structuredContent"]
     assert [n["id"] for n in data["nodes"]] == [RANK, SEARCH_PY, SERVER_PY]
     assert [(e["rel"], e["status"]) for e in data["edges"]] == [("defines", "parsed"), ("imports", "parsed")]
-    assert f"<-defines- (parsed) [{SEARCH_PY}]" in result["content"][0]["text"]
+    assert "<-defines- (parsed) [app:app/search.py] File (parsed)" in result["content"][0]["text"]
     add_edge(project, RANK, "mentions", SERVER_PY, "proposed")
     assert session.call("kg_path", {"from": RANK, "to": SERVER_PY})["structuredContent"]["hops"] == 1
     assert session.call("kg_path", {"from": RANK, "to": RANK})["structuredContent"]["hops"] == 0
@@ -393,8 +429,8 @@ def test_impact_follows_inherits_and_overrides_and_names_every_relation(tmp_path
         kin("kids.py::Quiet.run"): ("overrides", ["overrides"], base_run),
     }
     text = result["content"][0]["text"]
-    assert f"-calls-> [{base_run}] (resolved) (also overrides)" in text
-    assert f"-overrides-> [{base_run}] (resolved)\n" in text + "\n"
+    assert "-calls-> [app:app/shapes.py::Base.run] (resolved) (also overrides)" in text
+    assert "-overrides-> [app:app/shapes.py::Base.run] (resolved)\n" in text + "\n"
     subclasses = session.call("kg_impact", {"id": kin("shapes.py::Base"), "depth": 1})["structuredContent"]
     inherits = {r["node"]["id"] for r in subclasses["impacted"] if r["rel"] == "inherits"}
     assert inherits == {kin("kids.py::Child"), kin("kids.py::Plain"), kin("kids.py::Quiet")}
@@ -412,7 +448,8 @@ def test_impact_notes_the_coverage_of_its_seeds_languages(tmp_path, kg_env):
     assert not any(swift[key]["supported"] for key in TABLES)
     assert swift["calls_across_files"]["note"] == CROSS_FILE_CALLS["swift"].note
     text = result["content"][0]["text"]
-    assert "coverage of python seeds: calls across files yes; inheritance yes; overrides yes" in text
+    missing = CROSS_FILE_CALLS["python"].missing
+    assert f"coverage of python seeds: calls across files yes, not: {missing}; inheritance yes; overrides yes" in text
     assert f"coverage of swift seeds: calls across files no ({CROSS_FILE_CALLS['swift'].note});" in text
     # A seed that is no code gets no note; the field is there all the same, for clients that read it.
     plain = session.call("kg_impact", {"id": "usecase:KB-01"})
@@ -441,7 +478,10 @@ def test_impact_reads_every_edge_into_a_seed_and_says_when_it_cuts(tmp_path, kg_
         HANDLE: (2, "calls", "resolved"),
         SEARCH_PY: (2, "defines", "parsed"),
     }
-    assert f"cut: 3 edges lead into [{RANK}] and the first 1 were read" in cut["content"][0]["text"]
+    assert (
+        "cut: 3 edges lead into [app:app/search.py::rank_results] and the first 1 were read"
+        in cut["content"][0]["text"]
+    )
     assert data["summary"].endswith("; 1 seed(s) cut")
     assert wide.call("kg_impact", {"id": RANK})["structuredContent"]["cut"][0]["total"] == 4
     # The old fields keep their shape: a client that reads only these sees what it saw before.
@@ -476,3 +516,212 @@ def test_docs_and_skill_print_the_coverage_tables():
             r"^\| (\S+) \| (yes|no)\b[^|]*\| (yes|no)\b[^|]*\| (yes|no)\b[^|]*\|$", path.read_text("utf-8"), re.M
         )
         assert {names[name]: cells for name, *cells in rows} == {k: list(v) for k, v in expected.items()}, path
+
+
+# The text of the tools: readable ids, labels once, budgets and caps, the argument names agents guess
+
+
+def test_readable_ids_name_files_sections_and_symbols_and_map_back():
+    assert readable(SEARCH) == "app:app/search.py::search"
+    assert readable(SEARCH_PY) == "app:app/search.py"
+    assert readable("app:file:docs/guide.md#setup") == "app:docs/guide.md#setup"
+    for other in ("plan:demo/step:2", "repo:app", "seam:search-api", "usecase:KB-01", "dir:app:docs", "source:app"):
+        assert readable(other) == other
+    # A source named like another kind's prefix keeps its stored ids, so a readable id never reads as a plan's.
+    assert readable("plan:file:notes.md") == "plan:file:notes.md"
+    assert readable("symbol:repo:a.py::f") == "symbol:repo:a.py::f"
+    for node_id in (SEARCH, SEARCH_PY, "app:file:docs/guide.md#setup", "plan:demo/step:2"):
+        assert node_id in stored(readable(node_id))
+        assert stored(node_id)[0] == node_id
+
+
+def test_every_tool_takes_readable_and_stored_ids_alike(tmp_path, kg_env):
+    project = built_wider(tmp_path, kg_env)
+    session = Session(project, "agent")
+    pairs = [
+        ("kg_node", {"id": SEARCH}, {"id": "app:app/search.py::search"}),
+        ("kg_node", {"id": "app:file:docs/guide.md#setup"}, {"id": "app:docs/guide.md#setup"}),
+        ("kg_context", {"ids": [SEARCH_PY]}, {"ids": ["app:app/search.py"]}),
+        ("kg_impact", {"id": RANK}, {"id": "app:app/search.py::rank_results"}),
+        (
+            "kg_path",
+            {"from": RANK, "to": SERVER_PY},
+            {"from": "app:app/search.py::rank_results", "to": "app:app/server.py"},
+        ),
+    ]
+    for name, by_stored, by_readable in pairs:
+        stored_result = session.call(name, by_stored)
+        assert not stored_result.get("isError"), (name, stored_result)
+        assert session.call(name, by_readable)["structuredContent"] == stored_result["structuredContent"], name
+    # A readable id copied from a result into kg_search finds that node first.
+    found = session.call("kg_search", {"query": "app:app/search.py::search"})["structuredContent"]["results"]
+    assert found[0]["id"] == SEARCH
+
+
+def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env):
+    project = built_wider(tmp_path, kg_env)
+    session = Session(project, "agent")
+    for name, args in QUERIES:
+        result = session.call(name, args)
+        text = result["content"][0]["text"]
+        if name == "kg_node":
+            continue  # kg_node gives the URI, below
+        assert "uri=" not in text and "https://" not in text, name
+        # Every node of the demo is internal: the label is printed once, under the first line, and on no node line.
+        assert text.splitlines()[1] == "label of every node: internal,U", (name, text[:300])
+        assert ", internal,U)" not in text, name
+    card = session.call("kg_node", {"id": SEARCH_PY})["content"][0]["text"]
+    assert card.startswith("[app:app/search.py] File (parsed, internal,U)")  # one node: its line names its label
+    assert "github.com/acme/demo-app" in card  # kg_node still gives the URI, in its props and evidence
+
+    # The app is customer-level: through the wide sink a result mixes labels; the common one is printed once and a
+    # line names its node's own label only when it is another.
+    wide = Session(built_wider(tmp_path / "mixed", kg_env, app_level="customer"), "wide")
+    text = wide.call("kg_context", {"ids": ["usecase:KB-01"], "hops": 2})["content"][0]["text"]
+    head, *lines = text.splitlines()
+    common = lines[0].rsplit(": ", 1)[1]
+    assert lines[0] == f"label of every node unless its line names another: {common}"
+    other = {"internal,U": "customer,U", "customer,U": "internal,U"}[common]
+    node_lines = [line for line in lines[1:] if line.startswith("[")]
+    assert any(f", {other})" in line for line in node_lines) and not any(f", {common})" in line for line in node_lines)
+
+
+def test_a_chat_message_line_names_its_chat_and_thread_and_never_its_text(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    said = {
+        "id": "plugin.chats:message:41",
+        "kind": "ChatMessage",
+        "name": "#7 alice 2026-10-19T08:00:00Z",
+        "status": "parsed",
+        "label": (1, 0, "U", frozenset({"chat:5"})),
+        "props": {"chat": 5, "thread": 40, "seq": 7, "author_kind": "person", "author": "alice", "run": None},
+    }
+    # its id, its author and time (its name), its chat and its thread; its text is in no prop, and the others stay out
+    assert session._line(said) == (
+        "[plugin.chats:message:41] ChatMessage '#7 alice 2026-10-19T08:00:00Z' (parsed, internal,U audience chat:5) "
+        "chat=5 thread=40"
+    )
+    # a node of any other kind that has such props prints them not: an item without an audience reads as before
+    other = {**said, "id": "docs:doc:minutes", "kind": "Document", "name": "minutes", "label": (1, 0, "U")}
+    assert session._line(other) == "[docs:doc:minutes] Document (parsed, internal,U)"  # the id ends with its name
+
+
+def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    result = session.call("kg_search", {"query": "Wire the server to search", "limit": 5})
+    lines = result["content"][0]["text"].splitlines()
+    assert lines[2].startswith("[plan:demo/step:2] PlanStep 'Server'")  # its words: the step first
+    assert lines[3] == "  mentions [app:app/server.py] File (parsed)"  # then the file its text names
+    data = result["structuredContent"]
+    assert [r["id"] for r in data["results"]][:2] == ["plan:demo/step:2", SERVER_PY]
+    assert data["mentioned_by"] == {SERVER_PY: "plan:demo/step:2"}
+    only_steps = session.call("kg_search", {"query": "Wire the server to search", "kinds": ["PlanStep"]})
+    assert {r["kind"] for r in only_steps["structuredContent"]["results"]} == {"PlanStep"}
+    assert only_steps["structuredContent"]["mentioned_by"] == {}
+
+    # The app is customer-level and the agent sink clears internal: the step shows, the file it mentions does not.
+    narrow = Session(built(tmp_path / "narrow", kg_env, app_level="customer"), "agent")
+    hidden = narrow.call("kg_search", {"query": "Wire the server to search"})["structuredContent"]
+    assert [r["id"] for r in hidden["results"]][:1] == ["plan:demo/step:2"]
+    assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
+
+
+def test_context_keeps_nodes_and_edges_within_its_budget_and_counts_the_rest(tmp_path, kg_env):
+    project = built_wider(tmp_path, kg_env)
+    session = Session(project, "agent")
+    roomy = session.call("kg_context", {"query": "search", "budget_tokens": 8000, "hops": 3})["structuredContent"]
+    assert roomy["left_out"] == {"nodes": 0, "edges": 0, "beyond": False}
+    for budget in (500, 700, 1000, 3000):
+        result = session.call("kg_context", {"query": "search", "budget_tokens": budget, "hops": 3})
+        text, data = result["content"][0]["text"], result["structuredContent"]
+        assert len(text.encode("utf-8")) / 3 <= budget, (budget, len(text.encode("utf-8")))
+        shown = {e["src"] for e in data["edges"]} | {e["dst"] for e in data["edges"]}
+        assert shown <= {n["id"] for n in data["nodes"]}  # no edge to a node the text does not show
+        assert text.count("\n  [") == len(data["edges"])  # every edge it keeps is in the text
+    tight = session.call("kg_context", {"query": "search", "budget_tokens": 500, "hops": 3})
+    left = tight["structuredContent"]["left_out"]
+    assert left["nodes"] + left["edges"] > 0 or left["beyond"]
+    assert len(tight["structuredContent"]["nodes"]) < len(roomy["nodes"])
+    assert "left out by the budget:" in tight["content"][0]["text"]
+
+
+def test_impact_lists_the_first_dependents_of_each_hop_and_counts_the_rest(tmp_path, kg_env):
+    project = built_wider(tmp_path, kg_env)
+    session = Session(project, "agent")
+    whole = session.call("kg_impact", {"id": RANK})["structuredContent"]
+    assert whole["limit"] == serve.IMPACT_LIMIT and whole["left_out"]["hops"] == {}
+    # Documents are listed a quarter as many: 5 of the 6 that mention what RANK reaches.
+    assert (len(whole["documents"]), whole["left_out"]["documents"]) == (6, 1)
+    capped = session.call("kg_impact", {"id": RANK, "limit": 1})
+    text, data = capped["content"][0]["text"], capped["structuredContent"]
+    assert impacted(capped) == impacted({"structuredContent": whole})  # the data keeps every dependent
+    per_hop = {hop: sum(r["hop"] == hop for r in data["impacted"]) for hop in (1, 2)}
+    assert per_hop == {1: 2, 2: 4}
+    assert data["left_out"] == {"hops": {"1": 1, "2": 3}, "documents": len(data["documents"]) - 1}
+    assert "hop 1: first 1 of 2\n" in text and "  ... 1 more at hop 1: raise limit" in text
+    assert "hop 2: first 1 of 4\n" in text and "  ... 3 more at hop 2: raise limit" in text
+    # The strongest edge first: at hop 1 the file defines rank_results (parsed), search calls it (resolved).
+    assert "hop 1: first 1 of 2\n  [app:app/search.py] File (parsed) -defines->" in text
+    assert text.count(" -mentions-> ") == 1 and f"documents to re-check: first 1 of {len(data['documents'])}" in text
+
+
+def test_impact_of_store_py_on_a_real_sized_graph_stays_short(tmp_path, kg_env):
+    # Thirty files that import one module, each named in a plan step: two hops and a document group over the limit.
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    for i in range(30):
+        write(
+            app / f"app/user_{i:02d}.py", f"from app.search import search\n\n\ndef use_{i}(q):\n    return search(q)\n"
+        )
+    commit(app, "users")
+    sync_project(project)
+    assert build_project(project).ok
+    result = Session(project, "agent").call("kg_impact", {"paths": ["app:app/search.py"]})
+    text, data = result["content"][0]["text"], result["structuredContent"]
+    assert len(data["impacted"]) > serve.IMPACT_LIMIT
+    assert sum(line.startswith("  [") for line in text.splitlines()) <= 2 * serve.IMPACT_LIMIT + 1 + 5
+    assert f"more at hop 1: raise limit (up to {serve.IMPACT_MAX_LIMIT})" in text
+
+
+def test_tools_take_the_argument_names_agents_guess(tmp_path, kg_env):
+    project = built_wider(tmp_path, kg_env)
+    session = Session(project, "agent")
+
+    def same(name: str, guessed: dict, own: dict) -> None:
+        got, want = session.call(name, guessed), session.call(name, own)
+        assert not want.get("isError") and got == want, (name, guessed, got)
+
+    # The names Codex sent kg_impact and kg_context between 2026-09-20 and 2026-10-17.
+    for key in ("files", "targets", "changed"):
+        same("kg_impact", {key: ["app:app/search.py"]}, {"paths": ["app:app/search.py"]})
+    for key in ("target", "name"):
+        same("kg_impact", {key: "app/search.py"}, {"paths": ["app/search.py"]})
+    for key in ("budget", "max_tokens"):
+        same("kg_context", {"query": "search", key: 600}, {"query": "search", "budget_tokens": 600})
+    same("kg_context", {"id": "usecase:KB-01"}, {"ids": ["usecase:KB-01"]})
+    same("kg_path", {"source": RANK, "target": SERVER_PY}, {"from": RANK, "to": SERVER_PY})
+    same("kg_node", {"node_id": SEARCH}, {"id": SEARCH})
+    same("kg_search", {"q": "search", "kind": "Symbol"}, {"query": "search", "kinds": ["Symbol"]})
+    # A path given as an id, and an id given as a path.
+    same("kg_impact", {"id": "app/search.py"}, {"paths": ["app/search.py"]})
+    same("kg_impact", {"paths": [RANK]}, {"id": RANK})
+
+    wrong = session.call("kg_impact", {"id": RANK, "budget_tokens": 2000})
+    assert wrong["isError"]
+    assert wrong["content"][0]["text"] == (
+        "error: kg_impact has no argument 'budget_tokens'; it takes depth, diff, id, ids, limit, paths"
+    )
+    assert "Session." not in session.call("kg_search", {"query": "x", "unknown": 1})["content"][0]["text"]
+    assert session.call("kg_impact", {"id": RANK, "limit": "many"})["isError"]  # a bad value is an error, not a crash
+
+
+def test_instructions_descriptions_and_skill_name_only_statuses_the_graph_has():
+    root = Path(__file__).parents[2]
+    skill = (root / "plugins/evo-kg/skills/using-project-graph/SKILL.md").read_text("utf-8")
+    texts = [serve.INSTRUCTIONS, skill, json.dumps(serve.TOOLS)]
+    for text in texts:
+        for status in ("declared", "proposed", "introspected"):
+            assert status not in text, status
+    for text in (serve.INSTRUCTIONS, skill):
+        assert "'parsed'" in text or "`parsed`" in text
+        assert "'resolved'" in text or "`resolved`" in text

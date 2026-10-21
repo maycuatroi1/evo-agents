@@ -9,7 +9,9 @@ it off, ``trigger_for``), when an admin answers it (``proposal_answered``), when
 cannot (``change_recorded``), and at each move of its change (``change_moved``, from ``changes._set``): built by its
 Builder, its pull request opened, judged (by the Judge, or by the hub's own detector of score hacking), merged (by the
 hub, or by hand), left open for its owner with why, or closed; a Builder that ends otherwise adds ``build_failed``
-(``build_failed``).
+(``build_failed``). The hub's merge of a change whose replays won keeps their verdict under ``details.replay`` and,
+when it releases a global skill, the skill under ``details.release``; ``evo_agents.hub.server.skill_release`` adds the
+line ``skill_release`` once it published the skill, or its version before again after a revert.
 
 GET /v1/projects/{p}/curator/proposals/{id}/ledger lists the lines of a proposal the caller may read (as GET
 .../proposals/{id} reads it), oldest first, with when the hub counts the figures of its merged change again
@@ -325,7 +327,8 @@ async def _builder_commit(conn: AsyncConnection, run_id: int | None) -> str | No
 
 async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str, extra: dict | None = None) -> None:
     """The lines a move of change ``change_id`` from ``old`` to ``new`` adds, from the change as it is now and
-    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge)."""
+    ``extra`` (``actor``, ``actor_id``, ``login``, ``before_sha`` of a merge; ``merge_request`` and ``into``, its iid
+    and target branch, of a merge of the queue on GitLab)."""
     extra = extra or {}
     c = tables.curator_changes
     row = (await conn.execute(select(c).where(c.c.id == change_id))).one()
@@ -380,6 +383,12 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
     if new == "merged":
         actor = extra.get("actor") or "curator"
         who = "The hub" if actor == "curator" else (extra.get("login") or "A member")
+        what = f"{who} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
+        if extra.get("merge_request"):  # its merge queue on GitLab merged it
+            what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
+        details = {"github_login": extra["login"]} if extra.get("login") else {}
+        if actor == "curator":
+            details, what = await _replayed_merge(conn, row, details, what)
         await append(
             conn,
             **line,
@@ -391,8 +400,8 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             before_sha=extra.get("before_sha"),
             after_sha=row.merge_sha,
             merged_at=row.merged_at,
-            what=f"{who} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}",
-            details={"github_login": extra["login"]} if extra.get("login") else None,
+            what=what,
+            details=details or None,
         )
         return
     if new == "open" and old != "open":
@@ -410,6 +419,24 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             what=f"{who} closed pull request #{row.pr_number} without a merge",
             details={"github_login": extra["login"]} if extra.get("login") else None,
         )
+
+
+async def _replayed_merge(conn: AsyncConnection, row, details: dict, what: str) -> tuple[dict, str]:
+    """The details and the words of the hub's merge of change ``row`` once its replays won at the head it merged
+    (``change_tiers.replay_verdict``): the verdict under ``replay`` and, when the merge releases a global skill
+    (``skill_release.wanted``), the skill under ``release``; as they were otherwise."""
+    from evo_agents.hub.server import change_tiers, skill_release  # skill_release writes through this module
+
+    found = await change_tiers.replay_verdict(conn, row.id, row.head_sha)
+    if not found["won"]:
+        return details, what
+    details = {**details, "replay": found}
+    what += f"; its replays won: {found['reason']}"
+    release = await skill_release.wanted(conn, row, found)
+    if release is not None:
+        details["release"] = release
+        what += f"; the hub publishes global skill {release['skill']} from it"
+    return details, what
 
 
 async def build_failed(conn: AsyncConnection, change, run_id: int, state: str, why: str) -> None:
@@ -472,12 +499,12 @@ async def show_ledger(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Ledger:
     """The ledger of a proposal: what happened to it, line by line, oldest first."""
-    from evo_agents.hub.server.proposals import _readable_proposal, _reader  # it writes lines through this module
+    from evo_agents.hub.server.proposals import _reader, readable_proposal  # it writes lines through this module
 
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        await _readable_proposal(conn, access, proposal_id, sink)
+        await readable_proposal(conn, access, proposal_id, sink)
         rows = (await conn.execute(_lines(proposal_id))).all()
         due = await outcome_due_at(conn, proposal_id, access.project_id)
     return Ledger(

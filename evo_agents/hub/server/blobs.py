@@ -18,23 +18,27 @@ for again. Either way the uploaded objects are deleted. An upload can be committ
 project, within 24 hours; any other id is unknown (422) and left alone. When the blob store does not answer, the answer
 is 503 and the uploads stay, so the same commit can be sent again.
 
-A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills,
-which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
-logs and the audit trail name that holder GLOBAL.
+A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills
+and of plugins, which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle or
+plugin-bundle (GLOBAL_KINDS); logs and the audit trail name that holder GLOBAL.
 
 ``issue_uploads`` and ``commit_uploads`` are the two halves on their own, for routes that take uploads as part of
 something larger, such as the worker's log and diff of a run (``run_events``). No route here reads a blob: a route
 that has checked that the caller may see what refers to a blob hands out ``BlobStore.presign_get``, or reads it with
-``BlobStore.fetch``.
+``BlobStore.fetch``. ``put_bytes`` and ``fetch_bytes`` store and read the small images the hub takes in JSON (an
+agent's avatar, the branding's logo, a chat's image) without an upload.
 """
 
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -54,6 +58,7 @@ from evo_agents.hub.blobs import (
     BlobStore,
     BlobStoreUnavailable,
     Upload,
+    blob_key,
     new_upload_id,
 )
 from evo_agents.hub.server import audit
@@ -69,7 +74,7 @@ UPLOAD_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 413, 422, 5
 COMMIT_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422, 503)}
 UNAVAILABLE = "the blob store did not answer; nothing was committed and the uploads are kept, try again shortly"
 GLOBAL = "(global)"  # the hub as the holder of blobs in logs and audit rows; no project name has parentheses
-GLOBAL_KINDS = frozenset({"skill-bundle"})  # what the hub holds outside any project: the bundles of global skills
+GLOBAL_KINDS = frozenset({"skill-bundle", "plugin-bundle"})  # what the hub holds outside any project: skills, plugins
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256 of the bytes")]
 ProjectField = Annotated[str, Field(pattern=PROJECT_NAME)]
@@ -125,6 +130,25 @@ def blob_store(request: Request) -> BlobStore:
         missing = ", ".join(request.app.state.config.blob_store_missing())
         raise HTTPException(503, f"the blob store is not configured on this hub: set {missing}")
     return store
+
+
+def put_bytes(store: BlobStore, sha256: str, data: bytes, *, replace: bool = False) -> None:
+    """Store ``data``, whose SHA-256 the caller computed, as blob ``sha256`` unless it is there already; with
+    ``replace``, whether it is there or not. Blocking: run it in a thread."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "blob"
+        path.write_bytes(data)
+        store.put_file(sha256, path, replace=replace)
+
+
+def fetch_bytes(store: BlobStore, sha256: str, limit: int) -> bytes | None:
+    """The bytes of blob ``sha256`` when it is there, at most ``limit`` of them and with that very SHA-256; None
+    otherwise. Blocking: run it in a thread."""
+    sink = io.BytesIO()
+    found = store.fetch(blob_key(sha256), sink, limit)
+    if found is None or found[0] != sha256:
+        return None
+    return sink.getvalue()
 
 
 def _writer(access: ProjectAccess, doing: str) -> None:

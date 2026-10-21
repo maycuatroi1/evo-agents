@@ -6,6 +6,7 @@ import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
+import type { RequestedRuntime } from "@/lib/runtimes";
 
 /**
  * What the runs pages read and write (docs/workers.md). Any member with a grant on the project lists its runs, of the
@@ -21,7 +22,7 @@ export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
 export type DispatchRequest = Schemas["Dispatch"];
 export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step"> & { session_per_step?: true }; // sent only when on
-export type RequestedRuntime = DispatchRequest["runtime"];
+export type { RequestedRuntime };
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
 export type RunKind = Run["kind"];
@@ -42,6 +43,8 @@ export const RUN_STATES = [
   "failed",
   "lost",
   "cancelled",
+  "idle",
+  "ended",
 ] as const satisfies readonly RunState[];
 /** A worker holds the run and extends its lease (`runs.HELD_STATES`); a plan run waiting for a decision included. */
 export const HELD_STATES = ["leased", "running", "interactive", "verifying", "waiting"] as const satisfies readonly RunState[];
@@ -65,17 +68,17 @@ export const SUMMARY_LIMIT = 200;
 /** `timeout_min` of a dispatch: 5 to 240 minutes, 60 by default. */
 export const TIMEOUT_CHOICES = [30, 60, 120, 240] as const;
 export const DEFAULT_TIMEOUT = 60;
-/** `runs.PLAN_TIMEOUT_CHOICES`: hours of agent time a plan run may take; 4 by default. */
+/** `runs.PLAN_TIMEOUT_CHOICES`: hours of agent time a plan run may take; the Run plan dialog starts on the most. */
 export const PLAN_TIMEOUT_CHOICES = [2, 4, 8, 24] as const satisfies readonly PlanTimeout[];
-export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 4;
+export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 24;
 /** `runs.MAX_MODEL_CHARS`: a model name is one line of at most 200 characters. */
 export const MAX_MODEL_CHARS = 200;
-/** `MAX_DISPATCH_STEPS` of the API. */
-export const MAX_DISPATCH_STEPS = 50;
+export const MAX_DISPATCH_STEPS = 50; // `MAX_DISPATCH_STEPS` of the API
 /** `max_length` of the list's q. */
 export const MAX_QUERY = 200;
 
-const ACTIVE = new Set<string>(ACTIVE_STATES);
+/** ACTIVE_STATES, and idle: a local session still open. */
+const ACTIVE = new Set<string>([...ACTIVE_STATES, "idle"]);
 
 export function isActiveState(state: string): boolean {
   return ACTIVE.has(state);
@@ -84,7 +87,7 @@ export function isActiveState(state: string): boolean {
 /** Whether a list's counts hold any active run of the project: the pages then refresh every 5 seconds. */
 export function hasActiveRuns(list: Pick<RunList, "counts"> | undefined): boolean {
   if (!list) return false;
-  return ACTIVE_STATES.some((state) => list.counts[state] > 0);
+  return [...ACTIVE_STATES, "idle" as const].some((state) => list.counts[state] > 0);
 }
 
 /**
@@ -101,6 +104,11 @@ export type RunQuery = {
   planId?: string | null;
   step?: string | null;
   workerId?: number | null;
+  /** Only runs of this kind, and only local runs of this Claude account (email). */
+  kind?: RunKind | null;
+  account?: string | null;
+  /** The turns of one chat session (`session_run_id`); `group: "session"` lists each chat session once, its latest turn. */
+  sessionRunId?: number | null; group?: "session" | null;
   q?: string;
   limit?: number;
   offset?: number;
@@ -112,6 +120,9 @@ function apiQuery(query: RunQuery) {
     ...(query.planId ? { plan_id: query.planId } : {}),
     ...(query.step ? { step: query.step } : {}),
     ...(query.workerId ? { worker_id: query.workerId } : {}),
+    ...(query.kind ? { kind: query.kind } : {}),
+    ...(query.account ? { account: query.account } : {}),
+    ...(query.sessionRunId ? { session_run_id: query.sessionRunId } : {}), ...(query.group ? { group: query.group } : {}),
     ...(query.q ? { q: query.q } : {}),
     limit: query.limit ?? RUNS_PAGE,
     offset: query.offset ?? 0,
@@ -125,6 +136,7 @@ function keyOf(query: RunQuery) {
     planId: query.planId ?? null,
     step: query.step ?? null,
     workerId: query.workerId ?? null,
+    kind: query.kind ?? null, account: query.account ?? null, sessionRunId: query.sessionRunId ?? null, group: query.group ?? null,
     q: query.q ?? "",
     limit: query.limit ?? RUNS_PAGE,
     offset: query.offset ?? 0,
@@ -158,12 +170,7 @@ export const runsSummaryQuery = (api: ApiSource, project: string) =>
   queryOptions({
     queryKey: runKeys.summary(project),
     queryFn: ({ signal }) =>
-      call(
-        api().GET("/v1/projects/{project}/runs", {
-          params: { path: { project }, query: apiQuery({ states: ACTIVE_STATES, limit: SUMMARY_LIMIT }) },
-          signal,
-        }),
-      ),
+      call(api().GET("/v1/projects/{project}/runs", { params: { path: { project }, query: apiQuery({ states: ACTIVE_STATES, limit: SUMMARY_LIMIT }) }, signal })),
     refetchInterval: refreshInterval,
   });
 
@@ -236,7 +243,7 @@ export const MAX_MESSAGE_BYTES = 8 * 1024;
 export const EVENTS_PAGE = 1000;
 
 export function isTerminalState(state: string): boolean {
-  return (TERMINAL_STATES as readonly string[]).includes(state);
+  return state === "ended" || (TERMINAL_STATES as readonly string[]).includes(state);
 }
 
 /** A run id as the API accepts it (`MAX_ID`, a positive bigint); null for anything else. */
@@ -363,39 +370,7 @@ export function runDiffLink(api: ApiClient, project: string, id: number, downloa
   );
 }
 
-// The decisions a plan run's agent asks its owner (docs/notifications.md); the inbox answers them.
-
-export type Decision = Schemas["Decision"];
-export type DecisionList = Schemas["DecisionList"];
-
-/** Where the web shows a decision and its answer form, as the hub's notifications link to it (`decision_link`). */
-export function decisionHref(id: number): Route {
-  return `/inbox?decision=${id}` as Route;
-}
-
-/** The id of a decision's card on its run's page, which the trace's "Asked you" links to. */
-export function decisionAnchor(id: number): string {
-  return `run-decision-${id}`;
-}
-
-/** `MAX_OPEN_DECISIONS` of the API: a run's agent has at most 20 decisions open at once. */
-export const MAX_OPEN_DECISIONS = 20;
-
-/**
- * The open decisions of one run, newest first, all of them: the plan's banner links to the latest, and the run's page
- * shows each with its answer form.
- */
-export const openDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
-  queryOptions({
-    queryKey: ["projects", project, "decisions", { run: runId, state: "open" }] as const,
-    queryFn: ({ signal }) =>
-      call(
-        api().GET("/v1/projects/{project}/decisions", {
-          params: { path: { project }, query: { state: ["open"], run_id: runId, limit: MAX_OPEN_DECISIONS } },
-          signal,
-        }),
-      ),
-  });
+export * from "./decision-queries";
 
 // Author runs: a plan written from a member's request on a worker of theirs, and the chat with its agent
 // (docs/workers.md, Author runs).

@@ -3,7 +3,8 @@
 A sealed value is the ciphertext with its 16-byte tag, the 12 random bytes of nonce drawn for it, and the key_id of
 the key that sealed it: the first 8 hex digits of the key's SHA-256, which names the key without giving it away. The
 associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{kind}`` for a member's secret and
-``lease:{id}`` for a token the hub leased, so a sealed value copied into another row does not open there. The key
+``lease:{id}`` for a token the hub leased, and ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
+secret field of a plugin's config, so a sealed value copied into another row does not open there. The key
 is 32 bytes in base64url, read by ``evo_agents.hub.config``; it never reaches the database, a log line or an error.
 
 Without the key the hub keeps no secrets: ``Sealer.from_config`` answers None, a route that writes a secret answers
@@ -61,6 +62,12 @@ def secret_aad(owner_id: int, name: str, kind: str) -> bytes:
 def lease_aad(lease_id: int) -> bytes:
     """The associated data of a leased token: it opens only as the value of this lease."""
     return f"lease:{lease_id}".encode()
+
+
+def plugin_config_aad(plugin_id: int, layer: str, project_id: int | None, profile_id: int | None, name: str) -> bytes:
+    """The associated data of a secret field of a plugin's config: it opens only as field ``name`` of that plugin's
+    layer ``layer`` of that project and agent profile, at any version of the layer (a rollback copies it)."""
+    return f"plugin-config:{plugin_id}:{layer}:{project_id or '-'}:{profile_id or '-'}:{name}".encode()
 
 
 class Sealer:

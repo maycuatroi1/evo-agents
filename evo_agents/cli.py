@@ -9,8 +9,6 @@ import sys
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.harness import validate_harness
-from evo_agents.schema import errors
 
 WORKER_ON_WINDOWS = (
     "evo-agents worker runs on macOS and Linux only: its daemon needs process groups, tmux and launchd or systemd. "
@@ -19,11 +17,26 @@ WORKER_ON_WINDOWS = (
 )
 
 
+def _verify_issues(plan: dict) -> list:
+    """A warning for each step not done whose verify cannot be one shell command line, as the hub refuses a new one
+    (``evo_agents.hub.plans.unrunnable_verify``); a warning, since a plan the hub holds keeps an older one."""
+    from evo_agents.hub.plans import VERIFY_RULE, unrunnable_verify
+    from evo_agents.schema import Issue
+
+    return [
+        Issue(f"steps[{index}].verify", f"the verify of step {key} {why}. {VERIFY_RULE}", "warning")
+        for index, key, why in unrunnable_verify(None, plan)
+    ]
+
+
 def _harness_validate(args) -> int:
+    from evo_agents.harness import validate_harness
+    from evo_agents.schema import errors
+
     targets = args.paths or [str(Path.cwd())]
     reports = []
     for target in targets:
-        reports.extend(validate_harness(target))
+        reports.extend(validate_harness(target, _verify_issues))
     failed = [r for r in reports if not r.ok]
     if args.json:
         print(json.dumps({"ok": not failed, "files": [r.to_json() for r in reports]}, ensure_ascii=False, indent=2))
@@ -66,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     from evo_agents.worker.cli import register as register_worker
 
     register_worker(sub)
+
+    from evo_agents.plugins.cli import register as register_plugin
+
+    register_plugin(sub)
     return parser
 
 
@@ -80,13 +97,29 @@ def _utf8_streams() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _utf8_streams()
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.group == "worker" and os.name == "nt":
-        print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
-        return 2
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:3] == ["kg", "hook", "post-search"]:
+        # Claude Code runs this one after every grep: it loads neither the parsers of other commands nor the harness.
+        from evo_agents.kg.post_search import main as post_search
+
+        def run() -> int:
+            return post_search(argv[3:])
+    elif argv[:2] == ["kg", "hook"]:
+        from evo_agents.kg.cli import run_hook  # the parsers of the other hooks only
+
+        def run() -> int:
+            return run_hook(argv[2:])
+    else:
+        args = build_parser().parse_args(argv)
+        if args.group == "worker" and os.name == "nt":
+            print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
+            return 2
+
+        def run() -> int:
+            return int(args.func(args) or 0)
+
     try:
-        return int(args.func(args) or 0)
+        return run()
     except KeyboardInterrupt:
         return 130
     except BrokenPipeError:

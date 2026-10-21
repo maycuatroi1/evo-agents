@@ -11,7 +11,10 @@ SessionStart (startup, resume, clear) does in one process what three commands do
 It prints one line for the session as ``additionalContext``: the hub, the project, the memories pulled, what the export
 did and the skills to sync. Stop does ``hub memory push`` for the directory, so another machine sees a new memory at its
 next session. Stop runs after every turn, so it asks the hub only when a memory file differs from what the last sync
-left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no memory.
+left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no memory. Each file it sends
+carries the audience of the session's label (``evo_agents.kg.sessions``), the chats whose messages the session read,
+which the hub adds to the memory's, whether or not that file came from them; when the label cannot be read, nothing is
+pushed and the files wait here.
 
 Stop also sends the hub the digest of the session (``evo_agents.hub.digest``) once its transcript holds 6 messages,
 and again after each turn that changed it: built from the transcript Claude Code names in the hook's input, redacted on
@@ -34,14 +37,28 @@ A hook never fails the session and never holds it long:
 - every request gives up after REQUEST_TIMEOUT seconds and the whole run after BUDGETS seconds (SIGALRM, a timer on
   Windows), keeping what it finished: files are written atomically and memory-state.json records what was
   synced, so the next run does the rest. Claude Code's own hook timeout (hooks.json) is the last guard;
-- a hub that did not answer is not asked again by Stop for COOLDOWN seconds (when it failed is kept in
-  ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later Stop pushes them;
+- a hub that did not answer, or answered with a failure that may pass (``client.transient``: a 502 or a 404 of the
+  proxy in front of it while it is redeployed, a 503, 429), is not asked again by Stop for COOLDOWN seconds (when it
+  failed is kept in ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later
+  Stop pushes them;
 - one memory sync runs at a time per machine: a hook waits LOCK_WAIT seconds for another, then leaves its work to the
   next run.
 
 Stop prints nothing when all went well. A conflict, which a person has to merge, is a ``systemMessage`` for the person;
 any other failure is one line on stderr, the first one met, which Claude Code shows in its transcript view, so a hub
 that is down does not interrupt every turn. Standard library and PyYAML only, like the rest of the client.
+
+Stop and SessionEnd also queue the session's transcript and start ``evo-agents hub sessions sync`` in the background
+(``evo_agents.hub.transcripts.on_turn``), which sends the transcript's new lines, the subagents' with them, to the hub
+in parts, whatever the number of messages; SessionStart starts one when sessions wait in the queue or the machine's
+last sync was an hour ago or more. The hook only writes the queue and starts the process, detached from its output, so
+it waits for none of it.
+EVO_HUB_TRANSCRIPTS=0 (or ``off``) turns that off, and a worker run sends none, since its log is on the hub already.
+
+A session of a hub project is also a run of kind local on the hub (``evo_agents.hub.local_sync``): UserPromptSubmit
+registers it and reports running, a second PostToolUse hook adds the agent's words and the tool that ran to its log,
+Stop (here) sends the last words and reports idle before it pushes memories, SessionEnd reports ended.
+EVO_HUB_LOCAL_SYNC=0 turns that off and leaves everything above as it was; a worker run never registers one.
 
 PostToolUse (``evo_agents.hub.spool``) writes a tool result longer than its threshold to a file under
 ~/.evo/tool-output and hands the model its head, its tail and the file's path instead, by the same rules.
@@ -70,6 +87,7 @@ from evo_agents.hub.client import (
     Unreachable,
     hub_dir,
     load_credentials,
+    transient,
     write_atomic,
 )
 
@@ -198,10 +216,11 @@ class HookState:
             text = json.dumps({"version": STATE_VERSION, "down": down}, indent=2, sort_keys=True) + "\n"
             write_atomic(self.path, text.encode(), FILE_MODE)
 
-    def down_since(self, url: str, now: float) -> float | None:
-        """When ``url`` last did not answer, if that is less than COOLDOWN seconds ago."""
+    def down_since(self, url: str, now: float, cooldown: float | None = None) -> float | None:
+        """When ``url`` last did not answer, if that is less than ``cooldown`` (default COOLDOWN) seconds ago."""
         at = self._read().get(url)
-        return at if at is not None and 0 <= now - at < COOLDOWN else None
+        limit = COOLDOWN if cooldown is None else cooldown
+        return at if at is not None and 0 <= now - at < limit else None
 
     def mark_down(self, url: str, now: float) -> None:
         down = self._read()
@@ -358,6 +377,8 @@ def session_start(payload: dict, line: Line) -> None:
     except HubError as exc:
         line.add(str(exc), trouble=True)
         return
+    if run_id is None:
+        _start_transcripts()
     hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
     line.hub = hub.url
     where = session_dir(payload)
@@ -368,17 +389,17 @@ def session_start(payload: dict, line: Line) -> None:
         if harness is not None and run_id is None:
             _export_plans(hub, *harness, line)
         _check_skills(hub, line)
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):  # the token was refused
+            line.add(
+                f"the hub refused this machine's token ({exc}), so nothing more was synced; {LOGIN_HINT}", trouble=True
+            )
+            return
         state.mark_down(hub.url, _now())
         line.add(
             f"the hub did not answer ({exc}), so the rest was not synced; memory files stay here and a later Stop "
             "pushes them",
             trouble=True,
-        )
-        return
-    except HubError as exc:  # the token was refused
-        line.add(
-            f"the hub refused this machine's token ({exc}), so nothing more was synced; {LOGIN_HINT}", trouble=True
         )
         return
     state.mark_up(hub.url)
@@ -404,6 +425,8 @@ def stop(payload: dict, outcome: Outcome) -> None:
     nothing in a worker run, whose SessionStart line says so."""
     if worker_run() is not None:
         return
+    queue_transcript(payload)
+    _local_stop(payload)
     try:
         credentials = load_credentials()
     except NotSignedIn:
@@ -414,18 +437,42 @@ def stop(payload: dict, outcome: Outcome) -> None:
     hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
     where = session_dir(payload)
     state = HookState(hub_dir())
-    _push_memories(hub, credentials.login, where, state, outcome)
+    _push_memories(hub, credentials.login, where, state, outcome, payload)
     _push_digests(hub, credentials.login, payload, where, state, outcome)
 
 
-def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome) -> None:
+def queue_transcript(payload: dict, ended: bool = False) -> None:
+    """Queue the session's transcript and start a sync in the background (``transcripts.on_turn``); never raises."""
+    from evo_agents.hub import transcripts
+
+    with contextlib.suppress(Exception):
+        transcripts.on_turn(payload, ended=ended)
+
+
+def _start_transcripts() -> None:
+    from evo_agents.hub import transcripts
+
+    with contextlib.suppress(Exception):
+        transcripts.on_session_start()
+
+
+def _local_stop(payload: dict) -> None:
+    """The session's share of Stop on the hub, as a local run: its last words, and idle (``local_sync``)."""
+    from evo_agents.hub import local_sync
+
+    local_sync.on_stop(payload)
+
+
+def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome, payload: dict) -> None:
     from evo_agents.hub.memory import MemorySync
+    from evo_agents.kg.sessions import current_session_id, session_audience
 
     sync = MemorySync(hub, login, lock_timeout=LOCK_WAIT)
     try:
         if not sync.pending(where):
             return
-    except HubError as exc:  # memory-state.json cannot be read
+        sync.audience = session_audience(current_session_id(payload))  # what the session read: each file carries it
+    except (HubError, ValueError) as exc:  # memory-state.json or the session's label cannot be read
         outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
     since = state.down_since(hub.url, _now())
@@ -437,12 +484,12 @@ def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome:
         return
     try:
         report = sync.push(where)
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):
+            outcome.say(f"evo-hub: memories not pushed: {exc}")
+            return
         state.mark_down(hub.url, _now())
         outcome.say(f"evo-hub: memories not pushed, the hub did not answer ({exc}); they stay here for a later Stop")
-        return
-    except HubError as exc:
-        outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
     state.mark_up(hub.url)
     if report.conflicts:
@@ -518,15 +565,15 @@ def _push_digest(
             return True
         path = f"/v1/projects/{quote(record['project'], safe='')}/digests/{session_id}"
         hub.call("PUT", path, redact_data(built, [hub.token]))
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):
+            digests.put(session_id, {**record, "refused_at": now})
+            outcome.say(f"evo-hub: session digest not pushed: {exc}")
+            return exc.status != 401
         state.mark_down(hub.url, _now())
         digests.put(session_id, record)
         outcome.say(f"evo-hub: session digest not pushed, the hub did not answer ({exc}); a later Stop pushes it")
         return False
-    except HubError as exc:
-        digests.put(session_id, {**record, "refused_at": now})
-        outcome.say(f"evo-hub: session digest not pushed: {exc}")
-        return exc.status != 401
     state.mark_up(hub.url)
     record.pop("refused_at", None)
     digests.put(session_id, {**record, "sha256": digest.fingerprint(built), "pending": False})
@@ -582,6 +629,30 @@ def cmd_hook_post_tool_use(args) -> int:
     return run(args)
 
 
+def cmd_hook_user_prompt(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_user_prompt(args)
+
+
+def cmd_hook_local_tool(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_local_tool(args)
+
+
+def cmd_hook_local_ask(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_local_ask(args)
+
+
+def cmd_hook_session_end(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_session_end(args)
+
+
 def register_hooks(hsub) -> None:
     hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
     ksub = hook.add_subparsers(dest="hook_name", required=True)
@@ -592,11 +663,28 @@ def register_hooks(hsub) -> None:
     ).set_defaults(func=cmd_hook_session_start)
     ksub.add_parser(
         "stop",
-        help="push the memory files of the session's directory that changed since the last sync, and the session's "
-        "digest",
+        help="push the memory files of the session's directory that changed since the last sync and the session's "
+        "digest, and queue its transcript for the hub",
     ).set_defaults(func=cmd_hook_stop)
     ksub.add_parser(
         "post-tool-use",
         help="write a tool result longer than EVO_SPOOL_THRESHOLD characters to a file under ~/.evo/tool-output and "
         "give the model its head, its tail and the file's path instead",
     ).set_defaults(func=cmd_hook_post_tool_use)
+    ksub.add_parser(
+        "user-prompt",
+        help="register the session as a local run of its hub project at its first turn and report it running "
+        "(EVO_HUB_LOCAL_SYNC=0 turns it off)",
+    ).set_defaults(func=cmd_hook_user_prompt)
+    ksub.add_parser(
+        "local-tool",
+        help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
+    ).set_defaults(func=cmd_hook_local_tool)
+    ksub.add_parser(
+        "session-end", help="report the session's local run ended, and queue its transcript for the hub"
+    ).set_defaults(func=cmd_hook_session_end)
+    ksub.add_parser(
+        "local-ask",
+        help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "
+        "local run, so the member can answer them there too; it does not wait",
+    ).set_defaults(func=cmd_hook_local_ask)

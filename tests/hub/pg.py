@@ -64,11 +64,93 @@ DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
 # Tables of migration 0014: the night's figures of a project, and what its review run finds and proposes
 REVIEW_TABLES = frozenset({"curator_figures", "findings", "proposals"})
 # Tables of migration 0015: the Curator's morning briefs, and the codes that link a Telegram chat
-BRIEF_TABLES = frozenset({"curator_briefs", "telegram_links"})
+BRIEF_TABLES = frozenset({"curator_briefs", "channel_link_codes"})  # telegram_links until 0063
 # migration 0017: the Curator's changes, and the repos whose ruleset the hub checked
 CHANGE_TABLES = frozenset({"curator_changes", "curator_repo_checks"})
 # migration 0018: the Curator's ledger
 LEDGER_TABLES = frozenset({"curator_ledger"})
+# migration 0027: accounts, their owners' policies, and the account each run took
+ACCOUNT_TABLES = frozenset({"accounts", "account_policies", "run_accounts"})
+# migration 0030: agent profiles and their versions
+PROFILE_TABLES = frozenset({"agent_profiles", "agent_profile_versions"})
+# migration 0031: group chats, their members, messages, mentions, reactions and events
+CHAT_TABLES = frozenset({"chats", "chat_members", "chat_messages", "chat_mentions", "chat_reactions", "chat_events"})
+# migration 0034: the store of plugins and their versions
+PLUGIN_TABLES = frozenset({"plugins", "plugin_versions"})
+# migration 0035: the plugins projects enabled, the versions of their config layers, and the plugins of a run
+PLUGIN_PROJECT_TABLES = frozenset({"project_plugins", "plugin_configs", "run_plugins"})
+# migration 0036: the tokens of plugin backends and what the plugin host says of each backend
+PLUGIN_BACKEND_TABLES = frozenset({"plugin_tokens", "plugin_backends"})
+# migration 0037: the versions of the hub's own settings, its branding and which features are on
+SETTINGS_TABLES = frozenset({"hub_settings"})
+# migration 0038: the outbox of the events and notifications the hub delivers to plugins
+PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
+# migration 0042: the agent types of plugins projects enabled
+AGENT_TYPE_TABLES = frozenset({"project_agent_types"})
+# migration 0043: the proposals of @builder, which an admin approves before the hub applies them
+BUILDER_TABLES = frozenset({"builder_proposals"})
+# migration 0044: the triage chats of failed runs and the triage thread of each failed run
+TRIAGE_TABLES = frozenset({"triage_chats", "run_triage"})
+# migration 0046: the BA documents of the core plugin srs, their versions, items, codes, reviews and comments
+SRS_TABLES = frozenset(
+    {
+        "srs_documents",
+        "srs_versions",
+        "srs_texts",
+        "srs_items",
+        "srs_codes",
+        "srs_item_versions",
+        "srs_refs",
+        "srs_reviews",
+        "srs_comments",
+    }
+)
+# migration 0047: the tasks of the core plugin tasks, their sprints, people, links, history and comments
+TASKS_TABLES = frozenset(
+    {"tasks_sprints", "tasks_items", "tasks_people", "tasks_links", "tasks_events", "tasks_comments"}
+)
+# migration 0052: the transcripts of sessions and their parts
+TRANSCRIPT_TABLES = frozenset({"session_transcripts", "transcript_parts"})
+# migration 0054: the deterministic facets of sessions and runs
+FACET_TABLES = frozenset({"session_facets"})
+# migration 0055: the files each git source holds in a project's latest graph, and each measure of the graph's health
+KG_HEALTH_TABLES = frozenset({"kg_source_files", "kg_health"})
+# migration 0056: each project's suite of replay tasks, and the replays of the Curator's changes
+REPLAY_TABLES = frozenset({"replay_tasks", "curator_replays"})
+# migration 0059: the history runs, and the groups of the facets of the model
+HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
+# migration 0060: the words of the history for search, and the playbook of the Curator with its deltas
+SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
+# migration 0065: the commit of the tag nightly the hub last read
+NIGHTLY_TABLES = frozenset({"hub_nightly"})
+# migration 0067: the release schedules of projects, their cycles, the runs of each cycle and every check
+RELEASE_TABLES = frozenset({"release_schedules", "release_cycles", "release_runs", "release_tags", "release_checks"})
+# migration 0068: the emails members listed, one member an address
+USER_EMAIL_TABLES = frozenset({"user_emails"})
+# migration 0069: the conflicts @ba found in the BA documents of the core plugin srs
+SRS_FINDING_TABLES = frozenset({"srs_findings"})
+# migration 0070: the settle chat of each version of a BA document whose review left conflicts to settle
+SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
+# migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
+SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
+# migration 0073: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
+CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
+# migration 0074: the registry of a project's signal keys, its signals, and the ingest keys services write them with
+SIGNAL_TABLES = frozenset({"signal_keys", "signals", "signal_ingest_keys"})
+# migration 0075: what an agent or the hub proposes on a canvas, for a writer to accept or reject
+CANVAS_PROPOSAL_TABLES = frozenset({"canvas_proposals"})
+# migration 0076: the items judging runs of @strategist judged for the value check of canvas, with their verdicts
+CANVAS_JUDGING_TABLES = frozenset({"canvas_judgings"})
+# migration 0077: the baselines of canvas with what each asks of a claim, and the hub's events the Loop reads by cursor
+CANVAS_BASELINE_TABLES = frozenset({"canvas_baselines", "canvas_baseline_items", "hub_events"})
+# migration 0079: the revisions of each project's autonomy policy
+POLICY_TABLES = frozenset({"autonomy_policies"})
+# migration 0081: the merge queue on GitLab and its ledger
+MERGE_TABLES = frozenset({"merge_queue", "merge_events"})
+# migration 0083: the audit samples of the merge queue
+SAMPLE_TABLES = frozenset({"merge_samples"})
+# migration 0084: the breaker of each repo of the merge queue
+BREAKER_TABLES = frozenset({"merge_breakers"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

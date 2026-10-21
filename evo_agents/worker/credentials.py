@@ -39,22 +39,28 @@
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values, in the redaction too.
 
-``git_credential`` and ``print_env`` are the sides of ``evo-agents worker git-credential --run N get|store|erase``
-(git's credential protocol; store and erase do nothing) and ``evo-agents worker env --run N``. This module is standard
-library only, so git's helper starts without the worker extra; the daemon's side imports ``hubapi`` when it runs.
+The other side of the socket, ``evo-agents worker git-credential --run N get|store|erase`` (git's credential
+protocol; store and erase do nothing), ``evo-agents worker env --run N`` and the asks of a Builder's push and of a chat
+run's ``repo open``, is ``evo_agents.worker.credential_commands``, over ``ask``. This module is standard library only,
+so git's helper starts without the worker extra; the daemon's side imports ``hubapi`` when it runs.
 
-A run of the Curator (``RunCredentials.guarded``) never hands its agent a push credential, on GitHub or GitLab alike:
-the agent's environment gets the env leases and git configuration that empties the list of credential helpers
-(``GUARDED_AGENT_CONFIG``), never this run's helper; and the socket answers ``op git`` only for a ticket the daemon
-issues for one git command of its own (``RunCredentials.ticketed``: TICKET_VARIABLE in that command's environment,
-valid while the command runs, with git's hooks and fsmonitor off and https the one protocol, DAEMON_GIT_CONFIG). Its
-socket answers ``op env`` likewise only for a ticket of the pane the daemon opens for a takeover (``pane_command``:
-ENV_TICKET_VARIABLE on that pane's one ``evo-agents worker env``, good for one answer within PANE_TICKET_SECONDS), so
-code the run does not trust, such as a verify command or a hidden check of a judge run, cannot read the env leases (a
-subscription token among them) from the socket. A
-Builder's agent that reports a step done asks the daemon to push instead (``{"op": "push", "repo", "title"}``,
-``ask_push``): the daemon pushes that repo's own branch, curator/..., from its worktree, with the run's credential, and
-answers what it pushed.
+A run of the Curator, and a release run (``RunCredentials.guarded``), never hands its agent a push credential, on GitHub
+or GitLab alike: the agent's environment gets the env leases and git configuration that empties the list of credential
+helpers (``GUARDED_AGENT_CONFIG``), never this run's helper; and the socket answers ``op git`` only for a ticket the
+daemon issues for one git command of its own (``RunCredentials.ticketed``: TICKET_VARIABLE in that command's
+environment, valid while the command runs, with git's hooks and fsmonitor off and https the one protocol,
+DAEMON_GIT_CONFIG). Its socket answers ``op env`` likewise only for a ticket of the pane the daemon opens for a takeover
+(``pane_command``: ENV_TICKET_VARIABLE on that pane's one ``evo-agents worker env``, good for one answer within
+PANE_TICKET_SECONDS), so code the run does not trust, such as a verify command or a hidden check of a judge run, cannot
+read the env leases (a subscription token among them) from the socket. A Builder's agent that reports a step done asks
+the daemon to push instead (``{"op": "push", "repo", "title"}``, ``credential_commands.ask_push``): the daemon pushes
+that repo's own branch, curator/..., from its worktree, with the run's credential, and answers what it pushed.
+
+A chat run's agent opens a repo of its project the same way (``{"op": "open", "repo"}``, ``credential_commands.ask_open``, ``evo-agents
+worker repo open``): the daemon asks the hub to add the repo to the run, takes the run's leases again so they cover it
+(``RunCredentials.add``), fetches its checkout with them and makes its worktree (``runner.chat``), and answers the
+worktree's path. The agent gets that path and nothing else: no lease value, and a guarded run's agent no credential
+helper either, since ``_hand_over`` gives it none whatever the run's repos are.
 """
 
 from __future__ import annotations
@@ -72,7 +78,7 @@ import shlex
 import socket
 import struct
 import time
-from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
@@ -98,7 +104,6 @@ DIR_MODE = 0o700
 SOCKET_TIMEOUT = 10.0  # seconds a client of the socket has to ask, and the daemon to answer
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_ANSWER_BYTES = 1024 * 1024
-MAX_INPUT_BYTES = 64 * 1024  # what git writes to its helper
 SOCKET_PATH_BYTES = 100  # a longer socket path is bound and reached from its directory: sun_path holds 104 on macOS
 TAKE_TRIES = 5  # asks for a run's leases while the hub does not answer, the backoff between them
 RELEASE_TRIES = 5
@@ -108,6 +113,7 @@ TICKET_VARIABLE = "EVO_GIT_TICKET"  # a ticket of one git command of the daemon,
 ENV_TICKET_VARIABLE = "EVO_ENV_TICKET"  # a ticket of the pane of a guarded run, which `worker env` hands the socket
 PANE_TICKET_SECONDS = 120.0  # how long a pane's ticket waits for its one `worker env`
 PUSH_TIMEOUT = 900.0  # seconds a push the daemon makes for a Builder's agent may take, its renewal included
+OPEN_TIMEOUT = 600.0  # seconds the daemon may take to open a repo for a chat run's agent: the hub, the leases, a fetch
 # What a guarded run's agent gets of git's configuration: no credential helper at all, for any URL, so neither the
 # run's lease nor the machine's own helpers answer it.
 GUARDED_AGENT_CONFIG = (("credential.helper", ""),)
@@ -123,7 +129,6 @@ DAEMON_GIT_CONFIG = (
 MISSING_NOTE = "no leased credential for {origin}: {reason}; git uses this machine's own"
 NOT_COVERED = "no lease of the run covers the origin of this worker's checkout"
 GIT_ACTIONS = ("get", "store", "erase")
-_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _SCP = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 _held: dict[str, set[int]] = {}  # each lease value a run of this process holds -> those runs, for ``scrub``
@@ -385,10 +390,12 @@ class RunCredentials:
         guarded: bool = False,
     ):
         self.run_id = int(run_id)
-        # A run of the Curator: no push credential reaches its agent (see the module's docstring).
+        # A run of the Curator or a release run: no push credential reaches its agent (see the module's docstring).
         self.guarded = guarded
         # The daemon's push of a repo for a Builder's agent, which asks for it on the socket.
         self.pusher: Callable[[str, str | None], Awaitable[dict]] | None = None
+        # The daemon's open of a repo of the project for a chat run's agent, which asks for it on the socket.
+        self.opener: Callable[[str], Awaitable[dict]] | None = None
         self._tickets: set[str] = set()  # those of the daemon's git commands that run now
         self._pane_tickets: dict[str, float] = {}  # a guarded run's pane: ticket -> when it ends (time.monotonic)
         self.home = home
@@ -438,7 +445,9 @@ class RunCredentials:
         self.hub = hub
         self.origins = {repo: list(urls) for repo, urls in origins.items()}
         if self.pusher is not None:  # a Builder's agent pushes through the socket, leases or not
-            await self._open_for_push()
+            await self._open_for_agent("its agent cannot have a step pushed")
+        elif self.opener is not None:  # and a chat run's agent opens its repos through it
+            await self._open_for_agent("its agent cannot open a repo")
         backoff = Backoff()
         answer = None
         for attempt in range(1, TAKE_TRIES + 1):
@@ -571,34 +580,37 @@ class RunCredentials:
         finally:
             self._tickets.discard(ticket)
 
-    def _note_missing(self, origins: Mapping[str, Sequence[str]]) -> None:
-        """A ``system`` event for each origin of the run git reaches with the machine's credentials."""
+    def _note_missing(self, origins: Mapping[str, Sequence[str]], only: Collection[str] | None = None) -> None:
+        """A ``system`` event for each origin of the run git reaches with the machine's credentials: of every repo of
+        the hub's answer and of ``origins``, or of those of ``only``."""
         said: set[str] = set()
         for item in self.missing:
             repo = str(item.get("repo") or "")
+            if only is not None and repo not in only:
+                continue
             local = list(origins.get(repo) or ())
             origin = item.get("origin") or (local[0] if local else repo)
             said.add(repo)
             reason = str(item.get("reason") or "the hub gave no reason")
             self.note(MISSING_NOTE.format(origin=origin, reason=reason), repo=repo, origin=item.get("origin"))
         for repo, urls in origins.items():
-            for url in urls:
+            for url in urls if only is None or repo in only else ():
                 if repo not in said and covering(self.leases, url) is None:
                     said.add(repo)
                     self.note(MISSING_NOTE.format(origin=url, reason=NOT_COVERED), repo=repo, origin=url)
 
     # The socket
 
-    async def _open_for_push(self) -> None:
+    async def _open_for_agent(self, without: str) -> None:
+        """Open the run's socket for what its agent asks the daemon, leases or not; ``without`` says what the agent
+        cannot do when it does not open."""
         if self._server is not None:
             return
         try:
             await self._open()
         except OSError as exc:
             log.error("the run's socket did not open", extra={"run_id": self.run_id, "error": str(exc)})
-            self.note(
-                f"The run's socket did not open ({type(exc).__name__}: {exc}): its agent cannot have a step pushed."
-            )
+            self.note(f"The run's socket did not open ({type(exc).__name__}: {exc}): {without}.")
 
     async def _open(self) -> None:
         self.path.parent.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
@@ -658,7 +670,9 @@ class RunCredentials:
             return {"env": dict(self.agent_vars)}
         if op == "push":
             return await self._push(request)
-        return {"error": "the socket answers op git, op env and op push"}
+        if op == "open":
+            return await self._open_repo(request)
+        return {"error": "the socket answers op git, op env, op push and op open"}
 
     def _ticket_ok(self, ticket) -> bool:
         """Whether ``ticket`` is one of a git command of the daemon that runs now."""
@@ -688,6 +702,22 @@ class RunCredentials:
             return await asyncio.wait_for(self.pusher(repo, title if isinstance(title, str) else None), PUSH_TIMEOUT)
         except TimeoutError:
             return {"error": f"the push of {repo} took more than {PUSH_TIMEOUT:g}s"}
+
+    async def _open_repo(self, request: dict) -> dict:
+        """A chat run's agent asks the daemon to open a repo of the project (``opener``): the worktree's ``path``, or
+        ``error``."""
+        repo = request.get("repo")
+        if self.opener is None:
+            return {"error": "this run opens no repo for its agent: only a chat run's agent opens the repos it needs"}
+        if not isinstance(repo, str) or not repo.strip():
+            return {"error": "name the repo to open"}
+        try:
+            return await asyncio.wait_for(self.opener(repo.strip()), OPEN_TIMEOUT)
+        except TimeoutError:
+            return {"error": f"opening {repo.strip()} took more than {OPEN_TIMEOUT:g}s"}
+        except Exception as exc:  # the agent gets why, rather than a socket that never answers
+            log.exception("a repo was not opened for the run's agent", extra={"run_id": self.run_id, "repo": repo})
+            return {"error": f"opening {repo.strip()} failed: {type(exc).__name__}: {exc}"}
 
     async def git_lease(self, request: Mapping) -> Lease | None:
         """The git lease for the URL of a request of git's helper, asked for again first when it is a GitHub token
@@ -752,6 +782,54 @@ class RunCredentials:
             await self._serve_leases()
             log.info("credentials taken again", extra={"run_id": self.run_id, "leases": len(self.leases)})
             return True
+
+    async def swap(self) -> bool:
+        """Ask again for the run's leases once the hub moved one of them to another account (``runner.limits``): the
+        new value replaces the old in memory, in what the agent and git get, and on the run's socket, masked like
+        every value. Whether the hub answered."""
+        from evo_agents.worker.hubapi import HubProblem
+
+        async with self._lock:
+            if self.hub is None:
+                return False
+            try:
+                answer = await self.hub.credentials(self.run_id)
+            except HubProblem as exc:
+                log.warning("the run's leases were not taken again", extra={"run_id": self.run_id, "error": str(exc)})
+                return False
+            self._keep(answer)
+            await self._serve_leases()
+            log.info("credentials swapped", extra={"run_id": self.run_id, "leases": len(self.leases)})
+            return True
+
+    async def add(self, repo: str, urls: Sequence[str]) -> None:
+        """Take the run's leases again once the hub added ``repo`` to the run (a repo a chat run's agent opened),
+        ``urls`` the origin of its checkout here: the hub leases for the run's repos, so the leases now cover it, and
+        the run's git gets its configuration (``_hand_over``; a guarded run's agent gets no credential, whatever the
+        repos). When the hub does not answer or refuses, the leases held stay, ``repo`` is one the hub leased nothing
+        for (``unleased``: a GitHub token of its owner was made for the other repos), and git reaches it with this
+        machine's own credentials, as the note says."""
+        from evo_agents.worker.hubapi import HubProblem, Refused
+
+        async with self._lock:
+            self.origins[repo] = list(urls)
+            if self.hub is None:
+                return
+            asked, self.asked = self.asked, True
+            try:
+                answer = await self.hub.credentials(self.run_id)
+            except HubProblem as exc:
+                if isinstance(exc, Refused):  # nothing was leased by this ask
+                    self.asked = asked
+                reason = f"the hub did not lease the run its credentials again ({exc})"
+                origin = urls[0] if urls else repo
+                self.missing.append({"repo": repo, "origin": origin, "reason": reason})
+                self.note(MISSING_NOTE.format(origin=origin, reason=reason), repo=repo, origin=origin)
+                return
+            self._keep(answer)
+            await self._serve_leases()
+            log.info("credentials taken for a repo opened", extra={"run_id": self.run_id, "repo": repo})
+        self._note_missing({repo: list(urls)}, only=(repo,))
 
     async def with_renewal(self, repo: str, push: Callable[[], Awaitable[T]]) -> T:
         """``push()``, a push of the daemon to ``repo``'s origin; when the origin refuses its credential and a lease of
@@ -845,81 +923,3 @@ async def _wait_or(event: asyncio.Event | None, seconds: float) -> None:
         return
     with contextlib.suppress(asyncio.TimeoutError):
         await asyncio.wait_for(event.wait(), max(0.0, seconds))
-
-
-# The commands
-
-
-def read_attributes(stream) -> dict[str, str]:
-    """git's ``key=value`` lines up to an empty line or the end, ``url=`` taken apart into protocol, host and path."""
-    found: dict[str, str] = {}
-    size = 0
-    for line in stream:
-        size += len(line)
-        line = line.rstrip("\r\n")
-        if not line or size > MAX_INPUT_BYTES:
-            break
-        key, sep, value = line.partition("=")
-        if sep:
-            found[key] = value
-    url = found.get("url")
-    if url and "host" not in found:
-        parts = urlsplit(url)
-        found.setdefault("protocol", parts.scheme)
-        if parts.hostname:
-            found["host"] = f"{parts.hostname}:{parts.port}" if parts.port else parts.hostname
-        found.setdefault("path", parts.path.lstrip("/"))
-    return found
-
-
-def _line_safe(value) -> bool:
-    return isinstance(value, str) and bool(value) and not any(char in value for char in "\n\r\0")
-
-
-def git_credential(run_id: int, action: str, stdin, stdout, stderr, home: WorkerHome | None = None) -> int:
-    """``evo-agents worker git-credential --run N ACTION``: for ``get``, the username and password of run N's lease
-    for what git asks, from the run's socket; ``store``, ``erase`` and any other action read git's lines and do
-    nothing. Nothing is printed when the run holds no lease for it: git then fails to authenticate."""
-    attributes = read_attributes(stdin)
-    if action != "get":
-        return 0
-    request = {"op": "git", **{key: attributes.get(key, "") for key in ("protocol", "host", "path")}}
-    ticket = os.environ.get(TICKET_VARIABLE)
-    if ticket:
-        request["ticket"] = ticket
-    answer = ask(home or WorkerHome(), run_id, request)
-    if answer is None:
-        stderr.write(f"evo-agents: run {run_id} holds no credentials on this worker\n")
-        return 0
-    username, password = answer.get("username"), answer.get("password")
-    if _line_safe(username) and _line_safe(password):
-        stdout.write(f"username={username}\npassword={password}\n")
-    return 0
-
-
-def ask_push(home: WorkerHome, run_id: int, repo: str, title: str | None) -> dict:
-    """``evo-agents worker step`` of a Builder of the Curator: ask the daemon to push the run's branch of ``repo``;
-    its answer (``branch``, ``head``, ``changed``, ``default``, ``commits``, or ``error``)."""
-    answer = ask(home, run_id, {"op": "push", "repo": repo, "title": title}, timeout=PUSH_TIMEOUT + SOCKET_TIMEOUT)
-    return answer if answer is not None else {"error": f"run {run_id} holds no socket on this worker to push through"}
-
-
-def print_env(
-    run_id: int, stdout, stderr, home: WorkerHome | None = None, environ: Mapping[str, str] | None = None
-) -> int:
-    """``evo-agents worker env --run N``: ``export NAME=value`` lines of what run N's leases add to its agent's
-    environment, for a shell to evaluate; 1 when the run holds no socket here, or answers nothing (a run of the
-    Curator asked without its pane's ticket, ENV_TICKET_VARIABLE)."""
-    request: dict = {"op": "env"}
-    ticket = (os.environ if environ is None else environ).get(ENV_TICKET_VARIABLE)
-    if ticket:
-        request["ticket"] = ticket
-    answer = ask(home or WorkerHome(), run_id, request)
-    env = answer.get("env") if isinstance(answer, dict) else None
-    if not isinstance(env, dict):
-        stderr.write(f"evo-agents: run {run_id} holds no credentials on this worker\n")
-        return 1
-    for key, value in sorted(env.items()):
-        if _NAME.match(str(key)) and isinstance(value, str) and "\0" not in value:
-            stdout.write(f"export {key}={shlex.quote(value)}\n")
-    return 0

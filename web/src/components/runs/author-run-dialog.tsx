@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
-import { InlineError, useWriteFailure } from "@/components/admin/notice";
+import { InlineError, useWriteFailure } from "@/components/feedback/notice";
 import { useStatusText } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -14,15 +14,20 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { type Worker, WORKERS_HREF, workersQuery } from "@/components/workers/queries";
+import { agentModels, agentProblems, agentWorkers, AUTHOR_SKILL, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-import { ModelField, Outlook } from "./dispatch-fields";
+import { AccountField } from "./account-field";
+import { accountField, BY_RULES } from "./account-model";
+import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
+import { Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
 import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest, workerFitsNow } from "./model";
+import { ModelField } from "./model-field";
 import {
   AUTHOR_RUNTIME,
   AUTHOR_TIMEOUT_CHOICES,
@@ -110,23 +115,27 @@ function AuthorRunForm({
   const [modelText, setModelText] = useState("");
   const [workerChoice, setWorkerChoice] = useState<number | null>(null);
   const [timeout, setTimeoutHours] = useState<AuthorTimeout>(DEFAULT_AUTHOR_TIMEOUT);
+  const [account, setAccount] = useState(BY_RULES);
+  const agents = useAgentChoice(project);
 
   const harness = projectState.data ? harnessRepo(projectState.data.harness) : undefined;
-  const mine: Worker[] = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const own: Worker[] = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const mine = agentWorkers(own, agents.agent);
   const fit = { project, runtime: AUTHOR_RUNTIME, repos: harness ? [harness] : [] };
   const workerId = authorWorker(mine, fit, workerChoice);
   const model = readModel(modelText, AUTHOR_RUNTIME);
-  const suggestions = modelSuggestions(mine, AUTHOR_RUNTIME);
+  const suggestions = agentModels(agents.agent, modelSuggestions(mine, AUTHOR_RUNTIME));
+  const problems = agentProblems(agents.agent, { runtime: AUTHOR_RUNTIME, model: model.model, workers: own, skill: AUTHOR_SKILL });
   const outlook = dispatchOutlook(1, mine, fit, workerId);
   const workersLoading = workersState.isPending || me.isPending;
-  const noWorkers = !workersLoading && mine.length === 0;
+  const noWorkers = !workersLoading && own.length === 0;
   const noHarness = projectState.isSuccess && harness === null;
   const bytes = utf8Bytes(request);
   const pending = write.isPending;
   const revise = planId !== null;
   const planTitle = (plan.data?.body as { title?: unknown } | undefined)?.title;
   const planName = typeof planTitle === "string" && planTitle.trim() ? planTitle : (planId ?? "");
-  const runnable = workerId !== null && !noHarness && model.problem === null;
+  const runnable = workerId !== null && !noHarness && model.problem === null && problems.length === 0;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -143,6 +152,8 @@ function AuthorRunForm({
         runtime: AUTHOR_RUNTIME,
         model: model.model,
         timeout_h: timeout,
+        ...accountField(account),
+        ...profileField(agents.agent),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -155,7 +166,7 @@ function AuthorRunForm({
     ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") })
     : null;
   const apiDetail =
-    write.isError && isApiError(write.error) && (write.error.info.status === 409 || write.error.info.status === 422)
+    write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status)
       ? tPlanRun("errors.hubSays", { message: write.error.info.message })
       : null;
   const requestDescribed = [`${ids}-request-hint`, problem ? `${ids}-request-problem` : null].filter(Boolean).join(" ");
@@ -234,13 +245,22 @@ function AuthorRunForm({
           ) : null}
         </div>
 
+        <AgentField choice={agents} problems={problems} disabled={pending} />
+
         <div className="flex min-w-0 flex-col gap-1" data-testid="author-run-runtime">
           <span className="text-sm font-medium">{tDispatch("runtime")}</span>
           <p className="text-sm">{KNOWN_RUNTIMES[AUTHOR_RUNTIME]}</p>
           <p className="text-xs text-pretty text-muted-foreground">{t("runtimeHint")}</p>
         </div>
 
-        <ModelField value={modelText} onChange={setModelText} runtime={AUTHOR_RUNTIME} suggestions={suggestions} problem={model.problem} disabled={pending} />
+        <ModelField
+          value={modelText}
+          onChange={setModelText}
+          runtime={AUTHOR_RUNTIME}
+          models={{ [AUTHOR_RUNTIME]: suggestions }}
+          problem={model.problem}
+          disabled={pending}
+        />
 
         <div className="flex min-w-0 flex-col gap-1.5" data-testid="author-run-worker">
           <label htmlFor={`${ids}-worker`} className="text-sm font-medium">
@@ -268,8 +288,9 @@ function AuthorRunForm({
             >
               {mine.map((worker) => (
                 <NativeSelectOption key={worker.id} value={String(worker.id)}>
-                  {tDispatch("workerOption", {
+                  {tDispatch(worker.shared ? "workerOptionShared" : "workerOption", {
                     name: worker.name,
+                    owner: worker.owner,
                     status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status),
                   })}
                   {workerFitsNow(worker, fit) ? "" : ` ${t("workerCannot")}`}
@@ -281,6 +302,8 @@ function AuthorRunForm({
             {harness ? t("workerHint", { harness }) : t("workerHintNoHarness")}
           </p>
         </div>
+
+        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">
@@ -310,7 +333,7 @@ function AuthorRunForm({
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        <Outlook outlook={outlook} project={project} subject="author" />
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} subject="author" />}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button

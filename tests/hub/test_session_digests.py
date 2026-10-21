@@ -33,7 +33,17 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.digests import DIGEST_DAYS, prune_digests
 from evo_agents.hub.worker import queue
 from tests.hub.live import bearer, sql
-from tests.hub.test_digest import SESSION, answered, result, said, session_lines, tool_use, write_transcript
+from tests.hub.test_digest import (
+    SESSION,
+    SPOOL,
+    answered,
+    output_note,
+    result,
+    said,
+    session_lines,
+    tool_use,
+    write_transcript,
+)
 from tests.hub.test_hooks import closed_port_url, live_project, machine
 from tests.hub.test_mcp import MCP_HEADERS, call
 from tests.hub.test_migrate import move_to
@@ -222,7 +232,7 @@ def test_the_hub_keeps_the_context_figures_of_a_digest_and_digest_show_returns_t
     # The hub's MCP answers on its public URL only, which the fixture's hub has none of: the same database behind one.
     config = live.hub_config(hub.db, hub.tmp_path, github, public_url="https://hub.test")
     with TestClient(create_app(config), base_url="https://hub.test") as client:
-        message = call(7, "digest_show", {"session_id": SESSION})
+        message = call(7, "digest_show", {"session_id": SESSION}, data=True)
         headers = {**hub.headers["reader"], **MCP_HEADERS, "X-Evo-Project": PROJECT}
         answer = client.post("/mcp", json=message, headers=headers)
     assert answer.status_code == 200, answer.text
@@ -236,14 +246,43 @@ def test_the_hub_keeps_the_context_figures_of_a_digest_and_digest_show_returns_t
 
 def test_a_digest_of_a_client_that_did_not_count_the_context_reads_back_null(hub):
     body = a_digest(hub.tmp_path)
-    older = {
-        key: value
-        for key, value in body.items()
-        if key not in ("peak_context_tokens", "compactions", "tool_result_chars")
-    }
+    figures = ("peak_context_tokens", "compactions", "tool_result_chars", *SPOOL_FIGURES)
+    older = {key: value for key, value in body.items() if key not in figures}
     assert put(hub, "owner", older).status_code == 200
     digest = shown(hub, "reader").json()["digest"]
-    assert (digest["peak_context_tokens"], digest["compactions"], digest["tool_result_chars"]) == (None, None, None)
+    assert [digest[key] for key in figures] == [None] * len(figures)
+
+
+SPOOL_FIGURES = ("spool_results", "spool_original_chars", "spool_reads")
+
+
+def test_the_hub_keeps_the_spool_figures_of_a_digest_and_digest_show_returns_them(hub, github):
+    lines = [
+        *session_lines(),
+        answered("msg_9", 20, tool_use("toolu_9", "Bash", command="cat app.log")),
+        result("toolu_9", 21, output_note(42_442, "toolu_9")),
+        answered("msg_10", 22, tool_use("toolu_10", "Read", file_path=str(SPOOL / "toolu_9.txt"), offset=1, limit=9)),
+        result("toolu_10", 23, "the spool file's first lines"),
+    ]
+    body = a_digest(hub.tmp_path, lines)
+    assert [body[key] for key in SPOOL_FIGURES] == [1, 42_442, 1]
+    for key in SPOOL_FIGURES:
+        assert put(hub, "owner", {**body, key: -1}).status_code == 422
+    assert put(hub, "owner", body).status_code == 200
+    stored = sql(hub.db, select(tables.session_digests.c.body))[0][0]
+    assert [stored[key] for key in SPOOL_FIGURES] == [1, 42_442, 1]
+    assert "the spool file's first lines" not in json.dumps(stored), "only counts reach the hub"
+    digest = shown(hub, "reader").json()["digest"]
+    assert [digest[key] for key in SPOOL_FIGURES] == [1, 42_442, 1]
+
+    config = live.hub_config(hub.db, hub.tmp_path, github, public_url="https://hub.test")
+    with TestClient(create_app(config), base_url="https://hub.test") as client:
+        message = call(8, "digest_show", {"session_id": SESSION}, data=True)
+        headers = {**hub.headers["reader"], **MCP_HEADERS, "X-Evo-Project": PROJECT}
+        answer = client.post("/mcp", json=message, headers=headers)
+    assert answer.status_code == 200, answer.text
+    shown_digest = answer.json()["result"]["structuredContent"]["digest"]
+    assert [shown_digest[key] for key in SPOOL_FIGURES] == [1, 42_442, 1]
 
 
 def test_a_digest_keeps_its_skills_and_kinds_and_one_of_an_older_client_reads_them_null(hub):

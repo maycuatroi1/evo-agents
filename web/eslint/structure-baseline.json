@@ -3,25 +3,21 @@
   "maxLines": {
     "src/components/admin/grant-dialog.tsx": 413,
     "src/components/admin/member-page.tsx": 405,
-    "src/components/curator/charter-form.tsx": 477,
     "src/components/curator/curator-page.tsx": 442,
-    "src/components/curator/model.ts": 613,
-    "src/components/inbox/decision-view.tsx": 731,
-    "src/components/inbox/mobile-decision.tsx": 454,
+    "src/components/inbox/decision-view.tsx": 630,
+    "src/components/inbox/mobile-decision.tsx": 442,
     "src/components/kg/build-status.tsx": 429,
     "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
-    "src/components/runs/agent-trace.tsx": 702,
-    "src/components/runs/dispatch-dialog.tsx": 547,
-    "src/components/runs/queries.ts": 453,
-    "src/components/runs/run-chat.tsx": 493,
-    "src/components/runs/run-log.tsx": 603,
-    "src/components/runs/trace-model.ts": 551,
-    "src/components/secrets/secret-dialog.tsx": 501,
-    "src/components/shell/shortcuts.tsx": 524,
+    "src/components/runs/agent-trace.tsx": 525,
+    "src/components/runs/queries.ts": 428,
+    "src/components/runs/run-chat.tsx": 456,
+    "src/components/runs/run-log.tsx": 582,
+    "src/components/runs/trace-model.ts": 548,
+    "src/components/secrets/secret-dialog.tsx": 474,
+    "src/components/shell/shortcuts.tsx": 487,
     "src/components/ui/sidebar.tsx": 712,
-    "src/components/workers/register-dialog.tsx": 726,
-    "src/components/workers/worker-detail.tsx": 468
+    "src/components/workers/register-dialog.tsx": 726
   },
   "imports": {
     "src/components/admin/overview-model.ts": [
@@ -93,9 +89,6 @@
     "src/components/data/filter-sheet.test.tsx": [
       "src/components/admin/filter-bar.tsx"
     ],
-    "src/components/feedback/toast.tsx": [
-      "src/components/admin/notice.tsx"
-    ],
     "src/components/home/author-waiting.tsx": [
       "src/components/kg/use-now.ts",
       "src/components/runs/queries.ts"
@@ -165,7 +158,6 @@
       "src/components/admin/use-paged-query.ts"
     ],
     "src/components/inbox/mobile-decision.tsx": [
-      "src/components/plans/links.ts",
       "src/components/runs/queries.ts",
       "src/components/runs/trace-look.ts",
       "src/components/runs/trace-model.ts",
@@ -287,17 +279,13 @@
       "src/components/runs/step-runs.tsx"
     ],
     "src/components/runs/agent-trace.tsx": [
-      "src/components/kg/use-now.ts",
       "src/components/memories/markdown.tsx"
     ],
     "src/components/runs/author-run-dialog.tsx": [
-      "src/components/admin/notice.tsx",
       "src/components/workers/model.ts",
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/dispatch-dialog.tsx": [
-      "src/components/admin/notice.tsx",
-      "src/components/workers/model.ts",
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/dispatch-fields.tsx": [
@@ -315,9 +303,7 @@
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/plan-run-dialog.tsx": [
-      "src/components/admin/notice.tsx",
       "src/components/plans/status.tsx",
-      "src/components/workers/model.ts",
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/plan-run.tsx": [
@@ -348,7 +334,6 @@
       "src/components/inbox/queries.ts"
     ],
     "src/components/runs/run-detail.tsx": [
-      "src/components/curator/badges.tsx",
       "src/components/curator/queries.ts",
       "src/components/plans/links.ts",
       "src/components/workers/queries.ts"
@@ -361,8 +346,7 @@
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/run-plan-steps.tsx": [
-      "src/components/plans/links.ts",
-      "src/components/plans/status.tsx"
+      "src/components/plans/links.ts"
     ],
     "src/components/runs/run-terminal.tsx": [
       "src/components/kg/use-now.ts"
@@ -448,9 +432,6 @@
     ],
     "src/components/workers/worker-detail.tsx": [
       "src/components/runs/worker-runs.tsx"
-    ],
-    "src/components/workers/workers-page.tsx": [
-      "src/components/kg/use-now.ts"
     ],
     "src/lib/kg/routes.ts": [
       "src/components/shell/nav.ts"

@@ -279,7 +279,7 @@ class ExportResult:
         }
 
 
-def _check_summary(summary: dict, hub) -> None:
+def check_summary(summary: dict, hub) -> None:
     revision, digest = summary.get("revision"), summary.get("digest")
     if type(revision) is not int or revision < 1 or not isinstance(digest, str) or not DIGEST.fullmatch(digest):
         raise HubError(f"the hub at {hub.url} described plan {summary.get('plan_id')} without a revision and digest")
@@ -361,7 +361,7 @@ def _edited_note(relative: str, path: Path, project: str) -> str:
     )
 
 
-def _current_copy(path: Path, summary: dict, project: str) -> str | None:
+def current_copy(path: Path, summary: dict, project: str) -> str | None:
     """The text a copy at ``path`` would get, when the file already holds the plan ``summary`` describes, so the
     plan need not be fetched; None when it must be."""
     try:
@@ -395,7 +395,7 @@ def export(
     for summary in sorted(listed, key=lambda s: str(s.get("plan_id"))):
         plan_id, area = summary.get("plan_id"), summary.get("area")
         path = mirror_path(root, area, str(plan_id))
-        _check_summary(summary, hub)
+        check_summary(summary, hub)
         on_hub.add(plan_id)
         relative = path.relative_to(root).as_posix()
         if keep_edited and os.path.lexists(path) and not _intact_copy(path, project):
@@ -404,12 +404,12 @@ def export(
                 {"plan_id": plan_id, "area": area, "revision": summary["revision"], "path": relative, "status": "kept"}
             )
             continue
-        text = _current_copy(path, summary, project)
+        text = current_copy(path, summary, project)
         if text is None:
             plan = hub.call("GET", plans_path(project, plan_id))
             if plan.get("plan_id") != plan_id or plan.get("body", {}).get("id") != plan_id:
                 raise HubError(f"the hub answered for plan {plan_id} with another plan; nothing more was written")
-            _check_summary(plan, hub)
+            check_summary(plan, hub)
             text = render(plan["body"], project, plan["revision"], plan["digest"])
             summary = plan
         old = path.read_bytes() if path.exists() else None

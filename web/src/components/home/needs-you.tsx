@@ -22,12 +22,21 @@ const loadSheet = () => import("@/components/inbox/decision-sheet");
 export const LazyDecisionSheet = dynamic(() => loadSheet().then((module) => module.DecisionSheet), { ssr: false });
 const preloadSheet = () => void loadSheet();
 
-function useWhere() {
+/**
+ * Where a decision comes from: the project, its plan and step; or, for an author run's (it has no plan), the run's title
+ * as the overview lists it among the active runs.
+ */
+function useWhere(overview: Overview) {
   const t = useTranslations("home.needs");
-  return (item: { project: string; plan_id: string; plan_title: string | null; step_key: string | null }) =>
-    item.step_key !== null
-      ? t("where", { project: item.project, plan: item.plan_title ?? item.plan_id, step: item.step_key })
-      : t("wherePlan", { project: item.project, plan: item.plan_title ?? item.plan_id });
+  return (item: OverviewDecision) => {
+    if (item.category === "triage") return t("whereTriage", { project: item.project });
+    if (item.plan_id === null) {
+      const title = overview.active_runs.find((run) => run.project === item.project && run.id === item.run_id)?.title ?? null;
+      return t("whereAuthor", { project: item.project, title: title ?? "", titled: title ? "yes" : "no" });
+    }
+    const plan = item.plan_title ?? item.plan_id;
+    return item.step_key !== null ? t("where", { project: item.project, plan, step: item.step_key }) : t("wherePlan", { project: item.project, plan });
+  };
 }
 
 /** "parks in 23 h 54 min" while the run waits, "parked 3 hours ago" once it has. */
@@ -46,7 +55,7 @@ function ParkTiming({ decision }: { decision: OverviewDecision }) {
 
 export function NeedsYou({ overview, onAnswer }: { overview: Overview; onAnswer: (decision: OverviewDecision) => void }) {
   const t = useTranslations("home.needs");
-  const where = useWhere();
+  const where = useWhere(overview);
   const decisions = decisionsForYou(overview);
   if (decisions.length === 0) return null;
   const total = Math.max(overview.counts.waiting_on_you, decisions.length);

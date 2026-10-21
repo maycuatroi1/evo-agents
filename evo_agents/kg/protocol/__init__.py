@@ -6,6 +6,9 @@ yields the same objects from a generator. Every run starts with ``hello`` and en
 Fields beyond the envelope other protocols already have: a revision and content hash on every item,
 explicit tombstones, a ``complete`` flag on scoped listings, and deterministic IDs of the form
 ``<source_id>:<kind>:<native_key>``.
+
+An item's label may name an ``audience``: principals ``chat:<id>`` and ``grant:<project>:<level>``, sorted, without
+repeats; only a reader who is every one of them sees the item. A label is not content, so no hash covers it.
 """
 
 from __future__ import annotations
@@ -23,7 +26,11 @@ ID_PATTERN = r"^[a-z0-9][a-z0-9_.-]*:[a-z0-9_.-]+:.+$"
 TIME_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
 HASH_PATTERN = r"^sha256:[0-9a-f]{64}$"
 CAPABILITIES = ("list_complete", "tombstones", "rev_exact", "history", "conditional_write")
+# A principal of a label's audience: a member of chat <id>, or one with a grant on <project> up to <level> at least.
+PRINCIPAL = r"^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
 
+# audience: principals, sorted, no repeats; a reader must be every one of them. Another form only warns here: the
+# build reads it as the highest audience, which no reader reaches (evo_agents.kg.policy.audience_of).
 _LABEL = {
     "type": "object",
     "additionalProperties": False,
@@ -31,6 +38,7 @@ _LABEL = {
         "level": {"type": "string"},
         "location": {"type": "string"},
         "integrity": {"enum": ["T", "U"]},
+        "audience": {"type": "array", "items": {"type": "string", "pattern": PRINCIPAL}, "x-severity": "warning"},
     },
 }
 

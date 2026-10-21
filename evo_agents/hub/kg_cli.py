@@ -1,10 +1,13 @@
-"""``evo-agents hub kg push|builds|build|prune|scrub``, and the hub backend of ``kg serve`` and ``kg query``.
+"""``evo-agents hub kg push|builds|build|health|prune|scrub``, and the hub backend of ``kg serve`` and ``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
 project of this machine, ``--all`` every project of projects.json the hub takes a push for. It reports its progress on
 stderr, a line per run and per batch of blobs, and its outcome on stdout. ``builds`` lists a project's builds and the
 jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` waits until it has finished, exiting 1
-when it failed. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
+when it failed. ``health`` prints the health of a project's graph over time as the hub measures it
+(``evo_agents.hub.server.kg_health``): for each git source of the latest measure the commit read, how many commits of
+the default branch it lacks and for how long, the files missing, stale and deleted, then the retrieval evaluation and
+the builds that changed nothing. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
 artifacts of graphs older than each project's ``--keep`` newest leave the bucket, and ``--dry-run`` only says which.
 ``scrub`` (a hub admin) reads every built graph and source blob of a project, or of every project, page by page
 (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
@@ -14,7 +17,10 @@ value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), a
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
 results, so an MCP client sees no difference. ``auto`` takes the hub when this machine is signed in and the hub has
 a successful build of the project it can show the caller, and the local store otherwise, including when the hub does
-not answer within PROBE_TIMEOUT. Standard library only.
+not answer within PROBE_TIMEOUT. Inside a run of this machine's worker (``mcp_proxy.run_credentials``), ``auto`` and
+``hub`` ask the hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-agents hub mcp`` does
+there: the hub binds the session to the run's project, so a run whose worktree names no project of this machine, or
+whose machine is not signed in, still reads its graph. Standard library only.
 """
 
 from __future__ import annotations
@@ -119,11 +125,16 @@ def _artifact_note(build: dict) -> str:
     return ""
 
 
+def _counts(build: dict) -> str:
+    """A succeeded build's totals; the hub shows none of a graph that holds chats, whose kg_status counts instead."""
+    if build.get("nodes") is None or build.get("edges") is None:
+        return "counts in kg_status"
+    return f"{build['nodes']} nodes, {build['edges']} edges"
+
+
 def _build_row(build: dict) -> tuple:
     succeeded = build["status"] == "succeeded"
-    outcome = build.get("error") or (
-        f"{build['nodes']} nodes, {build['edges']} edges{_artifact_note(build)}" if succeeded else ""
-    )
+    outcome = build.get("error") or (f"{_counts(build)}{_artifact_note(build)}" if succeeded else "")
     return (
         build["id"],
         build["status"],
@@ -179,11 +190,63 @@ def cmd_build(args) -> int:
         verb = "Queued" if queued["queued"] else "A build was waiting already:"
         print(f"{verb} build {build['id']} of project {args.project}: {build['status']}.")
         if build["status"] == "succeeded":
-            counts = f"{build['nodes']} nodes, {build['edges']} edges"
-            print(f"{counts}, content {build['content_hash']}{_artifact_note(build)}")
+            print(f"{_counts(build)}, content {build['content_hash']}{_artifact_note(build)}")
         elif build["status"] == "failed":
             print(f"error: {build['error']}", file=sys.stderr)
     return 1 if build["status"] == "failed" else 0
+
+
+def _count(value) -> str:
+    return "-" if value is None else str(value)
+
+
+def _source_row(source: dict) -> tuple:
+    lag = source.get("lag_hours")
+    return (
+        source.get("source"),
+        (source.get("commit") or "-")[:12],
+        _count(source.get("behind")),
+        "-" if lag is None else f"{lag:g}",
+        _count(source.get("missing")),
+        _count(source.get("stale")),
+        _count(source.get("deleted")),
+        (source.get("why") or "")[:80],
+    )
+
+
+def _eval_line(found: dict | None) -> str:
+    if not isinstance(found, dict) or not found.get("methods"):
+        return f"retrieval eval: {(found or {}).get('why') or 'no question'}"
+    row = found["methods"].get("kg_search") or {}
+    return (
+        f"retrieval eval of build {found.get('build_id')}: {found.get('questions')} plan-step questions, kg_search "
+        f"R@5 {row.get('recall@5')}, MRR {row.get('mrr')}, empty {row.get('empty')}"
+    )
+
+
+@_client_command
+def cmd_health(args) -> int:
+    hub, _ = _signed_in()
+    found = hub.call("GET", f"/v1/projects/{quote(args.project, safe='')}/curator/kg-health?limit={args.limit}")
+    if args.json:
+        _print_json(found)
+        return 0
+    measures = found["measures"]
+    if not measures:
+        print(f"the hub has not measured the graph of project {args.project} yet: curator.collect does, every 6 hours")
+        return 0
+    latest = measures[0]
+    print(f"Measured {_when(latest['measured_at'])} (UTC), build {latest.get('build_id') or '-'}:")
+    if latest.get("error"):
+        print(f"error: {latest['error']}", file=sys.stderr)
+    rows = [_source_row(source) for source in latest["sources"]]
+    if rows:
+        _table(("SOURCE", "COMMIT", "BEHIND", "LAG (H)", "MISSING", "STALE", "DELETED", "WHY"), rows)
+    print(_eval_line(latest.get("eval")))
+    builds = found["builds"]
+    unchanged = sum(1 for build in builds if not build["changed"])
+    print(f"{len(builds)} successful builds listed, {unchanged} of them changed nothing")
+    return 0
 
 
 def _bytes(size: int) -> str:
@@ -340,7 +403,9 @@ def cmd_scrub(args) -> int:
 def register_kg(hsub) -> None:
     from evo_agents.hub.cli import _positive
 
-    kg = hsub.add_parser("kg", help="knowledge graphs on the hub: push runs, list and queue builds, prune old graphs")
+    kg = hsub.add_parser(
+        "kg", help="knowledge graphs on the hub: push runs, list and queue builds, their health, prune old graphs"
+    )
     ksub = kg.add_subparsers(dest="kg_command", required=True)
 
     push_parser = ksub.add_parser("push", help="send the runs of a project's corpus that the hub does not have")
@@ -365,6 +430,12 @@ def register_kg(hsub) -> None:
     )
     json_option(build, returns_object("queued", "build", schema="Queued"))
     build.set_defaults(func=cmd_build)
+
+    health = ksub.add_parser("health", help="the health of a project's graph over time, as the hub measures it")
+    health.add_argument("--project", required=True, help="project name on the hub")
+    health.add_argument("--limit", type=int, default=30, help="measures and builds to show (default: 30, at most 200)")
+    json_option(health, returns_object("project", "measures", "builds", schema="KgHealthView"))
+    health.set_defaults(func=cmd_health)
 
     prune = ksub.add_parser(
         "prune", help="delete the artifacts of graphs older than each project's newest few (needs a hub admin)"
@@ -397,22 +468,24 @@ def register_kg(hsub) -> None:
 
 class RemoteSession:
     """``Session.call`` answered by the hub: a tools/call to its /mcp for ``project`` through ``sink``
-    (``evo_agents.hub.mcp_proxy.McpClient``). A hub that cannot be reached or refuses the call gives a tool error naming
-    the hub."""
+    (``evo_agents.hub.mcp_proxy.McpClient``) that asks for the structured result too, as a local Session gives it. A
+    hub that cannot be reached or refuses the call gives a tool error naming the hub."""
 
-    def __init__(self, hub: Hub, project: str, sink: str):
+    def __init__(self, hub: Hub, project: str | None, sink: str, run: int | None = None):
         self.hub = hub
         self.project = project
         self.sink = sink
+        self.run = run  # the run whose agent asks, with a worker's token: the hub binds the session to its project
 
     def call(self, name: str, args: dict) -> dict:
         from evo_agents.hub.mcp_proxy import McpClient
-        from evo_agents.kg.serve import TOOLS, _error
+        from evo_agents.kg.serve import DATA_META, TOOLS, _error
 
         if name not in {tool["name"] for tool in TOOLS}:
             return _error(f"unknown tool {name!r}")
         try:
-            return McpClient(self.hub.url, self.hub.token, self.project, self.sink).call_tool(name, args or {})
+            client = McpClient(self.hub.url, self.hub.token, self.project, self.sink, run=self.run)
+            return client.call_tool(name, args or {}, {DATA_META: True})
         except HubError as exc:
             return _error(f"{exc} (hub {self.hub.url})")
 
@@ -430,6 +503,11 @@ def open_session(backend: str, project: str | None, sink: str):
 
     if backend == "local":
         return make_session(project, sink)
+    from evo_agents.hub.mcp_proxy import run_credentials
+
+    run = run_credentials()
+    if run is not None:  # the hub knows the run's project; a worker token reads no build list to probe
+        return RemoteSession(Hub(run.url, run.token), project, sink, run=run.run)
     try:
         name = resolve_project(project).name
     except ProjectError as exc:

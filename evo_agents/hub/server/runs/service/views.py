@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, bindparam, case, exists, func, select
+from sqlalchemy import BigInteger, and_, bindparam, case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import chat_runs, runs, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -40,11 +40,37 @@ def lost_here(worker_id):
     return exists().where(parent.c.id == r.c.parent_run_id, parent.c.state == "lost", parent.c.worker_id == worker_id)
 
 
+def chat_session(r):
+    """The id of the first run of the session of chat run ``r`` (the runs table or an alias of it), which its branch
+    chat/<id> names (``chat_runs.session_of``); NULL for a run of another kind."""
+    first = cast(func.substring(r.c.branch, chat_runs.SESSION_PATTERN), BigInteger)
+    return case((r.c.kind == "chat", first), else_=None)
+
+
+def _session_columns(r) -> list:
+    """The fields of Run of a chat run's session: its first run, the run's turn in it, its turns so far and its title;
+    NULL for a run of another kind. Each turn of a session has the session's branch and an id from its first run's on,
+    so the turns are counted from there along the primary key, never over the project's runs."""
+    turn, first = tables.runs.alias("session_turn"), tables.runs.alias("session_first")
+    session = chat_session(r)
+    of_session = and_(turn.c.id >= session, turn.c.kind == "chat", turn.c.branch == r.c.branch)
+    count = select(func.count()).select_from(turn)
+    title = select(first.c.title).where(first.c.id == session).scalar_subquery()
+    found = session.is_not(None)
+    return [
+        session.label("session_run_id"),
+        case((found, count.where(of_session, turn.c.id <= r.c.id).scalar_subquery()), else_=None).label("session_turn"),
+        case((found, count.where(of_session).scalar_subquery()), else_=None).label("session_turns"),
+        case((found, title), else_=None).label("session_title"),
+    ]
+
+
 def run_select():
     """The fields of Run, each column labelled as its field: a run with the name of its project, the login of its
-    owner and the name of the worker that claimed it; and for a queued attempt after a run lost on a worker that is
-    not steady, that worker, as ``steady_wait_*`` (``runs_of`` makes the field of them)."""
-    r, p, u, w = tables.runs, tables.projects, tables.users, tables.workers
+    owner, the name of the worker that claimed it and the handle of its agent profile, and a chat run's session
+    (``_session_columns``); and for a queued attempt after a run lost on a worker that is not steady, that worker, as
+    ``steady_wait_*`` (``runs_of`` makes the field of them)."""
+    r, p, u, w, ap = tables.runs, tables.projects, tables.users, tables.workers, tables.agent_profiles
     parent, lost_on = tables.runs.alias("lost_parent"), tables.workers.alias("lost_on")
     return (
         select(
@@ -100,6 +126,19 @@ def run_select():
             r.c.finish_requested_at,
             r.c.failure_cause,
             r.c.session_per_step,
+            ap.c.handle.label("profile"),
+            r.c.profile_id,
+            r.c.profile_version,
+            r.c.environment,
+            r.c.chat_id,
+            r.c.chat_message_id,
+            r.c.hop,
+            *_session_columns(r),
+            r.c.machine,
+            r.c.cwd,
+            r.c.claude_email,
+            r.c.claude_profile,
+            r.c.last_activity_at,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),
@@ -107,6 +146,7 @@ def run_select():
         .join_from(r, p, p.c.id == r.c.project_id)
         .join(u, u.c.id == r.c.dispatched_by)
         .outerjoin(w, w.c.id == r.c.worker_id)
+        .outerjoin(ap, ap.c.id == r.c.profile_id)
         .outerjoin(parent, and_(r.c.state == "queued", parent.c.id == r.c.parent_run_id, parent.c.state == "lost"))
         .outerjoin(lost_on, and_(lost_on.c.id == parent.c.worker_id, ~func.coalesce(steady(lost_on), False)))
     )
@@ -150,7 +190,8 @@ async def plan_activity(conn: AsyncConnection, project_id: int, plan_id: str) ->
             r.c.project_id == project_id,
             r.c.plan_id == plan_id,
             r.c.state.in_(runs.ACTIVE_STATES),
-            r.c.kind != "author",  # an author run writes what the plan says, never a step's progress
+            r.c.kind.not_in(("author", "local")),  # an author run writes what the plan says, never a step's progress;
+            # a local run holds no step: the person's session works on it, which no dispatch waits for
         )
         .order_by(r.c.id)
     )
@@ -238,19 +279,46 @@ async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str 
     return [row.plan_id for row in rows if access.visible(row.label, through)]
 
 
+def agent_reads(user: Principal, kind: str | None) -> bool:
+    """Whether the agent of a run (``user.scope``) may read a run of ``kind`` its owner may read. What the agent reads
+    lands in its run's events and in what it writes, which others read: so never a replay run, whose task is of the
+    holdout split that changes are measured on, and a local run, its member's alone, only for the Reviewer (a review
+    run), which reads the local sessions of the charter's owner. Anyone else reads as the owner does."""
+    if user.scope is None:
+        return True
+    return kind != "replay" and (kind != "local" or user.scope.kind == "review")
+
+
+def agent_reads_chats(user: Principal) -> bool:
+    """Whether the agent of a run (``user.scope``) searches the group chats its owner is in. Only the Reviewer (a review
+    run) does: it reads what the charter's owner, its run's owner, reads, through the sink as the owner would. What it
+    reads of a chat can still land in its run's events and in its findings, which readers who are not in the chat read:
+    a debt kept so the Reviewer reads the whole history. No other agent does: a chat run's reply would carry one chat's
+    words into another, and the Builder, the Judge, a replay run and a history run need none. Anyone else reads as the
+    owner does."""
+    return user.scope is None or user.scope.kind == "review"
+
+
 async def readable_run(
     conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
 ) -> ProjectAccess:
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run). A review run,
     which has no plan, reads as what it reads: the project, through the project's default label; so does an author run
-    of a new plan."""
+    of a new plan. A local run is private to the member whose session it is: for anyone else it reads as no run. The
+    agent of a run reads none of what ``agent_reads`` keeps from it."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r = tables.runs
-    found = select(r.c.plan_id, r.c.kind).where(r.c.id == run_id, r.c.project_id == access.project_id)
+    found = select(r.c.plan_id, r.c.kind, r.c.dispatched_by).where(
+        r.c.id == run_id, r.c.project_id == access.project_id
+    )
     row = (await conn.execute(found)).one_or_none()
-    if row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
+    if row is not None and not agent_reads(user, row.kind):
+        visible = False
+    elif row is not None and row.kind == "local":
+        visible = row.dispatched_by == user.user_id
+    elif row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
         visible = sees_unplanned(access, sink)
     else:
         visible = row is not None and row.plan_id in await visible_plans(conn, access, sink)

@@ -5,9 +5,12 @@ PUT /v1/secrets/{name} creates the caller's secret of that name or replaces it w
 names the variable of the agent's environment it sets (``env_var``, never one of
 ``evo_agents.hub.credentials.DENIED_ENV`` or its prefixes); kind ``git`` names the https prefix of the origins it
 answers for (``url_prefix``, kept in the form of ``credentials.normalize_origin``) and the user git sends with it
-(``username``, DEFAULT_GIT_USERNAME when left out). ``projects`` binds it to one or more projects the caller holds the
-writer role on; ``workers`` narrows it to some of the caller's own workers that are not revoked, by name, and left
-out means any worker of the caller. ``expires_at`` is the end its owner gives it. The value is 1 to
+(``username``, DEFAULT_GIT_USERNAME when left out); kind ``forge`` names the https prefix of the GitLab projects whose
+merge requests the hub drives with it (``url_prefix``, as for git, and no username: GitLab takes the token in a
+header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to one or more projects
+the caller holds the writer role on, the admin role for kind forge; ``workers`` narrows it to some of the caller's own
+workers that are not revoked, by name, and left out means any worker of the caller; a forge secret names none, as no
+worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
 MAX_SECRET_BYTES bytes of UTF-8, sealed with ``Sealer`` under the associated data of its owner, name and kind before
 it reaches the database; without EVO_HUB_SECRETS_KEY the route answers 503 and keeps nothing. A member keeps at most
 MAX_SECRETS_PER_OWNER secrets.
@@ -17,6 +20,10 @@ value, sealed or not. A hub admin sees only their own too; /v1/admin/stats count
 none. DELETE /v1/secrets/{name} deletes softly: the row stays, for the leases and the audit lines that name it, while
 its sealed value and its bindings go, and the leases of it that are not given back yet are marked revoked. The name
 is free again at once.
+
+An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token and other parts of an account's
+sign-in with OAuth (``evo_agents.hub.server.account_oauth``): the hub seals them with the value in the account's row,
+and a write without ``oauth`` drops what was there.
 
 Each write adds one audit row, secret.put or secret.delete, whose target is the secret's id (``secret:<id>``), never
 its name: the audit is for hub admins, and a secret's name is for its owner alone, as GET /v1/secrets and a run's
@@ -45,6 +52,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
+    FORGE_KIND,
+    GITHUB_HOST,
     MAX_SECRET_BYTES,
     MAX_SECRETS_PER_OWNER,
     SECRET_KINDS,
@@ -53,13 +62,21 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_choice import clear_relogin
+from evo_agents.hub.server.account_oauth import (
+    OAUTH_ENV_VAR,
+    OAuthTokens,
+    drop_tokens,
+    seal_tokens,
+    store_tokens,
+)
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.sealing import Sealer, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.workers import LINE, WORKER_NAME
+from evo_agents.hub.server.worker_models import LINE, WORKER_NAME
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +104,8 @@ REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 class SecretWrite(BaseModel):
     kind: Literal[SECRET_KINDS] = Field(
-        description="env: a variable of the agent's environment; git: what git's credential helper answers"
+        description="env: a variable of the agent's environment; git: what git's credential helper answers; forge: "
+        "a GitLab token the hub alone uses to drive merge requests, never leased to a run"
     )
     env_var: str | None = Field(
         None,
@@ -98,7 +116,7 @@ class SecretWrite(BaseModel):
     url_prefix: str | None = Field(
         None,
         max_length=MAX_URL_PREFIX_CHARS,
-        description="kind git only: the https prefix of the origins it answers for, such as "
+        description="kinds git and forge: the https prefix of the origins it answers for, such as "
         "https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash",
     )
     username: str | None = Field(
@@ -109,14 +127,27 @@ class SecretWrite(BaseModel):
         description=f"kind git only: the user git sends with the value; {DEFAULT_GIT_USERNAME} when left out",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
-        min_length=1, max_length=MAX_BINDINGS, description="the projects whose runs get it; the writer role on each"
+        min_length=1,
+        max_length=MAX_BINDINGS,
+        description="the projects whose runs get it; the writer role on each, the admin role for kind forge",
     )
     workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] = Field(
         default_factory=list,
         max_length=MAX_BINDINGS,
-        description="names of the caller's own workers that are not revoked; left out or empty for any of them",
+        description="names of the caller's own workers that are not revoked; left out or empty for any of them; "
+        "none for kind forge",
     )
-    expires_at: AwareDatetime | None = Field(None, description="after this no run gets it; in the future")
+    expires_at: AwareDatetime | None = Field(
+        None,
+        description="after this no run gets it, and the hub no longer uses one of kind forge; in the future; "
+        "required for kind forge",
+    )
+    oauth: OAuthTokens | None = Field(
+        None,
+        description=f"kind env, env_var {OAUTH_ENV_VAR} only: the account signed in with OAuth. The value is its "
+        "access token; this holds the refresh token and when the access token ends, and the hub keeps all of them "
+        "sealed. expires_at, when given, is that end",
+    )
     value: SecretStr = Field(
         min_length=1,
         max_length=MAX_SECRET_BYTES,
@@ -130,7 +161,7 @@ class Secret(BaseModel):
     name: str
     kind: Literal[SECRET_KINDS]
     env_var: str | None = Field(description="kind env: the variable it sets")
-    url_prefix: str | None = Field(description="kind git: the https prefix of the origins it answers for")
+    url_prefix: str | None = Field(description="kinds git and forge: the https prefix of the origins it answers for")
     username: str | None = Field(description="kind git: the user git sends with it")
     projects: list[str] = Field(description="the projects whose runs get it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
@@ -146,7 +177,7 @@ class SecretWritten(Secret):
 # Reading secrets
 
 
-def _bound_names(target, key):
+def bound_names(target, key):
     """The names of the rows of ``target`` (projects or workers) the secret's bindings name by ``key``, each once and
     sorted, as an array; correlated to the secret of the enclosing query."""
     b = tables.secret_bindings
@@ -168,8 +199,8 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
         s.c.env_var,
         s.c.url_prefix,
         s.c.username,
-        _bound_names(tables.projects, b.c.project_id).label("projects"),
-        _bound_names(tables.workers, b.c.worker_id).label("workers"),
+        bound_names(tables.projects, b.c.project_id).label("projects"),
+        bound_names(tables.workers, b.c.worker_id).label("workers"),
         s.c.expires_at,
         s.c.created_at,
         s.c.updated_at,
@@ -241,12 +272,44 @@ def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
             raise HTTPException(422, refusal)
         return body.env_var, None, None
     if body.env_var is not None:
-        raise HTTPException(422, "env_var belongs to a secret of kind env, not git")
+        raise HTTPException(422, f"env_var belongs to a secret of kind env, not {body.kind}")
     if body.url_prefix is None:
         raise HTTPException(
-            422, "a secret of kind git needs url_prefix, the https prefix of the origins it answers for"
+            422, f"a secret of kind {body.kind} needs url_prefix, the https prefix of the origins it answers for"
         )
+    if body.kind == FORGE_KIND:
+        if body.username is not None:
+            raise HTTPException(422, "a secret of kind forge takes no username: GitLab reads the token from a header")
+        prefix = _url_prefix(body.url_prefix)
+        if urlsplit(prefix).hostname == GITHUB_HOST:
+            raise HTTPException(
+                422, "a secret of kind forge is for GitLab: on github.com the hub merges by the Curator's tiers"
+            )
+        return None, prefix, None
     return None, _url_prefix(body.url_prefix), body.username or DEFAULT_GIT_USERNAME
+
+
+def _forge_refusal(body: SecretWrite) -> str | None:
+    """Why ``body`` cannot be a forge secret, or None: it needs an end, and binds to no worker, as none ever gets it."""
+    if body.kind != FORGE_KIND:
+        return None
+    if body.expires_at is None:
+        return "a secret of kind forge needs expires_at: set the end of the GitLab token it holds"
+    if body.workers:
+        return "a secret of kind forge binds to no worker: only the hub uses it, and no run is ever leased it"
+    return None
+
+
+def _oauth(body: SecretWrite) -> OAuthTokens | None:
+    """The OAuth tokens of ``body``, which only an env secret for CLAUDE_CODE_OAUTH_TOKEN may carry; 422 otherwise."""
+    oauth = body.oauth
+    if oauth is None:
+        return None
+    if body.kind != "env" or body.env_var != OAUTH_ENV_VAR:
+        raise HTTPException(422, f"oauth belongs to a secret of kind env for {OAUTH_ENV_VAR}")
+    if body.expires_at is not None and body.expires_at != oauth.access_expires_at:
+        raise HTTPException(422, "expires_at of an account of OAuth is the end of its access token: leave it out")
+    return oauth
 
 
 def _value(body: SecretWrite) -> str:
@@ -259,6 +322,8 @@ def _value(body: SecretWrite) -> str:
         raise HTTPException(
             422, "the value of a secret of kind git is one line: git's credential protocol has no other"
         )
+    if body.kind == FORGE_KIND and ("\n" in value or "\r" in value):
+        raise HTTPException(422, "the value of a secret of kind forge is one line: an HTTP header holds it")
     return value
 
 
@@ -271,14 +336,18 @@ def _unique(values: list[str]) -> list[str]:
     return kept
 
 
-async def _writable(conn: AsyncConnection, user: Principal, names: list[str]) -> list[int]:
-    """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role."""
+async def _writable(conn: AsyncConnection, user: Principal, names: list[str], kind: str) -> list[int]:
+    """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role, or
+    without the admin role for a secret of kind forge, which merges into the project's repos."""
+    needed = "admin" if kind == FORGE_KIND else "writer"
     ids = []
     for name in names:
         access = await project_access(conn, user, name)
-        if not has_role(access.role, "writer"):
+        if not has_role(access.role, needed):
             role = access.role or "no role"
-            raise HTTPException(403, f"a secret for project {name} needs the writer role on it; you hold {role}")
+            raise HTTPException(
+                403, f"a secret of kind {kind} for project {name} needs the {needed} role on it; you hold {role}"
+            )
         ids.append(access.project_id)
     return ids
 
@@ -350,12 +419,17 @@ async def put_secret(
     sealer = _sealer(request)
     env_var, url_prefix, username = _target(body)
     value = _value(body)
-    if body.expires_at is not None and body.expires_at <= datetime.now(UTC):
+    oauth = _oauth(body)
+    expires_at = oauth.access_expires_at if oauth is not None else body.expires_at
+    if expires_at is not None and expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
+    refusal = _forge_refusal(body)
+    if refusal is not None:
+        raise HTTPException(422, refusal)
     projects, workers = _unique(body.projects), _unique(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
     async with request.app.state.engine.begin() as conn:
-        project_ids = await _writable(conn, user, projects)
+        project_ids = await _writable(conn, user, projects, body.kind)
         worker_ids = await _own_workers(conn, user, workers)
         # One write of a member's secrets at a time, so two of them cannot both pass the count.
         users = tables.users
@@ -375,7 +449,7 @@ async def put_secret(
             sealed=sealed.ciphertext,
             nonce=sealed.nonce,
             key_id=sealed.key_id,
-            expires_at=body.expires_at,
+            expires_at=expires_at,
         )
         try:
             secret_id, created = (await conn.execute(statement)).one()
@@ -384,6 +458,11 @@ async def put_secret(
                 raise
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
         await _bind(conn, secret_id, project_ids, worker_ids)
+        if oauth is not None:
+            await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, value, oauth))
+            await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
+        else:  # written whole: a set of OAuth tokens the secret had before does not outlive its value
+            await drop_tokens(conn, secret_id)
         target = audit_target(secret_id)
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
         (secret,) = await _secrets(conn, user.user_id, name)
@@ -408,6 +487,7 @@ async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -
         if secret_id is None:
             raise HTTPException(404, NO_SECRET.format(name=name))
         await conn.execute(delete(b).where(b.c.secret_id == secret_id))
+        await drop_tokens(conn, secret_id)
         ended = await conn.execute(
             update(cl).values(revoked_at=func.now()).where(cl.c.secret_id == secret_id, cl.c.revoked_at.is_(None))
         )

@@ -7,6 +7,7 @@ import { readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
 import {
   activePlanRun,
   authorWorker,
+  chosenWorker,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
@@ -41,6 +42,8 @@ const ZERO: StateCounts = {
   failed: 0,
   lost: 0,
   cancelled: 0,
+  idle: 0,
+  ended: 0,
 };
 
 function run(overrides: Partial<Run> = {}): Run {
@@ -99,6 +102,13 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     agent_version: "0.3.0",
     slots: 2,
     labels: [],
+    plugins: [],
+    agent_commit: null,
+    version_locked: false,
+    shared: false,
+    self_update: null,
+    update_now: null,
+    nightly: null,
     projects: ["demo"],
     runtimes: { "claude-code": { available: true, version: "2.1.289" }, codex: { available: false, reason: "not found" } },
     checkouts: { "demo/api": { path: "~/github/api", branch: "main" } },
@@ -122,25 +132,31 @@ const params = (text: string) => new URLSearchParams(text);
 
 describe("filters", () => {
   it("reads the facet, search and page from the URL, ignoring what the API would refuse", () => {
-    expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", q: "queue", page: 3 });
-    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, q: "", page: 1 });
+    expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", kind: null, account: "", q: "queue", page: 3 });
+    expect(readFilters(params("kind=local&account=%20Ana@Example.com%20&kind=x"))).toMatchObject({ kind: "local", account: "Ana@Example.com" });
+    expect(readFilters(params("kind=plan")).kind).toBeNull();
+    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, kind: null, account: "", q: "", page: 1 });
     expect(readFilters(params(`q=${"x".repeat(300)}&page=1.5`)).q).toHaveLength(200);
     expect(readFilters(params("page=999999")).page).toBe(1);
   });
 
   it("writes only what is set, and pages from 2 on", () => {
-    expect(filtersSearch({ facet: null, q: "", page: 1 })).toBe("");
-    expect(filtersSearch({ facet: "ended", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
+    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("");
+    expect(filtersSearch({ facet: "ended", kind: null, account: "", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
+    expect(filtersSearch({ facet: null, kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
   });
 
-  it("asks the API for the states of the facet, one page at a time", () => {
-    expect(listQuery({ facet: "ended", q: "x", page: 3 })).toEqual({
-      states: ["failed", "lost", "cancelled"],
+  it("asks the API for the states of the facet, one page at a time, each chat session once", () => {
+    expect(listQuery({ facet: "ended", kind: "local", account: "a@b.c", q: "x", page: 3 })).toEqual({
+      group: "session",
+      states: ["failed", "lost", "cancelled", "ended"],
+      kind: "local",
+      account: "a@b.c",
       q: "x",
       limit: 50,
       offset: 100,
     });
-    expect(listQuery({ facet: null, q: "", page: 1 }).states).toEqual([]);
+    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).toEqual([]);
   });
 
   it("counts a facet from the counts of its states", () => {
@@ -254,6 +270,17 @@ describe("workers for a dispatch", () => {
       worker({ id: 5, status: "revoked" }),
     ];
     expect(dispatchWorkers(workers, "octo", "demo").map((item) => item.id)).toEqual([2, 1]);
+  });
+
+  it("offers the workers another member shares in the project after the visitor's own", () => {
+    const workers = [
+      worker({ id: 1, name: "z" }),
+      worker({ id: 2, name: "a", owner: "someone-else", shared: true }),
+      worker({ id: 3, name: "b", owner: "someone-else", shared: true, projects: ["other"] }),
+      worker({ id: 4, name: "c", owner: "someone-else", shared: true, status: "revoked" }),
+      worker({ id: 5, name: "d", owner: "someone-else" }),
+    ];
+    expect(dispatchWorkers(workers, "octo", "demo").map((item) => item.id)).toEqual([1, 2]);
   });
 
   it("says whether a worker can take the runs now, later, or not as it is", () => {
@@ -422,6 +449,22 @@ describe("author runs", () => {
     expect(authorWorker([without, free], request, 1)).toBe(1);
     expect(authorWorker([free], request, 9)).toBe(3);
     expect(authorWorker([], request, null)).toBeNull();
+  });
+
+  it("fills the worker that can take every run now, keeps one picked, and leaves the rest to the hub", () => {
+    const request = { project: "demo", runtime: "claude-code" as const, repos: ["harness"] };
+    const without = worker({ id: 1, checkouts: {} });
+    const busy = worker({ id: 2, checkouts: { "demo/harness": { path: "~/h" } }, slots: 1, held_runs: 1 });
+    const one = worker({ id: 3, checkouts: { "demo/harness": { path: "~/h" } }, slots: 2, held_runs: 1 });
+    const two = worker({ id: 4, checkouts: { "demo/harness": { path: "~/h" } } });
+    expect(chosenWorker([without, busy, one, two], request, null)).toBe(3);
+    expect(chosenWorker([without, busy, one, two], request, null, 2)).toBe(4);
+    expect(chosenWorker([without, busy, one], request, null, 2)).toBeNull();
+    expect(chosenWorker([without, busy], request, null)).toBeNull();
+    expect(chosenWorker([without, busy, two], request, 2)).toBe(2);
+    expect(chosenWorker([without, two], request, "any")).toBeNull();
+    expect(chosenWorker([two], request, 9)).toBe(4);
+    expect(chosenWorker([], request, null)).toBeNull();
   });
 
   it("takes a request of up to 16 KiB of UTF-8 as typed, and nothing but blanks or more is refused", () => {

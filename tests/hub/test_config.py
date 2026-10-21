@@ -239,7 +239,9 @@ def test_the_github_app_needs_both_variables_and_no_error_shows_a_secret():
 
 
 def test_the_telegram_variables_turn_the_channel_on_are_secrets_and_either_missing_turns_it_off():
-    from tests.hub.fake_telegram import SECRET, TOKEN
+    # A fake bot token (<bot id>:<secret>) and webhook secret, built from pieces so no scanner reads them as real ones.
+    TOKEN = "".join(("1234567", "89:", "AAfake", "-test-", "token", "-for-the-hub"))
+    SECRET = "".join(("webhook", "-secret-", "for-tests"))
 
     base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
     config = load_config({**base, "EVO_HUB_TELEGRAM_BOT_TOKEN": TOKEN, "EVO_HUB_TELEGRAM_WEBHOOK_SECRET": SECRET})
@@ -266,6 +268,26 @@ def test_the_telegram_variables_turn_the_channel_on_are_secrets_and_either_missi
         with pytest.raises(ConfigError) as caught:
             load_config({**base, variable: value})
         assert caught.value.variable == variable and value not in str(caught.value)
+
+
+def test_plugin_sign_publishers_and_core_publishers_load_from_the_environment():
+    from tests.plugins.samples import WORKFLOW, public_key
+
+    base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    assert (load_config(base).plugin_publishers, load_config(base).plugin_core_publishers) == ((), frozenset())
+    listed = f"acme=sigstore:{WORKFLOW},evo=ed25519:{public_key()}"
+    config = load_config({**base, "EVO_HUB_PLUGIN_PUBLISHERS": listed, "EVO_HUB_PLUGIN_CORE_PUBLISHERS": " evo, "})
+    assert [publisher.id for publisher in config.plugin_publishers] == ["acme", "evo"]
+    assert config.plugin_core_publishers == frozenset({"evo"})
+    for variable, value, problem in (
+        ("EVO_HUB_PLUGIN_PUBLISHERS", "acme", "ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml or ID=ed25519:KEY"),
+        ("EVO_HUB_PLUGIN_PUBLISHERS", "acme=ed25519:AAAA", "is not an Ed25519 public key"),
+        ("EVO_HUB_PLUGIN_CORE_PUBLISHERS", "Evo Team", "lists publisher ids, such as acme"),
+        ("EVO_HUB_PLUGIN_CORE_PUBLISHERS", "beta", "names beta, which EVO_HUB_PLUGIN_PUBLISHERS does not list"),
+    ):
+        with pytest.raises(ConfigError, match=problem) as caught:
+            load_config({**base, "EVO_HUB_PLUGIN_PUBLISHERS": listed, variable: value})
+        assert caught.value.variable == variable
 
 
 def test_config_repr_keeps_the_dsns_out():

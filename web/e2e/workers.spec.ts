@@ -3,15 +3,17 @@ import type { Page } from "@playwright/test";
 import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { claimRun, dispatch, liveWorker, READY_STEPS, seedRunPlan } from "./support/runs";
 import { toast } from "./support/toast";
-import { CHECKOUTS, heartbeat, joinWithCode, registerWorker, RUNTIMES, workersOf } from "./support/workers";
+import { AGENT_COMMIT, CHECKOUTS, heartbeat, joinWithCode, NIGHTLY_COMMIT, registerWorker, RUNTIMES, workersOf } from "./support/workers";
 
 /**
  * The workers pages against the real API: the list with its summary, facets, search and 10-second refresh; the
  * Register dialog from the form to the machine joining with its pairing code; a worker's page with its runtimes,
- * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; the owner's switch that keeps a
- * worker to runs dispatched from the web; and a worker token on the admin tokens page. Pages render in English, the
- * default.
+ * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; the owner's settings (name, slots
+ * and labels); the owner's switch that keeps a worker to runs dispatched from the web; the evo-agents a worker runs, its
+ * owner's version lock and the notes and pills that say only what went wrong with its updates; and a worker token on
+ * the admin tokens page. Pages render in English, the default.
  */
 test.skip(isDeployed, "registers workers through the local stack");
 
@@ -240,6 +242,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
   await expect(main.getByTestId("worker-as-admin")).toBeVisible();
   await expect(main.getByTestId("worker-dispatch-from")).toHaveCount(0);
+  await expect(main.getByTestId("worker-settings")).toHaveCount(0); // the values show in Scope, without the form
 
   // The owner turns it off again, from its label.
   await signOut(page);
@@ -251,6 +254,267 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(toast(page, `${worker.name} takes runs from the command line again`)).toContainText("any of your credentials");
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only`);
   expect(await dispatchFromOf()).toBe("any");
+});
+
+test("the owner changes a worker's slots, labels, plugins and name, and the hub's refusals show at the form", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("busy"));
+  const other = await registerWorker(me, { name: uniqueName("taken"), projects: [project] });
+  await dispatch(me, project, READY_STEPS);
+  expect(await claimRun(live)).not.toBeNull();
+  expect(await claimRun(live)).toBeNull(); // its one slot is taken
+
+  await page.goto(`/workers/${live.worker.id}`);
+  const main = page.locator("#main");
+  const settings = main.getByTestId("worker-settings");
+  const name = settings.getByLabel("Name");
+  const slots = settings.getByLabel("Slots");
+  const labels = settings.getByLabel("Labels");
+  const plugins = settings.getByLabel("Plugins");
+  await expect(name).toHaveValue(live.worker.name);
+  await expect(plugins).toHaveValue("");
+  await expect(main.getByTestId("worker-plugins")).toHaveText("None");
+  await expect(slots).toHaveValue("1");
+  await expect(main.getByTestId("worker-scope")).toContainText("1 of 1 in use");
+  await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, no slot free.");
+  await expect(settings.getByTestId("worker-settings-save")).toBeDisabled(); // nothing changed yet
+
+  // Out of range: said at the field, and nothing is sent.
+  await slots.fill("17");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("Enter a whole number from 1 to 16.");
+  await expect(slots).toHaveAttribute("aria-invalid", "true");
+  await expect(slots).toBeFocused();
+
+  // A name another worker of mine has: the hub's 409 shows at the name field.
+  await slots.fill("2");
+  await name.fill(other.name);
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText(`You have a worker named ${other.name} already.`);
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: live.worker.name, slots: 1 });
+
+  // Discard puts back what the hub holds.
+  await settings.getByTestId("worker-settings-discard").click();
+  await expect(name).toHaveValue(live.worker.name);
+  await expect(settings.getByTestId("worker-settings-discard")).toHaveCount(0);
+
+  // A plugin id the hub does not take: said at the field, and nothing is sent.
+  await plugins.fill("Sandbox");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("Not a plugin id: Sandbox.");
+  await expect(plugins).toHaveAttribute("aria-invalid", "true");
+  await expect(plugins).toBeFocused();
+
+  const renamed = uniqueName("roomy");
+  await name.fill(renamed);
+  await slots.fill("2");
+  await labels.fill("gpu, linux");
+  await plugins.fill("sandbox");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(toast(page, `Settings of ${renamed} saved`)).toContainText("next heartbeat");
+  await expect(main.getByRole("heading", { level: 1 })).toContainText(renamed);
+  await expect(main.getByTestId("worker-scope")).toContainText("1 of 2 in use");
+  await expect(main.getByTestId("worker-scope")).toContainText("linux");
+  await expect(main.getByTestId("worker-plugins")).toHaveText("sandbox");
+  await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, 1 slot free.");
+  await expect(slots).toHaveValue("2");
+  await expect(settings.getByTestId("worker-settings-save")).toBeDisabled();
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: renamed, slots: 2, labels: ["gpu", "linux"], plugins: ["sandbox"] });
+  expect(await claimRun(live)).not.toBeNull(); // the hub counts the held runs against the new slots
+
+  // The list shows the new values.
+  await page.goto("/workers");
+  await expect(row(page, renamed)).toContainText("2/2");
+  await page.locator("#main").getByTestId("workers-search").fill("linux"); // a new label
+  await expect(page.locator("#main").getByTestId("workers-table").locator("tbody tr")).toHaveCount(1);
+  await expect(row(page, renamed)).toBeVisible();
+});
+
+test("a worker's page links the commit it runs, and its owner locks its version, the hub's refusal shown at the switch", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("pinned"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, {
+    agentCommit: AGENT_COMMIT,
+    selfUpdate: { state: "current", nightly_commit: AGENT_COMMIT, checked_at: new Date().toISOString() },
+  });
+  const lockedOf = async () => (await workersOf(me)).find((w) => w.id === worker.id)?.version_locked;
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  const version = main.getByTestId("worker-version");
+  await expect(version.getByTestId("worker-agent-version")).toHaveText("0.4.0");
+  const commit = version.getByRole("link", { name: "ca3e9af on GitHub (opens in a new tab)" });
+  await expect(commit).toHaveAttribute("href", `https://github.com/maycuatroi1/evo-agents/commit/${AGENT_COMMIT}`);
+  await expect(commit).toHaveAttribute("target", "_blank");
+  await expect(version.getByTestId("worker-updates")).toContainText("Runs the commit nightly points to.");
+  // Its updates go as they should, and nothing on the page says so.
+  await expect(main.getByTestId(/^worker-update-/)).toHaveCount(0);
+
+  const settings = main.getByTestId("worker-settings");
+  const toggle = settings.getByRole("switch", { name: "Lock version" });
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect(toast(page, `${worker.name} stays on its version`)).toContainText("no longer updates itself to nightly");
+  await expect(version.getByTestId("worker-updates")).toHaveText("Locked: it stays on this version until you unlock it in Settings.");
+  expect(await lockedOf()).toBe(true);
+
+  // The hub refuses (here it cannot write): said under the switch, which stays as the hub holds it.
+  const patchOf = `**/v1/workers/${worker.id}`;
+  await page.route(patchOf, (route) =>
+    route.request().method() === "PATCH"
+      ? route.fulfill({ status: 503, json: { error: "service_unavailable", message: "the database is read-only" } })
+      : route.fallback(),
+  );
+  await toggle.click();
+  const refused = settings.getByTestId("worker-version-lock-error");
+  await expect(refused).toContainText(`Couldn't unlock the version of ${worker.name}`);
+  await expect(refused).toContainText("the database is read-only");
+  await expect(toggle).toBeChecked();
+  expect(await lockedOf()).toBe(true);
+
+  // The next flip reaches the hub, and the refusal goes.
+  await page.unroute(patchOf);
+  await settings.getByTestId("worker-version-lock").getByText("Lock version").click(); // from its label
+  await expect(toggle).not.toBeChecked();
+  await expect(refused).toHaveCount(0);
+  await expect(toast(page, `${worker.name} updates itself again`)).toContainText("installs nightly whenever it holds no run");
+  expect(await lockedOf()).toBe(false);
+});
+
+test("the list and a worker's page say only what went wrong with its updates", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const named = (prefix: string) => registerWorker(me, { name: uniqueName(prefix), projects: [project] });
+  const fine = await named("fine");
+  const older = await named("older");
+  const failed = await named("failed");
+  const manual = await named("manual");
+  const stuck = await named("stuck");
+  const now = new Date().toISOString();
+  // A wait of two hours is usual, and an older daemon says nothing of updates: neither shows anything.
+  await heartbeat(fine.id, { agentCommit: AGENT_COMMIT, selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT }, selfUpdateHours: 2 });
+  await heartbeat(older.id);
+  await heartbeat(failed.id, {
+    agentCommit: AGENT_COMMIT,
+    selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT, error: "uv tool install exited 2: no matching distribution", error_at: now },
+  });
+  await heartbeat(manual.id, { selfUpdate: { state: "unsupported", reason: "not started by launchd or systemd" } });
+  await heartbeat(stuck.id, { agentCommit: AGENT_COMMIT, selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT }, selfUpdateHours: 13 });
+
+  await page.goto("/workers");
+  await expect(row(page, failed.name).getByTestId("worker-update")).toHaveText("Update failed");
+  await expect(row(page, failed.name).getByTestId("worker-update")).toHaveAttribute("data-problem", "failed");
+  await expect(row(page, manual.name).getByTestId("worker-update")).toHaveText("Can't self-update");
+  await expect(row(page, stuck.name).getByTestId("worker-update")).toHaveText("Update waiting");
+  await expect(row(page, fine.name).getByTestId("worker-status")).toHaveText("Idle");
+  await expect(row(page, fine.name).getByTestId("worker-update")).toHaveCount(0);
+  await expect(row(page, older.name).getByTestId("worker-update")).toHaveCount(0);
+
+  const main = page.locator("#main");
+  await page.goto(`/workers/${failed.id}`);
+  await expect(main.getByTestId("worker-update-failed")).toContainText("Its last update to nightly failed on");
+  await expect(main.getByTestId("worker-update-error")).toHaveText("uv tool install exited 2: no matching distribution");
+  await expect(main.getByTestId("worker-updates")).toContainText("Waiting for an idle moment to install def5678");
+  await expect(main.getByTestId("worker-update-waiting")).toHaveCount(0); // its wait is short
+
+  await page.goto(`/workers/${manual.id}`);
+  await expect(main.getByTestId("worker-update-unsupported")).toContainText("not started by launchd or systemd");
+  await expect(main.getByTestId("worker-commit")).toContainText("Not reported");
+
+  await page.goto(`/workers/${older.id}`);
+  await expect(main.getByTestId("worker-updates")).toContainText("its daemon does not update itself");
+  await expect(main.getByTestId(/^worker-update-/)).toHaveCount(0);
+
+  await page.goto(`/workers/${stuck.id}`);
+  await expect(main.getByTestId("worker-update-waiting")).toContainText("drain it, then resume it once it shows the new commit");
+
+  // Its owner locks it to keep it where it is: the note and the pill go.
+  await main.getByRole("switch", { name: "Lock version" }).click();
+  await expect(main.getByTestId("worker-update-waiting")).toHaveCount(0);
+  await page.goto("/workers");
+  await expect(row(page, stuck.name).getByTestId("worker-status")).toHaveText("Idle");
+  await expect(row(page, stuck.name).getByTestId("worker-update")).toHaveCount(0);
+  await expect(row(page, failed.name).getByTestId("worker-update")).toHaveText("Update failed");
+});
+
+test("its owner asks a worker behind nightly to update now, sees what it waits for, and cancels", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("behind"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, {
+    agentCommit: AGENT_COMMIT,
+    features: ["update_now"],
+    selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT },
+  });
+  const updateNowOf = async () => (await workersOf(me)).find((w) => w.id === worker.id)?.update_now;
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  const panel = main.getByTestId("update-now");
+  const ask = panel.getByRole("button", { name: "Update now" });
+  await expect(ask).toHaveAccessibleDescription(/runs another commit than nightly/);
+  await ask.click();
+  await expect(toast(page, `${worker.name} updates now`)).toContainText("claims no new run");
+  await expect(panel.getByTestId("update-now-status")).toHaveAttribute("data-phase", "asked");
+  expect(await updateNowOf()).toMatchObject({ ended_at: null, outcome: null });
+
+  // Its daemon took the request and holds no run: the page says it updates once its install is idle.
+  const requestedAt = (await updateNowOf())?.requested_at ?? "";
+  await heartbeat(worker.id, { selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT, update_now: { requested_at: requestedAt, ended: null } } });
+  await page.reload();
+  await expect(panel.getByTestId("update-now-status")).toHaveAttribute("data-phase", "starting");
+
+  // The hub refuses the cancel (here it cannot write): said under the button, which stays as the hub holds it.
+  const cancelOf = `**/v1/workers/${worker.id}/update-now/cancel`;
+  await page.route(cancelOf, (route) => route.fulfill({ status: 503, json: { error: "service_unavailable", message: "the database is read-only" } }));
+  const cancel = panel.getByRole("button", { name: "Cancel" });
+  await cancel.click();
+  const refused = panel.getByTestId("update-now-error");
+  await expect(refused).toContainText(`Couldn't cancel the Update now of ${worker.name}`);
+  await expect(refused).toContainText("the database is read-only");
+  await page.unroute(cancelOf);
+
+  await cancel.click();
+  await expect(toast(page, `Update now of ${worker.name} cancelled`)).toContainText("claims runs again");
+  await expect(panel.getByTestId("update-now-status")).toHaveCount(0);
+  await expect(refused).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Update now" })).toBeVisible();
+  expect(await updateNowOf()).toMatchObject({ outcome: "cancelled" });
+
+  // Locked, the button is greyed with why.
+  await main.getByRole("switch", { name: "Lock version" }).click();
+  await expect(panel.getByTestId("update-now-hint")).toHaveAttribute("data-blocked", "locked");
+  await expect(panel.getByRole("button", { name: "Update now" })).toHaveAttribute("aria-disabled", "true");
+});
+
+test("the Version card shows the commit nightly points to as the hub read it, in amber only once that read is old", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("reader"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, { agentCommit: NIGHTLY_COMMIT, selfUpdate: { state: "current", nightly_commit: NIGHTLY_COMMIT } });
+  // The hub's read is one row for the whole hub, so the specs running beside this one keep theirs: the answer is edited.
+  // The server renders the page from the hub's own answer, so the edited one shows from the browser's first refresh.
+  test.slow();
+  const REFRESH = { timeout: 15_000 };
+  let readAt = new Date().toISOString();
+  await page.route(`**/v1/workers/${worker.id}`, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), nightly: { commit: NIGHTLY_COMMIT, read_at: readAt } } });
+  });
+
+  await page.goto(`/workers/${worker.id}`);
+  const version = page.locator("#main").getByTestId("worker-version");
+  const read = version.getByTestId("worker-hub-nightly");
+  await expect(read.getByRole("link", { name: "def5678 on GitHub (opens in a new tab)" })).toBeVisible(REFRESH);
+  await expect(read.getByTestId("worker-hub-nightly-stale")).toHaveCount(0);
+  await expect(version.getByTestId("update-now")).toHaveCount(0); // it runs nightly: nothing to offer
+
+  readAt = new Date(Date.now() - 25 * 60 * 1000).toISOString();
+  await page.reload();
+  await expect(read.getByTestId("worker-hub-nightly-stale")).toContainText("the hub has not reached GitHub since", REFRESH);
 });
 
 test("a worker token on the admin tokens page says so, and revoking it revokes the worker", async ({ page, admin, signInAs }) => {

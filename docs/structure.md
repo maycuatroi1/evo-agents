@@ -1,23 +1,23 @@
 # The structure of the code
 
-Machines keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and
-`tests/test_structure.py` checks size and complexity budgets. CI runs both once per Python, in the Linux job that
-runs tests/worker (`test (ubuntu-latest, <python>, worker)`), and `ci-ok` fails with it. A failure says what is over,
-by how much, and how to fix it. What broke a rule when the rules came in (2026-10-10) is frozen as an exception, and
-exceptions only shrink.
+Two checks keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and the
+tests marked `structure` in `tests/test_structure.py` check size and complexity budgets. Since 2026-10-13 neither runs
+in CI nor in a plain `pytest` (`addopts` deselects the marker); run them when a change moves code between packages or
+grows a large module. A failure says what is over, by how much, and how to fix it. What broke a rule when the rules
+came in (2026-10-10) is frozen as an exception, and exceptions only shrink.
 
 ## Commands
 
 ```sh
 lint-imports                                  # package boundaries: [tool.importlinter] in pyproject.toml
-python -m pytest -q tests/test_structure.py   # budgets, and the baseline and exceptions against origin/main
+python -m pytest -q -m structure tests/test_structure.py   # budgets, and the baseline and exceptions against origin/main
 python -m tests.structure report              # modules and functions over budget, most over first, then most changed
 python -m tests.structure report --json       # the same rows as JSON
 python -m tests.structure tighten             # lower the baseline to the code once you have shrunk something
 ```
 
-The comparison with main reads `origin/main`: run `git fetch origin` first, or it is skipped. CI sets
-`EVO_STRUCTURE_BASE=origin/main`, so a missing ref fails there instead.
+The comparison with main reads `origin/main`: run `git fetch origin` first, or it is skipped. With
+`EVO_STRUCTURE_BASE=origin/main` set, a missing ref fails instead.
 
 ## Package boundaries
 
@@ -26,10 +26,11 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | the parser of `worker plan`, which borrows the hub CLI's JSON option and plan keys (2) |
 | `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.schedule` |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
-| `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
+| `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
+| `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
 | `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |
 
-Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `schema`. import-linter reads imports inside
+Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins`, `schema`. import-linter reads imports inside
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into
 a package both may import (a type into `evo_agents.kg` or `evo_agents.schema`, the run protocol into
 `evo_agents.hub.runs`), or have the upper package pass it down as an argument. Each contract prints its own advice.

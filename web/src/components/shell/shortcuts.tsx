@@ -1,12 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Keyboard, X } from "lucide-react";
 import type { Route } from "next";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { createContext, Fragment, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { notify } from "@/components/feedback/toast";
 import { useCanDispatch, useDispatchedToast } from "@/components/runs/hooks";
@@ -14,23 +13,21 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Switch } from "@/components/ui/switch";
-import { browserApi } from "@/lib/api/browser";
 import {
   characterKeyBlocked,
   comboText,
   type KeyPart,
-  keyText,
   type ModifierKey,
   setCharacterKeys,
   useCharacterKeys,
   useModifierKey,
 } from "@/lib/keyboard";
-import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
+import { KeySequence } from "./key-sequence";
 import { type NavLabel, projectHref } from "./nav";
 import { isPageDispatchRegistered, pageDispatch, registerPageDispatch, subscribePageDispatch } from "./page-dispatch";
-import { useCurrentProject } from "./project-switcher";
+import { useCurrentProject, useSelectedProject } from "./project-switcher";
 
 /**
  * The hub's keyboard shortcuts in one registry, and the shell's own keys. `SHORTCUTS` lists every key the web answers
@@ -58,7 +55,9 @@ export type ShortcutId =
   | "goCurator"
   | "goWorkers"
   | "dispatch"
-  | "send";
+  | "send"
+  | "chatSend"
+  | "chatLine";
 
 type ShortcutGroup = "general" | "goto" | "actions";
 
@@ -70,7 +69,7 @@ export type Shortcut = {
   /** A key pressed alone: off while the visitor has single-key shortcuts off. */
   single: boolean;
   /** Where it works, when that is not every page: said under its name in the dialog. */
-  where?: "project" | "writer";
+  where?: "project" | "writer" | "chat";
 };
 
 export const SHORTCUTS: readonly Shortcut[] = [
@@ -81,6 +80,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "close", group: "general", keys: [["esc"]], single: false },
   { id: "dispatch", group: "actions", keys: [["d"]], single: true, where: "writer" },
   { id: "send", group: "actions", keys: [["mod", "enter"]], single: false },
+  { id: "chatSend", group: "actions", keys: [["enter"]], single: false, where: "chat" },
+  { id: "chatLine", group: "actions", keys: [["shift", "enter"]], single: false, where: "chat" },
   { id: "goHome", group: "goto", keys: [["g"], ["h"]], single: true },
   { id: "goInbox", group: "goto", keys: [["g"], ["i"]], single: true },
   { id: "goPlans", group: "goto", keys: [["g"], ["p"]], single: true, where: "project" },
@@ -209,7 +210,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const project = useCurrentProject();
-  const { data: me } = useQuery(whoamiQuery(browserApi));
+  const selected = useSelectedProject();
   const canDispatch = useCanDispatch(project ?? "");
   const dispatched = useDispatchedToast();
 
@@ -221,9 +222,9 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const lead = useRef<{ end: ReturnType<typeof setTimeout>; hint: ReturnType<typeof setTimeout> } | null>(null);
 
   // What a key press reads; kept current without adding the listener again, so a pending G survives a render.
-  const now = useRef({ project, canDispatch, grants: me?.grants ?? [], pathname, router, t });
+  const now = useRef({ project, selected, canDispatch, pathname, router, t });
   useEffect(() => {
-    now.current = { project, canDispatch, grants: me?.grants ?? [], pathname, router, t };
+    now.current = { project, selected, canDispatch, pathname, router, t };
   });
 
   const remember = useCallback((from?: HTMLElement | null) => {
@@ -259,13 +260,12 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
 
     const go = (key: GoKey) => {
       const target = GO[key];
-      const { grants, pathname: here, router, t } = now.current;
+      const { selected: project, pathname: here, router, t } = now.current;
       if ("href" in target) {
         if (target.href !== here) router.push(target.href);
         return;
       }
-      // Plans, Runs and the Curator are a project's: the one shown, or the visitor's only one.
-      const project = now.current.project ?? (grants.length === 1 ? grants[0].project : null);
+      // Plans, Runs and the Curator are a project's: the one the sidebar shows (useSelectedProject).
       if (project === null) {
         notify({ id: "shortcuts-need-project", tone: "info", text: t("needProject.title"), description: t("needProject.text") });
         return;
@@ -351,43 +351,6 @@ export function ShortcutKeys({ id, className, keyClassName }: { id: ShortcutId; 
         </Kbd>
       ))}
     </span>
-  );
-}
-
-/** A key in words, for screen readers: "Control", "Slash", "Question mark"; a letter as it is. */
-function useSpokenKey() {
-  const t = useTranslations("shortcuts.keys");
-  return (part: KeyPart, modifier: ModifierKey): string => {
-    if (part === "mod") return modifier === "meta" ? t("command") : t("control");
-    if (part === "enter") return t("enter");
-    if (part === "esc") return t("escape");
-    if (part === "/") return t("slash");
-    if (part === "?") return t("question");
-    return part.toUpperCase();
-  };
-}
-
-/** A shortcut's keys in the dialog: one `kbd` per key, "then" between the strokes of a sequence, and all of it in words. */
-function KeySequence({ keys, modifier }: { keys: Shortcut["keys"]; modifier: ModifierKey }) {
-  const t = useTranslations("shortcuts");
-  const spoken = useSpokenKey();
-  const words = keys.map((stroke) => stroke.map((part) => spoken(part, modifier)).join(" ")).join(` ${t("then")} `);
-  return (
-    <>
-      <span className="sr-only">{words}</span>
-      <span aria-hidden="true" className="flex items-center gap-1.5">
-        {keys.map((stroke, index) => (
-          <Fragment key={index}>
-            {index > 0 ? <span className="text-xs text-fg-subtle">{t("then")}</span> : null}
-            <span className="flex items-center gap-0.5">
-              {stroke.map((part) => (
-                <Kbd key={part}>{keyText(part, modifier)}</Kbd>
-              ))}
-            </span>
-          </Fragment>
-        ))}
-      </span>
-    </>
   );
 }
 

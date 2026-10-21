@@ -3,7 +3,8 @@
 The agent of a run of one step writes ``.evo-run/result.json``; the daemon runs each of its ``verify_commands`` again
 in the worktree, with the run's time left, and records each exit code as a ``system`` event. A command that exits
 other than 0 fails the run, and nothing is pushed: the work stays in the worktree. A run of a plan, a review or an
-author run reads only the agent's summary from that file.
+author run reads only the agent's summary from that file. A judge run and a replay run run their commands as code the
+worker does not trust (``run_untrusted``, ``evo_agents.worker.untrusted``).
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
-from evo_agents.worker.runner.common import RunFailed, Stopped, cut
+from evo_agents.worker import credentials, untrusted
+from evo_agents.worker.runner.common import RunFailed, Stopped, cut, log
 from evo_agents.worker.runner.transitions import result_commands, summary_of
 
 if TYPE_CHECKING:
@@ -86,17 +88,19 @@ async def run_verify(run: Run, commands: list[str]) -> list[dict]:
     return results
 
 
-async def shell(run: Run, command: str, seconds: float, cwd: Path | None = None) -> tuple[int, str]:
+async def shell(
+    run: Run, command: str, seconds: float, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     """(exit code, the end of its output) of ``command`` in the run's worktree (or ``cwd``), in the agent's
-    environment; Stopped when the run is asked to stop or runs out of time first, with the command's process group
-    killed."""
+    environment (or ``env``); Stopped when the run is asked to stop or runs out of time first, with the command's
+    process group killed."""
     proc = await asyncio.create_subprocess_shell(
         command,
         cwd=str(cwd or run.worktree),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        env=run.agent.env(),
+        env=env if env is not None else run.agent.env(),
         start_new_session=True,
     )
     tail = bytearray()
@@ -125,3 +129,38 @@ async def read_tail(proc, tail: bytearray) -> None:
     while chunk := await proc.stdout.read(65536):
         tail.extend(chunk)
         del tail[:-OUTPUT_TAIL]
+
+
+async def run_untrusted(run: Run, command: str, cwd: Path) -> tuple[int, str]:
+    """(exit code, the end of its output) of ``command``, code the worker does not trust (``untrusted``): in ``cwd``,
+    on the standard input of ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential,
+    and every process it left killed once it ends; Stopped when the run is asked to stop or runs out of time first."""
+    marker = untrusted.new_marker()
+    env = untrusted.scrubbed_env(run.daemon.env, credentials.held_values())
+    proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
+    tail = bytearray()
+    reader = asyncio.create_task(read_tail(proc, tail))
+    waiter = asyncio.create_task(proc.wait())
+    stopper = asyncio.create_task(run.stop_event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {waiter, stopper},
+            timeout=max(0.0, run.deadline - run.loop.time()),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    finally:
+        stopper.cancel()
+        killed = await untrusted.kill_leftovers(proc.pid, marker)
+        if not waiter.done():
+            await waiter
+    if killed:
+        log.info("processes an untrusted command left were killed", extra={"run_id": run.id, "killed": killed})
+    if waiter not in done:
+        reader.cancel()
+        if run.stop_reason is None:
+            run.stop_reason = "timeout"
+        raise Stopped(run.stop_reason)
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(reader, 5)
+    reader.cancel()
+    return proc.returncode, tail.decode(errors="replace")

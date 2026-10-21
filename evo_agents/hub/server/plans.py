@@ -3,8 +3,9 @@
 A plan is a row of ``plans`` (its area, label, body as jsonb, revision and digest) with one row of
 ``plan_revisions`` per revision, only ever appended. Every write takes the plan's row lock, checks the body against
 plan.schema.json and ``plan_semantics`` (repos against the repos registered for the project; a schema error is a
-422, a semantic finding a warning in the answer), writes the plan and its revision, and adds one audit row naming
-the plan and the revision, never its content, all in one transaction.
+422, a semantic finding a warning in the answer), refuses with a 422 a verify new in the write that cannot be one shell
+command line on a step not done (``evo_agents.hub.plans.unrunnable_verify``), writes the plan and its revision, and
+adds one audit row naming the plan and the revision, never its content, all in one transaction.
 
 - PUT creates a plan, or replaces it when ``if_revision`` is the revision the hub holds; anything else is a 409
   ``revision_conflict`` whose ``current`` is the plan as the hub holds it. A body equal to the one held (same digest
@@ -13,7 +14,10 @@ the plan and the revision, never its content, all in one transaction.
   revision records the run (``run_id``, which the revisions show).
 - PATCH sets keys of one item of a section, by index or (for steps) by step id, as ``evo harness step`` does, and
   needs ``if_revision`` too. A client that gets the 409 reads the plan again and retries on the new revision.
-- POST .../complete moves the plan to the completed area, only when every step is done.
+- POST .../complete moves the plan to the completed area, only when every step is done or descoped.
+- POST .../abandon moves an active or completed plan to the completed area as abandoned (or superseded by another
+  plan), with a date and a reason, leaving each step's status as it was; POST .../reopen puts an abandoned or
+  superseded plan back in the active area.
 
 Reads go through a sink of the project (X-Evo-Sink, by default its hub sink) and follow ``ProjectAccess.visible``;
 a plan the caller cannot see answers the same 404 as one that does not exist. Reading needs a grant on the project:
@@ -29,41 +33,60 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import ColumnElement, Label, Select, bindparam, case, func, insert, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
-from evo_agents.hub import tables
+from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, build_handoff
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
     PLAN_ID,
-    SECTIONS,
-    UPDATABLE,
     PlanProblem,
     PlanTooLarge,
+    abandoned_body,
     check_body,
+    reopened_body,
     step_index,
+    step_key,
     summarize,
     undone_steps,
+    unrunnable_verify,
     update_item,
     update_summary,
+    verify_refusal,
 )
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
+from evo_agents.hub.server.plan_models import (
+    Plan,
+    PlanAbandon,
+    PlanComplete,
+    PlanDiff,
+    PlanDiffHunk,
+    PlanDiffLine,
+    PlanHandoff,
+    PlanPatch,
+    PlanPut,
+    PlanReopen,
+    PlanSummary,
+    Problem,
+    Revision,
+    RevisionBody,
+)
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.schema import errors, validate
@@ -77,12 +100,9 @@ PLAN_CREATE = "plan.create"
 PLAN_PUT = "plan.put"
 PLAN_PATCH = "plan.patch"
 PLAN_COMPLETE = "plan.complete"
+PLAN_ABANDON = "plan.abandon"
+PLAN_REOPEN = "plan.reopen"
 SHOWN_PROBLEMS = 5
-
-
-class Problem(BaseModel):
-    path: str
-    message: str
 
 
 class Conflict(ErrorBody):
@@ -101,114 +121,10 @@ REFUSALS = {
 router = APIRouter(prefix="/v1/projects/{project}/plans", tags=["plans"], responses={401: {"model": ErrorBody}})
 
 
-class PlanSummary(BaseModel):
-    plan_id: str
-    area: Literal[AREAS]
-    revision: int
-    digest: str
-    title: str | None
-    steps_total: int
-    steps_done: int
-    updated_at: datetime
-    updated_by: str
-
-
-class Plan(BaseModel):
-    project: str
-    plan_id: str
-    area: Literal[AREAS]
-    revision: int
-    digest: str = Field(description="sha256 of the canonical JSON of the body, as evo_agents.harness.plan_digest")
-    label: dict
-    body: dict
-    created_at: datetime
-    updated_at: datetime
-    updated_by: str
-
-
 class Written(Plan):
     created: bool
     changed: bool = Field(description="false when the hub already held exactly this; no revision was added")
     warnings: list[Problem] = Field(description="what plan_semantics found; the plan was stored anyway")
-
-
-class RevisionFields(BaseModel):
-    revision: int
-    area: Literal[AREAS]
-    digest: str
-    summary: str
-    actor: str
-    created_at: datetime
-
-
-class Revision(RevisionFields):
-    run_id: int | None = Field(
-        None, description="the author run that wrote the revision, as its dispatcher (actor); null for any other write"
-    )
-
-
-# One revision with its body keeps the keys of 0.8.0, which consumers of `hub plan show --revision` pin exactly (seam
-# hub-cli-v1); the author run that wrote a revision is in the history (Revision.run_id).
-class RevisionBody(RevisionFields):
-    label: dict
-    body: dict
-
-
-class PlanDiffLine(BaseModel):
-    kind: Literal["context", "added", "removed"]
-    old: int | None = Field(description="the line's number in the from revision's text; null for an added line")
-    new: int | None = Field(description="the line's number in the to revision's text; null for a removed line")
-    text: str
-
-
-class PlanDiffHunk(BaseModel):
-    old_start: int
-    old_lines: int
-    new_start: int
-    new_lines: int
-    lines: list[PlanDiffLine]
-
-
-class PlanDiff(BaseModel):
-    plan_id: str
-    from_revision: Revision
-    to_revision: Revision
-    context: int
-    added: int = Field(description="lines added in all hunks")
-    removed: int = Field(description="lines removed in all hunks")
-    hunks: list[PlanDiffHunk] = Field(description="empty when the two revisions read the same")
-
-
-class PlanHandoff(BaseModel):
-    project: str
-    plan_id: str
-    revision: int
-    step: str | None = Field(description="the step the handoff is for, whose dependencies' evidence comes first")
-    budget_tokens: int
-    tokens: int = Field(description="the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up")
-    cut: bool = Field(description="whether anything was cut or left out to stay within the budget")
-    text: str = Field(description="the handoff, as evo_agents.hub.handoff builds it; markdown")
-
-
-class PlanPut(BaseModel):
-    body: dict[str, Any] = Field(description="the plan as its YAML file reads; a hub key in it is ignored")
-    area: Literal[AREAS] | None = Field(None, description="where a new plan goes (default active); else its area")
-    if_revision: int | None = Field(
-        None, ge=0, description="the revision being replaced; leave it out, or 0, to create the plan"
-    )
-    label: dict | None = Field(None, description="{level, location, integrity}; default: the project's, or the held")
-
-
-class PlanPatch(BaseModel):
-    section: Literal[SECTIONS]
-    index: int | None = Field(None, ge=0, description="the item's position in the section")
-    step: int | str | None = Field(None, description="for steps, the step's id (or order) instead of an index")
-    updates: dict[str, str] = Field(min_length=1, max_length=len(UPDATABLE), description=", ".join(UPDATABLE))
-    if_revision: int = Field(ge=1, description="the revision the update was made against")
-
-
-class PlanComplete(BaseModel):
-    if_revision: int | None = Field(None, ge=1)
 
 
 class PlanError(Exception):
@@ -311,7 +227,7 @@ def step_counts(body: ColumnElement) -> tuple[Label, Label]:
     step = func.jsonb_array_elements(steps, type_=JSONB).column_valued("s")
     done = (
         select(func.count())
-        .where(func.jsonb_typeof(step) == "object", step["status"].astext == "done")
+        .where(func.jsonb_typeof(step) == "object", step["status"].astext.in_(["done", "descoped"]))
         .scalar_subquery()
     )
     return (
@@ -611,10 +527,14 @@ async def _store(
     plan first. The stored body is read back and must carry the digest of the body given. A write of a plan the
     Curator made that names another repo or branch, or changes more than the progress of its steps, and a new plan
     with an id of the Curator's that the hub does not make from a proposal (``made_by_curator``), are a 409
-    (``changes.plan_write_refusal``). ``run_id`` is the run that writes it, an author run's, recorded on the
-    revision."""
+    (``changes.plan_write_refusal``). A verify that is new against ``held`` and cannot be one shell command line, on a
+    step not done, is a 422 (``plans.unrunnable_verify``): every write of a plan comes through here. ``run_id`` is the
+    run that writes it, an author run's, recorded on the revision."""
     from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
 
+    unrunnable = unrunnable_verify(None if held is None else held.body, body)
+    if unrunnable:
+        raise PlanError(422, verify_refusal(body["id"], unrunnable))
     refusal = await plan_write_refusal(
         conn,
         access.project_id,
@@ -712,9 +632,19 @@ async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: 
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
-            return await write_plan(
-                conn, access, user, body, area=payload.area, if_revision=payload.if_revision, label=payload.label
+            local = await _local_writer(conn, access, user, payload.run_id)
+            written = await write_plan(
+                conn,
+                access,
+                user,
+                body,
+                area=payload.area,
+                if_revision=payload.if_revision,
+                label=payload.label,
+                run_id=local,
             )
+            await _local_progress(conn, local, plan_id, written.revision, None)
+            return written
     except PlanError as exc:
         return _refusal(request, exc)
 
@@ -803,6 +733,26 @@ async def write_plan(
     raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
 
 
+async def _local_writer(conn, access, user, run_id: int | None) -> int | None:
+    """``run_id`` when it is a local run of the project that ``user`` owns, its row locked; None for no run; 404 for
+    any other (``local_runs.writing_run``)."""
+    if run_id is None:
+        return None
+    from evo_agents.hub.server.local_runs import writing_run  # it reads plans through this module
+
+    return await writing_run(conn, access, user, run_id)
+
+
+async def _local_progress(conn, run_id: int | None, plan_id: str, revision: int, step: str | None) -> None:
+    """Tell the local run ``run_id`` (the one ``_local_writer`` took) which plan, revision
+    and step its session wrote."""
+    if run_id is None:
+        return
+    from evo_agents.hub.server.local_runs import note_progress
+
+    await note_progress(conn, run_id, plan_id, revision, step)
+
+
 @router.patch("/{plan_id}", response_model=Written, responses=REFUSALS)
 async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload: PlanPatch, user: CurrentUser):
     """Set keys of one item, as ``evo harness step``, ``repo``, ``debt`` and ``question`` do in a file."""
@@ -814,6 +764,7 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
+            local = await _local_writer(conn, access, user, payload.run_id)
             stored, changed, warnings = await apply_patch(
                 conn,
                 access,
@@ -824,7 +775,15 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
                 if_revision=payload.if_revision,
                 index=payload.index,
                 step=payload.step,
+                run_id=local,
             )
+            if payload.section == "steps":
+                where = payload.index if payload.step is None else step_index(stored.body, payload.step)
+                await _local_progress(
+                    conn, local, plan_id, stored.revision, step_key(stored.body["steps"][where], where)
+                )
+            else:
+                await _local_progress(conn, local, plan_id, stored.revision, None)
             return _written(access, stored, created=False, changed=changed, warnings=warnings)
     except PlanError as exc:
         return _refusal(request, exc)
@@ -841,13 +800,15 @@ async def apply_patch(
     if_revision: int,
     index: int | None = None,
     step=None,
+    run_id: int | None = None,
 ) -> tuple[Held, bool, list[Problem]]:
     """PATCH's write, in the caller's transaction, for a ``user`` whose writer role the caller checked: set
     ``updates`` on one item of ``section``, named by ``index`` or (for steps) by ``step``, when ``if_revision`` is
     the revision the hub holds. Returns the plan as held afterwards, whether it changed, and the warnings of
     ``plan_semantics``. Raises PlanError: 409 ``revision_conflict`` for another revision, 422 for an update the plan
     refuses; and HTTPException 404 for a plan ``user`` cannot see, 403 or 422 when its label refuses the push. The
-    hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher."""
+    hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher;
+    ``run_id`` is the local run whose session writes it, recorded on the revision."""
     held = await _visible(conn, access, plan_id, None, lock=True)
     label = access.push_label(held.label)
     if if_revision != held.revision:
@@ -864,9 +825,23 @@ async def apply_patch(
         return held, False, warnings
     summary = update_summary(body, section, position, old, updates)
     stored = await _store(
-        conn, access, user, held, area=held.area, label=label, body=body, summary=summary, action=PLAN_PATCH
+        conn,
+        access,
+        user,
+        held,
+        area=held.area,
+        label=label,
+        body=body,
+        summary=summary,
+        action=PLAN_PATCH,
+        run_id=run_id,
     )
     _logged(access.name, stored, "patched", user)
+    if section == "steps" and "status" in updates and old.get("status") != updates["status"]:
+        moved = {"from": old.get("status"), "to": updates["status"], "revision": stored.revision}
+        step_id = body["steps"][position].get("id")
+        step_key = None if step_id is None else str(step_id)  # as a run names its step
+        await plugin_events.emit(conn, "plan.step", access.project_id, {"plan_id": plan_id, "step": step_key, **moved})
     return stored, True, warnings
 
 
@@ -907,5 +882,90 @@ async def complete(
             )
             _logged(project, stored, "completed", user)
             return _written(access, stored, created=False, changed=True, warnings=[])
+    except PlanError as exc:
+        return _refusal(request, exc)
+
+
+@router.post("/{plan_id}/abandon", response_model=Written, responses=REFUSALS)
+async def abandon(request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanAbandon):
+    """Move an active or completed plan to the completed area as abandoned, or superseded when ``superseded_by``
+    names the plan that replaces it. The date and reason are kept on the plan; no step changes status. A plan that is
+    abandoned already is left as it is."""
+    try:
+        async with request.app.state.engine.begin() as conn:
+            access = await project_access(conn, user, project)
+            _writer(access)
+            held = await _visible(conn, access, plan_id, None, lock=True)
+            label = access.push_label(held.label)
+            if payload.if_revision is not None and payload.if_revision != held.revision:
+                raise _stale(access, held, payload.if_revision)
+            if held.body.get("status") in ("abandoned", "superseded") and held.area == "completed":
+                _logged(project, held, "unchanged", user)
+                return _written(access, held, created=False, changed=False, warnings=[])
+            if payload.superseded_by is not None:
+                if payload.superseded_by == plan_id:
+                    raise PlanError(422, "a plan cannot be superseded by itself")
+                other = await _held(conn, access, payload.superseded_by)
+                if other is None or not access.visible(other.label, _sink(access, None)):
+                    raise PlanError(404, not_found(access.name, payload.superseded_by))
+            try:
+                body = abandoned_body(
+                    held.body, payload.reason, datetime.now(UTC).strftime("%Y-%m-%d"), payload.superseded_by
+                )
+                check_body(body, plan_id)
+            except PlanProblem as exc:
+                raise PlanError(422, str(exc)) from exc
+            warnings = await _warnings(conn, access, body, "completed")
+            stored = await _store(
+                conn,
+                access,
+                user,
+                held,
+                area="completed",
+                label=label,
+                body=body,
+                summary=f"{body['status']}: {payload.reason[:80]}",
+                action=PLAN_ABANDON,
+            )
+            _logged(project, stored, body["status"], user)
+            return _written(access, stored, created=False, changed=True, warnings=warnings)
+    except PlanError as exc:
+        return _refusal(request, exc)
+
+
+@router.post("/{plan_id}/reopen", response_model=Written, responses=REFUSALS)
+async def reopen(
+    request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanReopen | None = None
+):
+    """Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a
+    409: a completed plan is not reopened by this."""
+    given = payload.if_revision if payload else None
+    try:
+        async with request.app.state.engine.begin() as conn:
+            access = await project_access(conn, user, project)
+            _writer(access)
+            held = await _visible(conn, access, plan_id, None, lock=True)
+            label = access.push_label(held.label)
+            if given is not None and given != held.revision:
+                raise _stale(access, held, given)
+            try:
+                body = reopened_body(held.body)
+                check_body(body, plan_id)
+            except PlanProblem as exc:
+                raise PlanError(409, str(exc)) from exc
+            warnings = await _warnings(conn, access, body, "active")
+            stored = await _store(
+                conn,
+                access,
+                user,
+                held,
+                area="active",
+                label=label,
+                body=body,
+                summary="reopened: back to active",
+                action=PLAN_REOPEN,
+            )
+            _logged(project, stored, "reopened", user)
+            return _written(access, stored, created=False, changed=True, warnings=warnings)
     except PlanError as exc:
         return _refusal(request, exc)
