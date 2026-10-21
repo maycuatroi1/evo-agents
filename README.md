@@ -497,7 +497,8 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               (what kg_impact follows and covers per language, the text of every tool, search, the note after
               grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
               retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
-              hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks
+              hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
+              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab
 ```
 
 ## License

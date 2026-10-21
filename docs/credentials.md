@@ -141,7 +141,7 @@ secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry da
 A secret of kind `forge` is a GitLab project or group access token (scope `api`, role Maintainer) with which the hub
 itself drives the merge requests of a project's repos under its `url_prefix`: it reads a merge request, its diff and
 the pipelines of a commit, rebases it, merges it with the sha it checked, plays a manual job, and opens a revert
-(`evo_agents/hub/server/gitlab.py`, plan gitlab-merge-queue). No run ever gets it.
+(`evo_agents/hub/server/gitlab.py`). No run ever gets it. `docs/merge-queue.md` says what the hub does with it.
 
 - Writing one needs the admin role on each of its projects, where `env` and `git` need writer. It needs `expires_at`,
   takes no `username` (GitLab reads the token from the `PRIVATE-TOKEN` header) and no `workers`, holds one line, and
@@ -157,6 +157,8 @@ the pipelines of a commit, rebases it, merges it with the sha it checked, plays 
   error, event or audit row holds it.
 - A project with no forge secret for a repo's origin gets no token: its merge requests on GitLab stay open for a
   person, as before.
+- The web's Secrets page writes one too: the kind Forge asks for the URL prefix (not on github.com), the projects the
+  visitor administers and an end date, offers no worker, and takes one line.
 
 ```sh
 pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https://gitlab.example.org/group \

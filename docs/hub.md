@@ -30,6 +30,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises, and each decision the agent asked as a DecisionCard right after the agent's message that ended the turn which asked it, in the order asked: the owner picks an option with the mouse (the recommended one chosen already), adds words if they like and sends each card, an answered card folds to its answer (which the chat does not repeat as a message), the label of whose turn it is says how many decisions wait, another member reads the cards without a form, and "Asked you" in the Trace opens the card in this tab; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
+| Merge queue, `/p/{project}/merge-queue`, `.../merge-queue/figures` and `.../merge-queue/policy` | the hub's merge queue on GitLab (`docs/merge-queue.md`): the merge requests waiting, in their turn and after their merge, why each waits or is blocked, its gates, verdicts and ledger, each repo's breaker and the audit samples waiting for an answer; the figures of each repo, agent and model; the autonomy policy, its form, its revisions and the comparison of two. A reader reads; an admin edits the policy, answers samples, approves a manual release, asks for a revert and resets a breaker | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`, `GET` and `PUT .../policy`, `.../policy/revisions`, `.../policy/compare` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 | Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
 
@@ -97,6 +98,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
+| autonomy policy | `GET` and `PUT /v1/projects/{project}/policy`, `GET .../policy/revisions`, `.../policy/revisions/{revision}`, `.../policy/compare?from=N&to=M`: reading needs a grant on the project, writing the admin role (`docs/merge-queue.md`) |
+| merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -894,7 +897,15 @@ adds the findings of the core plugin srs, `srs_findings`, and `srs_versions.revi
 (Group chats) with `srs_settle_chats` and `srs_findings.commit_authors`; 0071 `srs_approval_tasks`, what the approval
 of a version did to the project's tasks (`docs/srs-plugin.md`, Findings, Settle chats and Tasks when a version is
 approved). Schema 0072 drops `chats.budget_usd` and its check (Group chats, Caps); going back to 0071 puts it back at
-5 on every chat. Going back past each drops what it added; going back past 0070 makes every settle chat a group chat first.
+5 on every chat. Schemas 0073 to 0078 add the merge queue on GitLab (`docs/merge-queue.md`): 0073 `autonomy_policies`,
+the revisions of each project's autonomy policy, and the @builder proposal kind `policy`; 0074 the secret kind `forge`,
+with an end and a `url_prefix` and never a worker (`docs/credentials.md`, Forge secrets); 0075 `merge_queue` and its
+ledger `merge_events`, and a judge run on no plan; 0076 a merge request's turn on its target branch
+(`merge_queue_turn_key`) and its rebases in a row; 0077 what follows a merge (its checks, a revert's merge request, the
+results of the UAT and PROD checks) and `merge_samples`; 0078 `merge_breakers` and the notice `merge_paused`. No column
+of a table older than 0073 changes. Going back to 0072 drops those tables, deletes the forge secrets, the policy
+proposals, the judge runs on no plan and the merge_paused notices, and puts back the checks they widened. Going back
+past each drops what it added; going back past 0070 makes every settle chat a group chat first.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1582,6 +1593,31 @@ evo-agents hub release pause --project evo-agents
 ```
 
 The web shows it on the project's Releases page (`/p/{project}/releases`).
+
+## The merge queue on GitLab
+
+A project can let the hub merge its merge requests on GitLab under an autonomy policy its admins write and the hub keeps
+as revisions (`docs/merge-queue.md`). For each repo the policy has in mode `auto`, with a forge secret of the project
+covering its origin (`docs/credentials.md`, Forge secrets), the job `hub.merge_queue` opens the merge request of a plan
+whose steps in the repo are done and of a task run that ended done, takes the Curator's merge requests its Judge passed
+and the ones a person labeled with `merge.opt_in_label`, runs the gates (the repo's settings, the pipeline, the plan's
+repo, score hacking, the checks, a Judge of the Claude family in a context of its own, the risk, and a second Judge for a
+high risk), and merges the merge requests of a target branch one at a time: rebased, tested at the new head, merged with
+the sha the pipeline passed on. After the merge it follows the UAT check, runs the PROD deploy as `prod_release` says
+(`immediate`, `after_uat`, `manual`), reverts the culprit of a failed check first in the queue, rolls PROD back when the
+PROD check fails, draws audit samples, and trips the breaker of a repo on the policy's thresholds; only an admin resets
+it. A project without a policy, and every repo in mode `off`, keep their merge requests open for a person, as before.
+
+```sh
+evo-agents hub policy show --project demo                    # every key now, (default) where the policy sets none
+evo-agents hub policy set --file policy.yaml --project demo  # an admin: the whole policy as the next revision
+evo-agents hub policy history --project demo
+evo-agents hub policy diff 2 4 --project demo
+evo-agents hub merge list --project demo                     # each repo's breaker, then the merge requests
+evo-agents hub merge resume lumen-api --project demo         # an admin resets the repo's breaker
+```
+
+The web shows it on the project's Merge queue page (`/p/{project}/merge-queue`), with the tabs Figures and Policy.
 
 ## Memories, skills and knowledge graphs
 
@@ -2288,6 +2324,10 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
   CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
   server's release pass to the job runner (`HubContext.release_pass`).
+- `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
+  its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
+  merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched
+  (The merge queue on GitLab, above; `docs/merge-queue.md`).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
