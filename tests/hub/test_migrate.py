@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -110,6 +110,8 @@ TABLES |= pg.POLICY_TABLES  # migration 0079
 TABLES |= pg.MERGE_TABLES  # migration 0081
 TABLES |= pg.SAMPLE_TABLES  # migration 0083
 TABLES |= pg.BREAKER_TABLES  # migration 0084
+TABLES |= pg.TASKS_BLOCKER_TABLES  # migration 0085
+TABLES |= pg.PM_TABLES  # migration 0086
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -184,8 +186,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_twenty_eight_tables(hub_db):
-    assert len(TABLES) == 128  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_thirty_tables(hub_db):
+    assert len(TABLES) == 130  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2028,6 +2030,77 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
+
+
+def test_0085_keeps_tasks_blockers_with_one_side_each_and_a_sprint_activated_at_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0084")
+    k = hub_tables.tasks
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        sprint = {"project_id": ids["project"], "created_by": ids["user"], "state": "active"}
+        conn.execute(insert(k.sprints).values(name="Sprint 1", **sprint))
+        values = {"project_id": ids["project"], "title": "Cancel", "status": "todo", "label": {}}
+        values |= {"created_by": ids["user"]}
+        first = one(conn, insert(k.items).values(number=1, **values).returning(k.items.c.id))
+        second = one(conn, insert(k.items).values(number=2, **values).returning(k.items.c.id))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0085")
+    b = k.blockers
+    given = {"task_id": first, "created_by": ids["user"], "reason": "needs the API key"}
+    with live.connect(hub_db) as conn:
+        assert one(conn, select(k.sprints.c.activated_at)) is None  # active before: left empty
+        conn.execute(insert(b).values(**given, waiting_user_id=ids["user"]))
+        conn.execute(insert(b).values(**given, waiting_task_id=second))
+        conn.execute(insert(b).values(**given, waiting_text="the bank"))  # a task has many open blockers
+        assert one(conn, select(func.count()).select_from(b).where(b.c.cleared_at.is_(None))) == 3
+        for bad in (
+            insert(b).values(**given),  # waits on nothing
+            insert(b).values(**given, waiting_user_id=ids["user"], waiting_text="the bank"),  # on two things
+            insert(b).values(**given, waiting_task_id=first),  # on itself
+            insert(b).values(**{**given, "reason": ""}, waiting_text="x"),
+            update(b).values(cleared_at=func.now()),  # cleared by nobody
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        conn.execute(update(b).values(cleared_at=func.now(), cleared_by=ids["user"]))
+    # Going back drops the table and the column.
+    move_to(hub_db, "0084", down=True)
+    assert "tasks_blockers" not in tables(hub_db)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+
+
+def test_0086_keeps_one_send_a_day_and_the_pm_notices_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0085")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0086")
+    s, n = t.pm_sends, t.notifications
+    sent = {"project_id": ids["project"], "day": date(2026, 10, 21), "kind": "digest"}
+    notice = {"user_id": ids["user"], "kind": "notice", "title": "Digest", "project_id": ids["project"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s).values(sent))
+        assert one(conn, select(s.c.key)) == ""
+        conn.execute(insert(s).values({**sent, "kind": "escalation", "key": "blocker:1"}))
+        conn.execute(insert(s).values({**sent, "kind": "escalation", "key": "decision:1"}))
+        conn.execute(insert(s).values({**sent, "day": date(2026, 10, 22)}))
+        for kind in ("pm_daily", "pm_escalation", "merge_paused", "release"):
+            conn.execute(insert(n).values({**notice, "notice_kind": kind}))
+        for bad in (insert(s).values(sent), insert(s).values({**sent, "kind": "weekly", "key": "x"})):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(n).values({**notice, "notice_kind": "pm_weekly"}))
+    # Going back drops the table and the two notices, and keeps the other kinds.
+    move_to(hub_db, "0085", down=True)
+    assert "pm_sends" not in tables(hub_db)
+    assert query(hub_db, select(n.c.notice_kind).order_by(n.c.id)) == [("merge_paused",), ("release",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n).where(n.c.notice_kind.in_(("merge_paused", "release"))))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0086") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

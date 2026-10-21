@@ -16,8 +16,8 @@ call by what it does (the command, the file), so for them the name is the call's
 fetch, think), and the title for a call of kind other, which is an MCP tool (``server/tool`` for Codex).
 
 The calls of Claude Code's Skill tool also name the skill each loaded (the call's ``rawInput.skill``): the Skill
-row keeps per skill its calls and the calls that failed (run_tool_stats.skills, schema 0085), and the routes list them
-as ``skills``. Runs that ended before 0085 have none.
+row keeps per skill its calls and the calls that failed (run_tool_stats.skills, schema 0087), and the routes list them
+as ``skills``. Runs that ended before 0087 have none.
 
 GET /v1/projects/{project}/runs/{run_id}/tool-stats shows one run's figures to whoever may read the run
 (``runs.readable_run``). GET /v1/projects/{project}/tool-stats adds them up per tool and runtime over the runs of the
@@ -192,7 +192,7 @@ class RunToolStats(BaseModel):
     finished_at: datetime | None
     tools: list[ToolStat] = Field(description="the most called first; empty for a run that has not ended")
     skills: list[SkillStat] = Field(
-        default_factory=list, description="what the Skill tool loaded, the most called first; empty before schema 0085"
+        default_factory=list, description="what the Skill tool loaded, the most called first; empty before schema 0087"
     )
 
 

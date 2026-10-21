@@ -74,6 +74,7 @@ builder = "evo_agents.core_plugins.builder:MANIFEST"
 srs = "evo_agents.core_plugins.srs:MANIFEST"
 tasks = "evo_agents.core_plugins.tasks:MANIFEST"
 canvas = "evo_agents.core_plugins.canvas:MANIFEST"
+pm = "evo_agents.core_plugins.pm:MANIFEST"
 
 # The Python environment a worker's run makes in a worktree of this repo (evo_agents.worker.venvs, docs/workers.md):
 # the extras CI tests with and the core plugins the hub's image installs, so `python -m pytest` and `python -m
@@ -250,6 +251,7 @@ forbidden_modules = [
     "evo_agents.core_plugins.builder",
     "evo_agents.core_plugins.canvas",
     "evo_agents.core_plugins.tasks",
+    "evo_agents.core_plugins.pm",
     "evo_agents.cli",
     "evo_agents.worker",
 ]
@@ -268,6 +270,7 @@ forbidden_modules = [
     "evo_agents.core_plugins.builder",
     "evo_agents.core_plugins.canvas",
     "evo_agents.core_plugins.srs",
+    "evo_agents.core_plugins.pm",
     "evo_agents.cli",
     "evo_agents.worker",
 ]
@@ -287,6 +290,7 @@ forbidden_modules = [
     "evo_agents.core_plugins.builder",
     "evo_agents.core_plugins.srs",
     "evo_agents.core_plugins.tasks",
+    "evo_agents.core_plugins.pm",
     "evo_agents.cli",
     "evo_agents.worker",
 ]
@@ -294,6 +298,26 @@ broken_contract_guidance = """\
 The core plugin canvas is one package that leans on the hub alone (its tables, its access rules, its server's \
 dependencies). It imports no other core plugin, the plugin srs included, nor the worker or the command line: what \
 it reads of srs it reads through evo_agents.hub.tables.srs. Move what both need into evo_agents.hub. See \
+docs/plugins.md, section Core plugins."""
+
+[[tool.importlinter.contracts]]
+id = "pm-plugin-own-package"
+name = "The core plugin pm imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.pm"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.canvas",
+    "evo_agents.core_plugins.srs",
+    "evo_agents.core_plugins.tasks",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin pm is one package that leans on the hub alone (the tables of tasks, srs, plans, runs and decisions, \
+its access rules, its server's dependencies). It imports no other core plugin, the plugins tasks and srs included, \
+nor the worker or the command line: it reads their tables through evo_agents.hub.tables and the config of tasks \
+through evo_agents.hub.server.plugin_configs. Move what both need into evo_agents.hub. See docs/pm-plugin.md and \
 docs/plugins.md, section Core plugins."""
 
 [[tool.importlinter.contracts]]

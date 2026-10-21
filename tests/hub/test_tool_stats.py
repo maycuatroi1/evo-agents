@@ -266,16 +266,16 @@ def test_tool_stats_record_the_skills_the_skill_tool_of_a_run_loaded_and_keep_th
     assert events_left(hub, run_id) == 0 and per_run(hub, run_id)["skills"] == loaded, "kept after the pruning"
 
 
-def test_tool_stats_migration_0085_goes_down_to_0084_and_up_again(hub):
+def test_tool_stats_migration_0087_goes_down_to_0086_and_up_again(hub):
     from tests.hub.test_migrate import move_to
 
     run_id = started_run(hub)
     send(hub, run_id, skill_events(datetime.now(UTC) - timedelta(hours=1)))
     moved(hub.client, hub.worker, run_id, "failed", error="the tests fail")
     s = tables.run_tool_stats
-    move_to(hub.db, "0084", down=True)
+    move_to(hub.db, "0086", down=True)
     assert sql(hub.db, select(func.count()).select_from(s.c.run_id.table)) == [(1,)], "the rows stay, without skills"
-    move_to(hub.db, "0085")
+    move_to(hub.db, "0087")
     assert sql(hub.db, select(s.c.tool_name, s.c.skills)) == [("Skill", None)], "not counted again"
     bad = s.update().values(skills={"execute-plan": 1})
     with pytest.raises(Exception, match="run_tool_stats_skills_check"):

@@ -323,7 +323,7 @@ a blocked command), with the failures of commands that ran several programs coun
 runs that loaded it that ended done, the steps whose verify the worker ran again at `evo-agents worker step done`, and
 the runs that failed or were lost, by cause. `tool_errors` reads the programs' kinds, `skills_memory` the skills, and
 when either is among the night's lenses the prompt says which tier has data: a digest that an older `evo-hub` plugin
-pushed counts no skill and no kind, and a run that ended before schema 0085 recorded no skill, so a zero there means no
+pushed counts no skill and no kind, and a run that ended before schema 0087 recorded no skill, so a zero there means no
 data, not no friction.
 
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the

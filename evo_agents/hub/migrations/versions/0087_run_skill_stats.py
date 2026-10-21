@@ -1,7 +1,7 @@
 """The skills a run's Skill tool loaded, next to the tool's figures.
 
-Revision ID: 0085
-Revises: 0084
+Revision ID: 0087
+Revises: 0086
 Create Date: 2026-10-21
 
 run_tool_stats.skills holds, on the row of Claude Code's Skill tool, what its calls loaded: a JSON array of
@@ -11,7 +11,7 @@ runs that ended before it have no skills recorded, and the hub does not count th
 The statements are Alembic operations on SQLAlchemy Core expressions, as ``evo_agents.hub.tables`` describes the
 table.
 
-Going back drops the column and its check, which is the schema that schema 0084 runs on: its figures do not name
+Going back drops the column and its check, which is the schema that schema 0086 runs on: its figures do not name
 skills.
 """
 
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0085"
-down_revision = "0084"
+revision = "0087"
+down_revision = "0086"
 branch_labels = None
 depends_on = None
 

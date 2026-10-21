@@ -14,6 +14,7 @@ from datetime import date, datetime
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.core_plugins.tasks.blocker_queries import blocked
 from evo_agents.core_plugins.tasks.settings import TasksError
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
@@ -86,6 +87,7 @@ class SprintRow:
     created_by: str
     created_at: datetime
     closed_at: datetime | None
+    activated_at: datetime | None
     tasks: int
 
 
@@ -100,7 +102,7 @@ class MemberRow:
 @dataclass(frozen=True)
 class Filters:
     """What a list of tasks keeps: a status, a sprint by name (or the tasks of none), the tasks a member stands in a
-    slot of, the tasks an assignee has."""
+    slot of, the tasks an assignee has, the tasks that are blocked."""
 
     status: str | None = None
     sprint: str | None = None
@@ -108,6 +110,7 @@ class Filters:
     member_id: int | None = None
     assignee: str | None = None
     limit: int = 500
+    blocked: bool = False
 
 
 def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
@@ -178,6 +181,8 @@ def _filtered(query, filters: Filters):
         query = query.where(s.c.name == filters.sprint)
     if filters.member_id is not None:
         query = query.where(select(p.c.task_id).where(p.c.task_id == t.c.id, p.c.user_id == filters.member_id).exists())
+    if filters.blocked:
+        query = query.where(blocked())
     if filters.assignee:
         held = and_(p.c.task_id == t.c.id, p.c.role == "assignee", u.c.login == filters.assignee)
         query = query.where(select(p.c.task_id).join(u, u.c.id == p.c.user_id).where(held).exists())
@@ -269,6 +274,7 @@ def _sprints_query(project_id: int):
             u.c.login.label("created_by"),
             s.c.created_at,
             s.c.closed_at,
+            s.c.activated_at,
             count.label("tasks"),
         )
         .join_from(s, u, u.c.id == s.c.created_by)
