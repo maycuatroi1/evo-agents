@@ -6576,7 +6576,68 @@
       "submit": "Gửi lượt duyệt",
       "approvedToast": "Đã duyệt v{version}",
       "approvalToast": "Đã ghi lượt duyệt cho v{version}",
-      "returnedToast": "Đã trả v{version} về nháp"
+      "returnedToast": "Đã trả v{version} về nháp",
+      "lock": {
+        "findingsTitle": "Chưa duyệt được: còn {count, plural, other {# phát hiện cần quyết định}} đang mở",
+        "findingsText": "Chốt từng phát hiện trong chat với @ba, hoặc một quản trị viên của dự án bỏ qua nó. Bạn vẫn yêu cầu sửa được.",
+        "openChat": "Mở chat chốt",
+        "reviewTitle": "Duyệt chờ @ba rà soát xong vòng {round}",
+        "reviewText": "Duyệt mở lại khi run kết thúc. Bạn vẫn yêu cầu sửa được."
+      }
+    },
+    "findings": {
+      "title": "Phát hiện",
+      "description": "Các xung đột @ba tìm thấy giữa tài liệu này, các tài liệu khác của dự án và knowledge graph của dự án. Một phát hiện cần quyết định còn mở thì chặn việc duyệt.",
+      "counts": "{decide} cần quyết định, {open} mở khác, {settled} đã chốt",
+      "groups": {
+        "decide": "Cần quyết định",
+        "open": "Đang mở khác",
+        "settled": "Đã chốt"
+      },
+      "reviewing": "@ba đang rà soát vòng {round}",
+      "reviewingText": "Phát hiện hiện ở đây khi @ba ghi lại. Danh sách tự đọc lại cho tới khi run kết thúc.",
+      "reviewBroke": "@ba chưa rà soát xong vòng {round}",
+      "reviewBrokeText": "Việc duyệt không chờ run này nữa, nhưng danh sách có thể thiếu xung đột mà nó chưa ghi.",
+      "emptyTitle": "Không thấy xung đột nào",
+      "emptyText": "Khi @ba rà soát một version, các xung đột nó tìm thấy với tài liệu khác và knowledge graph hiện ở đây.",
+      "emptyReviewing": "@ba chưa ghi phát hiện nào.",
+      "failed": "Không đọc được các phát hiện.",
+      "retry": "Thử lại",
+      "openRun": "Mở run #{id}",
+      "foundOn": "#{id}, thấy ở v{version}",
+      "about": "Về",
+      "wholeDocument": "Cả tài liệu",
+      "sources": "Nguồn",
+      "settledWith": "Chốt dựa trên",
+      "openChat": "Mở chat chốt",
+      "settledMessage": "Mở tin đã chốt",
+      "resolvedBy": "{login} đã chốt",
+      "waivedBy": "{login} đã bỏ qua",
+      "resolvedFromGraph": "Đã chốt từ knowledge graph",
+      "waivedByAgent": "@ba đã bỏ qua",
+      "newTab": "(mở trong tab mới)",
+      "level": {
+        "info": "Thông tin",
+        "advisory": "Lưu ý",
+        "decide": "Cần quyết định"
+      },
+      "kind": {
+        "duplicate": "Trùng lặp",
+        "contradiction": "Mâu thuẫn",
+        "kg_conflict": "Xung đột với graph",
+        "overlap": "Chồng lấn"
+      },
+      "status": {
+        "open": "Đang mở",
+        "resolved": "Đã chốt",
+        "waived": "Đã bỏ qua"
+      },
+      "sourceKind": {
+        "node": "Node của graph",
+        "code": "Mục",
+        "path": "Tệp",
+        "version": "Version"
+      }
     },
     "comments": {
       "added": "Đã thêm bình luận",

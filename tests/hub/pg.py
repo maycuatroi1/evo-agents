@@ -124,9 +124,15 @@ SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook
 # migration 0065: the commit of the tag nightly the hub last read
 NIGHTLY_TABLES = frozenset({"hub_nightly"})
 # migration 0067: the release schedules of projects, their cycles, the runs of each cycle and every check
-RELEASE_TABLES = frozenset(
-    {"release_schedules", "release_cycles", "release_runs", "release_tags", "release_checks"}
-)
+RELEASE_TABLES = frozenset({"release_schedules", "release_cycles", "release_runs", "release_tags", "release_checks"})
+# migration 0068: the emails members listed, one member an address
+USER_EMAIL_TABLES = frozenset({"user_emails"})
+# migration 0069: the conflicts @ba found in the BA documents of the core plugin srs
+SRS_FINDING_TABLES = frozenset({"srs_findings"})
+# migration 0070: the settle chat of each version of a BA document whose review left conflicts to settle
+SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
+# migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
+SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

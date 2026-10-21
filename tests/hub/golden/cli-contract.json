@@ -3154,6 +3154,115 @@
         "schema": "Decision"
       }
     },
+    "hub email add": {
+      "positionals": [
+        {
+          "name": "email",
+          "metavar": "EMAIL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
+    "hub email list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
+    "hub email remove": {
+      "positionals": [
+        {
+          "name": "email",
+          "metavar": "EMAIL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
     "hub hook local-ask": {
       "positionals": [],
       "options": [],
@@ -7970,6 +8079,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -8067,6 +8177,70 @@
         }
       ],
       "json": null
+    },
+    "hub srs findings": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "resolved",
+            "waived"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "kind",
+          "level",
+          "sources",
+          "summary",
+          "status",
+          "resolution",
+          "resolution_sources",
+          "settled_by",
+          "settled_at",
+          "chat_link",
+          "run_id",
+          "created_at"
+        ],
+        "schema": "SrsFinding"
+      }
     },
     "hub srs import": {
       "positionals": [
@@ -8403,6 +8577,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -8452,6 +8627,72 @@
           "archived_at"
         ],
         "schema": "SrsDocumentSummary"
+      }
+    },
+    "hub srs waive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "finding",
+          "metavar": "FINDING",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "kind",
+          "level",
+          "sources",
+          "summary",
+          "status",
+          "resolution",
+          "resolution_sources",
+          "settled_by",
+          "settled_at",
+          "chat_link",
+          "run_id",
+          "created_at"
+        ],
+        "schema": "SrsFinding"
       }
     },
     "hub srs withdraw": {
@@ -8510,6 +8751,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -10075,7 +10317,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.24.2"
+      "version": "0.25.0"
     },
     "paths": {
       "/v1/health": {
@@ -10562,6 +10804,279 @@
                 }
               },
               "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/emails": {
+        "get": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "List Emails",
+          "description": "The emails of the caller, or of the member ``user`` names, in the order of their addresses.",
+          "operationId": "list_emails_v1_emails_get",
+          "parameters": [
+            {
+              "name": "user",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member, any case; another's needs a hub admin",
+                "title": "User"
+              },
+              "description": "the member, any case; another's needs a hub admin"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/UserEmail"
+                    },
+                    "title": "Response List Emails V1 Emails Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "Add Email",
+          "description": "Give the caller, or the member ``user`` names, the address ``email``: 201 with the new row, 200 with the row\nthey had, 409 when another member holds it.",
+          "operationId": "add_email_v1_emails_post",
+          "parameters": [
+            {
+              "name": "user",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member, any case; another's needs a hub admin",
+                "title": "User"
+              },
+              "description": "the member, any case; another's needs a hub admin"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAdd"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              },
+              "description": "OK"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/emails/{email_id}": {
+        "delete": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "Remove Email",
+          "description": "Remove the email ``email_id`` of the caller, or of anyone for a hub admin; answers the row it removed.",
+          "operationId": "remove_email_v1_emails__email_id__delete",
+          "parameters": [
+            {
+              "name": "email_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Email Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
             },
             "404": {
               "content": {
@@ -30940,7 +31455,7 @@
             "plugins"
           ],
           "summary": "Submit Version",
-          "description": "Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the\nproject enabled the agent type ba; its comments block nothing.",
+          "description": "Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it\nwhen the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it\nrecords holds approval.",
           "operationId": "submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post",
           "parameters": [
             {
@@ -31070,7 +31585,7 @@
             "plugins"
           ],
           "summary": "Review Version",
-          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does.",
+          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does. An approval answers 409 while the document has an open finding of level\ndecide, naming each, or while @ba's review of the version's round is queued or running. Once a version is\napproved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a\nuse case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into\nchild tasks, in the same transaction.",
           "operationId": "review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post",
           "parameters": [
             {
@@ -31906,6 +32421,293 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/findings": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Findings",
+          "description": "The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among\nthem names the document whose item holds it, when the member sees that document.",
+          "operationId": "list_findings_v1_x_srs__project__documents__slug__findings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "resolved",
+                      "waived"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the findings in this status",
+                "title": "Status"
+              },
+              "description": "only the findings in this status"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsFinding"
+                    },
+                    "title": "Response List Findings V1 X Srs  Project  Documents  Slug  Findings Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Waive Finding",
+          "description": "Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and\n``reason`` is kept as its resolution. 409 when it is not open, or the document is archived.",
+          "operationId": "waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "finding_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Finding Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsWaiveIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsFinding"
                   }
                 }
               }
@@ -46060,10 +46862,11 @@
               "type": "string",
               "enum": [
                 "group",
-                "direct"
+                "direct",
+                "settle"
               ],
               "title": "Kind",
-              "description": "group: members are added and removed; direct: one person and one agent, for good"
+              "description": "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes"
             },
             "image_url": {
               "anyOf": [
@@ -46583,7 +47386,8 @@
                     "handle",
                     "project",
                     "thread",
-                    "direct"
+                    "direct",
+                    "settle"
                   ]
                 },
                 {
@@ -47274,10 +48078,11 @@
               "type": "string",
               "enum": [
                 "group",
-                "direct"
+                "direct",
+                "settle"
               ],
               "title": "Kind",
-              "description": "group, or direct: one person and one agent"
+              "description": "group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"
             },
             "image_url": {
               "anyOf": [
@@ -49193,6 +49998,22 @@
           ],
           "title": "EffectiveConfig",
           "description": "The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer."
+        },
+        "EmailAdd": {
+          "properties": {
+            "email": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Email",
+              "description": "one address; case does not matter"
+            }
+          },
+          "type": "object",
+          "required": [
+            "email"
+          ],
+          "title": "EmailAdd"
         },
         "ErrorBody": {
           "properties": {
@@ -66766,6 +67587,225 @@
           ],
           "title": "SrsExport"
         },
+        "SrsFinding": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version it was found on"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item",
+              "description": "the key of the item it is about; null for the whole document"
+            },
+            "item_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Code"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "duplicate",
+                "contradiction",
+                "kg_conflict",
+                "overlap"
+              ],
+              "title": "Kind"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "info",
+                "advisory",
+                "decide"
+              ],
+              "title": "Level",
+              "description": "an open finding of level decide holds approval"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/SrsFindingSource"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "what shows the conflict, at least one"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "resolved",
+                "waived"
+              ],
+              "title": "Status"
+            },
+            "resolution": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolution",
+              "description": "how it was settled, or why it was waived"
+            },
+            "resolution_sources": {
+              "items": {
+                "$ref": "#/components/schemas/SrsFindingSource"
+              },
+              "type": "array",
+              "title": "Resolution Sources",
+              "description": "what settled it, when settled from the graph"
+            },
+            "settled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Settled By",
+              "description": "the member who settled it; null when settled from the graph"
+            },
+            "settled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Settled At"
+            },
+            "chat_link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Link",
+              "description": "the link of the chat message that settled it"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of @ba that recorded it"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "version",
+            "item",
+            "item_code",
+            "kind",
+            "level",
+            "sources",
+            "summary",
+            "status",
+            "resolution",
+            "resolution_sources",
+            "settled_by",
+            "settled_at",
+            "chat_link",
+            "run_id",
+            "created_at"
+          ],
+          "title": "SrsFinding",
+          "description": "A conflict found in a document, with the sources that show it and, once settled, how."
+        },
+        "SrsFindingSource": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "node",
+                "code",
+                "path",
+                "version"
+              ],
+              "title": "Kind",
+              "description": "node: an id of the project's knowledge graph; code: a code an item of the project holds; path: repo:path, or a path, a file or document node carries; version: a later version of the document"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document",
+              "description": "of a code: the slug of the document whose item holds it, when the reader sees that document"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "title": "SrsFindingSource"
+        },
         "SrsImport": {
           "properties": {
             "markdown": {
@@ -67701,6 +68741,40 @@
           ],
           "title": "SrsReviewIn"
         },
+        "SrsReviewRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State",
+              "description": "approving the version waits while it is queued or running"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state"
+          ],
+          "title": "SrsReviewRun",
+          "description": "@ba's review of a version's current round: the task run the hub handed when the version entered review."
+        },
         "SrsSave": {
           "properties": {
             "base_version": {
@@ -67828,6 +68902,17 @@
               ],
               "title": "Decided At"
             },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
             "reviews": {
               "items": {
                 "$ref": "#/components/schemas/SrsReview"
@@ -67848,6 +68933,7 @@
             "created_at",
             "submitted_at",
             "decided_at",
+            "review_run",
             "reviews"
           ],
           "title": "SrsVersion",
@@ -67936,6 +69022,17 @@
               ],
               "title": "Decided At"
             },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
             "reviews": {
               "items": {
                 "$ref": "#/components/schemas/SrsReview"
@@ -67978,6 +69075,7 @@
             "created_at",
             "submitted_at",
             "decided_at",
+            "review_run",
             "reviews",
             "document",
             "preamble",
@@ -67986,6 +69084,23 @@
           ],
           "title": "SrsVersionDetail",
           "description": "A version with its content and what is wrong with it."
+        },
+        "SrsWaiveIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 10000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, kept as its resolution"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "SrsWaiveIn"
         },
         "SrsWithdrawIn": {
           "properties": {
@@ -72578,6 +73693,35 @@
           },
           "type": "object",
           "title": "UsageWindow"
+        },
+        "UserEmail": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "email": {
+              "type": "string",
+              "title": "Email"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "email",
+            "login",
+            "created_at"
+          ],
+          "title": "UserEmail"
         },
         "UserGrant": {
           "properties": {

@@ -31,7 +31,7 @@ from evo_agents.hub.server.curator import _owner_access
 from tests.hub.live import sql
 from tests.hub.test_curator import OWNER, PROJECT, user_id
 from tests.hub.test_curator import night as night  # noqa: F401 (a fixture)
-from tests.hub.test_migrate import move_to
+from tests.hub.test_migrate import ALL, move_to
 from tests.hub.test_plan_runs import plan_body as fleet_body
 from tests.hub.test_plan_runs import push
 from tests.hub.test_review_runs import SESSION as DIGESTED
@@ -329,6 +329,6 @@ def test_schema_0061_takes_the_two_lenses_and_going_back_deletes_what_they_wrote
     names = ("project_id", "run_id", "lens", "severity", "title", "evidence", "label")
     with pytest.raises(psycopg.errors.CheckViolation, match="findings_lens_check"):
         sql(busy.db, insert(f).from_select(names, copied.where(f.c.lens == "cost")))
-    assert migrate(busy.db.dsn).applied == ("0061", "0062", "0063", "0064", "0065", "0066", "0067")
+    assert migrate(busy.db.dsn).applied == ALL[ALL.index("0061") :]
     again = finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
     assert again.status_code == 201, again.text

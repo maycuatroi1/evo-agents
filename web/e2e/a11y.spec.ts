@@ -66,6 +66,7 @@ import {
   RULE,
   SAMPLE_SLUG,
   SAMPLE_SRS,
+  seedFindings,
   srsPath,
   submitVersion,
   USE_CASE,
@@ -1534,6 +1535,23 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "SRS comparison");
       await open(page, documentPath(project, `/versions/${v2}`));
       await expect(page.locator("#main").getByTestId("srs-review-form")).toBeVisible();
+    },
+  },
+  {
+    name: "an SRS version's review with @ba's findings and Approve locked by the one to decide",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const author = newAccount("srs-author");
+      const hub = new HubAdmin();
+      await hub.grant(project, me.login, "admin", "customer");
+      await hub.grant(project, author.login, "writer", "customer");
+      await enableSrs(me, project);
+      const seeded = await seedFindings(author, project, me);
+      await open(page, documentPath(project, `/versions/${seeded.version}`));
+      const card = page.locator("#main").getByTestId("srs-findings");
+      await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(seeded.decide));
+      await expect(card.getByTestId("srs-findings-settled").getByTestId("srs-finding-settled")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
     },
   },
   {

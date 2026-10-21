@@ -2,28 +2,35 @@
 (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
-between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
-version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since the
-one approved last, unless the config's ``self_approval`` is on) and comment; dropping a coded item takes an admin. An
-admin also retires items by their codes (POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the next
-version, a draft saved as any other, without those items and their subtrees. The author of a version in review, or an
-admin, withdraws it (POST .../versions/{n}/withdraw), for good. An admin archives a document (POST
+between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (each
+submit, in every round, hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
+the one approved last, unless the config's ``self_approval`` is on) and comment; dropping a coded item takes an admin.
+An admin also retires items by their codes (POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the
+next version, a draft saved as any other, without those items and their subtrees. The author of a version in review,
+or an admin, withdraws it (POST .../versions/{n}/withdraw), for good. An admin archives a document (POST
 .../documents/{slug}/archive) and unarchives it (POST .../unarchive): an archived one is out of the list of documents
 unless ``all`` asks for it, still read by its slug, and refuses every write with 409 (``store.writable``). Approving a
 version, archiving a document and unarchiving it queue a build of the project's knowledge graph, which reads the
-approved versions of the documents not archived. Reads go through the sink X-Evo-Sink names, else the project's hub
-sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in ``detail``.
+approved versions of the documents not archived. Readers read the conflicts @ba found in a document (GET
+.../documents/{slug}/findings, ``status`` to keep one status), and an admin waives an open one (POST
+.../findings/{id}/waive) with a reason. Approving a version answers 409 while the document has an open finding of level
+decide, or @ba's review of the version's round is queued or running (``findings.approval_hold``); a request for changes
+is never held. A version approved in a project that enables the plugin tasks keeps its tasks in step, in the same
+transaction (``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use
+cases, comments and cancellations, and @ba's split run. Reads go through the sink X-Evo-Sink names, else the project's
+hub sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in
+``detail``.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import checks, edits, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs import auto_tasks, checks, edits, findings, imports, markdown, reviews, store
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
@@ -34,6 +41,7 @@ from evo_agents.core_plugins.srs.models import (
     SrsDocument,
     SrsDocumentSummary,
     SrsExport,
+    SrsFinding,
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
@@ -43,11 +51,13 @@ from evo_agents.core_plugins.srs.models import (
     SrsSave,
     SrsVersion,
     SrsVersionDetail,
+    SrsWaiveIn,
     SrsWithdrawIn,
     comment_model,
     detail_model,
     diff_model,
     edit_changes,
+    finding_model,
     item_detail_model,
     preview_model,
     retire_model,
@@ -62,7 +72,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.tables_srs import MAX_SUMMARY_CHARS, SLUG
+from evo_agents.hub.tables_srs import FINDING_STATUSES, MAX_SUMMARY_CHARS, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 RACE = "another save in the project took a code or a version number at the same moment: nothing was written; try again"
@@ -330,14 +340,16 @@ async def retire_items(
 async def submit_version(
     request: Request, project: ProjectName, slug: Slug, number: Number, user: CurrentUser, sink: Sink = None
 ):
-    """Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
-    project enabled the agent type ba; its comments block nothing."""
+    """Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
+    when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
+    records holds approval."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
         sent = await reviews.submit(conn, access, doc, number, await store.settings(conn, access))
-        await review_entered(conn, access, doc, sent)
+        if await review_entered(conn, access, doc, sent) is not None:
+            sent = await store.version(conn, doc, number)  # with @ba's review run of the round
         return version_model(sent)
 
     return await _answer(request, work)
@@ -354,7 +366,11 @@ async def review_version(
     sink: Sink = None,
 ):
     """Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
-    it, and the agent of a run never does."""
+    it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
+    decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
+    approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
+    use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
+    child tasks, in the same transaction."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -363,6 +379,7 @@ async def review_version(
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
         decided = await reviews.review(conn, access, user, doc, number, asked, settings)
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
+            await auto_tasks.approved(conn, doc.id, number, doc.approved_version, user.user_id)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
         return version_model(decided)
 
@@ -465,6 +482,55 @@ async def resolve_comment(
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
         return comment_model(await reviews.resolve(conn, access, user, doc, comment_id))
+
+    return await _answer(request, work)
+
+
+# Findings
+
+
+@router.get("/{project}/documents/{slug}/findings", response_model=list[SrsFinding])
+async def list_findings(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    status: Annotated[Literal[FINDING_STATUSES] | None, Query(description="only the findings in this status")] = None,
+    sink: Sink = None,
+):
+    """The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among
+    them names the document whose item holds it, when the member sees that document."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink)
+        rows = await findings.findings(conn, doc, status)
+        held = await findings.code_documents(conn, access, sink, rows)
+        return [finding_model(row, held) for row in rows]
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/findings/{finding_id}/waive", response_model=SrsFinding)
+async def waive_finding(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    finding_id: Annotated[int, Path(ge=1)],
+    body: SrsWaiveIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and
+    ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        reviews.admin(access, user, "waives a finding")
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        waived = findings.Settling(findings.WAIVED, body.reason, user.user_id)
+        row = await findings.settle(conn, access, doc, finding_id, waived)
+        return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
 
     return await _answer(request, work)
 

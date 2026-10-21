@@ -1,13 +1,16 @@
 """Deciding versions and documents, and keeping comments.
 
-- ``submit``: a writer sends a draft to review once it has no error (``checks``); its review round goes up by one.
+- ``submit``: a writer sends a draft to review once it has no error (``checks``); its review round goes up by one,
+  and the round has no review run of @ba until ``auto_review`` hands one.
 - ``review``: a writer approves a version in review or asks for changes. Nobody who wrote a version since the one
   approved last (the version under review included) reviews it, admins included, unless the config's ``self_approval``
-  is on: then the author reviews it as any writer does. The agent of a run never reviews one, the switch on or off. A
-  request for changes sends the version back to draft. An approval counts for a role the reviewer holds in the config's
-  ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires approved it
-  in this round, or after one approval when it requires none. Approving it supersedes every older version but a
-  withdrawn one.
+  is on: then the author reviews it as any writer does. The agent of a run never reviews one, the switch on or off.
+  An approval goes through the gate of ``findings.approval_hold`` first: no open finding of level decide in the
+  document, and no review of @ba of the version's current round still queued or running (409 otherwise). A request for
+  changes is never held, and sends the version back to draft. An approval counts for a role the reviewer holds in the
+  config's ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires
+  approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
+  but a withdrawn one.
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
@@ -28,10 +31,9 @@ from datetime import datetime
 from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import ROLES, checks, store
+from evo_agents.core_plugins.srs import ROLES, checks, findings, store
 from evo_agents.core_plugins.srs.doc import SrsError
 from evo_agents.core_plugins.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
-from evo_agents.core_plugins.srs.template import code_key
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
@@ -57,7 +59,7 @@ async def submit(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow,
     if errors:
         raise SrsError(422, f"version {number} is not submitted: {errors[0].message}", errors)
     v = tables.srs.versions
-    changed = {"state": "in_review", "round": v.c.round + 1, "submitted_at": func.now()}
+    changed = {"state": "in_review", "round": v.c.round + 1, "submitted_at": func.now(), "review_run_id": None}
     await conn.execute(update(v).where(v.c.id == held.id).values(changed))
     return await store.version(conn, doc, number)
 
@@ -141,6 +143,8 @@ async def review(
     document's row lock."""
     held = await store.version(conn, doc, number, lock=True)
     await _checked_reviewer(conn, access, user, doc, held, settings)
+    if request.decision == APPROVE:
+        await findings.approval_hold(conn, access, doc, held)
     approvals = [r for r in held.reviews if r.round == held.round and r.decision == APPROVE]
     role = role_for(settings, user.login, request.role, doc.kind, approvals)
     s = tables.srs
@@ -263,23 +267,6 @@ async def comments(conn: AsyncConnection, doc: DocumentRow) -> list[CommentRow]:
     return [CommentRow(**row._mapping) for row in await conn.execute(query)]
 
 
-async def _item_id(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, ref: str) -> int:
-    s = tables.srs
-    i, c = s.items, s.codes
-    by_key = select(i.c.id).where(i.c.document_id == doc.id, i.c.key == ref)
-    found = (await conn.execute(by_key)).scalar_one_or_none()
-    if found is None:
-        by_code = (
-            select(i.c.id)
-            .join_from(c, i, i.c.id == c.c.item_id)
-            .where(c.c.project_id == access.project_id, c.c.code_key == code_key(ref), i.c.document_id == doc.id)
-        )
-        found = (await conn.execute(by_code)).scalar_one_or_none()
-    if found is None:
-        raise SrsError(422, f"document {doc.slug} has no item {ref}")
-    return found
-
-
 @dataclass(frozen=True)
 class CommentRequest:
     body: str
@@ -308,7 +295,7 @@ async def comment(
     """Add a comment to ``doc`` as ``user``; the comment."""
     writer(access, "commenting on a document")
     version_id = (await store.version(conn, doc, request.version)).id if request.version is not None else None
-    item_id = await _item_id(conn, access, doc, request.item) if request.item else None
+    item_id = await store.item_id(conn, access, doc, request.item) if request.item else None
     await _parent_checked(conn, doc, request.parent_id)
     c = tables.srs.comments
     values = {

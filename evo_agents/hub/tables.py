@@ -963,7 +963,7 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
     Index("channel_link_codes_user_idx", "user_id"),
 )
 
-accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
+accounts, account_policies, run_accounts, user_emails = tables_accounts.account_tables(metadata)  # 0027, 0066, 0068
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
