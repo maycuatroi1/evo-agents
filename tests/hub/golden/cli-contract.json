@@ -18,6 +18,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -97,6 +99,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -176,6 +180,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -223,6 +229,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -349,6 +357,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -412,6 +422,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -459,6 +471,8 @@
         "keys": [
           "name",
           "env_var",
+          "provider",
+          "category",
           "auth",
           "projects",
           "workers",
@@ -12136,7 +12150,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.27.0"
+      "version": "0.28.2"
     },
     "paths": {
       "/v1/health": {
@@ -50137,6 +50151,31 @@
               "title": "Env Var",
               "description": "the variable it sets"
             },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "claude",
+                "anthropic",
+                "openai",
+                "gitlab",
+                "github",
+                "notion",
+                "lark",
+                "ssh",
+                "other"
+              ],
+              "title": "Provider",
+              "description": "who it signs in to, read from its variable (``account_providers``)"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "model",
+                "service"
+              ],
+              "title": "Category",
+              "description": "model: the runtime's own sign-in, whose runs cost; service: any other"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -50282,14 +50321,28 @@
               "description": "the runs that took it in the last 7 days"
             },
             "cost_24h_usd": {
-              "type": "number",
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Cost 24H Usd",
-              "description": "what those runs cost in the last 24 hours, in USD, from their usage"
+              "description": "what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
             },
             "cost_7d_usd": {
-              "type": "number",
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Cost 7D Usd",
-              "description": "what those runs cost in the last 7 days, in USD, an estimate"
+              "description": "what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
             },
             "held_by": {
               "items": {
@@ -50304,6 +50357,8 @@
           "required": [
             "name",
             "env_var",
+            "provider",
+            "category",
             "projects",
             "workers",
             "auth",
