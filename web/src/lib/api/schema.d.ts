@@ -4605,6 +4605,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Blocker
+         * @description Block a task: why, and what it waits on (a member, another task of the project, or a text).
+         */
+        post: operations["add_blocker_v1_x_tasks__project__tasks__ref__blockers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers/{blocker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Blocker
+         * @description Change a blocker set by hand: its reason, what it waits on, or clear it (``cleared``).
+         */
+        patch: operations["edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch"];
+        trace?: never;
+    };
     "/v1/x/tasks/{project}/sprints/{name}": {
         parameters: {
             query?: never;
@@ -20502,6 +20542,107 @@ export interface components {
              */
             daily_usd: number;
         };
+        /**
+         * TasksBlocker
+         * @description What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task.
+         */
+        TasksBlocker: {
+            /**
+             * Id
+             * @description the blocker's id for PATCH; None for an open decision
+             */
+            id: number | null;
+            /**
+             * Kind
+             * @description manual: set with POST blockers; decision: an open decision of a run
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /**
+             * Reason
+             * @description why; a decision's question
+             */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @description who or what it waits on: a member, a task or a text
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /**
+             * Waiting On
+             * @description the member's login, the task's ref, or the text
+             */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             * @description when it was set; when a decision was asked
+             */
+            since: string;
+            /**
+             * Set By
+             * @description who set it; None for a decision
+             */
+            set_by: string | null;
+            /** Cleared At */
+            cleared_at: string | null;
+            /** Cleared By */
+            cleared_by: string | null;
+            /**
+             * Decision Id
+             * @description decision: the decision to answer
+             */
+            decision_id: number | null;
+            /**
+             * Run Id
+             * @description decision: the run that asked it
+             */
+            run_id: number | null;
+        };
+        /**
+         * TasksBlockerEdit
+         * @description A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``.
+         */
+        TasksBlockerEdit: {
+            /** Reason */
+            reason?: string | null;
+            /** Waiting Member */
+            waiting_member?: string | null;
+            /** Waiting Task */
+            waiting_task?: string | null;
+            /** Waiting Text */
+            waiting_text?: string | null;
+            /**
+             * Cleared
+             * @description true clears the blocker
+             * @default false
+             */
+            cleared: boolean;
+        };
+        /**
+         * TasksBlockerIn
+         * @description A new blocker: why, and exactly one of the three things it waits on.
+         */
+        TasksBlockerIn: {
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Member
+             * @description the login of a member with a grant
+             */
+            waiting_member?: string | null;
+            /**
+             * Waiting Task
+             * @description the ref of another task of the project
+             */
+            waiting_task?: string | null;
+            /**
+             * Waiting Text
+             * @description someone outside, in words
+             */
+            waiting_text?: string | null;
+        };
         /** TasksComment */
         TasksComment: {
             /** Id */
@@ -20813,6 +20954,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -20828,7 +20974,7 @@ export interface components {
         };
         /**
          * TasksItemDetail
-         * @description A task whole: its description, links, history and comments.
+         * @description A task whole: its description, links, blockers, history and comments.
          */
         TasksItemDetail: {
             /** Number */
@@ -20888,6 +21034,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -20911,6 +21062,11 @@ export interface components {
             } | null;
             /** Links */
             links: components["schemas"]["TasksLink"][];
+            /**
+             * Blockers
+             * @description every open blocker, those set by hand first
+             */
+            blockers: components["schemas"]["TasksBlocker"][];
             /** Events */
             events: components["schemas"]["TasksEvent"][];
             /** Comments */
@@ -21182,6 +21338,11 @@ export interface components {
             created_at: string;
             /** Closed At */
             closed_at: string | null;
+            /**
+             * Activated At
+             * @description when it turned active; empty for a sprint that was active before the hub kept this
+             */
+            activated_at: string | null;
             /**
              * Tasks
              * @description how many tasks it holds
@@ -39187,6 +39348,8 @@ export interface operations {
                 mine?: boolean;
                 /** @description an assignee's login */
                 assignee?: string | null;
+                /** @description the tasks that are blocked */
+                blocked?: boolean;
                 limit?: number;
             };
             header?: {
@@ -39768,6 +39931,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TasksComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_blocker_v1_x_tasks__project__tasks__ref__blockers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+                blocker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
                 };
             };
             /** @description Unauthorized */

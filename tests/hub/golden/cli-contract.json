@@ -10576,6 +10576,76 @@
         "schema": "SrsVersion"
       }
     },
+    "hub task block": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--waiting-on"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "reason",
+          "waiting_kind",
+          "waiting_on",
+          "since",
+          "set_by",
+          "cleared_at",
+          "cleared_by",
+          "decision_id",
+          "run_id"
+        ],
+        "schema": "TasksBlocker"
+      }
+    },
     "hub task create": {
       "positionals": [],
       "options": [
@@ -10733,12 +10803,14 @@
           "steps_total",
           "codes",
           "label",
+          "blocked",
           "created_by",
           "created_at",
           "updated_at",
           "description_md",
           "external_ref",
           "links",
+          "blockers",
           "events",
           "comments"
         ],
@@ -10950,12 +11022,14 @@
           "steps_total",
           "codes",
           "label",
+          "blocked",
           "created_by",
           "created_at",
           "updated_at",
           "description_md",
           "external_ref",
           "links",
+          "blockers",
           "events",
           "comments"
         ],
@@ -11065,6 +11139,14 @@
         },
         {
           "flags": [
+            "--blocked"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -11091,6 +11173,7 @@
           "steps_total",
           "codes",
           "label",
+          "blocked",
           "created_by",
           "created_at",
           "updated_at"
@@ -11145,16 +11228,72 @@
           "steps_total",
           "codes",
           "label",
+          "blocked",
           "created_by",
           "created_at",
           "updated_at",
           "description_md",
           "external_ref",
           "links",
+          "blockers",
           "events",
           "comments"
         ],
         "schema": "TasksItemDetail"
+      }
+    },
+    "hub task unblock": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--blocker"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "kind",
+          "reason",
+          "waiting_kind",
+          "waiting_on",
+          "since",
+          "set_by",
+          "cleared_at",
+          "cleared_by",
+          "decision_id",
+          "run_id"
+        ],
+        "schema": "TasksBlocker"
       }
     },
     "hub token list": {
@@ -37915,6 +38054,18 @@
               "description": "an assignee's login"
             },
             {
+              "name": "blocked",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the tasks that are blocked",
+                "default": false,
+                "title": "Blocked"
+              },
+              "description": "the tasks that are blocked"
+            },
+            {
               "name": "limit",
               "in": "query",
               "required": false,
@@ -38757,6 +38908,282 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TasksComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/tasks/{ref}/blockers": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Blocker",
+          "description": "Block a task: why, and what it waits on (a member, another task of the project, or a text).",
+          "operationId": "add_blocker_v1_x_tasks__project__tasks__ref__blockers_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksBlockerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksBlocker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/tasks/{ref}/blockers/{blocker_id}": {
+        "patch": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Edit Blocker",
+          "description": "Change a blocker set by hand: its reason, what it waits on, or clear it (``cleared``).",
+          "operationId": "edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            },
+            {
+              "name": "blocker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Blocker Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksBlockerEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksBlocker"
                   }
                 }
               }
@@ -82230,6 +82657,251 @@
           ],
           "title": "TaskQueued"
         },
+        "TasksBlocker": {
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id",
+              "description": "the blocker's id for PATCH; None for an open decision"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "decision"
+              ],
+              "title": "Kind",
+              "description": "manual: set with POST blockers; decision: an open decision of a run"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason",
+              "description": "why; a decision's question"
+            },
+            "waiting_kind": {
+              "type": "string",
+              "enum": [
+                "member",
+                "task",
+                "text"
+              ],
+              "title": "Waiting Kind",
+              "description": "who or what it waits on: a member, a task or a text"
+            },
+            "waiting_on": {
+              "type": "string",
+              "title": "Waiting On",
+              "description": "the member's login, the task's ref, or the text"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since",
+              "description": "when it was set; when a decision was asked"
+            },
+            "set_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Set By",
+              "description": "who set it; None for a decision"
+            },
+            "cleared_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cleared At"
+            },
+            "cleared_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cleared By"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "decision: the decision to answer"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "decision: the run that asked it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "reason",
+            "waiting_kind",
+            "waiting_on",
+            "since",
+            "set_by",
+            "cleared_at",
+            "cleared_by",
+            "decision_id",
+            "run_id"
+          ],
+          "title": "TasksBlocker",
+          "description": "What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task."
+        },
+        "TasksBlockerEdit": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "waiting_member": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Member"
+            },
+            "waiting_task": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Task"
+            },
+            "waiting_text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Text"
+            },
+            "cleared": {
+              "type": "boolean",
+              "title": "Cleared",
+              "description": "true clears the blocker",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "TasksBlockerEdit",
+          "description": "A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``."
+        },
+        "TasksBlockerIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            },
+            "waiting_member": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Member",
+              "description": "the login of a member with a grant"
+            },
+            "waiting_task": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Task",
+              "description": "the ref of another task of the project"
+            },
+            "waiting_text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Waiting Text",
+              "description": "someone outside, in words"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "TasksBlockerIn",
+          "description": "A new blocker: why, and exactly one of the three things it waits on."
+        },
         "TasksComment": {
           "properties": {
             "id": {
@@ -82973,6 +83645,11 @@
               "title": "Label",
               "description": "the label the task carries"
             },
+            "blocked": {
+              "type": "boolean",
+              "title": "Blocked",
+              "description": "it has an open blocker: one set by hand, or an open decision of its runs"
+            },
             "created_by": {
               "type": "string",
               "title": "Created By"
@@ -83006,6 +83683,7 @@
             "steps_total",
             "codes",
             "label",
+            "blocked",
             "created_by",
             "created_at",
             "updated_at"
@@ -83134,6 +83812,11 @@
               "title": "Label",
               "description": "the label the task carries"
             },
+            "blocked": {
+              "type": "boolean",
+              "title": "Blocked",
+              "description": "it has an open blocker: one set by hand, or an open decision of its runs"
+            },
             "created_by": {
               "type": "string",
               "title": "Created By"
@@ -83172,6 +83855,14 @@
               "type": "array",
               "title": "Links"
             },
+            "blockers": {
+              "items": {
+                "$ref": "#/components/schemas/TasksBlocker"
+              },
+              "type": "array",
+              "title": "Blockers",
+              "description": "every open blocker, those set by hand first"
+            },
             "events": {
               "items": {
                 "$ref": "#/components/schemas/TasksEvent"
@@ -83205,17 +83896,19 @@
             "steps_total",
             "codes",
             "label",
+            "blocked",
             "created_by",
             "created_at",
             "updated_at",
             "description_md",
             "external_ref",
             "links",
+            "blockers",
             "events",
             "comments"
           ],
           "title": "TasksItemDetail",
-          "description": "A task whole: its description, links, history and comments."
+          "description": "A task whole: its description, links, blockers, history and comments."
         },
         "TasksItemEdit": {
           "properties": {
@@ -83964,6 +84657,19 @@
               ],
               "title": "Closed At"
             },
+            "activated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activated At",
+              "description": "when it turned active; empty for a sprint that was active before the hub kept this"
+            },
             "tasks": {
               "type": "integer",
               "title": "Tasks",
@@ -83980,6 +84686,7 @@
             "created_by",
             "created_at",
             "closed_at",
+            "activated_at",
             "tasks"
           ],
           "title": "TasksSprint"

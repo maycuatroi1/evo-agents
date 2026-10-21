@@ -57,7 +57,28 @@ A target the member cannot see (a document or a plan whose label is above the cl
 linked, and an existing link to one shows `hidden` and nothing of it.
 
 Migration 0047 adds the six tables, each with the plugin's prefix: `tasks_sprints`, `tasks_items`, `tasks_people`,
-`tasks_links`, `tasks_events` and `tasks_comments`. Going back to 0046 drops them.
+`tasks_links`, `tasks_events` and `tasks_comments`. Going back to 0046 drops them. Migration 0085 adds `tasks_blockers`
+and the column `tasks_sprints.activated_at` (see Blockers); going back to 0084 drops both.
+
+## Blockers
+
+A blocker is a flag on a task, never a status: a task keeps its status while it is blocked, and it may have many open
+blockers. A manual blocker is a row of `tasks_blockers`: the task, a reason (1 to 1,000 characters), who it waits on,
+`since`, `cleared_at`, `cleared_by` and `created_by`. The waiter is in exactly one of three forms: a member with a
+grant on the project, another task of the same project (never the task itself), or free text (at most 300
+characters). A member without a grant, a task of another project or the task itself is refused with 422.
+
+An open decision of a run linked to the task is a blocker read at read time, never a row: the run is linked by a `run`
+link, or because it has a `plan_id` and `step_key` that match a `plan_step` link of the task. The waiter is the member
+who dispatched the run (`runs.dispatched_by`), `since` is when the decision was asked, and the entry names the
+decision. Answering the decision ends it.
+
+`GET tasks/{ref}` lists all open blockers of both kinds (`blockers`), `GET tasks` gives each task a `blocked` flag, and
+`?blocked=true` keeps the blocked ones. Each set and each clear writes a `tasks_events` row under the field `blocker`.
+Setting, changing or clearing needs the writer role (readers get 403).
+
+`tasks_sprints.activated_at` records when the sprint turned active; the sprints routes write it when the state becomes
+`active`. A sprint that was already active before 0085 has it empty.
 
 ## Who does what
 
@@ -112,10 +133,14 @@ evo-agents hub task create --project evo-agents --title "Place an order with a c
 evo-agents hub task edit T-42 --project evo-agents --status in_review --pull https://github.com/acme/shop/pull/88
 evo-agents hub task edit T-42 --project evo-agents --role qa= --unlink 7
 evo-agents hub task import notion-tasks.json --project evo-agents --dry-run
+evo-agents hub task block T-42 --project evo-agents --waiting-on alice --reason "needs the API key"
+evo-agents hub task unblock T-42 --project evo-agents [--blocker 3]
+evo-agents hub task list --project evo-agents --blocked
 ```
 
 `--assignee` gives the whole list of assignees, and `--role ROLE=LOGIN` the whole list of each role it names (`--role
-qa=` empties it). `--use-case`, `--step`, `--run` and `--pull` add links, `--unlink` drops one by the id `show` prints.
+qa=` empties it). `block --waiting-on` takes a login, a task ref (`T-7`) or text (`--text` forces text). `unblock`
+without `--blocker` clears every open manual blocker; decision blockers end when the decision is answered. `--use-case`, `--step`, `--run` and `--pull` add links, `--unlink` drops one by the id `show` prints.
 
 ## Routes
 
@@ -124,11 +149,12 @@ Under `/v1/x/tasks/{project}/`:
 | Route | What |
 | --- | --- |
 | `GET settings` | the prefix, the statuses with their groups, the types, `on_steps_done`, and whether the project enables srs |
-| `GET tasks` (`?status=`, `?sprint=`, `?backlog=true`, `?mine=true`, `?assignee=`, `?limit=`) | the tasks the caller sees that the filters keep, by number |
+| `GET tasks` (`?status=`, `?sprint=`, `?backlog=true`, `?mine=true`, `?assignee=`, `?blocked=true`, `?limit=`) | the tasks the caller sees that the filters keep, by number |
 | `GET tasks/{ref}` | a task whole: its links as they are now, its history and comments |
 | `POST tasks` | a new task with its people and links (201) |
 | `PATCH tasks/{ref}` | a change of its fields, people and links; `unlink` drops links by id |
 | `POST tasks/{ref}/comments` | a comment (201) |
+| `POST tasks/{ref}/blockers`, `PATCH tasks/{ref}/blockers/{id}` | set a blocker (201); change or clear one |
 | `GET sprints`, `POST sprints`, `PATCH sprints/{name}` | the sprints; closing one takes `move_to` |
 | `GET people` | the members a task may name, by login, with their role |
 | `POST import` | `{"data": <evo-tasks/1>, "dry_run": true \| false}` |

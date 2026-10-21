@@ -3,7 +3,7 @@ it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a projec
 
 Readers read: the config as tasks are written against it, the tasks (by status, sprint, the caller's own or an
 assignee's), a task whole with its links as they are now, its history and comments, the sprints, the members a task
-may name. Writers create and change tasks, link and unlink them, set their people, comment, keep sprints and import
+may name. Writers create and change tasks, link and unlink them, set their people, block and unblock them, comment, keep sprints and import
 ``evo-tasks/1`` JSON once.
 Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with an
 import's problems in ``detail``. Creating, changing or importing tasks queues a build of the project's knowledge graph,
@@ -18,8 +18,11 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.tasks import imports, links, store, writes
+from evo_agents.core_plugins.tasks import blockers, imports, links, store, writes
 from evo_agents.core_plugins.tasks.models import (
+    TasksBlocker,
+    TasksBlockerEdit,
+    TasksBlockerIn,
     TasksComment,
     TasksCommentIn,
     TasksImport,
@@ -33,6 +36,7 @@ from evo_agents.core_plugins.tasks.models import (
     TasksSprint,
     TasksSprintEdit,
     TasksSprintIn,
+    blocker_model,
     comment_model,
     detail_model,
     import_model,
@@ -85,19 +89,24 @@ def _writer(access: ProjectAccess, user, sink: str | None, config: Settings, wha
     return writes.Writer(access, user.user_id, config, sink)
 
 
-async def _items(conn, access: ProjectAccess, config: Settings, rows: list[store.TaskRow], sink) -> list[TasksItem]:
+async def _items(
+    conn, access: ProjectAccess, config: Settings, rows: list[store.TaskRow], sink, waiting: dict | None = None
+) -> list[TasksItem]:
     ids = [row.id for row in rows]
     held = await store.people(conn, ids)
     done = await links.progress(conn, access, sink, ids)
     coded = await links.codes(conn, access, sink, ids)
-    return [item_model(config, row, held[row.id], done[row.id], coded[row.id]) for row in rows]
+    waiting = await blockers.open_for(conn, config, ids) if waiting is None else waiting
+    return [item_model(config, row, held[row.id], done[row.id], coded[row.id], bool(waiting[row.id])) for row in rows]
 
 
 async def _detail(conn, access: ProjectAccess, config: Settings, number: int, sink) -> TasksItemDetail:
     row = await store.task(conn, access, number, sink)
-    [item] = await _items(conn, access, config, [row], sink)
+    waiting = await blockers.open_for(conn, config, [row.id])
+    [item] = await _items(conn, access, config, [row], sink, waiting)
     shown = await links.shown(conn, access, sink, row.id)
-    return detail_model(item, row, shown, await store.events(conn, row.id), await store.comments(conn, row.id))
+    history, said = await store.events(conn, row.id), await store.comments(conn, row.id)
+    return detail_model(item, row, shown, waiting[row.id], history, said)
 
 
 # Reading
@@ -124,6 +133,7 @@ async def list_tasks(
     backlog: Annotated[bool, Query(description="the tasks of no sprint")] = False,
     mine: Annotated[bool, Query(description="the tasks the caller stands in a slot of")] = False,
     assignee: Annotated[str | None, Query(max_length=100, description="an assignee's login")] = None,
+    blocked: Annotated[bool, Query(description="the tasks that are blocked")] = False,
     limit: Annotated[int, Query(ge=1, le=store.MAX_LISTED)] = 500,
     sink: Sink = None,
 ):
@@ -132,7 +142,7 @@ async def list_tasks(
     async def work(conn):
         access, config = await _opened(conn, user, project)
         member = user.user_id if mine else None
-        filters = store.Filters(status, sprint, backlog, member, assignee, limit)
+        filters = store.Filters(status, sprint, backlog, member, assignee, limit, blocked)
         rows = await store.tasks(conn, access, sink, filters)
         return await _items(conn, access, config, rows, sink)
 
@@ -234,6 +244,45 @@ async def add_comment(
         row = await store.task(conn, access, number_of(ref), sink)
         comment_id = await writes.comment(conn, writer, row.id, body.body)
         return comment_model(next(c for c in await store.comments(conn, row.id) if c.id == comment_id))
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/tasks/{ref}/blockers", response_model=TasksBlocker, status_code=201)
+async def add_blocker(
+    request: Request, project: ProjectName, ref: Ref, body: TasksBlockerIn, user: CurrentUser, sink: Sink = None
+):
+    """Block a task: why, and what it waits on (a member, another task of the project, or a text)."""
+
+    async def work(conn):
+        access, config = await _opened(conn, user, project)
+        writer = _writer(access, user, sink, config, "blocking a task")
+        row = await store.task(conn, access, number_of(ref), sink, lock=True)
+        return blocker_model(await blockers.put(conn, writer, row, body.reason, body.waiting()))
+
+    return await _answer(request, work)
+
+
+@router.patch("/{project}/tasks/{ref}/blockers/{blocker_id}", response_model=TasksBlocker)
+async def edit_blocker(
+    request: Request,
+    project: ProjectName,
+    ref: Ref,
+    blocker_id: Annotated[int, Path(ge=1)],
+    body: TasksBlockerEdit,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Change a blocker set by hand: its reason, what it waits on, or clear it (``cleared``)."""
+
+    async def work(conn):
+        access, config = await _opened(conn, user, project)
+        writer = _writer(access, user, sink, config, "changing a blocker")
+        row = await store.task(conn, access, number_of(ref), sink, lock=True)
+        changed = await blockers.change(
+            conn, writer, row, blocker_id, reason=body.reason, waiting=body.waiting(), clear=body.cleared
+        )
+        return blocker_model(changed)
 
     return await _answer(request, work)
 
