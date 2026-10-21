@@ -12,10 +12,10 @@ and ``uc  ord-1`` are one code. It is shown as written, whitespace tidied (``tid
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from evo_agents.core_plugins.srs import CODED_KINDS, TEMPLATES
+from evo_agents.core_plugins.srs import CODED_KINDS, TEMPLATES, USE_CASE_FIELDS
 from evo_agents.hub.tables_srs import code_key
 
 CODE_PATTERNS = {
@@ -73,10 +73,12 @@ class Heading:
 
 @dataclass(frozen=True)
 class Template:
-    """A template: its name and the pattern of each kind of code."""
+    """A template: its name, the pattern of each kind of code and the fields a use case fills before it is
+    submitted, its actor always."""
 
     name: str
     patterns: Mapping[str, re.Pattern]
+    required: tuple[str, ...] = ("actor",)
 
     def code_problem(self, kind: str, code: str) -> str | None:
         """Why ``code`` cannot be the code of an item of ``kind``; None when it can."""
@@ -135,9 +137,15 @@ def heading_text(kind: str, title: str, code: str | None, fields: Mapping) -> st
     return title
 
 
-def template_of(name: str | None = None, patterns: Mapping[str, str] | None = None) -> Template:
-    """The template ``name`` (srs-basic when None) with the patterns of ``patterns`` replacing its own."""
+def template_of(
+    name: str | None = None, patterns: Mapping[str, str] | None = None, required: Sequence[str] | None = None
+) -> Template:
+    """The template ``name`` (srs-basic when None) with the patterns of ``patterns`` replacing its own, and the fields
+    of ``required`` a use case fills besides its actor."""
     name = name or TEMPLATES[0]
+    unknown = [field for field in required or () if field not in USE_CASE_FIELDS]
+    if unknown:
+        raise TemplateError(f"required_use_case_fields: {', '.join(map(repr, unknown))} is no field of {name}")
     if name not in TEMPLATES:
         raise TemplateError(f"no template {name!r}: this hub has {', '.join(TEMPLATES)}")
     compiled = {}
@@ -147,7 +155,8 @@ def template_of(name: str | None = None, patterns: Mapping[str, str] | None = No
             compiled[kind] = re.compile(source)
         except re.error as exc:
             raise TemplateError(f"code_patterns.{kind}: {source!r} is not a regular expression: {exc}") from None
-    return Template(name, compiled)
+    fields = ("actor", *(field for field in USE_CASE_FIELDS if field in (required or ()) and field != "actor"))
+    return Template(name, compiled, fields)
 
 
 __all__ = [

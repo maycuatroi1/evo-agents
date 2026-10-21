@@ -34,7 +34,10 @@ does not match.
 ## A use case
 
 A use case's body holds its fields as the document's other use cases do: the actor, the preconditions, the main flow
-as numbered steps, the alternative flows and the postconditions. Its business rules are headings under it that name
+as numbered steps, the alternative flows and the postconditions. Where the document writes Intent, Context and
+Expectation rows, write those: the intent is what the actor wants and why, the context what the work must know (systems,
+data, constraints, decisions taken), the expectation the checks that tell the use case is done, for the main flow and
+each alternative flow. Fill every field the project requires (`required_use_case_fields`). Its business rules are headings under it that name
 the steps they apply to, `Step (2)` or `Steps (2, 2.1)`. Link the screens it shows with refs `uses_screen`.
 
 ## Proposing

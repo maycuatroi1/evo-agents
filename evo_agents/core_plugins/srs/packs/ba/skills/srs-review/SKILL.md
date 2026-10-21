@@ -21,7 +21,9 @@ Item by item:
 
 - every heading and code the template asks for is there, and each code matches its pattern;
 - each use case has an actor, preconditions, numbered main steps, alternative flows where a step can fail, and
-  postconditions;
+  postconditions; one written with Intent, Context and Expectation rows has all three, and its Expectation says how to
+  check the main flow and each alternative flow (a state, a number, a limit), not only what it is for;
+- each field the project requires (`required_use_case_fields`, which the version's problems show) is filled;
 - each business rule names steps its use case has;
 - each screen a use case names exists, and each screen is used by a use case;
 - each requirement is measurable: a number, a limit, a time.

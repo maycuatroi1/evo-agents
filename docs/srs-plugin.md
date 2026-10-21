@@ -19,6 +19,8 @@ evo-agents hub plugin config srs --project evo-agents --set 'roles={"ba": ["alic
 evo-agents hub plugin config srs --project evo-agents \
   --set 'approval_policy={"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}'
 evo-agents hub plugin config srs --project evo-agents --set self_approval=true   # authors may approve their versions
+evo-agents hub plugin config srs --project evo-agents \
+  --set 'required_use_case_fields=["intent", "context", "expectation"]'          # use cases fill these before review
 evo-agents hub plugin config srs --project evo-agents --effective                # each field, the layer that set it
 ```
 
@@ -30,6 +32,7 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `code_patterns` | per kind of coded item (`use_case`, `business_rule`, `screen`, `nfr`, `cbr`), a regular expression that replaces the template's | the template's patterns (section Markdown) |
 | `roles` | per role of a review (`ba`, `qa`, `dev`), the members who hold it, by login | nobody holds a role |
 | `approval_policy` | per kind of document (`srs`, `spec`), the roles whose approval a version needs (`required`) and those that may approve too (`optional`) | one approval is enough (section Approval) |
+| `required_use_case_fields` | the fields every use case fills, besides its actor, before its version is submitted: `intent`, `context`, `expectation`, `objective`, `trigger`, `pre_condition`, `post_condition`, `status` or `id` | `[]`: the actor alone |
 | `self_approval` | `true` lets the author of a version review it, approve it or ask for changes, as any writer of the project (section Approval) | `false`: another member reviews it |
 
 The headings a template reads stay the template's; a client changes only the patterns of its codes. Only an admin of the
@@ -51,8 +54,8 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
 - **An item** is a part of a version: a section, a use case, a business rule, a screen, a non-functional requirement
   (`nfr`), a common business rule (`cbr`), a glossary, the approval page or the revision history. The hub gives each
   item a key and keeps it across versions, so an item renamed, moved or renumbered is the same item. A use case keeps
-  its fields (ID, Status, Objective, Actor, Trigger, Pre-condition, Post-condition) and the steps of its activity flow;
-  a business rule the steps it applies to.
+  its fields (ID, Status, Objective, Intent, Actor, Context, Trigger, Pre-condition, Post-condition, Expectation, and
+  any other row of its table of items) and the steps of its activity flow; a business rule the steps it applies to.
 - **A code** (`UC ORD-3`, `BR ORD3-2`, `SCR-4`, `NFR-SEC-01`, `CBR 2`) names a coded item. A code and its aliases are
   unique in the project across every document, compared with whitespace runs as one space and case folded, so
   `UC ORD-1` and `uc  ord-1` are one code. A code stays when its item is renamed or moved, no save changes it, and
@@ -98,8 +101,9 @@ texts of the item, and the member merges them by hand. Each save is checked:
 - **Errors that refuse the save**: a code that does not match its kind's pattern, a code twice in the document, a
   code another item of the project holds or held, a code changed, a coded item dropped by a member who is not an
   admin.
-- **Errors that block submitting it**: a business rule outside every use case, a use case without an actor, a link
-  to an item the version does not have, a `uses_screen` link to an item that is no screen.
+- **Errors that block submitting it**: a business rule outside every use case, a use case without an actor
+  (`uc_no_actor`) or without another field the config requires (`uc_field_missing`), a link to an item the version
+  does not have, a `uses_screen` link to an item that is no screen.
 - **Warnings**, shown only: a business rule whose code does not match its use case's, a business rule naming a step its
   use case does not have, and what reading the Markdown noted (a heading that skips a level, one the template does not
   name, coded rows kept as text).
@@ -305,7 +309,13 @@ document's preamble.
 | any other heading (numbered `2.1.`, Actors, Site Map, Open Items, Pending Points, or one the template does not name) | section | none |
 
 A use case's body gives its fields: the rows of its table of items (`| ID | UC-ORD-001 (ORD-01) |` makes
-`UC-ORD-001` and `ORD-01` aliases of `UC ORD-1`), and the steps of its Activity Flow table. In a section, the first run
+`UC-ORD-001` and `ORD-01` aliases of `UC ORD-1`), and the steps of its Activity Flow table. The table of items is the
+table one of whose rows the template names. Besides the classic rows (ID, Status, Objective or Goal, Actor, Trigger,
+Pre-condition, Post-condition), a use case may follow intent, context and expectation: `Intent`, `Context` (or
+`Background`) and `Expectation` (or `Expected result`, `Expected outcome`, `Acceptance criteria`), the checks that tell
+the use case is done. Every other row of that table is kept under its label (`| Claim | CL-3 |` gives the field
+`claim`) and shown after the template's fields; its head row (`| Item | Content |`) is kept only when the template
+names it. In a section, the first run
 of table rows whose first cell is a code becomes one item per row; the table's head stays the section's body.
 `tests/hub/fixtures/srs/demo-shop-srs.md` is a whole example.
 

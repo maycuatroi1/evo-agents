@@ -7,8 +7,20 @@ import { childrenOf, codeKey, isRow } from "./model";
  * section's text with its table rows, the codes inside a line of text, and a unified diff of an item as hunks.
  */
 
-/** A use case's fields in the template's order, by the key the hub reads them into. */
-export const USE_CASE_FIELDS = ["id", "status", "objective", "actor", "trigger", "pre_condition", "post_condition"] as const;
+/** A use case's fields in the template's order, by the key the hub reads them into (evo_agents.core_plugins.srs.
+ * USE_CASE_FIELDS): the classic ones, those of intent, context and expectation, or both. */
+export const USE_CASE_FIELDS = [
+  "id",
+  "status",
+  "objective",
+  "intent",
+  "actor",
+  "context",
+  "trigger",
+  "pre_condition",
+  "post_condition",
+  "expectation",
+] as const;
 export type UseCaseField = (typeof USE_CASE_FIELDS)[number];
 
 const HIDDEN_FIELDS = new Set(["steps", "step_label", "dash", "tail", "cells", "components", "group"]);

@@ -6855,10 +6855,13 @@
       "id": "ID",
       "status": "Trạng thái",
       "objective": "Mục tiêu",
+      "intent": "Ý định",
       "actor": "Tác nhân",
+      "context": "Bối cảnh",
       "trigger": "Điều kiện kích hoạt",
       "pre_condition": "Tiền điều kiện",
-      "post_condition": "Hậu điều kiện"
+      "post_condition": "Hậu điều kiện",
+      "expectation": "Kỳ vọng"
     },
     "editor": {
       "goneTitle": "Version mới nhất, v{version}, không còn mục này",
