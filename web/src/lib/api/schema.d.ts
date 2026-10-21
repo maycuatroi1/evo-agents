@@ -10878,6 +10878,11 @@ export interface components {
             leases: components["schemas"]["CredentialLease"][];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
+            /**
+             * Repos
+             * @description each repo of the run, in the run's order
+             */
+            repos?: components["schemas"]["RunRepoSource"][];
         };
         /** Csrf */
         Csrf: {
@@ -19172,6 +19177,29 @@ export interface components {
              * @description null when the plan names none: the branch checked out
              */
             branch?: string | null;
+        };
+        /**
+         * RunRepoSource
+         * @description A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it.
+         */
+        RunRepoSource: {
+            /** Repo */
+            repo: string;
+            /**
+             * Origin
+             * @description as a project registered it; null when none did
+             */
+            origin: string | null;
+            /**
+             * Path
+             * @description as that project registered it: relative to its workspace, ~/..., or absolute
+             */
+            path: string | null;
+            /**
+             * Project
+             * @description the project that registered it: the run's, or another of its owner's
+             */
+            project: string | null;
         };
         /**
          * RunSkill

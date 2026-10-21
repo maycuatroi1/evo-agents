@@ -831,7 +831,10 @@ Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) need
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
 replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
 repos and `replay` in `run_kinds`, and a history run (kind `history`, see
-[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. The
+[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. None of
+those checkouts is asked of a daemon whose last heartbeat listed `clones_checkouts` in `features`: it clones each repo
+of the run it has no checkout of before the run goes on ([Repos a run clones](#repos-a-run-clones)), so it takes a run
+whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -917,7 +920,9 @@ with the project's harness alone and whose agent opens each other repo it needs 
 ([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
 checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
 duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
-heartbeat answer and carries out an owner's Update now ([Update now](#update-now)). This daemon sends every kind of `runs.RUN_KINDS` and
+heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `clones_checkouts`, a daemon
+that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
+hands a run whatever checkouts it reports. This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -1171,10 +1176,12 @@ of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, o
 
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
-(the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
+(the step's repo, or every repo in a plan run's `repos`) unless its daemon says `clones_checkouts`, and, for a plan
+run, a daemon of 0.4.0 or later
 (`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one
 fails the answer is 409 naming each one, for example
-`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is
+`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness, and its daemon
+(evo-agents 0.30.0) does not clone what it lacks: ...`, and nothing is
 queued, rather than a run that stays queued for good. A dispatch without a worker is not checked: a worker that can
 take it may join later.
 
@@ -1191,7 +1198,8 @@ and `parent_run_id` naming the old run; the step must be ready again. Approve an
 for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
 that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
 each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
-was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run, has a runtime the
+was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run or a daemon that
+clones the ones it lacks (its reasons then say `clones <repos> before the run starts`), has a runtime the
 run's agent profile allows, is one the profile allows, and, when the owner bound any account to the project, has one
 ready on it (not expired, paused or cooling). The fit workers are ranked by the run's `failure_cause`: the worker the
 run was on first for `missing_tool`, `checkout` and `branch_mismatch`, last for `worker_stopped`, `lease_lost` and
@@ -1488,8 +1496,34 @@ in the registry's cluster of the project (`hub.project`, on the same hub): its r
 directory name. The registry is `~/.evo/harness/registry.json`, then `~/.claude/harness/registry.json`, as
 `evo-agents hub registry pull` writes it. Only a git work tree counts. The hub lists a project's harness apart from
 its repos, but a plan names the harness as one of its repos, since its plans live there, so a plan run needs a
-checkout of it too. The daemon reads the project's repos and harness from the hub each time it starts, while the
-machine is signed in with `evo-agents hub login`.
+checkout of it too; `evo-agents hub project register` sends the harness among the repos, with the origin its git
+remote names, when harness.yaml does not list it. The daemon reads the project's repos and harness from the hub each
+time it starts, while the machine is signed in with `evo-agents hub login`.
+
+### Repos a run clones
+
+A run never waits, and never fails, for want of a checkout a person would have to make by hand. Once a run's leases are
+taken, the daemon sets up each repo of the run it has no checkout of (`evo_agents/worker/runner/clones.py`), several
+at a time, under a lock of where the repo goes, so two runs never clone one repo at once:
+
+- where: the path the hub registered for the repo, placed in the project's workspace as `evo-agents hub registry pull`
+  places it, else `checkouts/<project>/<repo>` in the worker's home;
+- a git work tree there already is taken as it is and nothing is cloned;
+- else the daemon clones the origin the hub's answer to the leases names (`repos` of `POST
+  /v1/worker/runs/{id}/credentials`): the one the run's project registers, else the one another project registers for a
+  repo of that name, among the projects the run's owner holds a grant on, when they agree on it (a plan of one project
+  may work in the harness of another); the clone goes through the run's leases, is made beside its place and moved in
+  once whole;
+- a path taken by something that is no work tree moves the clone under the worker's home.
+
+The checkout is the daemon's from then on: in the next heartbeat's `checkouts` and in `checkouts` of `config.json`. A
+repo for which no project names an origin fails the run with cause `origin`, and a clone git cannot make with cause
+`credentials` (the remote refused the credential) or `checkout`; a chat run or a task run goes on without such a repo
+instead, with a note, as an author run does without any repo but its harness. A dispatch names such a repo only when
+some project the dispatcher holds a grant on lists its origin: otherwise the hub answers 409 and queues nothing. A chat
+run's agent opens a repo the worker has no checkout of likewise (`evo-agents worker repo open`): the hub refuses it, 409,
+only when no project of the run's owner lists an origin for it, and a chat run on a daemon of `lazy_chat_repos` starts
+with the harness without a checkout of it when one does.
 
 ### Runtime adapters
 
