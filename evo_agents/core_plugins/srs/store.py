@@ -63,7 +63,8 @@ class ReviewRow:
 
 @dataclass(frozen=True)
 class VersionRow:
-    """A version of a document, with the reviews of every round it went through."""
+    """A version of a document, with the reviews of every round it went through and @ba's review of its current round
+    (srs_versions.review_run_id) with that run's state, when one was handed."""
 
     id: int
     number: int
@@ -80,6 +81,8 @@ class VersionRow:
     submitted_at: datetime | None
     decided_at: datetime | None
     reviews: list[ReviewRow] = field(default_factory=list)
+    review_run_id: int | None = None
+    review_run_state: str | None = None
 
 
 @dataclass
@@ -212,7 +215,7 @@ async def document(
 
 
 def _versions_query(document_id: int):
-    v, u = tables.srs.versions, tables.users
+    v, u, r = tables.srs.versions, tables.users, tables.runs
     return (
         select(
             v.c.id,
@@ -229,8 +232,11 @@ def _versions_query(document_id: int):
             v.c.created_at,
             v.c.submitted_at,
             v.c.decided_at,
+            v.c.review_run_id,
+            r.c.state.label("review_run_state"),
         )
         .join_from(v, u, u.c.id == v.c.author_id)
+        .outerjoin(r, r.c.id == v.c.review_run_id)
         .where(v.c.document_id == document_id)
     )
 

@@ -176,8 +176,9 @@ def test_srs_finding_is_recorded_by_ba_only_with_sources_the_hub_finds(client, h
         "BR ORD2-1",
         "open",
     )
+    # a code names the document whose item holds it, for the reader's link to that item
     assert (found["sources"], found["run_id"], found["settled_by"], found["resolution"]) == (
-        sources,
+        [{**sources[0], "document": "billing"}, *sources[1:]],
         run_id,
         None,
         None,
@@ -185,6 +186,11 @@ def test_srs_finding_is_recorded_by_ba_only_with_sources_the_hub_finds(client, h
     assert graph[-1] == (PROJECT, ["usecase:UC BIL-1"], ["docs/billing.md"])
     f, d = tables.srs.findings, tables.srs.documents
     assert sql(hub_db, select(f.c.label)) == sql(hub_db, select(d.c.label).where(d.c.slug == "demo-shop"))
+    # once billing is labelled above the reader's grant, its code no longer tells them its slug
+    ((label,),) = sql(hub_db, select(d.c.label).where(d.c.slug == "billing"))
+    sql(hub_db, update(d).where(d.c.slug == "billing").values(label={**label, "level": "customer"}))
+    assert findings(client, hub["reader"])[0]["sources"] == sources
+    sql(hub_db, update(d).where(d.c.slug == "billing").values(label=label))
     # the whole document, on the version given
     whole = recorded(client, agent, item=None, level="info", kind="overlap", version=1)
     assert findings(client, hub["reader"])[-1]["item"] is None and whole == found["id"] + 1
@@ -374,12 +380,21 @@ def test_srs_approval_gate_holds_a_version_while_a_decide_finding_is_open_and_na
     assert review(client, hub["other"], 2).json()["state"] == "approved"
 
 
+def review_run(client, headers, number: int) -> dict | None:
+    """The review run of version ``number`` of demo-shop as a member reads the version: its id and state."""
+    found = client.get(f"{DOC}/versions/{number}", headers=headers)
+    assert found.status_code == 200, found.text
+    return found.json()["review_run"]
+
+
 def test_srs_approval_gate_waits_for_the_review_run_of_the_round_unless_it_failed_or_was_cancelled(client, hub, hub_db):
     studio, run_id, _ = reviewing(client, hub)
     held = review(client, hub["other"], 1)
     assert held.status_code == 409, held.text
     assert f"while @ba's review of its round 1 (run #{run_id}) is running" in held.json()["message"], held.text
+    assert review_run(client, hub["reader"], 1) == {"id": run_id, "state": "running"}, "the web locks Approve on it"
     moved(client, studio, run_id, "failed", error="the model was down")
+    assert review_run(client, hub["reader"], 1) == {"id": run_id, "state": "failed"}
     assert review(client, hub["other"], 1).json()["state"] == "approved", "a failed review holds nothing"
     # version 2: its first round's run is queued; a request for changes goes through, and the next round has its own
     cart = item(client, hub["chi"], "BR ORD1-1")
@@ -394,9 +409,10 @@ def test_srs_approval_gate_waits_for_the_review_run_of_the_round_unless_it_faile
     assert held.status_code == 409 and f"(run #{second}) is queued" in held.json()["message"], held.text
     returned = review(client, hub["other"], 2, "request_changes", body="Say why 40")
     assert returned.status_code == 200 and returned.json()["state"] == "draft", returned.text
-    assert submitted(client, hub["chi"], 2)["round"] == 2
+    sent = submitted(client, hub["chi"], 2)
     ((again,),) = sql(hub_db, select(v.c.review_run_id).where(v.c.number == 2))
     assert again not in (None, second)
+    assert (sent["round"], sent["review_run"]) == (2, {"id": again, "state": "queued"}), "the submit answers its run"
     held = review(client, hub["other"], 2)
     assert held.status_code == 409 and f"round 2 (run #{again}) is queued" in held.json()["message"], held.text
     for _ in (second, again):
@@ -411,3 +427,8 @@ def test_srs_approval_gate_waits_for_the_review_run_of_the_round_unless_it_faile
     assert control(client, hub["owner"], third, "cancel").status_code == 200
     assert sql(hub_db, select(r.c.state).where(r.c.id == third)) == [("cancelled",)]
     assert review(client, hub["other"], 3).json()["state"] == "approved", "a cancelled review holds nothing"
+    # without @ba, a round has no review run
+    assert client.delete(TYPE, headers=hub["owner"]).status_code == 200
+    saved(client, hub["chi"], 3, {"key": stock["key"], "body": "- Placing the order holds its stock for 25 minutes."})
+    assert submitted(client, hub["chi"], 4)["review_run"] is None
+    assert review_run(client, hub["reader"], 4) is None

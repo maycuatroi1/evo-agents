@@ -74,6 +74,7 @@ export function version(number: number, patch: Partial<SrsVersion> = {}): SrsVer
     created_at: "2026-10-10T08:00:00Z",
     submitted_at: null,
     decided_at: null,
+    review_run: null,
     reviews: [],
     ...patch,
   };

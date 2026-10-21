@@ -7753,6 +7753,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -8250,6 +8251,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -8423,6 +8425,7 @@
           "created_at",
           "submitted_at",
           "decided_at",
+          "review_run",
           "reviews"
         ],
         "schema": "SrsVersion"
@@ -31377,7 +31380,7 @@
             "plugins"
           ],
           "summary": "List Findings",
-          "description": "The conflicts @ba found in a document, oldest first, each with its sources and how it was settled.",
+          "description": "The conflicts @ba found in a document, oldest first, each with its sources and how it was settled; a code among\nthem names the document whose item holds it, when the member sees that document.",
           "operationId": "list_findings_v1_x_srs__project__documents__slug__findings_get",
           "parameters": [
             {
@@ -65356,6 +65359,18 @@
                 }
               ],
               "title": "Note"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document",
+              "description": "of a code: the slug of the document whose item holds it, when the reader sees that document"
             }
           },
           "type": "object",
@@ -66300,6 +66315,40 @@
           ],
           "title": "SrsReviewIn"
         },
+        "SrsReviewRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked",
+                "done",
+                "failed",
+                "lost",
+                "cancelled"
+              ],
+              "title": "State",
+              "description": "approving the version waits while it is queued or running"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state"
+          ],
+          "title": "SrsReviewRun",
+          "description": "@ba's review of a version's current round: the task run the hub handed when the version entered review."
+        },
         "SrsSave": {
           "properties": {
             "base_version": {
@@ -66427,6 +66476,17 @@
               ],
               "title": "Decided At"
             },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
             "reviews": {
               "items": {
                 "$ref": "#/components/schemas/SrsReview"
@@ -66447,6 +66507,7 @@
             "created_at",
             "submitted_at",
             "decided_at",
+            "review_run",
             "reviews"
           ],
           "title": "SrsVersion",
@@ -66535,6 +66596,17 @@
               ],
               "title": "Decided At"
             },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
             "reviews": {
               "items": {
                 "$ref": "#/components/schemas/SrsReview"
@@ -66577,6 +66649,7 @@
             "created_at",
             "submitted_at",
             "decided_at",
+            "review_run",
             "reviews",
             "document",
             "preamble",
