@@ -115,6 +115,7 @@ describe("AppSidebar", () => {
       "nav-insights",
       "nav-signals",
       "nav-curator",
+      "nav-releases",
       "nav-agents",
       "nav-memories",
       "nav-skills",

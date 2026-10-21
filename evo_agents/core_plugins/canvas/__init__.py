@@ -21,7 +21,7 @@ plugin: readers read, writers make canvases, edit, undo, add, withdraw and confi
 proposals, ask @strategist for a brainstorm and import, admins give a canvas a label of its own and archive it.
 ``evo-agents hub canvas list|show|create|edit|undo|evidence|proposal|brainstorm|export|import`` is their client; a
 canvas exports as ``evo-canvas/1`` JSON and imports back keeping its claims' codes. The tables are the hub's
-(``evo_agents.hub.tables_canvas``, migrations 0067 and 0069 to 0072), every row of a canvas carrying its label, the
+(``evo_agents.hub.tables_canvas``, migrations 0072 and 0074 to 0077), every row of a canvas carrying its label, the
 project's by default. The hub's web shows them on the plugin's native pages (``PAGES``): the canvases in the
 project's menu, and under them a canvas's grid of nine cells, a claim's page and a baseline's review.
 

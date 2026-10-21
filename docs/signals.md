@@ -7,7 +7,7 @@ not a plugin's: the canvas plugin's value check (section Value check), the Loop 
 
 The code is `evo_agents/hub/signals.py` (taking batches, reading, the retention), `evo_agents/hub/server/signals.py`
 and `evo_agents/hub/server/signal_keys.py` (the routes), and `evo_agents/hub/cli_signals.py` (the command line). The
-tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0068).
+tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0073).
 
 ## The registry of keys
 

@@ -14,6 +14,7 @@ Northwind Chat itself is ``tests/plugins/fake_northwind.py``. What the plugin ma
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import importlib
 import logging
 import secrets
@@ -532,15 +533,24 @@ def test_a_plugin_reads_the_variables_named_for_it_and_a_transaction_of_its_cont
     monkeypatch.setenv("EVO_HUB_LUMEN_RELAY_KEY", "lumen's")
     mine = hub.plugin("northwind_chat")
     assert dict(hub.plugin_environment(mine)) == {"EVO_HUB_NORTHWIND_CHAT_REGION": "eu"}
-    context = hub.Context(PLUGIN, northwind.client.app.state.engine)
+    engine = northwind.client.app.state.engine
 
-    async def users():
+    async def users(context):
         async with hub.transaction(context) as conn:
             return (await conn.execute(select(func.count()).select_from(tables.users))).scalar_one()
 
-    assert northwind.client.portal.call(users) >= 1
+    assert northwind.client.portal.call(users, hub.Context(PLUGIN, engine)) >= 1
+    # The hub hands its plugins a CoreContext, which the API's transaction takes as a Context.
+    assert northwind.client.portal.call(users, plugin_calls.CoreContext(PLUGIN, engine, graph_refs=object())) >= 1
     with pytest.raises(ValueError, match="no engine"):
         hub.transaction(hub.Context(PLUGIN, None))
+
+
+def test_the_api_s_context_keeps_the_fields_of_1_1_and_the_hub_s_adds_graph_refs_past_them():
+    served = [field.name for field in dataclasses.fields(hub.Context)]
+    assert served == ["plugin", "engine", "config", "project", "project_id", "run_id", "sink", "jobs"]
+    assert issubclass(plugin_calls.CoreContext, hub.Context)
+    assert [field.name for field in dataclasses.fields(plugin_calls.CoreContext)] == [*served, "graph_refs"]
 
 
 # Versions, routes and the OpenAPI document

@@ -20,7 +20,7 @@ import yaml
 from sqlalchemy import column, func, insert, select, table, update
 
 from evo_agents.hub import knowledge_diff, tables
-from evo_agents.hub.migrate import migrate, revisions
+from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import change_tiers, kg
 from evo_agents.hub.server import proposals as proposal_routes
 from tests.hub.live import sql
@@ -43,7 +43,7 @@ from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     verdict,
     world,
 )
-from tests.hub.test_migrate import move_to
+from tests.hub.test_migrate import ALL, move_to
 from tests.hub.test_review_runs import DRAFT, proposed
 from tests.hub.test_runs import moved
 
@@ -419,7 +419,7 @@ def test_tier_schema_0057_takes_kind_kg_source_and_going_back_deletes_its_propos
     where = (info.c.table_name == "curator_changes") & (info.c.column_name == "knowledge")
     assert sql(db, select(func.count()).select_from(info).where(where)) == [(0,)]
     assert "kg_source" not in kind_check(db) and "'revert'" in kind_check(db)
-    assert migrate(db.dsn).applied == revisions()[revisions().index("0057") :]
+    assert migrate(db.dsn).applied == ALL[ALL.index("0057") :]
     assert "kg_source" in kind_check(db)
 
 

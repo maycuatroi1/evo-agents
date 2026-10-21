@@ -30,7 +30,8 @@ snapshot of the chat (``snapshot``: the first message of the thread, at most THR
 BEFORE_MESSAGES of the chat before it, SNAPSHOT_BYTES in all, the oldest left out first) and the message that mentioned
 the agent, whole. In a direct chat (``chats.DIRECT``), where each message of the person outside a thread is new work in
 a new session, what comes before the thread is the latest turns instead: at most DIRECT_MESSAGES of the earlier
-threads, the person's messages and the agent's answers in them. The profile's instructions reach the agent through its
+threads, the person's messages and the agent's answers in them. In a settle chat (``chats.SETTLE``) its rules say that
+every message of a person wakes the agent without an @. The profile's instructions reach the agent through its
 system prompt (``evo_agents.worker.runtimes.profiles``), not this prompt.
 
 The run works in a writable worktree of each repo of its project the worker has a checkout of, all on the branch
@@ -63,6 +64,7 @@ import re
 from datetime import datetime
 
 from evo_agents.hub.chats import DIRECT as DIRECT_KIND
+from evo_agents.hub.chats import SETTLE as SETTLE_KIND
 from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip, step_title
 
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
@@ -304,6 +306,7 @@ def _rules(
     lazy: bool,
     harness: str | None,
     direct: bool = False,
+    settle: bool = False,
 ) -> list[str]:
     turns = (
         [
@@ -314,6 +317,12 @@ def _rules(
         if direct
         else []
     )
+    if settle:
+        turns.append(
+            "- This is a settle chat the hub opened for you: every message of a person here wakes you without an @, "
+            "from a member who only reads the project too. Answer what the message asks of you; when it asks you "
+            "nothing, say so in one short line."
+        )
     return [
         "Rules for this chat run:",
         *turns,
@@ -384,9 +393,10 @@ def build_chat_prompt(
     harness: str | None = None,
 ) -> str:
     """The prompt of a chat run of ``agent`` ({handle, name, project, description}) in ``chat`` ({id, title, people,
-    agents, and kind: a direct chat's is ``chats.DIRECT``}), woken by message ``trigger`` (as ``render_message`` takes
-    it) for ``login``, at ``hop``, on ``branch``, with the snapshot ``blocks`` (``snapshot``) and the run's ``repos`` in
-    ``worktrees`` (a repo's folder, its name when it maps none), less ``left_out``; within MAX_PROMPT_BYTES. With
+    agents, and kind: ``chats.DIRECT`` or ``chats.SETTLE`` for those}), woken by message ``trigger`` (as
+    ``render_message`` takes it) for ``login``, at ``hop``, on ``branch``, with the snapshot ``blocks`` (``snapshot``)
+    and the run's ``repos`` in ``worktrees`` (a repo's folder, its name when it maps none), less ``left_out``; within
+    MAX_PROMPT_BYTES. With
     ``listing`` (``ranked_repos``), the run of a daemon of ``runs.LAZY_CHAT_REPOS``: the prompt lists every repo of the
     project instead, and its rules tell the agent to open a repo with OPEN_COMMAND before it reads or changes its code,
     and that the harness.yaml of ``harness``, the project's harness, says what each repo is for."""
@@ -394,8 +404,10 @@ def build_chat_prompt(
     people = ", ".join(chat.get("people") or []) or "none"
     agents = ", ".join(f"@{name}" for name in chat.get("agents") or []) or "none"
     about = str(agent.get("description") or "").strip()
-    direct = chat.get("kind") == DIRECT_KIND
+    direct, settle = chat.get("kind") == DIRECT_KIND, chat.get("kind") == SETTLE_KIND
     where = f"a direct chat with {people}" if direct else f"the group chat {chat.get('title')!r}"
+    if settle:
+        where = f"the settle chat {chat.get('title')!r}"
     lazy = listing is not None
     if lazy:
         heading = "Repositories of the project, those open in this run first, then those the chat names:"
@@ -407,7 +419,7 @@ def build_chat_prompt(
         f"You are @{handle} ({agent.get('name') or handle}), an agent of project {agent.get('project')} on the "
         f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
-        *_rules(handle, login, branch, hop, budget_usd, lazy, harness, direct),
+        *_rules(handle, login, branch, hop, budget_usd, lazy, harness, direct, settle),
         "",
         f"People of the chat: {people}. Agents: {agents}.",
         "",

@@ -67,7 +67,8 @@ class GitHubClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def _call(self, method: str, url: str, doing: str, **kwargs) -> httpx.Response:
+    async def _call(self, method: str, url: str, doing: str, *, redirect: bool = False, **kwargs) -> httpx.Response:
+        """One call; with ``redirect`` a 3xx is answered, not raised, for a caller that reads its Location."""
         path = urlsplit(url).path
         started = time.perf_counter()
         try:
@@ -87,9 +88,29 @@ class GitHubClient:
         limited = status == 429 or (status == 403 and response.headers.get("x-ratelimit-remaining") == "0")
         if status >= 500 or limited:
             raise GitHubUnavailable(f"GitHub answered {status} while {doing}; try again shortly")
-        if 300 <= status < 400:
+        if 300 <= status < 400 and not redirect:
             raise GitHubUnavailable(f"GitHub answered {status} with a redirect while {doing}: check the GitHub URLs")
         return response
+
+    async def tail_of(self, url: str, doing: str, *, keep: int, most: int) -> bytes:
+        """The last ``keep`` bytes of what ``url`` answers, asked without any credential of the hub (a link GitHub
+        signed, such as a job's log); ``GitHubUnavailable`` when it fails, answers anything but 200, or is longer than
+        ``most`` bytes."""
+        path, tail, read = urlsplit(url).path, b"", 0
+        try:
+            async with self._http.stream("GET", url) as response:
+                if response.status_code != 200:
+                    raise GitHubUnavailable(f"GitHub's storage answered {response.status_code} while {doing}")
+                async for chunk in response.aiter_bytes():
+                    read += len(chunk)
+                    if read > most:
+                        raise GitHubUnavailable(f"what GitHub answered is over {most} bytes while {doing}")
+                    tail = (tail + chunk)[-keep:]
+        except httpx.HTTPError as exc:
+            log.warning("github download failed", extra={"path": path, "error": type(exc).__name__})
+            raise GitHubUnavailable(f"cannot reach GitHub's storage while {doing} ({type(exc).__name__})") from None
+        log.info("github download", extra={"path": path, "bytes": read})
+        return tail
 
     @staticmethod
     def _json(response: httpx.Response, doing: str) -> dict:

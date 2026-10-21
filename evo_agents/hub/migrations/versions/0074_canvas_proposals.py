@@ -1,8 +1,8 @@
 """The proposals of the core plugin canvas: a new claim, or a change of a claim at the rev it was read at, that an
 agent or the hub proposes for a writer to accept or reject.
 
-Revision ID: 0069
-Revises: 0068
+Revision ID: 0074
+Revises: 0073
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas`` as of this revision, never imports, so a later change
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0069"
-down_revision = "0068"
+revision = "0074"
+down_revision = "0073"
 branch_labels = None
 depends_on = None
 

@@ -1,8 +1,8 @@
 """The value check of the core plugin canvas: what the evidence the hub writes rests on, the evidence a proposal of the
 hub was made on, and the items a judging run of @strategist judges.
 
-Revision ID: 0070
-Revises: 0069
+Revision ID: 0075
+Revises: 0074
 Create Date: 2026-10-21
 
 The names below are copies of ``evo_agents.hub.tables_canvas`` as of this revision, never imports, so a later change
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0070"
-down_revision = "0069"
+revision = "0075"
+down_revision = "0074"
 branch_labels = None
 depends_on = None
 

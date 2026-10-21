@@ -46,6 +46,14 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
   whatever its number of workers, kept in hub_nightly with the time of the read for the api to hand every daemon in
   its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
+- ``hub.release_schedules``, every minute, one pass at a time: each project's release schedule whose local time came
+  within the hour gets the check of that day, once: without any model, the newest release tag and the commit of the
+  target ref are compared on the packaging paths, and a change opens a cycle and queues its cut run, with the workers'
+  App reading GitHub (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``); then each release run
+  that is done with its branch is landed: its pull request opened and merged, and its merge commit tagged, with the
+  same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
+  down (``HubContext.release_pass``), since this module imports no server module beyond its job list
+  (docs/structure.md, section Package boundaries).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -102,6 +110,8 @@ from evo_agents.hub.log import redact_dsn
 from evo_agents.hub.migrate import migrate
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from evo_agents.hub.server.github_app import GitHubApp
@@ -131,6 +141,9 @@ class HubContext:
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
     engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
     curator_app: GitHubApp | None = None  # None without EVO_HUB_CURATOR_APP_*: no ruleset checked
+    # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
+    # None checks and lands no release
+    release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -314,6 +327,19 @@ async def read_nightly(context: JobContext, timestamp: int | None = None) -> dic
     return await refresh(hub(context).engine)
 
 
+@queue.periodic(cron="* * * * *")
+@queue.task(
+    name=jobs.RELEASE_SCHEDULES, pass_context=True, lock=jobs.RELEASE_SCHEDULES, queueing_lock=jobs.RELEASE_SCHEDULES
+)
+async def release_schedules(context: JobContext, timestamp: int | None = None) -> dict:
+    found = hub(context)
+    release_pass = getattr(found, "release_pass", None)
+    if release_pass is None:
+        log.warning("no release pass was handed to this worker: no release schedule is checked")
+        return {"no_release_pass": 1}
+    return await release_pass(found.engine, found.github_app)
+
+
 @queue.periodic(cron="13 4 * * *")
 @queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
 async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
@@ -433,9 +459,9 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1) -> int:
+async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself."""
+    it could not start or stopped by itself. ``release_pass`` is the server's (``HubContext.release_pass``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -489,6 +515,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
                     github_app,
                     engine,
                     curator_app,
+                    release_pass,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -513,7 +540,7 @@ async def run(config: HubConfig, concurrency: int = 1) -> int:
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1) -> int:
+def main(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
-    return asyncio.run(run(config, concurrency))
+    return asyncio.run(run(config, concurrency, release_pass=release_pass))
