@@ -6781,6 +6781,18 @@ export interface components {
              */
             env_var: string;
             /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
              * Projects
              * @description the projects whose runs may take it
              */
@@ -6853,14 +6865,14 @@ export interface components {
             runs_7d: number;
             /**
              * Cost 24H Usd
-             * @description what those runs cost in the last 24 hours, in USD, from their usage
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
              */
-            cost_24h_usd: number;
+            cost_24h_usd: number | null;
             /**
              * Cost 7D Usd
-             * @description what those runs cost in the last 7 days, in USD, an estimate
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
              */
-            cost_7d_usd: number;
+            cost_7d_usd: number | null;
             /**
              * Held By
              * @description the runs a worker holds now with it
