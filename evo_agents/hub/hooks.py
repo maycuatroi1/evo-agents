@@ -22,7 +22,19 @@ this machine (``evo_agents.hub.redact``, with this machine's hub token among the
 project the session's directory belongs to, as memory push decides it (``MemorySync.project_of``, asked once per
 session). A directory of no project sends no digest. A digest the hub did not take waits in digest-state.json, and the
 next Stop that reaches the hub pushes it, with up to DIGEST_BACKLOG digests of other sessions that waited; a digest the
-hub refused is tried again after REFUSAL_COOLDOWN.
+hub refused is tried again after REFUSAL_COOLDOWN. A digest is marked waiting before its request, so a run that runs
+out of time leaves it for the next one.
+
+Claude Code runs no Stop hook for a turn the person interrupted, nor for one the session's end cut short, so a session
+whose every turn was interrupted never had a digest. SessionEnd pushes the session's digest too, with those that
+waited, before it reports the session's local run ended. A session SessionEnd did not reach either (Claude Code killed,
+the machine off) is found by SessionStart: from the projects directories of Claude Code (``transcripts.claude_roots``)
+it reads the transcripts of the last ``digest.SWEEP_DAYS`` days, untouched for SWEEP_SETTLE seconds, of the
+directories of a hub project (``Places.project_of`` of the memories it just pulled) and with no entry in
+digest-state.json, up to SWEEP_READS of them, the newest first, for SWEEP_SECONDS at most, and marks waiting each one
+of MIN_MESSAGES messages (``digest.head`` counts only that far), so the next Stop or SessionEnd that reaches the hub
+pushes it. A transcript under the threshold is noted with its size and mtime and read again only once it changed. The
+directories of a worker's runs (``~/.evo/worker/worktrees``, EVO_WORKER_HOME) are left out, as Stop leaves out a run.
 
 The agent of a run on an evo-agents worker has EVO_RUN_ID in its environment (``evo_agents.worker.run``). There
 SessionStart exports no plan copy, since the worker commits what the run leaves in its worktree and a run's commits hold
@@ -92,7 +104,8 @@ from evo_agents.hub.client import (
 )
 
 REQUEST_TIMEOUT = 5.0  # seconds for one request to the hub
-BUDGETS = {"session-start": 20.0, "stop": 15.0}  # seconds for a whole run; hooks.json gives Claude Code's limit
+# Seconds for a whole run; hooks.json gives Claude Code's limit. SessionEnd holds the session's exit while it runs.
+BUDGETS = {"session-start": 20.0, "stop": 15.0, "session-end": 12.0}
 LOCK_WAIT = 5.0  # seconds to wait for another memory sync of this machine
 COOLDOWN = 120.0  # seconds Stop leaves a hub alone after it did not answer
 STATE_FILE = "hook-state.json"
@@ -104,6 +117,11 @@ PULLED = ("pulled", "updated", "restored")  # what a pull wrote here
 RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run
 DIGEST_BACKLOG = 3  # digests of other sessions one Stop pushes at most, after its own
 REFUSAL_COOLDOWN = 600.0  # seconds before a digest the hub refused is tried again
+SWEEP_READS = 40  # transcripts one SessionStart reads at most, looking for sessions no hook pushed
+SWEEP_SECONDS = 2.0  # what that reading may take
+SWEEP_SETTLE = 600.0  # seconds a transcript has to be untouched first: a running session's own hooks push it
+SWEEP_MARGIN = 3.0  # seconds of SessionStart's budget the sweep leaves unused
+WORKER_HOME_VARIABLE = "EVO_WORKER_HOME"  # the worker's state directory (``evo_agents.worker.home``)
 
 
 class OutOfTime(BaseException):
@@ -276,7 +294,8 @@ def _memory_place(sync, where: Path) -> str | None:
     return place.project if place.scope == "project" else None
 
 
-def _pull_memories(hub: Hub, login: str, where: Path, line: Line) -> None:
+def _pull_memories(hub: Hub, login: str, where: Path, line: Line):
+    """Pull the memories of ``where``; the MemorySync that did it, whose ``places`` the sweep of digests reuses."""
     from evo_agents.hub.memory import MemorySync
 
     sync = MemorySync(hub, login, lock_timeout=LOCK_WAIT)
@@ -287,7 +306,7 @@ def _pull_memories(hub: Hub, login: str, where: Path, line: Line) -> None:
             raise
         line.project = line.project or _memory_place(sync, where)
         line.add(_failure("memories not pulled", exc), trouble=True)
-        return
+        return sync
     line.project = line.project or _memory_place(sync, where)
     pulled = sum(report.counts.get(key, 0) for key in PULLED)
     line.add(f"{_plural(pulled, 'memory', 'memories')} pulled")
@@ -302,6 +321,7 @@ def _pull_memories(hub: Hub, login: str, where: Path, line: Line) -> None:
             f"{_plural(len(report.errors), 'memory problem')} (`evo-agents hub memory pull` names them)",
             trouble=True,
         )
+    return sync
 
 
 def _harness(where: Path, line: Line) -> tuple[Path, str] | None:
@@ -366,6 +386,7 @@ def _check_skills(hub: Hub, line: Line) -> None:
 
 def session_start(payload: dict, line: Line) -> None:
     """The SessionStart hook's work, its outcome told in ``line``."""
+    started = time.monotonic()
     run_id = worker_run()
     if run_id is not None:
         line.add(run_note(run_id))
@@ -385,7 +406,7 @@ def session_start(payload: dict, line: Line) -> None:
     harness = _harness(where, line)
     state = HookState(hub_dir())
     try:
-        _pull_memories(hub, credentials.login, where, line)
+        sync = _pull_memories(hub, credentials.login, where, line)
         if harness is not None and run_id is None:
             _export_plans(hub, *harness, line)
         _check_skills(hub, line)
@@ -403,6 +424,94 @@ def session_start(payload: dict, line: Line) -> None:
         )
         return
     state.mark_up(hub.url)
+    places = getattr(sync, "places", None)  # None when the pull did not get as far as the projects
+    deadline = min(time.monotonic() + SWEEP_SECONDS, started + BUDGETS["session-start"] - SWEEP_MARGIN)
+    if run_id is None and places is not None:
+        _sweep_digests(hub.url, places, payload.get("session_id"), line, _now(), deadline)
+
+
+def worker_worktrees(env=None) -> Path:
+    """Where a worker of this machine makes its runs' directories: ``$EVO_WORKER_HOME/worktrees``, else
+    ``~/.evo/worker/worktrees`` (``evo_agents.worker.home``)."""
+    env = os.environ if env is None else env
+    return Path(env.get(WORKER_HOME_VARIABLE) or "~/.evo/worker").expanduser() / "worktrees"
+
+
+def _entries(directory: Path) -> list:
+    try:
+        return sorted(os.scandir(directory), key=lambda entry: entry.name)
+    except OSError:
+        return []
+
+
+def _unpushed(places, known: dict, swept: dict, skip, since: float, settled: float) -> list[tuple]:
+    """``(mtime, session id, transcript, project, [size, mtime])`` of each session's own transcript under the
+    projects directories of Claude Code changed in [since, settled), in a directory of a hub project that is not a
+    worker's run, with no entry in ``known`` and not noted in ``swept`` as it is now; the newest first."""
+    from evo_agents.hub.memory import SLUG, slug
+    from evo_agents.hub.transcripts import claude_roots
+
+    runs = slug(worker_worktrees())
+    found, taken = [], set()
+    for root in claude_roots():
+        for folder in _entries(root):
+            name = folder.name
+            if not SLUG.fullmatch(name) or name == runs or name.startswith(runs + "-"):
+                continue
+            try:
+                project = places.project_of(name) if folder.is_dir(follow_symlinks=False) else None
+            except (HubError, OSError):  # two projects claim the directory: its memories are not synced either
+                continue
+            if project is None:
+                continue
+            for entry in _entries(Path(folder.path)):
+                session = entry.name[: -len(".jsonl")] if entry.name.endswith(".jsonl") else ""
+                if not digest.SESSION_ID.fullmatch(session) or session in known or session == skip:
+                    continue
+                if session in taken:
+                    continue
+                try:
+                    stat = entry.stat(follow_symlinks=False) if entry.is_file(follow_symlinks=False) else None
+                except OSError:
+                    stat = None
+                if stat is None or not since <= stat.st_mtime < settled:
+                    continue
+                mark = [stat.st_size, stat.st_mtime]
+                if swept.get(session) == mark:
+                    continue
+                taken.add(session)
+                found.append((stat.st_mtime, session, Path(entry.path), project, mark))
+    return sorted(found, key=lambda item: item[0], reverse=True)
+
+
+def _sweep_digests(url: str, places, skip, line: Line, now: float, deadline: float) -> int:
+    """Mark waiting in digest-state.json the digests of the sessions no hook pushed (see the module), until
+    ``deadline`` (``time.monotonic``); how many it marked. It sends nothing: the next Stop or SessionEnd does."""
+    digests = digest.DigestState(hub_dir(), url)
+    since, settled = now - digest.SWEEP_DAYS * 86400, now - SWEEP_SETTLE
+    try:
+        swept = digests.swept()
+        found = _unpushed(places, digests.sessions(), swept, skip, since, settled)
+        seen, marked = {}, 0
+        for _, session, transcript, project, mark in found[:SWEEP_READS]:
+            if time.monotonic() > deadline:
+                break
+            messages, cwd = digest.head(transcript)
+            if messages < digest.MIN_MESSAGES:
+                seen[session] = mark
+                continue
+            where = cwd or str(transcript.parent)
+            entry = {"project": project, "resolved": True, "transcript": str(transcript), "pending": True}
+            digests.put(session, {**entry, "cwd": where, "dir": where})
+            marked += 1
+        if seen or any(mark[1] < since for mark in swept.values()):
+            digests.note_swept(seen, since)
+    except Exception as exc:  # only ever a second chance: the next SessionStart looks again
+        line.add(_failure("ended sessions not checked for a digest", exc))
+        return 0
+    if marked:
+        line.add(f"{_plural(marked, 'session')} whose digest no hook sent, queued for the next Stop")
+    return marked
 
 
 # Stop
@@ -441,6 +550,25 @@ def stop(payload: dict, outcome: Outcome) -> None:
     _push_digests(hub, credentials.login, payload, where, state, outcome)
 
 
+def session_end(payload: dict, outcome: Outcome) -> None:
+    """The SessionEnd hook's work: queue the session's transcript, push its digest and those that waited (Claude Code
+    ran no Stop for a turn the person interrupted), then report the session's local run ended (``local_sync``);
+    nothing in a worker run."""
+    if worker_run() is not None:
+        return
+    queue_transcript(payload, ended=True)  # the transcripts' own switch, EVO_HUB_TRANSCRIPTS, decides
+    try:
+        credentials = load_credentials()
+    except NotSignedIn:
+        return
+    except HubError as exc:
+        outcome.quiet = f"evo-hub: {exc}"
+        return
+    hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
+    _push_digests(hub, credentials.login, payload, session_dir(payload), HookState(hub_dir()), outcome)
+    _local_end(payload)
+
+
 def queue_transcript(payload: dict, ended: bool = False) -> None:
     """Queue the session's transcript and start a sync in the background (``transcripts.on_turn``); never raises."""
     from evo_agents.hub import transcripts
@@ -461,6 +589,13 @@ def _local_stop(payload: dict) -> None:
     from evo_agents.hub import local_sync
 
     local_sync.on_stop(payload)
+
+
+def _local_end(payload: dict) -> None:
+    """The session's share of SessionEnd on the hub, as a local run: ``ended`` (``local_sync``)."""
+    from evo_agents.hub import local_sync
+
+    local_sync.on_session_end(payload)
 
 
 def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome, payload: dict) -> None:
@@ -549,12 +684,11 @@ def _push_digest(
     held = {key: entry[key] for key in ("project", "resolved", "sha256", "refused_at") if key in entry}
     record = {**held, "transcript": str(transcript), "cwd": cwd, "dir": str(where), "pending": True}
     now = _now()
+    digests.put(session_id, record)  # waiting until the hub took it, whatever ends this run
     if state.down_since(hub.url, now) is not None:
-        digests.put(session_id, record)
         return False
     refused_at = record.get("refused_at")
     if isinstance(refused_at, (int, float)) and 0 <= now - refused_at < REFUSAL_COOLDOWN:
-        digests.put(session_id, record)
         return True
     try:
         if not record.get("resolved"):
@@ -648,9 +782,18 @@ def cmd_hook_local_ask(args) -> int:
 
 
 def cmd_hook_session_end(args) -> int:
-    from evo_agents.hub import local_sync
-
-    return local_sync.cmd_hook_session_end(args)
+    outcome = Outcome()
+    seconds = BUDGETS["session-end"]
+    try:
+        with budget(seconds):
+            session_end(read_payload(), outcome)
+    except OutOfTime:
+        outcome.quiet = f"evo-hub: SessionEnd stopped after {seconds:g}s; a digest left waits for a later Stop"
+    except BaseException as exc:  # a hook never fails the session
+        outcome.quiet = "evo-hub: " + _failure("the SessionEnd hook failed", exc)
+    if outcome.quiet:
+        _write(sys.stderr, one_line(outcome.quiet))
+    return 0
 
 
 def register_hooks(hsub) -> None:
@@ -681,7 +824,9 @@ def register_hooks(hsub) -> None:
         help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
     ).set_defaults(func=cmd_hook_local_tool)
     ksub.add_parser(
-        "session-end", help="report the session's local run ended, and queue its transcript for the hub"
+        "session-end",
+        help="push the session's digest and those that waited, report its local run ended, and queue its transcript "
+        "for the hub",
     ).set_defaults(func=cmd_hook_session_end)
     ksub.add_parser(
         "local-ask",

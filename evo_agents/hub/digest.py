@@ -50,13 +50,17 @@ directory.
 
 The digest goes to the hub only through ``evo_agents.hub.redact`` (the hook does that), and the hub's PUT checks it
 against the same limits. ``DigestState`` (~/.evo/hub/digest-state.json) remembers per hub and per session what was
-pushed last and what waits for a later Stop. Standard library only: the hook runs on a core install.
+pushed last and what waits for a later Stop or SessionEnd, and ``head`` counts the first messages of a transcript for
+the sweep of SessionStart, which finds the sessions no hook pushed. Standard library only: the hook runs on a core
+install.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import re
 import time
 from collections import Counter
@@ -110,6 +114,7 @@ STATE_FILE = "digest-state.json"
 STATE_VERSION = 1
 KEEP_SECONDS = 90 * 86400  # a session the state remembers, after its last push
 MAX_SESSIONS = 500  # sessions the state remembers per hub, the newest
+SWEEP_DAYS = 7  # how far back SessionStart looks for sessions whose digest never left this machine (hooks)
 
 # A Codex rollout (``codex exec`` / the app-server session log a Codex session's transcript_path names): one JSON object
 # a line, ``type`` and ``payload``, the first line ``session_meta``. The digest is read through the normalized item
@@ -613,6 +618,25 @@ def build(transcript: Path, cwd: str) -> dict | None:
     return tally.digest(cwd) if tally.messages >= MIN_MESSAGES else None
 
 
+def head(transcript: Path, enough: int = MIN_MESSAGES) -> tuple[int, str | None]:
+    """How many messages a Claude Code transcript holds, counted as ``build`` counts them up to ``enough``, and the
+    directory the first line that names one gives (``cwd``); (0, None) when it cannot be read. It reads only as far as
+    it needs both, so a long transcript costs its first lines."""
+    found, cwd = 0, None
+    try:
+        for line in read_lines(transcript):
+            if cwd is None and isinstance(line, dict):
+                given = line.get("cwd")
+                cwd = given if isinstance(given, str) and os.path.isabs(given) else None
+            if found < enough and _counted(line):
+                found += 1
+            if found >= enough and cwd is not None:
+                break
+    except OSError:
+        return 0, None
+    return found, cwd
+
+
 def fingerprint(digest: dict) -> str:
     """The sha256 of ``digest`` as JSON: the same digest, the same fingerprint."""
     return hashlib.sha256(json.dumps(digest, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -624,8 +648,9 @@ def fingerprint(digest: dict) -> str:
 class DigestState:
     """~/.evo/hub/digest-state.json: per hub and per session, its transcript and directory, the project its digest
     goes to (None for a directory of no project), the fingerprint of the digest pushed last, and whether a newer one
-    waits for a later Stop. Advisory: a file that cannot be read counts as empty. Each change reads the file again and
-    writes it whole, atomically, so two sessions ending at once lose at most a mark, and a digest is pushed again."""
+    waits for a later Stop or SessionEnd; and the transcripts the sweep of SessionStart read and left (``swept``).
+    Advisory: a file that cannot be read counts as empty. Each change reads the file again and writes it whole,
+    atomically, so two sessions ending at once lose at most a mark, and a digest is pushed again."""
 
     def __init__(self, directory: Path, hub_url: str):
         self.path = directory / STATE_FILE
@@ -664,11 +689,12 @@ class DigestState:
         held["sessions"] = {
             key: value for key, value in kept[:MAX_SESSIONS] if now - (value.get("at") or 0) < KEEP_SECONDS
         }
-        try:
+        self._write(data)  # only ever an optimization: the next Stop builds and pushes again
+
+    def _write(self, data: dict) -> None:
+        with contextlib.suppress(OSError):
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             write_atomic(self.path, (json.dumps(data, indent=2, sort_keys=True) + "\n").encode(), FILE_MODE)
-        except OSError:
-            pass  # only ever an optimization: the next Stop builds and pushes again
 
     def waiting(self, besides: str, limit: int) -> list[tuple[str, dict]]:
         """Up to ``limit`` sessions other than ``besides`` whose digest waits for a push, the oldest first."""
@@ -678,3 +704,22 @@ class DigestState:
             if key != besides and entry.get("pending") and isinstance(entry.get("transcript"), str)
         ]
         return sorted(found, key=lambda item: item[1].get("at") or 0)[:limit]
+
+    def swept(self) -> dict[str, list]:
+        """Per session, ``[size, mtime]`` of the transcript the sweep of SessionStart last read and found under
+        MIN_MESSAGES messages (``hooks``): read again only once it changed."""
+        held = self._read()["hubs"].get(self.hub_url)
+        found = held.get("swept") if isinstance(held, dict) else None
+        return {key: mark for key, mark in (found or {}).items() if isinstance(mark, list) and len(mark) == 2}
+
+    def note_swept(self, seen: dict[str, list], since: float) -> None:
+        """Keep ``seen`` with what the sweep noted before, forgetting the transcripts last changed before ``since``."""
+        data = self._read()
+        held = data["hubs"].setdefault(self.hub_url, {})
+        if not isinstance(held, dict):
+            held = data["hubs"][self.hub_url] = {}
+        merged = {**self.swept(), **seen}
+        held["swept"] = {
+            key: mark for key, mark in merged.items() if isinstance(mark[1], (int, float)) and mark[1] >= since
+        }
+        self._write(data)  # lost, the next sweep reads those transcripts again

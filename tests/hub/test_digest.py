@@ -712,3 +712,204 @@ def test_a_digest_the_hub_did_not_take_waits_and_the_hub_is_left_alone(home, mon
     clock[0] += hooks.COOLDOWN - 1
     assert stop(given, monkeypatch, capsys) == (0, "", "") and len(sent) == 1  # not asked again yet
     assert DigestState(home / ".evo" / "hub", url).get(SESSION)["pending"] is True
+
+
+def test_a_digest_is_marked_waiting_before_its_request_so_a_run_out_of_time_leaves_it(home, monkeypatch, capsys):
+    url = f"http://127.0.0.1:{pg.free_port()}"
+    signed_in(home, url)
+
+    def out_of_time(method, url, headers, data, timeout):
+        raise hooks.OutOfTime
+
+    monkeypatch.setattr(hub_client, "_send", out_of_time)
+    given = payload(home, session_lines())
+    code, out, err = stop(given, monkeypatch, capsys)
+    assert (code, out) == (0, "") and "stopped after" in err
+    waiting = DigestState(home / ".evo" / "hub", url).get(SESSION)
+    assert waiting["pending"] is True and waiting["transcript"] == given["transcript_path"]
+
+
+# What a session whose turns were interrupted leaves: no Stop, a SessionEnd, or neither
+
+
+def interrupted_lines(cwd: str = "/work/app") -> list[dict]:
+    """A session of 7 messages whose two turns the person interrupted, as Claude Code 2.1.299 writes it: no
+    stop_hook_summary line, the last line the interruption."""
+    lines = [
+        said("Check the hub and the worker.", 1),
+        answered("msg_1", 2, tool_use("toolu_1", "Bash", command="evo-agents hub run list")),
+        said("[Request interrupted by user for tool use]", 3),
+        said("Only the worker.", 4),
+        answered("msg_2", 5, {"type": "text", "text": "Reading the worker."}),
+        answered("msg_3", 6, tool_use("toolu_2", "Bash", command="ssh evo-worker-01 evo-agents --version")),
+        said("[Request interrupted by user for tool use]", 7),
+    ]
+    return [{**line, "cwd": cwd} for line in lines]
+
+
+def session_end(given: dict, monkeypatch, capsys) -> tuple[int, str, str]:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({**given, "hook_event_name": "SessionEnd"})))
+    code = main(["hub", "hook", "session-end"])
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
+@pytest.fixture
+def hub_of_demo(monkeypatch) -> list:
+    """A hub that takes every digest of project demo, the directory of every session belonging to demo; the requests,
+    recorded."""
+    from evo_agents.hub.memory import MemorySync
+
+    calls = []
+
+    def send(method, url, headers, data, timeout):
+        calls.append((method, url.split("/v1/", 1)[1], json.loads(data) if data else None))
+        return 200, json.dumps({"ok": True}).encode()
+
+    monkeypatch.setattr(hub_client, "_send", send)
+    monkeypatch.setattr(MemorySync, "project_of", lambda self, where=None: "demo")
+    return calls
+
+
+def test_session_end_pushes_the_digest_of_a_session_whose_every_turn_was_interrupted(
+    home, monkeypatch, capsys, hub_of_demo
+):
+    url = f"http://127.0.0.1:{pg.free_port()}"
+    signed_in(home, url)
+    given = payload(home, interrupted_lines())
+    assert session_end(given, monkeypatch, capsys) == (0, "", "")
+    (put,) = [call for call in hub_of_demo if call[0] == "PUT"]
+    assert put[1] == f"projects/demo/digests/{SESSION}" and put[2]["messages"] == 7 and put[2]["interrupts"] == 2
+    state = DigestState(home / ".evo" / "hub", url).get(SESSION)
+    assert (state["pending"], state["project"]) == (False, "demo") and state["sha256"] == fingerprint(
+        build(Path(given["transcript_path"]), given["cwd"])
+    )
+
+    # Again, nothing changed: nothing sent. In a worker run, or under six messages, none.
+    assert session_end(given, monkeypatch, capsys) == (0, "", "") and len(hub_of_demo) == 1
+    other = {**payload(home, interrupted_lines()[:5]), "session_id": "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5c70"}
+    assert session_end(other, monkeypatch, capsys) == (0, "", "")
+    monkeypatch.setenv(hooks.RUN_VARIABLE, "7")
+    run = {**payload(home, interrupted_lines()), "session_id": "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5c71"}
+    assert session_end(run, monkeypatch, capsys) == (0, "", "")
+    assert len(hub_of_demo) == 1
+
+
+def test_session_end_pushes_the_digests_that_waited_with_its_own(home, monkeypatch, capsys, hub_of_demo):
+    url = f"http://127.0.0.1:{pg.free_port()}"
+    signed_in(home, url)
+    waited = write_transcript(home / ".claude" / "projects" / "-work" / "waited.jsonl", session_lines())
+    DigestState(home / ".evo" / "hub", url).put(
+        "waited", {"transcript": str(waited), "cwd": "/work", "dir": "/work", "pending": True}
+    )
+    assert session_end(payload(home, interrupted_lines()), monkeypatch, capsys) == (0, "", "")
+    pushed = [call[1] for call in hub_of_demo if call[0] == "PUT"]
+    assert pushed == [f"projects/demo/digests/{SESSION}", "projects/demo/digests/waited"]
+
+
+class Places:
+    """``Places.project_of`` of a machine where ``claimed`` slugs belong to project demo."""
+
+    def __init__(self, *claimed: str):
+        self.claimed = set(claimed)
+
+    def project_of(self, name: str) -> str | None:
+        return "demo" if name in self.claimed else None
+
+
+def aged(path: Path, seconds: float, now: float) -> Path:
+    import os
+
+    os.utime(path, (now - seconds, now - seconds))
+    return path
+
+
+def test_the_sweep_queues_the_sessions_no_hook_pushed_and_reads_a_short_one_again_only_once_it_changed(
+    home, monkeypatch
+):
+    from evo_agents.hub.memory import slug
+
+    now = 2_000_000_000.0
+    url = "https://hub.test"
+    projects = home / ".claude" / "projects"
+    work, scratch = "/work/app", "/scratch"
+    runs = slug(home / ".evo" / "worker" / "worktrees") + "-demo-12"
+
+    def transcript(where: str, session: str, lines: list[dict], age: float) -> Path:
+        return aged(write_transcript(projects / where / f"{session}.jsonl", lines), age, now)
+
+    ids = {name: f"0199b1c2-7d3e-7a10-9c41-5e2f3a4b5{n:03d}" for n, name in enumerate("abcdefgh")}
+    interrupted = transcript(slug(work), ids["a"], interrupted_lines(work), 3600)
+    short = transcript(slug(work), ids["b"], interrupted_lines(work)[:4], 3600)
+    transcript(slug(scratch), ids["c"], interrupted_lines(scratch), 3600)  # a directory of no project
+    transcript(runs, ids["d"], interrupted_lines(), 3600)  # a worker's run, though its slug were claimed
+    transcript(slug(work), ids["e"], interrupted_lines(work), 60)  # still settling: its own hooks push it
+    transcript(slug(work), ids["f"], interrupted_lines(work), digest.SWEEP_DAYS * 86400 + 60)  # too old
+    transcript(slug(work), ids["g"], interrupted_lines(work), 3600)  # pushed by its Stop already
+    transcript(slug(work), ids["h"], interrupted_lines(work), 3600)  # the session starting now
+    state = DigestState(home / ".evo" / "hub", url)
+    state.put(ids["g"], {"transcript": "/t/g.jsonl", "pending": False, "sha256": "x"}, now=now)
+    places = Places(slug(work), runs)
+    read = []
+    real_head = digest.head
+    monkeypatch.setattr(digest, "head", lambda path, *args: read.append(path.stem) or real_head(path, *args))
+
+    line = hooks.Line()
+    assert hooks._sweep_digests(url, places, ids["h"], line, now, float("inf")) == 1
+    assert line.parts == ["1 session whose digest no hook sent, queued for the next Stop"] and not line.trouble
+    assert sorted(read) == sorted([ids["a"], ids["b"]])
+    queued = state.get(ids["a"])
+    assert queued == {
+        "project": "demo",
+        "resolved": True,
+        "transcript": str(interrupted),
+        "cwd": work,
+        "dir": work,
+        "pending": True,
+        "at": queued["at"],
+    }
+    assert [key for key, _ in state.waiting("someone", 3)] == [ids["a"]]
+    assert set(state.swept()) == {ids["b"]} and state.get(ids["b"]) is None
+
+    # Again: the queued one is known, the short one unchanged, so nothing is read.
+    read.clear()
+    assert hooks._sweep_digests(url, places, ids["h"], hooks.Line(), now, float("inf")) == 0 and read == []
+
+    # The short one grew to seven messages (its turns interrupted, so no Stop): the next sweep queues it.
+    aged(write_transcript(short, interrupted_lines(work)), 3600, now)
+    assert hooks._sweep_digests(url, places, ids["h"], hooks.Line(), now, float("inf")) == 1
+    assert state.get(ids["b"])["pending"] is True and read == [ids["b"]]
+
+    # Out of time before the first read: nothing read, nothing marked, said nowhere.
+    transcript(slug(work), "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5999", interrupted_lines(work), 3600)
+    read.clear()
+    line = hooks.Line()
+    assert hooks._sweep_digests(url, places, ids["h"], line, now, 0.0) == 0 and read == [] and line.parts == []
+
+
+def test_the_sweep_leaves_the_worker_home_the_environment_names(home, monkeypatch, tmp_path):
+    monkeypatch.setenv(hooks.WORKER_HOME_VARIABLE, str(tmp_path / "w"))
+    assert hooks.worker_worktrees() == tmp_path / "w" / "worktrees"
+    monkeypatch.delenv(hooks.WORKER_HOME_VARIABLE)
+    assert hooks.worker_worktrees() == home / ".evo" / "worker" / "worktrees"
+
+
+def test_digest_head_counts_messages_up_to_enough_and_finds_the_directory(tmp_path):
+    lines = interrupted_lines("/work/app")
+    assert digest.head(write_transcript(tmp_path / "s.jsonl", lines)) == (6, "/work/app")
+    assert digest.head(write_transcript(tmp_path / "t.jsonl", lines[:4])) == (4, "/work/app")
+    assert digest.head(write_transcript(tmp_path / "u.jsonl", session_lines())) == (6, None)
+    assert digest.head(tmp_path / "missing.jsonl") == (0, None)
+
+
+def test_the_digest_state_notes_what_the_sweep_read_and_forgets_old_marks(tmp_path):
+    state = DigestState(tmp_path, "https://hub.test")
+    state.put("pushed", {"pending": False}, now=1_000.0)
+    state.note_swept({"old": [10, 500.0], "short": [20, 1_500.0]}, since=0.0)
+    assert state.swept() == {"old": [10, 500.0], "short": [20, 1_500.0]}
+    state.note_swept({"later": [30, 2_000.0]}, since=1_000.0)
+    assert state.swept() == {"short": [20, 1_500.0], "later": [30, 2_000.0]}
+    assert set(state.sessions()) == {"pushed"}, "the sessions are kept apart from the marks"
+    state.put("another", {"pending": False}, now=1_100.0)
+    assert set(state.swept()) == {"short", "later"}
+    assert DigestState(tmp_path, "https://other.test").swept() == {}

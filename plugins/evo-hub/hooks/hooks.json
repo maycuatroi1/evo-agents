@@ -61,7 +61,7 @@
           {
             "type": "command",
             "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.29.2 evo-agents hub hook session-end || true",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
