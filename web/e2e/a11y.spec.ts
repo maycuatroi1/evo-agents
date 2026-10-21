@@ -201,6 +201,17 @@ async function seedSecrets(me: Member) {
   });
 }
 
+/** Accounts of `me`: a Claude subscription and an API key, two Lark variables for one line, a GitLab token. */
+async function seedAccounts(me: Member) {
+  const projects = [me.projects[0]];
+  const env = (name: string, env_var: string) => putSecretByApi(me, name, { kind: "env", env_var, projects, value: secretValue("a11y") });
+  await env("claude-sub", "CLAUDE_CODE_OAUTH_TOKEN");
+  await env("anthropic-key", "ANTHROPIC_API_KEY");
+  await env("lark-id", "LARK_APP_ID");
+  await env("lark-secret", "LARK_APP_SECRET");
+  await env("gitlab-token", "GITLAB_TOKEN");
+}
+
 /**
  * Agents of the first project of `me`, made its admin: one that limits five axes (credentials to none), with an
  * avatar, instructions and a run under it, which a worker of `me` carrying the label it allows makes possible, and one
@@ -819,6 +830,33 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/secrets");
       await expect(page.locator("#main").getByTestId("secrets-table")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts with no account yet",
+    open: async ({ page }) => {
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts in two groups with a merged line open",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.goto("/accounts");
+      const services = page.locator("#main").getByTestId("accounts-group-service");
+      await expect(page.locator("#main").getByTestId("accounts-group-model")).toBeVisible();
+      await services.getByTestId("service-group-toggle").click();
+      await expect(services.getByTestId("service-variables")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts on a small screen",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
     },
   },
   {

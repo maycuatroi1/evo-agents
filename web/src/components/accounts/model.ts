@@ -105,3 +105,51 @@ export function renewalDue(account: Pick<Account, "expires_at"> & Partial<Pick<A
 
 /** Whether the account is a Claude account, which the Renew token dialog can give a new token. */
 export const isClaudeAccount = (account: Pick<Account, "env_var">) => account.env_var === CLAUDE_TOKEN_VAR;
+
+/**
+ * The groups the Accounts page lists, in order, by the category the hub gives each account. A kind of account the
+ * page learns later (an agent's own) is one more entry here and one more section in the page, not a new page.
+ */
+export const ACCOUNT_GROUPS = [
+  { id: "model", category: "model" },
+  { id: "service", category: "service" },
+] as const satisfies readonly { id: string; category: Account["category"] }[];
+export type AccountGroupId = (typeof ACCOUNT_GROUPS)[number]["id"];
+
+/** The accounts of each group, in the order of ACCOUNT_GROUPS; a group without accounts has an empty list. */
+export function groupAccounts(accounts: Account[]): { id: AccountGroupId; accounts: Account[] }[] {
+  return ACCOUNT_GROUPS.map(({ id, category }) => ({ id, accounts: accounts.filter((account) => account.category === category) }));
+}
+
+/** The variables the visitor has two or more accounts for: only there do weight and priority mean anything. */
+export function sharedVariables(accounts: Account[]): Set<string> {
+  const seen = new Map<string, number>();
+  for (const account of accounts) seen.set(account.env_var, (seen.get(account.env_var) ?? 0) + 1);
+  return new Set([...seen].filter(([, count]) => count >= 2).map(([variable]) => variable));
+}
+
+/** One line of the service table: an account, or the accounts of one provider bound to the same projects. */
+export type ServiceEntry = { key: string; provider: Account["provider"]; projects: string[]; accounts: Account[] };
+
+/** Service accounts of the same provider with the same set of projects form one entry, as "Lark, 2 variables". */
+export function serviceEntries(accounts: Account[]): ServiceEntry[] {
+  const entries = new Map<string, ServiceEntry>();
+  for (const account of accounts) {
+    const projects = [...account.projects].sort();
+    const key = `${account.provider}:${projects.join(",")}`;
+    const entry = entries.get(key);
+    if (entry) entry.accounts.push(account);
+    else entries.set(key, { key, provider: account.provider, projects, accounts: [account] });
+  }
+  return [...entries.values()];
+}
+
+/** The state an entry shows: the first account that is not ready, else ready. */
+export function entryAccount(entry: ServiceEntry): Account {
+  return entry.accounts.find((account) => account.state !== "ready") ?? entry.accounts[0];
+}
+
+/** The latest time any account of the entry was leased, or null. */
+export function lastLeased(accounts: Account[]): string | null {
+  return accounts.reduce<string | null>((latest, { last_leased_at: at }) => (at && (!latest || Date.parse(at) > Date.parse(latest)) ? at : latest), null);
+}

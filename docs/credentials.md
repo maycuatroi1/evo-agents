@@ -352,6 +352,17 @@ The routes are the member's own, a hub admin included, and never carry a value:
   each usage limit it hit (`events`: `failover` with the account it moved `to`, or `stop`), read from the run's
   `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
 
+Each account has a **provider** and a **category**, read from its variable by a table in
+`evo_agents/hub/account_providers.py` (no column, no migration): `CLAUDE_CODE_OAUTH_TOKEN` is `claude`,
+`ANTHROPIC_API_KEY` is `anthropic` and `OPENAI_API_KEY` is `openai`, the three of category `model`; `GITLAB_*` is
+`gitlab`, `GITHUB_*` and `GH_TOKEN` are `github`, `NOTION_*` is `notion`, `LARK_*` and `FEISHU_*` are `lark`, a variable
+ending in `_SSH_KEY` or starting with `SSH_` is `ssh`, and any other variable is `other`; all of these are category
+`service`. `GET /v1/accounts` and `GET /v1/accounts/{name}` carry both, and so do `account list --json` and
+`account show --json`; `account list` prints the provider in its own column. Only a `model` account has a cost: a run's
+cost (its usage, as above) is counted on the model accounts the run took, and `cost_24h_usd` and `cost_7d_usd` are null
+for a `service` account, which `account list` shows as `-` and `account show` leaves out; a run that took a Claude
+account and a GitLab token costs the Claude account alone. `runs_24h` and `runs_7d` count for every account.
+
 The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
 project's policy; the run page shows the run's accounts and their failovers. Under the row of each Claude account, and
 of any account a run reported usage for, the page draws a bar per window the hub kept, as claude.ai's Usage page does:

@@ -249,6 +249,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
 | Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
 | The usage limits of an account | `Gauge` |
+| A line of service credentials that opens into its variables; ssh and other accounts without a logo of their own | `ChevronRight`; `KeyRound` |
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
@@ -280,6 +281,29 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
+
+### Provider logos
+
+The Accounts page (`components/accounts/provider-logo.tsx`) names who an account signs in to with the provider's logo at
+20 px, in the brand's colour, and the provider's name as text beside it: the logo is never the only name. Marks are
+Simple Icons paths (CC0) drawn inline, `fill="currentColor"`; the reading of an account's provider from its variable is
+the hub's (`docs/credentials.md`, section "Accounts"). A logo is an identity, not a status: what is wrong with an
+account stays with its pill and its dot, and a logo never changes colour for a state. The mark is decorative
+(`aria-hidden`) because the name is text next to it.
+
+| Provider | Logo | Colour |
+| --- | --- | --- |
+| Claude | Simple Icons `claude` | `#D97757` |
+| GitLab | Simple Icons `gitlab` | `#FC6D26` |
+| Anthropic, Notion | Simple Icons `anthropic`, `notion` | text colour of the theme (near black in their brand) |
+| GitHub | Simple Icons `github`, the `GitHubMark` of `brand.tsx`, drawn once | text colour of the theme |
+| Lark | lettered tile "L", white on `#3370FF` | `#3370FF` |
+| OpenAI | lettered tile "O", `background` on `foreground` | text colour of the theme |
+| SSH, other | Lucide `KeyRound` | `fg-subtle` |
+
+An account that is ready has no pill; the pill appears only for Paused, Cooling, Expired and Needs sign-in, and the word
+"Ready" stays in the page for a screen reader. Model accounts and service credentials are two groups with a title and
+a count each; a kind of account added later is one more group of the same shape.
 
 The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
 tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
