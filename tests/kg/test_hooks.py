@@ -326,7 +326,8 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0
-    assert f"commits read: app {read[:7]} (1 behind origin/main)" in note.splitlines()  # counted again, not 0
+    behind = f"commits read: 1 source, 0 current; behind: app {read[:7]} (1 behind origin/main)"
+    assert behind in note.splitlines()  # counted again, not 0
     assert "http" not in note and read not in note  # names and numbers only
 
     status = Session(project, "wide").call("kg_status", {})
@@ -339,7 +340,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     git(app, "update-ref", "-d", "refs/remotes/origin/main")  # no branch to count against: the count of the sync
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert f"commits read: app {read[:7]} (0 behind origin/main)" in note.splitlines()
+    assert "commits read: 1 source, all current" in note.splitlines()
 
 
 def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg_env, monkeypatch, capsys, unbound):
@@ -350,7 +351,7 @@ def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", json.dumps({"source": "startup"}))
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert code == 0 and f"commits read: app {read[:7]}" in note.splitlines()
+    assert code == 0 and f"commits read: 1 source, 0 current; behind unknown: app {read[:7]}" in note.splitlines()
     status = Session(project, "wide").call("kg_status", {})
     assert f"read    app {read[:7]} of HEAD" in status["content"][0]["text"].splitlines()
 
