@@ -1,8 +1,8 @@
 """Proposals of a canvas: what an agent or the hub proposes instead of writing it (``propose``), the proposals a member
 reads (``proposals``), and a writer's decision on one (``accept``, ``reject``).
 
-A run that no member commanded, a task run of @strategist (its brainstorm), and later the value check and the Loop,
-only proposes: a new claim, which starts as an assumption, or a change of a claim named at the rev it was read at
+A run that no member commanded, a task run of @strategist (its brainstorm), the value check (naming the evidence it
+proposes a change of status on) and later the Loop, only proposes: a new claim, which starts as an assumption, or a change of a claim named at the rev it was read at
 (``base_rev``, else a 409 as for an edit). The rules of ``rules`` are checked when it is made and again when it is
 accepted, so an agent's proposal never moves a claim to validated. A proposal keeps the fields it sets, why, whether
 it rests on simulated users (``synthetic``) and its provenance. A writer accepts it, which writes the rev as that
@@ -47,6 +47,7 @@ class ProposalRow:
     decided_by: str | None
     decided_at: datetime | None
     decided_reason: str | None
+    evidence_id: int | None = None  # the evidence a value check proposed it on
 
 
 def _reason(reason: str) -> str:
@@ -89,9 +90,11 @@ async def propose(
     reason: str,
     *,
     synthetic: bool = False,
+    evidence_id: int | None = None,
 ) -> list[int]:
     """Keep ``changes`` as open proposals of ``canvas``, all or nothing: a change of a claim at the rev it was read
-    at, else a 409; a new claim for a change that names none. Their ids, in the order of ``changes``."""
+    at, else a 409; a new claim for a change that names none. Their ids, in the order of ``changes``. ``evidence_id``
+    names the evidence a value check proposes on."""
     store.writable(writer.access, canvas)
     _reason(reason)
     await _room(conn, canvas, len(changes))
@@ -101,7 +104,13 @@ async def propose(
     await writes.check_revs(conn, held, {n: change.base_rev for n, change in zip(numbers, named, strict=True)})
     evidence = await writes.facts(conn, [row.id for row in held.values()])
     p = tables.canvas.proposals
-    common = {"canvas_id": canvas.id, "reason": reason, "synthetic": synthetic, "label": canvas.label}
+    common = {
+        "canvas_id": canvas.id,
+        "reason": reason,
+        "synthetic": synthetic,
+        "label": canvas.label,
+        "evidence_id": evidence_id,
+    }
     made = []
     for change in changes:
         if change.claim is None:
@@ -147,6 +156,7 @@ def _query(canvas_id: int):
             decider.c.login.label("decided_by"),
             p.c.decided_at,
             p.c.decided_reason,
+            p.c.evidence_id,
         )
         .select_from(
             p.outerjoin(k, k.c.id == p.c.claim_id)
@@ -174,6 +184,7 @@ def _row(found) -> ProposalRow:
         decided_by=found.decided_by,
         decided_at=found.decided_at,
         decided_reason=found.decided_reason,
+        evidence_id=found.evidence_id,
     )
 
 

@@ -284,7 +284,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 - **Jobs.** A job runs when its `cron` (five fields, UTC; `0 * * * *` when it names none) takes the minute, while a
   project enables its plugin, through the hub's job queue: `hub.plugin_jobs` queues one `hub.plugin_job` for it, with
   the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. The call names the projects
-  that enable the plugin and may take 120 seconds.
+  that enable the plugin and may take 120 seconds. A job named `value_check` (the core plugin canvas's) also runs at
+  once for one project when a batch of the project's signals comes: `hub.value_check` calls it with that project alone
+  (`docs/signals.md`, Value check).
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),

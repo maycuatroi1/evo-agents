@@ -1518,7 +1518,9 @@
           "withdrawn_by",
           "withdrawn_reason",
           "real",
-          "not_real_because"
+          "not_real_because",
+          "basis",
+          "rests_on_run"
         ],
         "schema": "CanvasEvidence"
       }
@@ -1583,7 +1585,9 @@
           "withdrawn_by",
           "withdrawn_reason",
           "real",
-          "not_real_because"
+          "not_real_because",
+          "basis",
+          "rests_on_run"
         ],
         "schema": "CanvasEvidence"
       }
@@ -1656,7 +1660,9 @@
           "withdrawn_by",
           "withdrawn_reason",
           "real",
-          "not_real_because"
+          "not_real_because",
+          "basis",
+          "rests_on_run"
         ],
         "schema": "CanvasEvidence"
       }
@@ -1839,7 +1845,8 @@
           "rev",
           "decided_by",
           "decided_at",
-          "decided_reason"
+          "decided_reason",
+          "evidence_id"
         ],
         "schema": "CanvasProposal"
       }
@@ -1903,7 +1910,8 @@
           "rev",
           "decided_by",
           "decided_at",
-          "decided_reason"
+          "decided_reason",
+          "evidence_id"
         ],
         "schema": "CanvasProposal"
       }
@@ -1968,7 +1976,8 @@
           "rev",
           "decided_by",
           "decided_at",
-          "decided_reason"
+          "decided_reason",
+          "evidence_id"
         ],
         "schema": "CanvasProposal"
       }
@@ -30766,6 +30775,145 @@
           }
         }
       },
+      "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/judgings": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Judgings",
+          "description": "What judging runs of @strategist had for a claim, newest first: each piece of feedback or evidence, and once\njudged its verdict and why. Items above what the caller may read are left out.",
+          "operationId": "list_judgings_v1_x_canvas__project__canvases__slug__claims__ref__judgings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the canvas's slug",
+                "title": "Slug"
+              },
+              "description": "the canvas's slug"
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the claim's code, as CL-3 or 3",
+                "title": "Ref"
+              },
+              "description": "the claim's code, as CL-3 or 3"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CanvasJudging"
+                    },
+                    "title": "Response List Judgings V1 X Canvas  Project  Canvases  Slug  Claims  Ref  Judgings Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/canvas/{project}/canvases/{slug}/claims/{ref}/diff": {
         "get": {
           "tags": [
@@ -50132,6 +50280,24 @@
                 }
               ],
               "title": "Not Real Because"
+            },
+            "basis": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Basis",
+              "description": "what a piece the hub wrote rests on: the figures of the check of the test card (check, metric, value, samples, window_days, comparator, threshold, result), or the item a judging run judged (judging)"
+            },
+            "rests_on_run": {
+              "type": "boolean",
+              "title": "Rests On Run",
+              "description": "the hub wrote it from signals the agent of a run pushed: it never validates"
             }
           },
           "type": "object",
@@ -50151,7 +50317,9 @@
             "withdrawn_by",
             "withdrawn_reason",
             "real",
-            "not_real_because"
+            "not_real_because",
+            "basis",
+            "rests_on_run"
           ],
           "title": "CanvasEvidence"
         },
@@ -50627,6 +50795,157 @@
           ],
           "title": "CanvasIn"
         },
+        "CanvasJudging": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the judging run, a task run of @strategist"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "signal",
+                "evidence"
+              ],
+              "title": "Source",
+              "description": "signal: a piece of feedback; evidence: the claim's evidence"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind",
+              "description": "feedback, or the kind of the evidence judged"
+            },
+            "signal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal Id"
+            },
+            "evidence_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Id"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "what the run read of it"
+            },
+            "synthetic": {
+              "type": "boolean",
+              "title": "Synthetic"
+            },
+            "rests_on_run": {
+              "type": "boolean",
+              "title": "Rests On Run",
+              "description": "the agent of a run pushed the signal"
+            },
+            "measured_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Measured At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "supports",
+                    "contradicts",
+                    "irrelevant"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "judged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Judged At"
+            },
+            "verdict_evidence_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict Evidence Id",
+              "description": "the evidence of kind feedback the hub wrote of the verdict"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "run_id",
+            "source",
+            "kind",
+            "signal_id",
+            "evidence_id",
+            "text",
+            "synthetic",
+            "rests_on_run",
+            "measured_at",
+            "created_at",
+            "verdict",
+            "reason",
+            "judged_at",
+            "verdict_evidence_id"
+          ],
+          "title": "CanvasJudging",
+          "description": "An item a judging run of @strategist had for a claim, and its verdict with why once judged."
+        },
         "CanvasProposal": {
           "properties": {
             "id": {
@@ -50753,6 +51072,18 @@
                 }
               ],
               "title": "Decided Reason"
+            },
+            "evidence_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Id",
+              "description": "the evidence a value check proposed it on"
             }
           },
           "type": "object",
@@ -50771,7 +51102,8 @@
             "rev",
             "decided_by",
             "decided_at",
-            "decided_reason"
+            "decided_reason",
+            "evidence_id"
           ],
           "title": "CanvasProposal",
           "description": "A new claim, or a change of a claim at the rev it was read at, that an agent or the hub proposed, and what\nbecame of it."

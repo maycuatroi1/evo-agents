@@ -1,4 +1,4 @@
-"""The tables of the core plugin canvas (0067, 0069), which ``evo_agents.hub.tables`` adds to its metadata as
+"""The tables of the core plugin canvas (0067, 0069, 0070), which ``evo_agents.hub.tables`` adds to its metadata as
 ``tables.canvas``: queries name them there (``tables.canvas.claims``). The plugin's code is
 ``evo_agents.core_plugins.canvas``; the hub owns the tables because its one chain of migrations creates them
 (``docs/plugins.md``, Core plugins).
@@ -16,9 +16,19 @@
   it was taken, whether it is synthetic (always, for a simulation), its provenance, the writer who confirmed what an
   agent added, and when and why it was withdrawn. Evidence is no part of a rev: adding some leaves the claim's rev.
 - canvas_proposals (0069): a change of a claim at the rev it was read at, or a new claim, that an agent or the hub
-  proposes instead of writing it (a task run of @strategist, later the value check and the Loop): the fields it sets,
-  why, whether it rests on simulated users, its provenance, and what became of it: open, accepted by a writer (the
-  claim and the rev that wrote it), rejected (by whom and why), or stale once the claim changed since its rev.
+  proposes instead of writing it (a task run of @strategist, the value check, later the Loop): the fields it sets,
+  why, whether it rests on simulated users, its provenance, the evidence a value check proposed it on (0070), and what
+  became of it: open, accepted by a writer (the claim and the rev that wrote it), rejected (by whom and why), or stale
+  once the claim changed since its rev.
+- canvas_judgings (0070): each item a judging run of @strategist puts before it for one claim: a piece of feedback of
+  the signal key the claim's test card names, or a neutral interview, experiment or market figure of the claim; what
+  the run read of it, its label, whether it is synthetic or rests on a signal a run pushed, when it was measured, the
+  run (the judging pass), and once judged the verdict (supports, contradicts, irrelevant), why, and the evidence of
+  kind feedback the hub wrote from it.
+
+The value check (0070) also writes evidence: ``basis`` says what a piece the hub wrote rests on (the figures of a check
+of the test card, or the item judged), and ``rests_on_run`` marks one that rests on signals the agent of a run pushed,
+which never validates a claim.
 """
 
 from __future__ import annotations
@@ -80,6 +90,10 @@ MAX_SUMMARY_CHARS = 4_000  # of evidence
 MAX_URL_CHARS = 2_000
 PROPOSAL_KINDS = ("create", "change")  # canvas_proposals.kind: a new claim, or a change of one at its base_rev
 PROPOSAL_STATUSES = ("open", "accepted", "rejected", "stale")  # canvas_proposals.status
+VERDICTS = ("supports", "contradicts", "irrelevant")  # canvas_judgings.verdict
+JUDGED_SOURCES = ("signal", "evidence")  # canvas_judgings.source: a piece of feedback, or a claim's evidence
+JUDGED_EVIDENCE_KINDS = ("interview", "experiment", "market")  # the neutral evidence a judging run judges
+MAX_JUDGED_TEXT_CHARS = 4_096  # of what a judging run reads of an item: feedback is at most 4 KiB in UTF-8
 
 
 @dataclass(frozen=True)
@@ -91,6 +105,7 @@ class CanvasTables:
     revs: Table
     evidence: Table
     proposals: Table
+    judgings: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
@@ -205,6 +220,8 @@ def _evidence(metadata: MetaData) -> Table:
         Column("withdrawn_at", DateTime(timezone=True)),
         Column("withdrawn_by", BigInteger),
         Column("withdrawn_reason", Text),
+        Column("basis", JSONB),
+        Column("rests_on_run", Boolean, nullable=False, server_default=false()),
         _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
         _key(name, "user_id", "users", ondelete="RESTRICT"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
@@ -242,25 +259,65 @@ def _proposals(metadata: MetaData) -> Table:
         Column("decided_by", BigInteger),
         Column("decided_at", DateTime(timezone=True)),
         Column("decided_reason", Text),
+        Column("evidence_id", BigInteger),
         _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
         _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
         _key(name, "user_id", "users", ondelete="RESTRICT"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
         _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
         _key(name, "decided_by", "users", ondelete="RESTRICT"),
+        _key(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="canvas_proposals_pkey"),
         Index("canvas_proposals_canvas_idx", "canvas_id", "status", "id"),
         Index("canvas_proposals_claim_idx", "claim_id", "status"),
     )
 
 
+def _judgings(metadata: MetaData) -> Table:
+    name = "canvas_judgings"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("canvas_id", BigInteger, nullable=False),
+        Column("claim_id", BigInteger, nullable=False),
+        Column("run_id", BigInteger),
+        Column("source", Text, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("key_id", BigInteger),
+        Column("signal_id", BigInteger),
+        Column("evidence_id", BigInteger),
+        Column("text", Text, nullable=False),
+        Column("synthetic", Boolean, nullable=False, server_default=false()),
+        Column("rests_on_run", Boolean, nullable=False, server_default=false()),
+        Column("label", JSONB, nullable=False),
+        Column("measured_at", DateTime(timezone=True), nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("verdict", Text),
+        Column("reason", Text),
+        Column("judged_at", DateTime(timezone=True)),
+        Column("verdict_evidence_id", BigInteger),
+        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        _key(name, "key_id", "signal_keys", ondelete="RESTRICT"),
+        _key(name, "signal_id", "signals", ondelete="SET NULL"),
+        _key(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
+        _key(name, "verdict_evidence_id", "canvas_evidence", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="canvas_judgings_pkey"),
+        Index("canvas_judgings_claim_idx", "claim_id", "measured_at"),
+        Index("canvas_judgings_run_idx", "run_id"),
+    )
+
+
 def canvas_tables(metadata: MetaData) -> CanvasTables:
     """The tables of the core plugin canvas, added to ``metadata`` (which holds projects, users, runs and
-    chat_messages already)."""
+    chat_messages already; signal_keys and signals, which canvas_judgings names, are added after them)."""
     return CanvasTables(
         canvases=_canvases(metadata),
         claims=_claims(metadata),
         revs=_revs(metadata),
         evidence=_evidence(metadata),
         proposals=_proposals(metadata),
+        judgings=_judgings(metadata),
     )

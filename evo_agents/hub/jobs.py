@@ -51,11 +51,18 @@ PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron ta
 PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
 DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
 READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
+VALUE_CHECK = "hub.value_check"  # on a batch of a project's signals: its plugins' value_check jobs, for it alone
 
 
 def kg_lock(project: str) -> str:
     """The lock and queueing lock of project ``project``'s kg builds."""
     return f"kg:{project}"
+
+
+def value_check_lock(project_id: int) -> str:
+    """The lock and queueing lock of project ``project_id``'s value checks: one runs at a time, and at most one
+    waits, which the batches that come meanwhile join."""
+    return f"value-check:{project_id}"
 
 
 class JobQueue:

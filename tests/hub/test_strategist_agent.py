@@ -52,7 +52,15 @@ BASE = f"/v1/x/canvas/{PROJECT}"
 SLUG = "northwind-pantry"
 CANVAS = f"{BASE}/canvases/{SLUG}"
 TYPE = f"/v1/projects/{PROJECT}/agent-types/canvas/strategist"
-TOOLS = ["canvas__edit", "canvas__evidence", "canvas__propose", "canvas__read", "canvas__signals", "canvas__undo"]
+TOOLS = [
+    "canvas__edit",
+    "canvas__evidence",
+    "canvas__judge",
+    "canvas__propose",
+    "canvas__read",
+    "canvas__signals",
+    "canvas__undo",
+]
 CARD = {"hypothesis": "Corner shops reorder weekly", "test": "Interview ten shop owners", "deadline": "2026-12-01"}
 SIGNAL_KEY = "pantry.reorder.weekly_share"
 

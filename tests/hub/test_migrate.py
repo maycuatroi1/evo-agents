@@ -99,6 +99,7 @@ TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.CANVAS_TABLES  # migration 0067
 TABLES |= pg.SIGNAL_TABLES  # migration 0068
 TABLES |= pg.CANVAS_PROPOSAL_TABLES  # migration 0069
+TABLES |= pg.CANVAS_JUDGING_TABLES  # migration 0070
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -173,8 +174,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_ten_tables(hub_db):
-    assert len(TABLES) == 110  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_eleven_tables(hub_db):
+    assert len(TABLES) == 111  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1393,6 +1394,80 @@ def test_0069_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
     assert not pg.CANVAS_PROPOSAL_TABLES & tables(hub_db)
     assert pg.CANVAS_TABLES <= tables(hub_db)
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+
+
+def test_0070_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0070")
+    k, t = hub_tables.canvas, hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        key_id = one(
+            conn,
+            insert(t.signal_keys)
+            .values(name="pantry.feedback", kind="feedback", **owner)
+            .returning(t.signal_keys.c.id),
+        )
+        piece = {"claim_id": claim_id, "kind": "signal", "direction": "supports", "summary": "met", "label": {}}
+        checked = {"check": "number", "value": 0.4, "samples": 3, "result": "met"}
+        evidence_id = one(
+            conn,
+            insert(k.evidence)
+            .values(**piece, actor="hub", basis=checked, rests_on_run=True)
+            .returning(k.evidence.c.id),
+        )
+        person = {**piece, "kind": "interview", "actor": "person", "user_id": ids["user"]}
+        for bad in (
+            {**piece, "actor": "hub", "basis": [1, 2]},  # a basis is an object
+            {**person, "basis": checked},  # only the hub says what evidence rests on
+            {**person, "rests_on_run": True},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.evidence).values(**bad))
+        made = {"canvas_id": canvas, "kind": "change", "claim_id": claim_id, "base_rev": 1, "label": {}}
+        conn.execute(
+            insert(k.proposals).values(
+                **made, fields={"status": "validated"}, reason="value check", actor="hub", evidence_id=evidence_id
+            )
+        )
+        item = {
+            "canvas_id": canvas,
+            "claim_id": claim_id,
+            "source": "signal",
+            "kind": "feedback",
+            "key_id": key_id,
+            "text": "We reorder every Monday",
+            "label": {"level": "internal"},
+            "measured_at": func.now(),
+        }
+        conn.execute(insert(k.judgings).values(**item))
+        judged = {"verdict": "supports", "reason": "a shop owner says so", "judged_at": func.now()}
+        conn.execute(insert(k.judgings).values(**item, **judged))
+        evidence = {**item, "source": "evidence", "kind": "interview", "key_id": None, "evidence_id": evidence_id}
+        conn.execute(insert(k.judgings).values(**evidence, **judged, verdict_evidence_id=evidence_id))
+        for bad in (
+            {"key_id": None},  # feedback names its key
+            {"kind": "interview"},  # a signal judged is feedback
+            {**evidence, "kind": "doc"},  # evidence judged is an interview, an experiment or a market figure
+            {"verdict": "maybe", "reason": "x", "judged_at": func.now()},
+            {"verdict": "supports"},  # a verdict says why and when
+            {"reason": "x"},
+            {"verdict_evidence_id": evidence_id},  # only a verdict writes evidence
+            {"text": ""},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(k.judgings).values(**{**item, **bad}))
+    move_to(hub_db, "0069", down=True)
+    assert not pg.CANVAS_JUDGING_TABLES & tables(hub_db)
+    assert not {"basis", "rests_on_run"} & columns(hub_db, "canvas_evidence")
+    assert "evidence_id" not in columns(hub_db, "canvas_proposals")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
