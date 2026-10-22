@@ -381,7 +381,10 @@ under the handle of another project's agent (409), since `@<name>` would name bo
 
 Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
 itself when a secret, a skill or a worker is added, and an empty one allows nothing. A profile only narrows what the
-member who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+member who dispatches a run has (their workers, their secrets, the projects they write to), with one exception: the
+agent account, an `env` secret the profile owns itself, which its runs are leased on the workers it is bound to instead
+of the dispatcher's secret for the same variable, whatever the credential axis says (see "Accounts of an agent" in
+[credentials.md](credentials.md)).
 
 | Axis | An allowlist names | Enforced |
 | --- | --- | --- |
@@ -1886,7 +1889,9 @@ memories, changing one it wrote already counting as no new one.
 
 The prompt of a run under such a profile ends with the index of its agent's memories, newest first: each one's name,
 id, type, description and a stale mark, at most 4 KiB and within the room the prompt has left
-(`evo_agents/hub/server/memory_upkeep.py`). A profile with no memory its agent could open, and the default profile,
+(`evo_agents/hub/server/memory_upkeep.py`). A memory whose label names an audience, such as one written in a chat
+(`chat:N`), is listed when the run's agent could open it with `memory_get`: its audience holds the label's (the
+owner's, or for a chat run what both people it is cleared for hold), and the run counts as having seen that audience. A profile with no memory its agent could open, and the default profile,
 keep the prompt as it was. The agent opens a memory with `memory_get`, which records the read (`memories.read_at`);
 the index records none. The daily job `hub.memory_upkeep` archives an agent's memory nobody opened or wrote for 30
 days, out of the index and of the runs' searches, and marks stale one citing `code:REPO:PATH` that the project's graph,
@@ -1894,7 +1899,11 @@ read as the memory's owner, no longer has; a project without a readable graph ke
 archived memory with `POST /v1/memories/{id}/restore` or `evo-agents hub memory restore ID` (audit row
 `memory.restore`), and a new revision clears both marks. The Curator's review reads what agents wrote since its last
 night and may propose promoting it into a shared memory; an accepted promotion marks the agent's memory promoted, out of
-the index, the searches of runs and the upkeep (`docs/curator.md`, Memory).
+the index, the searches of runs and the upkeep (`docs/curator.md`, Memory). The review lists the agents' memories whose
+audience its owner holds, each with its audience, and its run counts as having seen them. A proposal citing such a
+memory as evidence carries its audience in its label, so only a member who holds it lists, opens, answers it or reads its
+ledger (else a 404, as for a label the member may not read); the shared memory a promotion writes keeps the sources'
+audience, so a body from a chat never reaches more people than the chat.
 
 **Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
 each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of

@@ -7,7 +7,7 @@ what out: the run's project (a profile of another project needs the dispatcher t
 writer there too, and its project axis to name this one), the runtime (a plugin's runtime as one of the core's; any,
 which takes a runtime of the core, needs the axis to allow one), the model (none named on a profile that limits
 models takes the first it allows), the worker it is pinned to or, unpinned, at least one worker of the dispatcher's
-the profile allows, the account picked by hand, the environment (at least one of the axis's allowlist registered in
+the profile allows, the account picked by hand (and one for a variable the agent has accounts of its own for), the environment (at least one of the axis's allowlist registered in
 the project, ``plugin_environments.check``), and for an author run the skill create-exec-plan. A deleted profile takes
 no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
 (``profiles.needs_worker``), that could never take an environment the profile allows, or that could never build the
@@ -188,6 +188,33 @@ def _rest(profile: Profile, asked: Asked) -> None:
     _pinned_packs(profile, pinned)
 
 
+async def _own_account(conn: AsyncConnection, profile: Profile, asked: Asked) -> None:
+    """422 when an account is picked by hand for a variable the agent has accounts of its own for
+    (``agent_accounts``): its runs take those, whoever dispatches them, and never the dispatcher's."""
+    if not asked.picked:
+        return
+    s = tables.secrets
+    owned = set(
+        (
+            await conn.execute(
+                select(s.c.env_var).where(
+                    s.c.profile_id == profile.id,
+                    s.c.kind == "env",
+                    s.c.deleted_at.is_(None),
+                    s.c.env_var.in_([picked.env_var for picked in asked.picked]),
+                )
+            )
+        ).scalars()
+    )
+    for picked in asked.picked:
+        if picked.env_var in owned:
+            raise _refuse(
+                profile,
+                f"has accounts of its own for {picked.env_var}, which its runs take instead of yours: account "
+                f"{picked.name} cannot be picked for it",
+            )
+
+
 def _pinned_packs(profile: Profile, pinned) -> None:
     """409 when the run is pinned to a worker that could never build the agent packs the profile attaches."""
     if pinned is None:
@@ -244,6 +271,7 @@ async def choose(
     model = _model(profile, asked.model)
     await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
+    await _own_account(conn, profile, asked)
     return Chosen(profile, model)
 
 

@@ -10,7 +10,7 @@ import { StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import type { StepGroup } from "@/lib/plans";
 
-import type { PlanRunScope } from "./model";
+import { isCuratorPlan, type PlanRunScope } from "./model";
 import { type Run, runHref, type StepReadiness } from "./queries";
 
 /**
@@ -21,14 +21,21 @@ import { type Run, runHref, type StepReadiness } from "./queries";
 
 /** What keeps the hub from taking a plan run of the plan now, or makes the run fail before its agent starts. */
 export type Blocker =
+  | { kind: "curator" }
   | { kind: "planRun"; id: number; state: Run["state"]; login: string }
   | { kind: "stepRun"; id: number; state: Run["state"]; step: string }
   | { kind: "noPending" }
   | { kind: "unplaced"; steps: string[] }
   | { kind: "noBranch"; repos: string[] };
 
-export function blockersOf(scope: PlanRunScope, steps: readonly StepReadiness[], planRun: { id: number; state: Run["state"]; dispatched_by: string } | null): Blocker[] {
+export function blockersOf(
+  scope: PlanRunScope,
+  steps: readonly StepReadiness[],
+  planRun: { id: number; state: Run["state"]; dispatched_by: string } | null,
+  planId = "",
+): Blocker[] {
   const found: Blocker[] = [];
+  if (isCuratorPlan(planId)) found.push({ kind: "curator" });
   if (planRun) found.push({ kind: "planRun", id: planRun.id, state: planRun.state, login: planRun.dispatched_by });
   const stepRun = steps.filter((step) => step.active_run).sort((a, b) => a.active_run!.id - b.active_run!.id)[0];
   if (!planRun && stepRun?.active_run) found.push({ kind: "stepRun", id: stepRun.active_run.id, state: stepRun.active_run.state, step: stepRun.key });
@@ -58,6 +65,8 @@ export function Blockers({ project, blockers }: { project: string; blockers: Blo
         return t.rich("planRun", { id: blocker.id, state: tState(blocker.state), login: blocker.login, link: runLink(blocker.id) });
       case "stepRun":
         return t.rich("stepRun", { id: blocker.id, state: tState(blocker.state), step: blocker.step, link: runLink(blocker.id) });
+      case "curator":
+        return t("curator");
       case "noPending":
         return t("noPending");
       case "unplaced":

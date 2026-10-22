@@ -173,7 +173,7 @@ async def plan_proposal(request: Request, project: ProjectName, proposal_id: Ite
                 f"making a proposal of project {access.name} the Curator's plan needs the admin role on it; you hold "
                 f"{access.role or 'no role'}",
             )
-        row = await readable_proposal(conn, access, proposal_id, None, lock=True)
+        row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
         why = await _refusal(conn, row)
         if why is not None:
             raise HTTPException(409, f"{why}; nothing was made")

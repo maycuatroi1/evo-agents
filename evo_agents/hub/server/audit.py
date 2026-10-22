@@ -117,6 +117,11 @@ ACCOUNT_FAILOVER = "account.failover"
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
+# The accounts of an agent profile (evo_agents.hub.server.agent_accounts), in the project; the target is
+# "<project>/@<handle> secret:<id>", with " fields=<names>" for a change, never a name of the account or a value.
+AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
+AGENT_ACCOUNT_SET = "agent-account.set"  # an admin renewed it or changed its weight, priority, workers, end or pause
+AGENT_ACCOUNT_DELETE = "agent-account.delete"  # an admin deleted it: value and bindings went, its leases were revoked
 # Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
 # "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with

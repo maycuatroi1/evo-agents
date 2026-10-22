@@ -54,7 +54,7 @@ from evo_agents.hub.accounts import (
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.account_choice import RELOGIN_REASON
-from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures
+from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures, figured
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -189,10 +189,10 @@ def _account(row, figures: Figures | None = None, shares: list[CredentialShare] 
         state = "needs-relogin"
     provider = provider_of(row.env_var)
     category = category_of(provider)
-    figured = vars(figures or Figures())
-    if category == "service":  # a run's cost is one number for the run, kept by its model account
-        figured |= {"cost_24h_usd": None, "cost_7d_usd": None}
-    return Account(**values, provider=provider, category=category, state=state, shares=shares or [], **figured)
+    shared = shares or []
+    return Account(
+        **values, provider=provider, category=category, state=state, shares=shared, **figured(figures, category)
+    )
 
 
 @router.get("/accounts", response_model=list[Account])
