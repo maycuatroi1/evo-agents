@@ -357,3 +357,43 @@ def test_worker_propose_takes_a_memory_promote_file_in_place_of_a_plan_file(tmp_
     for wrong in ([], ["--promote-file", "p.yaml", "--plan-file", "d.yaml"]):
         with pytest.raises(SystemExit):
             parser.parse_args([*common, *wrong])
+
+
+def test_a_memory_of_a_chat_is_listed_with_its_audience_and_its_promotion_keeps_it(promoting):
+    client, db, headers = promoting.client, promoting.db, promoting.headers
+    made_chat = client.post(
+        "/v1/chats", json={"title": "Claims", "people": [], "agents": [PROJECT]}, headers=headers["owner"]
+    )
+    assert made_chat.status_code == 201, made_chat.text
+    audience = f"chat:{made_chat.json()['id']}"
+    said = put(
+        client, headers["owner"], "chat-claims.md", "internal", "scout", "the chat's retry detail", audience=[audience]
+    )
+    source = said["id"]
+    run_id, prompt = held_review(promoting)
+    line = next(text for text in prompt.splitlines() if f"memory:{source}:1 of @scout" in text)
+    assert f"audience {audience}" in line and "the chat's retry detail" in prompt
+    r = tables.runs
+    ((seen,),) = sql(db, select(r.c.seen_audience).where(r.c.id == run_id))
+    assert audience in (seen or [])  # the review run read the chat's memory
+
+    response = promotion(promoting, run_id, NEW, (source, 1))
+    assert response.status_code == 201, response.text
+    made = response.json()
+    p, m = tables.proposals, tables.memories
+    ((label, kept),) = sql(db, select(p.c.label, p.c.promotion).where(p.c.id == made["id"]))
+    assert label.get("audience") == [audience] and kept["label"].get("audience") == [audience]
+
+    def listed(who: str) -> set[int]:
+        found = client.get(f"/v1/projects/{PROJECT}/curator/proposals", headers=headers[who])
+        assert found.status_code == 200, found.text
+        return {item["id"] for item in found.json()["proposals"]}
+
+    assert made["id"] in listed("owner") and made["id"] not in listed("other")  # other is in no such chat
+    shown = client.get(f"/v1/projects/{PROJECT}/curator/proposals/{made['id']}", headers=headers["other"])
+    assert shown.status_code == 404, shown.text
+
+    accepted = answer(client, headers["owner"], made["id"], "accept")
+    assert accepted.status_code == 200, accepted.text
+    ((new_label,),) = sql(db, select(m.c.label).where(m.c.name == "claims.md"))
+    assert new_label.get("audience") == [audience]  # the shared memory reaches the chat's people alone

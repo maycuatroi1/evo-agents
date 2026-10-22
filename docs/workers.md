@@ -1847,11 +1847,28 @@ Before each agent starts, the worker writes the dir's `.claude.json` (onboarding
    each agent start so it carries the owner's latest access token. The copy leaves out the refresh token, which is
    single-use: a refresh in the run's dir would spend it and sign the owner out.
 
+Before that copy, the worker refreshes the owner's login when its access token expires within the hour or has expired
+(owner decision #337, refresh_first; `claude_home.refresh_owner`). It does it itself, once, under the file lock
+`claude-refresh.lock` in the worker's home, which every run of the daemon takes: it posts the stored refresh token and
+scopes to Claude Code's token endpoint with Claude Code's client id (both read from Claude Code 2.1.295, which
+documents neither), and writes the new tokens back to the owner's credentials file, whole or not at all and with the
+mode it had, so the owner's own Claude Code goes on with them. A run that waited on the lock reads the file again and
+finds it fresh. A refresh that fails fails the run before the agent starts, with cause `credentials` and the HTTP status
+and OAuth error code, never a token; if the owner's Claude Code refreshed the file meanwhile, the run goes on with
+that. A login in the macOS keychain is copied as it is, unrefreshed: the worker writes no keychain item.
+
+The agent's `GH_CONFIG_DIR` is `.evo-run/gh-config` of the run's directory, an empty dir, so `gh` sees none of the
+owner's logins and speaks with the run's leased `GH_TOKEN` alone. Claude Code gets the MCP servers the worker names
+and no other (`--strict-mcp-config`, headless and in the terminal UI): the hub's `evo-hub`, when the profile allows it,
+and those of the agent packs; never one of the owner's or of a `.mcp.json` in the worktree or above it.
+
 With neither, the run fails before the agent starts, with cause `credentials` and an error saying to sign Claude Code
 in on the worker or to lease a `CLAUDE_CODE_OAUTH_TOKEN` made by `claude setup-token`. An agent in a container of a
 plugin's environment keeps the container's home; Codex and opencode keep the owner's home, which the run's log says
 once. The daemon lists `agent_home` in its heartbeat's `features`, and the hub hands such a run to no daemon that does
-not.
+not: the claim skips it, and the pick of a chat run's worker and the candidates of a run say of such a daemon "runs
+evo-agents VERSION, which gives no Claude Code agent of @HANDLE a config dir of its own (feature agent_home): update its
+daemon" (`worker_fit.lacks_agent_home`).
 
 ### Commits of an agent's run
 
