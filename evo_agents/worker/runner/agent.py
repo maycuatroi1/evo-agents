@@ -9,6 +9,9 @@ CLAUDE_CODE_OAUTH_TOKEN) is noted once a run (``note_environment``). On Claude C
 subscription login alone (plan decision 14): ANTHROPIC_API_KEY is left out of its agent's environment, and a machine
 that has no subscription login for it fails the run before the agent starts, saying so (``Adapter.login_refusal``).
 The agent of a run on Claude Code gets the auto-compact window of ``claude_code.compact_window`` in its environment.
+One under a profile that is not its project's default (the claim's ``own_home``) gets a Claude Code config dir of its
+own in the run's directory (``claude_home``), written before each agent starts, and the run fails with cause
+credentials before the agent starts when this machine has no login to give it (``prepare_home``).
 A run under an agent profile that limits tool, skill or model, or has instructions, fails before any of its work when
 the runtime's adapter cannot apply the profile (``Adapter.profile_refusal``), or when the adapter finds so as it starts
 the agent (``ProfileRefused``), with cause ``runtime``; such a run is never handed to a person in a terminal UI, which
@@ -39,6 +42,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
@@ -49,9 +53,9 @@ from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
-from evo_agents.worker.runtimes import profiles
+from evo_agents.worker.runtimes import claude_home, hub_tools, profiles
 from evo_agents.worker.runtimes.acp import adapter_class
-from evo_agents.worker.runtimes.claude_code import compact_window
+from evo_agents.worker.runtimes.claude_code import compact_window, leased_oauth
 from evo_agents.worker.runtimes.common import with_first_request
 
 if TYPE_CHECKING:
@@ -236,6 +240,8 @@ class Agent:
             env.pop(API_KEY, None)
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
+        if claude_home.wanted(run.spec, run.runtime) and run.worktree is not None:  # a config dir of its own
+            env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
         if run.venvs:  # the .venv/bin of each repo whose environment the worker made, first (runner.venv)
             for key in venvs.FOREIGN:
                 env.pop(key, None)
@@ -250,7 +256,9 @@ class Agent:
 
     async def check_login(self, cls, context: RunContext) -> None:
         """Fail the run before its agent starts when the runtime may not start it with this machine's login: a run of
-        the Curator on Claude Code needs a Claude subscription login (``Adapter.login_refusal``)."""
+        the Curator on Claude Code needs a Claude subscription login (``Adapter.login_refusal``); one with a Claude
+        Code config dir of its own needs a login to give it (``prepare_home``)."""
+        await self.prepare_home(context)
         if not self.subscription_only:
             return
         run = self.run
@@ -267,6 +275,34 @@ class Agent:
         if why:
             alone = f"; this machine has {API_KEY} alone, which it does not use" if has_key else ""
             raise RunFailed(why + alone, cause="runtime")
+
+    async def prepare_home(self, context: RunContext) -> None:
+        """Write the Claude Code config dir of the run's agent's own before it starts (``claude_home.prepare``), and
+        say once where its login comes from; RunFailed with cause credentials when this machine has no login to give
+        it. For a run whose runtime keeps the owner's home, say so once."""
+        run = self.run
+        if claude_home.keeps_owner_home(run.spec, run.runtime):
+            self.note_once(claude_home.OWNER_HOME_NOTE.format(runtime=run.runtime))
+        configured = context.env.get("CLAUDE_CONFIG_DIR")
+        if not configured or not claude_home.wanted(run.spec, run.runtime):
+            return
+        directory = Path(configured)
+        server = hub_tools.home_server(context, profiles.Profile.of(run.spec))
+        try:
+            login = await asyncio.to_thread(
+                claude_home.prepare, directory, owner_env=run.daemon.env, leased=leased_oauth(context), server=server
+            )
+        except OSError as exc:
+            raise RunFailed(f"Claude Code's config dir {directory} was not written: {exc}", cause="runtime") from None
+        if login is None:
+            run.note(f"{claude_home.REFUSAL}; the agent did not start.", cause="credentials")
+            raise RunFailed(claude_home.REFUSAL, cause="credentials")
+        self.note_once(claude_home.note(directory, login))
+
+    def note_once(self, line: str) -> None:
+        if line not in self.environment_noted:
+            self.environment_noted.add(line)
+            self.run.note(line)
 
     async def build_packs(self, cls) -> tuple:
         """The agent packs of the run's profile, built for its runtime once a run (``packs.build``); RunFailed with

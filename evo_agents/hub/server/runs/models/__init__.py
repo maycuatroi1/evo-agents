@@ -490,6 +490,11 @@ class RunSpec(BaseModel):
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
+    own_home: bool = Field(
+        False,
+        description="true for a run under a profile that is not its project's default: the agent of a claude-code "
+        "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+    )
     plugin_runtime: PluginRuntime | None = Field(
         None,
         description="for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the "

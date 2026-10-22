@@ -15,6 +15,9 @@ run's EVO_RUN_ID and EVO_WORKER_HOME in its environment, which Codex does not pa
 It is left out when the session would have the hub's tools already, so they are not offered twice: Claude Code with the
 evo-hub plugin on and installed (``claude_plugins.plugin_on``), or a server named SERVER in the user's ``.claude.json``;
 Codex with a server of that name in its config; and when the run's agent profile allows no such server.
+
+The agent of a claude-code run with a config dir of its own (``claude_home``), of any kind, gets SERVER in that dir's
+``.claude.json`` (``home_server``) unless it runs in a container or its profile allows no such server.
 """
 
 from __future__ import annotations
@@ -71,6 +74,15 @@ def claude_servers(context: RunContext, profile=None) -> dict:
         return {}
     command, *args = COMMAND
     return {SERVER: {"type": "stdio", "command": command, "args": args, "env": _env(context)}}
+
+
+def home_server(context: RunContext, profile=None) -> dict | None:
+    """SERVER as the ``.claude.json`` of a claude-code agent's config dir of its own names it (``claude_home``), for
+    a run of any kind: None when the agent runs in a container, or the run's profile allows no such server."""
+    if isinstance(context.environment, Container) or not (profile is None or profile.allows_server(SERVER)):
+        return None
+    command, *args = COMMAND
+    return {"type": "stdio", "command": command, "args": args, "env": _env(context)}
 
 
 def codex_servers(context: RunContext, configured: Iterable[str], profile=None) -> dict:
