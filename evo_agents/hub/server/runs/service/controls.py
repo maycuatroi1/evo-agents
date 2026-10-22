@@ -17,6 +17,7 @@ from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.runs.models import Rerun, Run
+from evo_agents.hub.server.runs.service import browsers
 from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
@@ -270,6 +271,7 @@ async def rerun_in(
         picked=tuple(picked),
         chosen=chosen,
         plugin_config=await run_layer_of(conn, run_id),
+        browser=await browsers.rerun_browser(conn, run_id, body),
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
     target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"

@@ -57,6 +57,11 @@
 - After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
   ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
   passed, stops it.
+- A daemon whose machine ran `evo-agents worker browser install` (``browser.install``, read again with the runtimes)
+  says the feature browser and its Chromium in each heartbeat, and the hub hands it the runs dispatched with browser,
+  no more at once than the max it says. Each such run gets a Chromium of its own before its first agent
+  (``browser.session``), which goes once the run ends here or is parked; at its start the daemon stops the browsers a
+  daemon before it left, and removes their directories.
 - A previous daemon that died with an agent started (``runs/<run>/agent.json``, ``orphans``) left it running. The
   first heartbeat that gets an answer also names those runs, and before any claim the daemon stops the process group
   of each one's agent, SIGTERM then SIGKILL. The run's worktree and its evo-run branch are removed when the hub no
@@ -83,6 +88,8 @@ from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
 from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans, verify_jobs
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
+from evo_agents.worker.browser import install as browser_install
+from evo_agents.worker.browser import session as browser_session
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
@@ -194,6 +201,8 @@ class Daemon:
         self.kg: kg_sync.KgSync | None = None  # made once the loop runs, with the hub's URL and the token
         self.kg_duties: dict[str, str | None] = {}  # project -> when the hub last took a run of its graph
         self._kg_wrong: dict[str, tuple] = {}  # project -> what went wrong at its last look
+        self.browser_report: dict | None = None  # the Chromium `worker browser install` installed, as heartbeats say it
+        self.browsers: dict[int, browser_session.BrowserSession] = {}  # run id -> its Chromium, while it runs
 
     # Shared with the runs
 
@@ -246,6 +255,7 @@ class Daemon:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
             self.runtimes = await asyncio.to_thread(self._detect)
+            self.browser_report = await asyncio.to_thread(browser_install.report, self.home)
             self._runtimes_at = now
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
@@ -280,6 +290,7 @@ class Daemon:
         try:
             self.orphans = self._find_orphans()
             self._close_abandoned_runs()
+            await browser_session.sweep(self.home)  # the browsers a daemon before this one left, before any claim
             await self._look_at_machine(force=True)
             self._log_start()
             self.updater.publish(held=0, orphans=len(self.orphans), worker=self._who())
@@ -452,13 +463,22 @@ class Daemon:
             # the kinds of runs.RUN_KINDS this daemon has a class for (run.KINDS): the hub hands it no other
             "run_kinds": [kind for kind in runs.RUN_KINDS if kind in KINDS],
             # a plan run with a session for each step (runner.sessions), an author run that asks decisions
-            "features": [name for name in runs.WORKER_FEATURES if self.kg_on or name != runs.KG_SYNC],
+            "features": [name for name in runs.WORKER_FEATURES if self._says(name)],
             **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
         }
         report = self.kg.report(sorted(self.kg_duties)) if self.kg is not None else None
         if report and report["projects"]:
             body["kg_sync"] = report  # what the last looks found (0053)
+        if self.browser_report is not None:
+            body["browser"] = self.browser_report  # its Chromium, and how many browsers it holds at once (0106)
         return body
+
+    def _says(self, feature: str) -> bool:
+        """Whether the heartbeat names ``feature``: the night shift unless turned off, the browser once Chromium is
+        installed, every other one always."""
+        if feature == runs.KG_SYNC:
+            return self.kg_on
+        return feature != runs.BROWSER or self.browser_report is not None
 
     def _take_worker_state(self, answer: dict) -> None:
         """What a heartbeat answer says of the worker itself: whether to drain, its settings when the hub sends them,

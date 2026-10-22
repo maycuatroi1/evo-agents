@@ -3,7 +3,8 @@
 A browser identity is a Chromium profile kept logged in to some sites, which runs of the project use on the one worker
 that holds it (``evo_agents.hub.tables_browser``). A member's identity is theirs: they create it with the writer role
 and only they see, use and delete it. A project's identity is the admins' to create and delete, and every writer may
-attach it to a run. Its worker is the caller's own worker, not revoked, or a shared one, and serves the project.
+attach it to a run. Its worker is the caller's own worker, not revoked, or a shared one, serves the project, and has
+the feature browser: its daemon starts Chromium (``evo_agents.worker.browser``).
 
 These routes deal in metadata alone: no answer, log line or audit row holds a cookie, a profile, a key or a hash of
 one. The profiles themselves are sealed and kept by ``evo_agents.hub.server.browser_profiles``; deleting an identity
@@ -23,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
 
-from evo_agents.hub import tables
+from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
@@ -168,9 +169,10 @@ async def list_browser_identities(
 
 async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess, name: str) -> int:
     """The id of worker ``name``: the caller's own, not revoked, or a shared one of another member, serving the
-    project; the caller's own when two share the name. 422 otherwise."""
+    project, whose last heartbeat listed the feature browser; the caller's own when two share the name. 422
+    otherwise."""
     w, wp = tables.workers, tables.worker_projects
-    usable = select(w.c.id, w.c.owner_id).where(
+    usable = select(w.c.id, w.c.owner_id, w.c.features).where(
         w.c.revoked_at.is_(None),
         func.lower(w.c.name) == name.lower(),
         or_(w.c.owner_id == user.user_id, w.c.shared.is_(True)),
@@ -185,7 +187,14 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
             f"worker {name} {why} that serves project {access.name}: a browser identity is held by your own worker or "
             "a shared one that serves its project (GET /v1/workers)",
         )
-    return (own or rows)[0].id
+    found = (own or rows)[0]
+    if runs.BROWSER not in (found.features or ()):
+        raise HTTPException(
+            422,
+            f"worker {name} does not report the feature browser, so it cannot open a browser identity: run "
+            "`evo-agents worker browser install` on it and restart its daemon",
+        )
+    return found.id
 
 
 def _may_create(access: ProjectAccess, owner: str) -> None:

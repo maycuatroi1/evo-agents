@@ -319,6 +319,10 @@ class Run:
         for task in list(self._background):
             task.cancel()
         await self.agent.terminal.close_web()
+        try:  # its Chromium ends writing its profile, then goes with runs/<run>/browser
+            await self.agent.close_browser()
+        except Exception:
+            log.exception("the run's browser was not closed", extra={"run_id": self.id})
         await self.outputs.close(
             0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE
         )  # its text redacted with the leases

@@ -51,6 +51,7 @@ from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
+from evo_agents.worker.browser import session as browser_session
 from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
@@ -93,6 +94,7 @@ class Agent:
         self.limits = Limits(run)  # the usage limit of the agent's account, and the move to another one
         self._environment = None  # where the agent runs (``environment``), read from the claim once
         self._packs: tuple | None = None  # the agent packs of the run's profile, built before its first agent
+        self.browser: browser_session.BrowserSession | None = None  # the run's Chromium, for a run with browser
 
     # The runtime
 
@@ -239,6 +241,9 @@ class Agent:
             }
         )
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
+        env.pop(browser_session.VARIABLE, None)  # the endpoint of the run's own browser, and of no other
+        if self.browser is not None and self.browser.cdp:
+            env[browser_session.VARIABLE] = self.browser.cdp
         if self.subscription_only:  # plan decision 14: the Claude subscription login alone
             env.pop(API_KEY, None)
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
@@ -380,6 +385,7 @@ class Agent:
         the session of the one before. How the last headless phase ended, with the first request of the first headless
         phase (``with_first_request``; null when the terminal UI, which reports no usage, came first), and the
         session's id."""
+        await self.open_browser()
         first_prompt = prompt
         in_terminal = terminal_first or self.takeover_asked
         phases: list[dict | None] = []  # the usage of each headless phase, in order
@@ -406,6 +412,24 @@ class Agent:
                 return outcome, session_id
         finally:
             self.phase = "after"
+
+    async def open_browser(self) -> None:
+        """Start the run's Chromium before its first agent, for a run dispatched with browser (``browser.session``);
+        nothing for any other run, or once it runs."""
+        run = self.run
+        if run.spec.get("browser") is not True or (self.browser is not None and self.browser.cdp):
+            return
+        self.browser = self.browser or browser_session.BrowserSession(run.daemon, run.id)
+        await self.browser.open()
+        self.note_once(
+            f"Browser: Chromium runs for the run; its agent finds its DevTools in {browser_session.VARIABLE}."
+        )
+
+    async def close_browser(self) -> None:
+        """Close the run's Chromium and remove its directory (``BrowserSession.close``): the run is over here."""
+        browser, self.browser = self.browser, None
+        if browser is not None:
+            await browser.close(0 if self.run.daemon.hard_stop.is_set() else browser_session.STOP_GRACE)
 
     async def headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""

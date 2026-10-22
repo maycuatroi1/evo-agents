@@ -17,6 +17,8 @@ from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SE
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.runs.models import browser as browser_help
+from evo_agents.hub.server.runs.models.browser import BrowserReport
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
@@ -131,6 +133,7 @@ class Dispatch(BaseModel):
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
     plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
+    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
 
     @model_validator(mode="after")
     def _bounded_plugin_config(self) -> Dispatch:
@@ -190,6 +193,7 @@ class PlanRunDispatch(BaseModel):
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
+    browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
 
 
 class Rerun(BaseModel):
@@ -205,6 +209,7 @@ class Rerun(BaseModel):
     account_by_rule: bool = Field(
         False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
     )
+    browser: bool | None = Field(None, description=browser_help.RERUN_HELP)
 
     @model_validator(mode="after")
     def _one_choice(self) -> Rerun:
@@ -316,6 +321,7 @@ class Run(BaseModel):
         description="a plan run whose worker starts a new agent session for each step; its usage lists the sessions "
         "(usage.sessions). False for any other run",
     )
+    browser: bool = Field(False, description=browser_help.RUN_HELP)
     profile: str | None = Field(
         None, description="the handle of the agent profile the run went under; null for a run from before schema 0030"
     )
@@ -488,6 +494,7 @@ class RunSpec(BaseModel):
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
         "and the handoff of the plan; false: one session does every step, with the prompt above",
     )
+    browser: bool = Field(False, description=browser_help.SPEC_HELP, exclude_if=browser_help.no_browser)
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
@@ -699,6 +706,7 @@ class HeartbeatRequest(BaseModel):
         description="for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each "
         "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
     )
+    browser: BrowserReport | None = Field(None, description=browser_help.REPORT_HELP)
 
     def stored(self) -> tuple[dict, dict]:
         """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""

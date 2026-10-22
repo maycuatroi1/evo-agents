@@ -176,6 +176,10 @@ MERGE_JUDGE = "merge_judge"
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
 CLONES_CHECKOUTS = "clones_checkouts"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
+# a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
+# browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
+BROWSER = "browser"
+MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -191,6 +195,7 @@ WORKER_FEATURES = (
     MERGE_JUDGE,
     CLONES_CHECKOUTS,
     AGENT_HOME,
+    BROWSER,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>

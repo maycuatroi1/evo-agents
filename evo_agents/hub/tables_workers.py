@@ -12,8 +12,10 @@ the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``)
 Update now: update_requested_at, when the last one was asked for; update_ended_at, when it ended (NULL while it is
 open, or when none was asked for), update_outcome how (``runs.UPDATE_NOW_OUTCOMES``) and update_reason why, when the
 daemon said. hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
-that was (``evo_agents.hub.nightly``), absent until the hub first read it. worker_projects lists the projects a worker
-takes runs of; worker_pairings holds the pairing codes a member creates for a machine to join with.
+that was (``evo_agents.hub.nightly``), absent until the hub first read it. browser (0106) is what its last heartbeat
+said of the Chromium its daemon starts for a run (``evo_agents.worker.browser``), NULL when it said nothing of one.
+worker_projects lists the projects a worker takes runs of; worker_pairings holds the pairing codes a member creates
+for a machine to join with.
 """
 
 from __future__ import annotations
@@ -90,6 +92,7 @@ def workers_table(metadata: MetaData) -> Table:
         _when("update_ended_at"),  # 0065
         Column("update_outcome", Text),  # 0065
         Column("update_reason", Text),  # 0065
+        Column("browser", JSONB),  # 0106
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),
