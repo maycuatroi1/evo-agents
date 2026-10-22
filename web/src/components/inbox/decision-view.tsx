@@ -24,6 +24,7 @@ import { Ago } from "@/components/workers/ago";
 import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
+import { answerNotice } from "./answer-notice";
 import { DecisionCategoryBadge } from "./badges";
 import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
@@ -33,6 +34,7 @@ import {
   answerAccess,
   answerBody,
   answerProblem,
+  isHubDecision,
   type AnswerProblem,
   chosenOption,
   initialOption,
@@ -333,22 +335,7 @@ export function useAnswerForm(
   const terminalHref = useDecisionTerminalHref(decision);
   const answer = useAnswerDecision(decision, {
     onAnswered: (answered) => {
-      const next = answered.answer_run_id !== null && answered.answer_run_id !== answered.run_id ? answered.answer_run_id : null;
-      notify(
-        next !== null
-          ? {
-              tone: "success",
-              text: t("sentResumedTitle"),
-              description: t("sentResumed", { run: answered.run_id, next }),
-              link: { label: t("openRun", { id: next }), href: runHref(answered.project, next) },
-            }
-          : {
-              tone: "success",
-              text: t("sentTitle", { run: answered.run_id }),
-              description: t("sentText"),
-              link: { label: t("openRun", { id: answered.run_id }), href: runHref(answered.project, answered.run_id) },
-            },
-      );
+      notify(answerNotice(answered, t, (run) => runHref(answered.project, run)));
       onAnswered?.(answered);
     },
     onFailed: (error) => notifyFailure(t("failed"), failure(error, decision)),
@@ -362,10 +349,10 @@ export function useAnswerForm(
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (answer.isPending) return;
-    const found = answerProblem(option, text);
+    const found = answerProblem(option, text, isHubDecision(decision));
     setProblem(found);
     // Focus goes where the answer needs work: the first option, or the field (`AnswerFields` gives them these ids).
-    if (found === "empty") return document.getElementById(`${ids}-options`)?.querySelector<HTMLInputElement>("input")?.focus();
+    if (found === "empty" || found === "option") return document.getElementById(`${ids}-options`)?.querySelector<HTMLInputElement>("input")?.focus();
     if (found === "long") return document.getElementById(`${ids}-text`)?.focus();
     answer.mutate(answerBody(option, text));
   };
@@ -473,7 +460,7 @@ export function AnswerFields({ form, screen = false }: { form: AnswerFormState; 
       </div>
       {problem ? (
         <p id={problemId} className="text-sm font-medium text-danger" role="alert" data-testid="decision-problem">
-          {problem === "empty" ? t("empty") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
+          {problem === "empty" ? t("empty") : problem === "option" ? t("option") : t("long", { max: format.number(MAX_ANSWER_BYTES) })}
         </p>
       ) : null}
     </div>

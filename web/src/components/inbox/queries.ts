@@ -59,6 +59,11 @@ export const DECISION_CATEGORIES = [
   "architecture",
   "scope",
 ] as const satisfies readonly DecisionCategory[];
+/**
+ * `runs.HUB_DECISION_CATEGORIES`: decisions of the hub's own (a stopped release cycle, a work item of the Loop that
+ * failed a third time). The hub does what the option chosen says, whatever state the run they name is in.
+ */
+export const HUB_DECISION_CATEGORIES = ["release", "loop"] as const satisfies readonly DecisionCategory[];
 
 /** `runs.MAX_ANSWER_BYTES`: the owner's own words in an answer are at most 4 KiB of UTF-8. */
 export const MAX_ANSWER_BYTES = 4 * 1024;
