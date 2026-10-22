@@ -10677,6 +10677,14 @@
         },
         {
           "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -10700,7 +10708,28 @@
           "review_run",
           "reviews"
         ],
-        "schema": "SrsVersion"
+        "schema": "SrsVersion",
+        "with": {
+          "--item": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "parent_number",
+              "state",
+              "round",
+              "author",
+              "drafted_by_run",
+              "summary",
+              "created_at",
+              "submitted_at",
+              "decided_at",
+              "review_run",
+              "reviews",
+              "use_cases"
+            ],
+            "schema": "SrsVersionCases"
+          }
+        }
       }
     },
     "hub srs archive": {
@@ -11059,6 +11088,61 @@
           "dropped"
         ],
         "schema": "SrsRetireResult"
+      }
+    },
+    "hub srs reviews": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "review_run",
+          "reviews",
+          "use_cases"
+        ],
+        "schema": "SrsVersionCases"
       }
     },
     "hub srs show": {
