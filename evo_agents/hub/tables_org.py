@@ -145,7 +145,7 @@ def worker_shares_table(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _key("worker_shares", "worker_id", "workers", "CASCADE"),
         _key("worker_shares", "unit_id", "org_units", "RESTRICT"),
-        _key("worker_shares", "created_by", "users", "SET NULL"),
+        _key("worker_shares", "created_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("worker_id", "unit_id", name="worker_shares_pkey"),
         Index("worker_shares_unit_idx", "unit_id"),
     )
