@@ -42,6 +42,8 @@ MEMORY_KEYS = (
     "read_at",
     "archived_at",
     "stale_at",
+    "promoted_at",
+    "promoted_into",
 )
 
 COUNTS = {
