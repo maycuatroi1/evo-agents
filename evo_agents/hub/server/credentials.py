@@ -82,7 +82,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import BigInteger, and_, distinct, exists, func, insert, or_, select, update
+from sqlalchemy import BigInteger, distinct, func, insert, select, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -91,7 +91,6 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     GITHUB_HOST,
     GITHUB_TOKEN_REFRESH_SECONDS,
-    LEASED_KINDS,
     RELEASE_ENV_VARS,
     Lease,
     github_permissions,
@@ -102,7 +101,6 @@ from evo_agents.hub.credentials import (
 )
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
-from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.credential_models import (
@@ -122,6 +120,7 @@ from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.share_leases import Refusal, end_unlent, note_refusals, own_secrets, shared_secrets
 
 if TYPE_CHECKING:
     from evo_agents.hub.server.changes import CuratorPolicy
@@ -180,8 +179,9 @@ class _Run:
         """Whether the run's profile lets it be leased the credential ``name`` (a secret's, or github-app)."""
         return profiles.allows({"credential": self.credentials} if self.credentials else None, "credential", name)
 
-    def profile_columns(self) -> dict:
-        return {"profile_id": self.profile_id, "profile_version": self.profile_version}
+    def lease_columns(self) -> dict:
+        """What each lease of the run records of it: its profile and the member it is made for."""
+        return {"profile_id": self.profile_id, "profile_version": self.profile_version, "principal_id": self.owner_id}
 
     def profile_text(self) -> str:
         if self.profile is None or self.profile_default:
@@ -200,6 +200,8 @@ class _Secret:
     sealed: Sealed
     expires_at: datetime | None
     on_worker: bool  # bound to this worker, not to any worker of its owner
+    owner_id: int
+    share_id: int | None = None  # the share another member lent it under (``share_leases``); None for the run's owner's
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,8 @@ class _Survey:
     git: dict[str, _Secret] = field(default_factory=dict)  # repo -> the secret that answers for its origin
     github: dict[str, tuple[str, str]] = field(default_factory=dict)  # repo -> (owner, repo) on github.com
     missing: dict[str, str] = field(default_factory=dict)  # repo -> why nothing covers its origin
+    refused: list[Refusal] = field(default_factory=list)  # the shares that lent the run nothing, and why
+    leased: dict[int, int] = field(default_factory=dict)  # lease id -> secret id, of the secrets leased
 
     def reusable(self) -> bool:
         """Whether the GitHub tokens the run holds cover every repo that needs one."""
@@ -277,47 +281,6 @@ def _owner_role(owner_id: int, project_id: int, *, lock: bool):
     grants = tables.grants
     statement = select(grants.c.role).where(grants.c.user_id == owner_id, grants.c.project_id == project_id)
     return statement.with_for_update(read=True) if lock else statement
-
-
-def _bound_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool, refreshable: bool = False):
-    """The owner's secrets bound to the run's project, on any of their workers or on this one, live and not past their
-    end, by name; whether each is bound to this worker. With ``lock`` their rows are shared-locked."""
-    s, b = tables.secrets, tables.secret_bindings
-    on_worker = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, b.c.worker_id == worker_id)
-    bound = exists().where(
-        b.c.secret_id == s.c.id,
-        b.c.project_id == project_id,
-        or_(b.c.worker_id.is_(None), b.c.worker_id == worker_id),
-    )
-    live = s.c.expires_at > func.now()
-    if refreshable:
-        a = tables.accounts
-        signed_in = exists().where(a.c.secret_id == s.c.id, a.c.oauth_sealed.is_not(None))
-        live = or_(live, and_(s.c.kind == "env", s.c.env_var == OAUTH_ENV_VAR, signed_in))
-    statement = (
-        select(
-            s.c.id,
-            s.c.name,
-            s.c.kind,
-            s.c.env_var,
-            s.c.url_prefix,
-            s.c.username,
-            s.c.sealed,
-            s.c.nonce,
-            s.c.key_id,
-            s.c.expires_at,
-            on_worker.label("on_worker"),
-        )
-        .where(
-            s.c.owner_id == owner_id,
-            s.c.kind.in_(LEASED_KINDS),
-            s.c.deleted_at.is_(None),
-            or_(s.c.expires_at.is_(None), live),
-            bound,
-        )
-        .order_by(s.c.name)
-    )
-    return statement.with_for_update(read=True, of=s) if lock else statement
 
 
 def _held_tokens(run_id: int, worker_id: int):
@@ -410,9 +373,13 @@ async def survey_run(
     worker_id = (await worker_of(conn, user))[0]
     run = await _held_run(conn, worker_id, run_id, lock=lock)
     places = await repo_origins(conn, run.project_id, run.owner_id, run.repos)
-    rows = await conn.execute(
-        _bound_secrets(run.owner_id, run.project_id, worker_id, lock=lock, refreshable=refreshable)
-    )
+    rows = (
+        await conn.execute(own_secrets(run.owner_id, run.project_id, worker_id, lock=lock, refreshable=refreshable))
+    ).all()
+    refused: list[Refusal] = []
+    if run.curator is None and not run.release:  # their charter and their runtime's login are their own
+        shared, refused = await shared_secrets(conn, run, worker_id, lock=lock, refreshable=refreshable)
+        rows += shared
     allowed = _allowed(run.curator)
     secrets = [
         _Secret(
@@ -425,6 +392,8 @@ async def survey_run(
             sealed=Sealed(row.sealed, row.nonce, row.key_id),
             expires_at=row.expires_at,
             on_worker=row.on_worker,
+            owner_id=row.owner_id,
+            share_id=getattr(row, "share_id", None),
         )
         for row in rows
         if _leasable(run, allowed, row)
@@ -439,7 +408,7 @@ async def survey_run(
         for row in await conn.execute(_held_tokens(run_id, worker_id))
     ]
     origins = {repo: places[repo].origin if repo in places else None for repo in run.repos}
-    survey = _Survey(run, origins, secrets, tokens, places)
+    survey = _Survey(run, origins, secrets, tokens, places, refused=refused)
     _choose(survey)
     return worker_id, survey
 
@@ -480,8 +449,9 @@ def _choose(survey: _Survey) -> None:
             continue
         covering = [secret for secret in git if matches(secret.url_prefix, origin)]
         if covering:
-            # the longest prefix first; a stable sort keeps this worker's before any worker's, then the name
-            survey.git[repo] = sorted(covering, key=lambda secret: -len(normalize_origin(secret.url_prefix)))[0]
+            # the owner's own first, then the longest prefix; a stable sort keeps this worker's first, then the name
+            first = sorted(covering, key=lambda s: (s.share_id is not None, -len(normalize_origin(s.url_prefix))))
+            survey.git[repo] = first[0]
         elif on_github is not None and survey.run.allows(profiles.GITHUB_APP):
             survey.github[repo] = on_github
         elif on_github is not None:
@@ -547,7 +517,7 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
     leases = []
     for secret, target in chosen:
         try:
-            value = sealer.open(secret.sealed, secret_aad(survey.run.owner_id, secret.name, secret.kind))
+            value = sealer.open(secret.sealed, secret_aad(secret.owner_id, secret.name, secret.kind))
         except Unsealable as exc:
             log.warning("a secret does not open; it is not leased", extra={"secret": secret.name, "why": str(exc)})
             for repo, found in list(survey.git.items()):
@@ -566,11 +536,14 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
                 target=target,
                 external_id=None,
                 expires_at=secret.expires_at,
-                **survey.run.profile_columns(),
+                share_id=secret.share_id,
+                **survey.run.lease_columns(),
             )
         else:  # a refresh gave the secret a new end: the lease the run holds follows it
             await conn.execute(update(cl).where(cl.c.id == lease_id).values(expires_at=secret.expires_at))
         leases.append(_secret_lease(lease_id, secret, value))
+        survey.leased[lease_id] = secret.id
+    await end_unlent(conn, survey.run.id, worker_id, {s.share_id for s, _ in chosen if s.share_id is not None})
     return leases
 
 
@@ -612,7 +585,7 @@ async def _lease_tokens(
             target=_origins_text(normalize_origin(survey.origins[repo]) for repo in repos),
             external_id=str(token.installation.id),
             expires_at=token.expires_at,
-            **survey.run.profile_columns(),
+            **survey.run.lease_columns(),
         )
         sealed = sealer.seal(token.token, lease_aad(lease_id))  # bound to the lease's id, so inserted first
         cl = tables.credential_leases
@@ -671,7 +644,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     ended = {secret.id: secret for secret in survey.secrets}  # with the OAuth accounts whose token has ended
     rejected: set[int] = set()
     if sealer is not None:  # before the leases are recorded: an access token near its end is traded for a new one
-        rejected = await refresh_due(engine, sealer, survey.run.owner_id, survey.secrets)
+        rejected = await refresh_due(engine, sealer, survey.secrets)
     curator = survey.run.curator is not None
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
@@ -704,7 +677,10 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                         survey.missing[repo] = reasons.get(repo) or (
                             f"GitHub made no token for {'/'.join(survey.github[repo])}; ask again"
                         )
-            target = _lease_target(survey.run, leases, {secret.name: secret.id for secret in survey.secrets})
+                env_vars = {lease.env_var for lease in leases if lease.kind == "env"}
+                missing = [survey.origins[repo] for repo in survey.missing]
+                await note_refusals(conn, run_id, survey.refused, env_vars, missing)
+            target = _lease_target(survey.run, leases, survey.leased)
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -790,10 +766,10 @@ def _ids(values) -> str:
     return ",".join(str(value) for value in sorted(set(values))) or "-"
 
 
-def _lease_target(run: _Run, leases: list[Lease], secret_ids: dict[str, int]) -> str:
+def _lease_target(run: _Run, leases: list[Lease], secret_ids: dict[int, int]) -> str:
     """How a credential.lease audit row names an ask: the run, the secrets by id (their names are their owner's, and
     the audit is read by hub admins), the App's accounts and the repos."""
-    secrets = _ids(secret_ids[lease.name] for lease in leases if lease.provider == "secret")
+    secrets = _ids(secret_ids[lease.id] for lease in leases if lease.provider == "secret")
     accounts = _names(lease.name.partition(":")[2] for lease in leases if lease.provider == "github-app")
     return f"{run.target} secrets={secrets} github-app={accounts} repos={_names(run.repos)}{run.profile_text()}"
 

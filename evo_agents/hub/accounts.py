@@ -49,9 +49,9 @@ DEFAULT_POLICY = {
 }
 
 # How a run came by its account (run_accounts.how): picked by hand when it was dispatched, bound to the worker that
-# runs it, listed by the Curator's charter, taken from the project's pool, or every account was cooling down and the
-# run took the one whose cooldown ends first.
-CHOICES = ("manual", "worker", "charter", "pool", "cooling")
+# runs it, listed by the Curator's charter, taken from the project's pool, every account was cooling down and the
+# run took the one whose cooldown ends first, or shared with the run's principal by another member (0101).
+CHOICES = ("manual", "worker", "charter", "pool", "cooling", "shared")
 # ``needs-relogin`` is only in the view of an account (GET /v1/accounts): an OAuth account whose cooldown is the one
 # a refused refresh token sets, which only a new oauth-login ends. ``account_state`` itself says "cooling" for it.
 ACCOUNT_STATES = ("ready", "cooling", "paused", "expired", "needs-relogin")

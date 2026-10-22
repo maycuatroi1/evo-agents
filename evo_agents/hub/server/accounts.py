@@ -5,7 +5,10 @@ An account is one of the caller's env secrets (``evo_agents.hub.server.secrets``
 several for the same variable. GET /v1/accounts lists the caller's own, live: name, variable, bindings, weight,
 priority, when it was paused, until when it cools down and why, when a run last took it, its end, its state
 (``accounts.ACCOUNT_STATES``) and its figures (``account_views``: its last usage, its runs and their cost over 24
-hours and 7 days, the runs holding it) and its shares not revoked (``share_views``); never a value. GET /v1/accounts/{name} gives one of them. PATCH
+hours and 7 days, the runs holding it, the same by principal) and its shares not revoked (``share_views``); never a
+value. GET /v1/accounts/{name} gives one of them; with ``?owner=<login>``, one another member shared with the caller,
+whose figures are those of the caller's own runs alone and whose shares are those that lend it to the caller (a share
+not revoked covers them, or a run of theirs took it). PATCH
 /v1/accounts/{name} changes its weight or priority, or pauses (``paused: true``) or resumes it; a name that is not one
 of the caller's live env secrets is 404, whoever's it is.
 
@@ -25,7 +28,7 @@ import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -49,21 +52,26 @@ from evo_agents.hub.accounts import (
     account_state,
 )
 from evo_agents.hub.credentials import SECRET_NAME
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.account_choice import RELOGIN_REASON
-from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, account_figures
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures
+from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.secrets import audit_target, bound_names
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.share_leases import grantee_clause, live_share
 from evo_agents.hub.server.share_views import CredentialShare, shares_of
 
 log = logging.getLogger(__name__)
 
 NO_ACCOUNT = "you have no env secret named {name} on this hub: see GET /v1/accounts"
 AccountName = Annotated[str, Path(pattern=f"^{SECRET_NAME.pattern}$", description="one of the caller's env secrets")]
+OwnerLogin = Annotated[
+    str | None,
+    Query(pattern=LOGIN_NAME, description="the member who shared the account with the caller; omit for one's own"),
+]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 router = APIRouter(prefix="/v1", tags=["accounts"], responses={401: {"model": ErrorBody}})
@@ -107,6 +115,9 @@ class Account(BaseModel):
     )
     held_by: list[HeldBy] = Field(description="the runs a worker holds now with it")
     shares: list[CredentialShare] = Field(description="its shares not revoked, newest first")
+    cost_by_principal: list[PrincipalCost] = Field(
+        description="its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+    )
 
 
 class AccountChange(BaseModel):
@@ -197,16 +208,45 @@ async def list_accounts(request: Request, user: CurrentUser, response: Response)
 
 
 @router.get("/accounts/{name}", response_model=Account, responses=REFUSALS)
-async def get_account(request: Request, name: AccountName, user: CurrentUser, response: Response) -> Account:
-    """The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets."""
+async def get_account(
+    request: Request, name: AccountName, user: CurrentUser, response: Response, owner: OwnerLogin = None
+) -> Account:
+    """The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+    404 for a name that is neither."""
     async with request.app.state.engine.begin() as conn:
-        row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
-        if row is None:
-            raise HTTPException(404, NO_ACCOUNT.format(name=name))
-        figures = await account_figures(conn, user.user_id, [row.id])
-        shares = await shares_of(conn, [row.id])
+        found = await (_own_account(conn, user, name) if owner is None else _shared_account(conn, user, owner, name))
     response.headers.update(NO_STORE)
-    return _account(row, figures.get(row.id), shares.get(row.id))
+    return found
+
+
+async def _own_account(conn: AsyncConnection, user: Principal, name: str) -> Account:
+    row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
+    if row is None:
+        raise HTTPException(404, NO_ACCOUNT.format(name=name))
+    figures = await account_figures(conn, user.user_id, [row.id])
+    return _account(row, figures.get(row.id), (await shares_of(conn, [row.id])).get(row.id))
+
+
+async def _shared_account(conn: AsyncConnection, user: Principal, owner: str, name: str) -> Account:
+    """Account ``name`` of ``owner`` as the caller, whom it was shared with, sees it: their runs alone, and the shares
+    that lend it to them; 404 when no share not revoked covers them and no run of theirs took it."""
+    cs, cl = tables.credential_shares, tables.credential_leases
+    member = await org_store.user_by_login(conn, owner)
+    if member is not None and member.id == user.user_id:
+        return await _own_account(conn, user, name)
+    owner_id = None if member is None else member.id
+    row = None if owner_id is None else (await conn.execute(_accounts(owner_id, name))).one_or_none()
+    refusal = HTTPException(404, f"{owner} shared no account named {name} with you")
+    if row is None:
+        raise refusal
+    covering = select(cs.c.id).where(cs.c.secret_id == row.id, live_share(), await grantee_clause(conn, user.user_id))
+    ids = set((await conn.execute(covering)).scalars())
+    took = select(cl.c.id).where(cl.c.secret_id == row.id, cl.c.principal_id == user.user_id).limit(1)
+    if not ids and (await conn.execute(took)).first() is None:
+        raise refusal
+    figures = await account_figures(conn, owner_id, [row.id], principal_id=user.user_id)
+    shares = [share for share in (await shares_of(conn, [row.id])).get(row.id, []) if share.id in ids]
+    return _account(row, figures.get(row.id), shares).model_copy(update={"workers": []})
 
 
 def _paused(change: AccountChange, kept):

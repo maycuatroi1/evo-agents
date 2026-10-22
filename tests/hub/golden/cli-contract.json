@@ -38,7 +38,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -120,7 +121,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -202,7 +204,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -252,7 +255,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -381,7 +385,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -447,7 +452,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -601,6 +607,14 @@
           "value": null,
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": {
@@ -628,7 +642,8 @@
           "cost_24h_usd",
           "cost_7d_usd",
           "held_by",
-          "shares"
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -45497,7 +45512,7 @@
             "accounts"
           ],
           "summary": "Get Account",
-          "description": "The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.",
+          "description": "The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;\n404 for a name that is neither.",
           "operationId": "get_account_v1_accounts__name__get",
           "parameters": [
             {
@@ -45511,6 +45526,25 @@
                 "title": "Name"
               },
               "description": "one of the caller's env secrets"
+            },
+            {
+              "name": "owner",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member who shared the account with the caller; omit for one's own",
+                "title": "Owner"
+              },
+              "description": "the member who shared the account with the caller; omit for one's own"
             }
           ],
           "responses": {
@@ -57207,6 +57241,14 @@
               "type": "array",
               "title": "Shares",
               "description": "its shares not revoked, newest first"
+            },
+            "cost_by_principal": {
+              "items": {
+                "$ref": "#/components/schemas/PrincipalCost"
+              },
+              "type": "array",
+              "title": "Cost By Principal",
+              "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
             }
           },
           "type": "object",
@@ -57233,7 +57275,8 @@
             "cost_24h_usd",
             "cost_7d_usd",
             "held_by",
-            "shares"
+            "shares",
+            "cost_by_principal"
           ],
           "title": "Account",
           "description": "One of the caller's env secrets as an account: everything but its value."
@@ -80119,6 +80162,59 @@
           ],
           "title": "PolicyWritten"
         },
+        "PrincipalCost": {
+          "properties": {
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the member the runs were made for, by login; null for one now gone"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D"
+            },
+            "runs_month": {
+              "type": "integer",
+              "title": "Runs Month",
+              "description": "the runs that took it since the month began, UTC"
+            },
+            "cost_24h_usd": {
+              "type": "number",
+              "title": "Cost 24H Usd"
+            },
+            "cost_7d_usd": {
+              "type": "number",
+              "title": "Cost 7D Usd"
+            },
+            "cost_month_usd": {
+              "type": "number",
+              "title": "Cost Month Usd",
+              "description": "what those runs cost since the month began, in USD, an estimate"
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "runs_24h",
+            "runs_7d",
+            "runs_month",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "cost_month_usd"
+          ],
+          "title": "PrincipalCost"
+        },
         "Problem": {
           "properties": {
             "path": {
@@ -86009,10 +86105,11 @@
                 "worker",
                 "charter",
                 "pool",
-                "cooling"
+                "cooling",
+                "shared"
               ],
               "title": "How",
-              "description": "picked by hand, bound to the worker, by the charter, the pool, cooling"
+              "description": "picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member"
             },
             "failovers": {
               "type": "integer",

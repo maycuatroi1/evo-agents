@@ -3978,7 +3978,8 @@
           "worker": "Gắn với worker",
           "charter": "Do charter chỉ định",
           "pool": "Từ nhóm tài khoản",
-          "cooling": "Tất cả đang nghỉ: cái sớm hết nghỉ nhất"
+          "cooling": "Tất cả đang nghỉ: cái sớm hết nghỉ nhất",
+          "shared": "Do thành viên khác chia sẻ"
         },
         "gone": "một tài khoản đã xoá",
         "failovers": "{count, plural, =0 {Chưa failover} other {# lần failover}}",
