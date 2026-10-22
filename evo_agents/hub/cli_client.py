@@ -8,7 +8,8 @@ core dependency). Results go to stdout; a failure is one ``error:`` line on stde
 prints what the hub answered, with the keys declared next to the flag (``contract.json_option``). No command ever
 prints a token.
 
-``hub admin`` covers grants, users and row counts (``server.admin``); the audit trail and every user's tokens
+``hub admin`` covers grants, users and row counts (``server.admin``), and invite links in ``cli_invites`` (over
+``server.invites``); the audit trail and every user's tokens
 (``server.admin_console``) have no command and are read in the web's admin area. ``project register`` reads the
 harness through ``registration``, and ``registry pull`` writes the registry through ``registry``.
 
@@ -422,8 +423,9 @@ def register_client(hsub) -> None:
     revoke.add_argument("id", metavar="ID", type=int, help="token id, from `hub token list`")
     revoke.set_defaults(func=cmd_token_revoke)
 
-    admin = hsub.add_parser("admin", help="users and grants (hub admins only)")
-    asub = admin.add_subparsers(dest="admin_command", required=True)
+    from evo_agents.hub.cli_invites import admin_commands  # hub admin, and hub admin invite in that module
+
+    asub = admin_commands(hsub)
     grant = asub.add_parser("grant", help="give a login a role on a project, or change it")
     grant.add_argument("login", metavar="LOGIN", help="GitHub login; it may not have signed in yet")
     grant.add_argument("project", metavar="PROJECT", help="project name on the hub")

@@ -416,6 +416,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invites
+         * @description Every invite link, newest first, with its status; never a token.
+         */
+        get: operations["list_invites_v1_admin_invites_get"];
+        put?: never;
+        /**
+         * Create
+         * @description Make a one-time invite link; the answer holds its token, which the hub shows this once.
+         */
+        post: operations["create_v1_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/invites/{invite_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Revoke an open link, or the unused right an accepted register link gave.
+         */
+        post: operations["revoke_v1_admin_invites__invite_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept
+         * @description Accept an invite link: a join link gives its grant, a register link the right to register one project.
+         */
+        post: operations["accept_v1_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -13445,6 +13509,181 @@ export interface components {
              */
             decision_id?: number | null;
         };
+        /** InviteAccept */
+        InviteAccept: {
+            /**
+             * Token
+             * @description the token of the link, evn_...
+             */
+            token: string;
+        };
+        /** InviteCreated */
+        InviteCreated: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
+            /**
+             * Token
+             * @description evn_...: shown this once, the hub keeps only its SHA-256
+             */
+            token: string;
+            /**
+             * Url
+             * @description the link to hand out, EVO_HUB_PUBLIC_URL + /invite/ + token; null without one
+             */
+            url: string | null;
+        };
+        /** InviteRequest */
+        InviteRequest: {
+            /**
+             * Kind
+             * @description join: a grant on an existing project; register: the right to register one new project
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on
+             */
+            project?: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role?: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level of the project's ladder it reaches
+             */
+            max_level?: string | null;
+            /**
+             * For Login
+             * @description the one GitHub login that may accept the link; anyone signed in if left out
+             */
+            for_login?: string | null;
+            /**
+             * Days
+             * @description how long the link stays open
+             * @default 7
+             */
+            days: number;
+        };
+        /** InviteRow */
+        InviteRow: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "join" | "register";
+            /**
+             * Project
+             * @description join: the project the link grants on; register: the project its right registered, once used
+             */
+            project: string | null;
+            /**
+             * Role
+             * @description join: the role it gives
+             */
+            role: ("reader" | "writer" | "admin") | null;
+            /**
+             * Max Level
+             * @description join: the highest level it reaches
+             */
+            max_level: string | null;
+            /**
+             * For Login
+             * @description the one login that may accept it; null for anyone signed in
+             */
+            for_login: string | null;
+            /**
+             * Created By
+             * @description the hub admin who made it
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the link can no longer be accepted
+             */
+            expires_at: string;
+            /**
+             * Status
+             * @description revoked, else accepted, else expired once expires_at is past, else open
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "revoked" | "expired";
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Accepted At */
+            accepted_at: string | null;
+            /**
+             * Used At
+             * @description register: when its right registered the project
+             */
+            used_at: string | null;
+        };
         /** Job */
         Job: {
             /** Job Id */
@@ -26406,7 +26645,10 @@ export interface operations {
     };
     web_login_v1_auth_web_login_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the page of the hub to come back to, a relative path; any other is ignored */
+                next?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -26419,6 +26661,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description web sign-in is not configured */
             503: {
@@ -27286,6 +27537,265 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invites_v1_admin_invites_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many items; without it, all of them */
+                limit?: number | null;
+                /** @description skip this many items first */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description the length of the whole list, whatever limit and offset cut from it */
+                    "X-Total-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_v1_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_v1_admin_invites__invite_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_v1_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteRow"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the link was accepted, revoked or has expired */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

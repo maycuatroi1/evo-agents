@@ -30,6 +30,12 @@ GRANT_PUT = "grant.put"
 GRANT_DELETE = "grant.delete"
 PROJECT_REGISTER = "project.register"
 PROJECT_UPDATE = "project.update"
+# An invite link (evo_agents.hub.server.invites) was made, accepted or revoked; the target names the link and what it
+# gives, "invite:<id> kind=<kind> [project=<p> role=<r> max_level=<l>] [for=<login>]", never its token. A join link's
+# rows are in its project.
+INVITE_CREATE = "invite.create"
+INVITE_ACCEPT = "invite.accept"
+INVITE_REVOKE = "invite.revoke"
 BLOB_COMMIT = "blob.commit"  # the target is the project, never the hashes
 KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with changed; the target is the project
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
