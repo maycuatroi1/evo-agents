@@ -6,9 +6,10 @@ A frame is one binary websocket message of at most MAX_FRAME_BYTES, whose first 
 are the payload, a JSON object unless said otherwise:
 
 - INPUT, viewer to worker: one event the person made (``parse_event`` says which and what each holds).
-- SCREEN, worker to viewer: one screencast frame of the tab watched, the length of a JSON header as an unsigned 32-bit
-  big-endian integer, the header (``{"seq", "width", "height", "top", "scale"}``: the page's size in CSS pixels, the
-  offset of its top and its zoom, as Chromium's screencast metadata gives them), then the JPEG.
+- SCREEN, worker to viewer: one screencast frame of the tab watched, or one still of it while it is in the background,
+  where Chromium paints nothing; the length of a JSON header as an unsigned 32-bit big-endian integer, the header
+  (``{"seq", "width", "height", "top", "scale"}``: the page's size in CSS pixels, the offset of its top and its zoom, as
+  Chromium's screencast metadata gives them, or a still's size with top 0 and scale 1), then the JPEG.
 - STATE, worker to viewer: the browser as the broker sees it, ``{"mode": "agent"|"human", "tabs": [{"id", "url",
   "title"}], "active": <id>}`` and a ``notice`` once when it refused an event (a URL of another scheme).
 - ACK, viewer to worker: ``{"seq": n}``, the viewer drew screen frame n; the worker sends the next one after it.
