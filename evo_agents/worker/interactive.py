@@ -64,7 +64,7 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
-from evo_agents.worker.runtimes import claude_code, codex, common, opencode
+from evo_agents.worker.runtimes import claude_code, claude_home, codex, common, hub_tools, opencode, profiles
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -724,7 +724,8 @@ class ClaudeCodeTui(Tui):
     """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, so the session also shows in
     the Claude apps; a new session gets ``--session-id`` and the run's prompt. The run's model and effort go with
     it when the run names them. A run whose lease sets CLAUDE_CODE_OAUTH_TOKEN gets no ``--remote-control``, and
-    no ANTHROPIC_API_KEY of the daemon's (``claude_code.dropped_env``)."""
+    no ANTHROPIC_API_KEY of the daemon's (``claude_code.dropped_env``). An agent with a config dir of its own
+    (``claude_home.isolated``) gets the hub's MCP server alone (``claude_home.mcp_config``)."""
 
     runtime = "claude-code"
     program = "claude"
@@ -776,6 +777,10 @@ class ClaudeCodeTui(Tui):
             value = self.setting(key)
             if value:
                 argv += [flag, value]
+        context = self.context
+        if claude_home.isolated(context.run, self.runtime, context.env, context.worktree):  # its servers alone
+            hub = hub_tools.home_server(context, profiles.profile_of(context))
+            argv += claude_home.mcp_config({hub_tools.SERVER: hub} if hub else {})
         if not self.resumed:
             argv.append(self.prompt)
         return argv
