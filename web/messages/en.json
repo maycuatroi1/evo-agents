@@ -3487,6 +3487,25 @@
           "failed": "{count} failed"
         }
       },
+      "tasks": {
+        "title": "Running now",
+        "agents": "{count, plural, one {# sub-agent} other {# sub-agents}}",
+        "commands": "{count, plural, one {# command} other {# commands}}",
+        "runningLabel": "Sub-agents and background commands running",
+        "background": "in the background",
+        "calls": "{count, plural, one {# tool call} other {# tool calls}}",
+        "tokens": "{tokens} tokens",
+        "commandsOf": "Commands of {name}",
+        "show": ", show in trace",
+        "finished": "{count, plural, one {# finished} other {# finished}}",
+        "finishedLabel": "Sub-agents and background commands that ended",
+        "showAll": "Show all {count}",
+        "status": {
+          "completed": "Completed:",
+          "failed": "Failed:",
+          "stopped": "Stopped:"
+        }
+      },
       "usage": {
         "title": "Usage",
         "soFar": "so far",
