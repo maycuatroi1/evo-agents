@@ -17,6 +17,7 @@ from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SE
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
@@ -518,6 +519,11 @@ class RunSpec(BaseModel):
     )
     release: ReleaseSpec | None = Field(
         None, description="a release run's cycle, mode and start commit; null for any other run"
+    )
+    attachments: list[Attachment] = Field(
+        default_factory=list,
+        description="a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET "
+        "/v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run",
     )
 
 

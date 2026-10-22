@@ -262,6 +262,7 @@ def create_app(config: HubConfig) -> FastAPI:
     )
 
     from evo_agents.hub.server import (
+        attachments,
         curator,
         decisions,
         digests,
@@ -296,6 +297,9 @@ def create_app(config: HubConfig) -> FastAPI:
         run_outputs.worker_router,
         output_content.router,  # their bytes
         output_content.chat_router,
+        attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
+        attachments.chat_router,
+        attachments.worker_router,
     ):
         app.include_router(routes)
 
