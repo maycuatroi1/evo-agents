@@ -5553,6 +5553,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugin-api/projects/{project}/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Notice
+         * @description Send a notice to members of the project, as the plugin whose token the request carries.
+         */
+        post: operations["send_notice_v1_plugin_api_projects__project__notifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/task/pulls": {
         parameters: {
             query?: never;
@@ -14795,7 +14815,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -16261,6 +16281,62 @@ export interface components {
              * @description default: the newest that runs on this hub
              */
             version?: string | null;
+        };
+        /** PluginNoticeIn */
+        PluginNoticeIn: {
+            /**
+             * To
+             * @description logins and/or the roles admins, writers (writers and admins) and members (everyone with a grant)
+             */
+            to: string[];
+            /**
+             * Title
+             * @description one line
+             */
+            title: string;
+            /**
+             * Body
+             * @description at most 16384 bytes in UTF-8
+             */
+            body?: string | null;
+            /**
+             * Link
+             * @description a path under /p/{project}/x/{plugin}/, or /p/{project}; default: the plugin's page, else the project
+             */
+            link?: string | null;
+            /**
+             * Topic
+             * @description a short slug the plugin chooses
+             */
+            topic: string;
+            /**
+             * Key
+             * @description a second call of the plugin in the project with the same key creates nothing
+             */
+            key?: string | null;
+        };
+        /** PluginNoticeSent */
+        PluginNoticeSent: {
+            /**
+             * Sent
+             * @description the members who got a notice: the number of recipients
+             */
+            sent: number;
+            /**
+             * Recipients
+             * @description their logins
+             */
+            recipients: string[];
+            /**
+             * Skipped
+             * @description the logins in `to` that hold no grant on the project, who got none
+             */
+            skipped: string[];
+            /**
+             * Duplicate
+             * @description the key was used already: nothing new was created and this is the first answer
+             */
+            duplicate: boolean;
         };
         /**
          * PluginPage
@@ -45972,6 +46048,59 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_notice_v1_plugin_api_projects__project__notifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginNoticeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginNoticeSent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
