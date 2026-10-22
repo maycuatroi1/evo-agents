@@ -1772,7 +1772,7 @@ const PAGES: Entry[] = [
       const card = page.locator("#main").getByTestId("srs-findings");
       await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(seeded.decide));
       await expect(card.getByTestId("srs-findings-settled").getByTestId("srs-finding-settled")).toBeVisible();
-      await expect(page.locator("#main").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
+      await expect(page.getByTestId("srs-review-form").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
     },
   },
   {
