@@ -37447,6 +37447,212 @@
           }
         }
       },
+      "/v1/autonomy/stops/preview": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Preview Stop",
+          "description": "How many runs and people a stop of that scope would cover now, and whether one holds already.",
+          "operationId": "preview_stop_v1_autonomy_stops_preview_get",
+          "parameters": [
+            {
+              "name": "scope",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "login",
+                  "unit",
+                  "all"
+                ],
+                "type": "string",
+                "title": "Scope"
+              }
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Login"
+              }
+            },
+            {
+              "name": "unit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 63
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Unit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopPreview"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/autonomy/settings": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Settings",
+          "description": "The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page.",
+          "operationId": "show_settings_v1_autonomy_settings_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomySettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/org": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Org Autonomy",
+          "description": "Every seat's effective mode of each class, and the stops that hold, for the web's org page.",
+          "operationId": "show_org_autonomy_v1_autonomy_org_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgAutonomy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -61621,6 +61827,130 @@
           "title": "AutonomyPolicy",
           "description": "One revision of a project's autonomy policy."
         },
+        "AutonomySettings": {
+          "properties": {
+            "principal": {
+              "type": "string",
+              "title": "Principal"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "level_source": {
+              "type": "string",
+              "title": "Level Source"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "the preference's newest revision; null when none was set"
+            },
+            "pref_level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pref Level"
+            },
+            "pref_classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Pref Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "ceiling": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Ceiling",
+              "description": "the lowest level the sources other than the preference set"
+            },
+            "ceiling_source": {
+              "type": "string",
+              "title": "Ceiling Source"
+            },
+            "ceiling_detail": {
+              "type": "string",
+              "title": "Ceiling Detail",
+              "description": "what that source is, in words"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/SettingsClass"
+              },
+              "type": "object",
+              "title": "Classes"
+            },
+            "stop": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HeldStop"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the stop that holds the caller; null when none does"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days",
+              "default": 30
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "level",
+            "level_source",
+            "revision",
+            "pref_level",
+            "pref_classes",
+            "ceiling",
+            "ceiling_source",
+            "ceiling_detail",
+            "classes",
+            "stop"
+          ],
+          "title": "AutonomySettings",
+          "description": "The caller's own autonomy: the effective level and classes, the preference, the ceiling over it, the stop that\nholds them and the figures of each class."
+        },
         "AutonomyView": {
           "properties": {
             "principal": {
@@ -68355,6 +68685,69 @@
           "title": "ClaimedBudget",
           "description": "A run's caps as its worker gets them, with what it spent already when it goes on from a parked run."
         },
+        "ClassFigures": {
+          "properties": {
+            "refused": {
+              "type": "integer",
+              "title": "Refused",
+              "description": "the acts a gate or the worker's hook refused (autonomy.decided result=refused)"
+            },
+            "asked": {
+              "type": "integer",
+              "title": "Asked",
+              "description": "the acts a gate held for an answer (result=asked)"
+            },
+            "decisions": {
+              "type": "integer",
+              "title": "Decisions",
+              "description": "the decisions asked in the class's categories"
+            },
+            "merged": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged",
+              "description": "K5: the merges of the person's runs"
+            },
+            "reverted": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reverted",
+              "description": "K5: those of them the hub reverted"
+            },
+            "rolled_back": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rolled Back",
+              "description": "K6: those of them PROD was rolled back from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "refused",
+            "asked",
+            "decisions"
+          ],
+          "title": "ClassFigures",
+          "description": "What the hub saw of one class over the last FIGURE_DAYS days for the person's runs."
+        },
         "Clearance": {
           "properties": {
             "level": {
@@ -72233,6 +72626,78 @@
             "session_ids"
           ],
           "title": "HeldRequest"
+        },
+        "HeldStop": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "login:<login>, unit:<slug> or all"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit",
+              "description": "the unit's slug, for a stop of a unit"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "stopped_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stopped At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "scope",
+            "target",
+            "login",
+            "unit",
+            "reason",
+            "stopped_at"
+          ],
+          "title": "HeldStop"
         },
         "HeldTranscript": {
           "properties": {
@@ -78245,6 +78710,31 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "OrgAutonomy": {
+          "properties": {
+            "seats": {
+              "items": {
+                "$ref": "#/components/schemas/SeatClasses"
+              },
+              "type": "array",
+              "title": "Seats"
+            },
+            "stops": {
+              "items": {
+                "$ref": "#/components/schemas/HeldStop"
+              },
+              "type": "array",
+              "title": "Stops"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seats",
+            "stops"
+          ],
+          "title": "OrgAutonomy",
+          "description": "Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that\nhold."
         },
         "OrgChartView": {
           "properties": {
@@ -92309,6 +92799,52 @@
           "title": "SeatAdd",
           "description": "A seat for a person (login) or for an agent profile (agent and project)."
         },
+        "SeatClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source"
+          ],
+          "title": "SeatClass"
+        },
+        "SeatClasses": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/SeatClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, the effective mode of the seat and its units"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "classes"
+          ],
+          "title": "SeatClasses"
+        },
         "SeatEdit": {
           "properties": {
             "role": {
@@ -93184,6 +93720,112 @@
             "transcripts"
           ],
           "title": "SessionTranscripts"
+        },
+        "SettingsClass": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "what the class covers, in words"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode",
+              "description": "the effective mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets it, as AutonomyClass.source"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail"
+            },
+            "modes": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "deny",
+                  "ask",
+                  "notify",
+                  "auto"
+                ]
+              },
+              "type": "array",
+              "title": "Modes",
+              "description": "the modes the class takes, the strictest first"
+            },
+            "ceiling": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Ceiling",
+              "description": "the loosest mode the sources other than the preference allow"
+            },
+            "ceiling_source": {
+              "type": "string",
+              "title": "Ceiling Source"
+            },
+            "pref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "ask",
+                    "notify",
+                    "auto"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pref",
+              "description": "the mode the preference sets; null without a preference"
+            },
+            "lowered": {
+              "type": "boolean",
+              "title": "Lowered",
+              "description": "the effective mode is stricter than the preference sets"
+            },
+            "figures": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ClassFigures"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "null for a class no gate records"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "mode",
+            "source",
+            "detail",
+            "modes",
+            "ceiling",
+            "ceiling_source",
+            "pref",
+            "lowered",
+            "figures"
+          ],
+          "title": "SettingsClass"
         },
         "SettingsLayer": {
           "properties": {
@@ -97498,6 +98140,45 @@
             "written"
           ],
           "title": "StepWritten"
+        },
+        "StopPreview": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "the runs it would cancel or ask to stop"
+            },
+            "people": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "People",
+              "description": "the people it covers; null for the whole hub"
+            },
+            "holds": {
+              "type": "boolean",
+              "title": "Holds",
+              "description": "a stop of that scope holds already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "runs",
+            "people",
+            "holds"
+          ],
+          "title": "StopPreview",
+          "description": "What a stop of that scope would do now, once the caller may write it."
         },
         "StopSet": {
           "properties": {

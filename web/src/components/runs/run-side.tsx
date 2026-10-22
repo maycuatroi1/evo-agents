@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 import type { Run, RunEvent } from "./queries";
 import { RunAccounts } from "./run-accounts";
+import { RunAutonomy } from "./run-autonomy";
 import { RunCredentials } from "./run-credentials";
 import { RunDetails, RunResult } from "./run-facts";
 import type { RunViewer } from "./run-model";
@@ -21,9 +22,9 @@ const FLAT_SECTIONS =
   "gap-0 [&>section]:rounded-none [&>section]:border-0 [&>section]:bg-transparent [&>section]:shadow-none [&>section>div]:border-0 [&>section>div]:px-0 [&>section>div:first-child]:pt-0 [&>section>div:first-child]:pb-1 [&>section+section]:border-t [&>section+section]:pt-5 [&>section]:pb-5 [&_[data-steps]]:-mx-2";
 
 /**
- * What the Details toggle opens beside a run's trace (under it below xl): the plan's steps, the essential details (the
- * rest, with the owner's accounts and credentials, behind "Show all details"), then usage and the result once there are
- * any. `flat` on a phone, where they are sections of the page.
+ * What the Details toggle opens beside a run's trace (under it below xl): the plan's steps, the autonomy the run acts
+ * under, the essential details (the rest, with the owner's accounts and credentials, behind "Show all details"), then
+ * usage and the result once there are any. `flat` on a phone, where they are sections of the page.
  */
 export function RunSide({
   run,
@@ -52,6 +53,7 @@ export function RunSide({
   return (
     <div className={cn("relative grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1", flat && FLAT_SECTIONS)} data-testid="run-side">
       {plan ? <RunPlanSteps run={run} /> : null}
+      {run.autonomy ? <RunAutonomy run={run} /> : null}
       <RunDetails
         run={run}
         viewer={viewer}

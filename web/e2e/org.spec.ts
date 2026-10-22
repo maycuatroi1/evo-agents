@@ -5,7 +5,8 @@ import { dayFromNow, endSeatByApi, menuActions, seatByApi, seatOf, unitByApi, un
 
 /**
  * The Org page (plan org-chart, criterion a6): a hub admin builds the chart from the page, a unit's lead manages what
- * lies below their unit and nothing above it, and a member reads it without a single write button. Each test makes
+ * lies below their unit and nothing above it, and a member reads it with no write button but the one that stops their
+ * own runs (plan autonomy-levels). Each test makes
  * units of its own with unique slugs, as the chart is shared by every spec, and its people are made-up accounts.
  */
 
@@ -127,7 +128,9 @@ test("a lead manages the units below theirs and the member seats of their own, n
   await expect(page.locator("#main").getByTestId("org-unplaced")).toHaveCount(0);
   await expect(page.locator("#main").getByTestId("org-new-unit")).toHaveCount(0);
   await expect(unitHead(page, "root").getByTestId("org-unit-menu")).toHaveCount(0);
-  expect(await menuActions(page, unitHead(page, team).getByTestId("org-unit-menu"))).toEqual(["create-unit", "add-seat"]);
+  // The menus offer a stop once the hub's answer on autonomy is in, which the seats' disclosure of classes shows.
+  await expect(seatOf(page, lead.login, team).getByTestId("org-seat-autonomy")).toBeVisible();
+  expect(await menuActions(page, unitHead(page, team).getByTestId("org-unit-menu"))).toEqual(["create-unit", "add-seat", "stop-unit"]);
   // A unit closes and opens again from its row, by keyboard.
   const toggle = unitHead(page, below).getByTestId("org-unit-toggle");
   await toggle.focus();
@@ -136,10 +139,11 @@ test("a lead manages the units below theirs and the member seats of their own, n
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Space");
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  expect(await menuActions(page, unitHead(page, below).getByTestId("org-unit-menu"))).toEqual(["create-unit", "add-seat", "edit-unit", "unit-ceiling", "archive-unit"]);
-  // Their own seat, a lead's in the unit they lead: neither theirs to change nor its ceiling theirs to set.
+  expect(await menuActions(page, unitHead(page, below).getByTestId("org-unit-menu"))).toEqual(["create-unit", "add-seat", "edit-unit", "unit-ceiling", "stop-unit", "archive-unit"]);
+  // Their own seat, a lead's in the unit they lead: neither theirs to change nor its ceiling theirs to set; their own
+  // runs are theirs to stop.
   await expect(seatOf(page, lead.login, team)).toBeVisible();
-  await expect(seatOf(page, lead.login, team).getByTestId("org-seat-menu")).toHaveCount(0);
+  expect(await menuActions(page, seatOf(page, lead.login, team).getByTestId("org-seat-menu"))).toEqual(["stop-runs"]);
 
   // A member seat in the unit below, from its menu; the role offers every role there.
   await unitHead(page, below).getByTestId("org-unit-menu").click();
@@ -163,7 +167,7 @@ test("a lead manages the units below theirs and the member seats of their own, n
   await expect(refusal).toContainText("Hub: ");
 });
 
-test("a member reads the chart, the runs at work of the people in it, and finds no write button", async ({ page, member }) => {
+test("a member reads the chart, the runs at work of the people in it, and finds no write button but Stop on their own runs", async ({ page, member }) => {
   test.setTimeout(60_000);
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
@@ -183,7 +187,10 @@ test("a member reads the chart, the runs at work of the people in it, and finds 
   const main = page.locator("#main");
   await expect(main.getByTestId("org-new-unit")).toHaveCount(0);
   await expect(main.getByTestId("org-unit-menu")).toHaveCount(0);
-  await expect(main.getByTestId("org-seat-menu")).toHaveCount(0);
+  await expect(seat.getByTestId("org-seat-autonomy")).toBeVisible();
+  await expect(main.locator(`[data-testid="org-seat"]:not([data-login="${me.login}"])`).getByTestId("org-seat-menu")).toHaveCount(0);
+  expect(await menuActions(page, seat.getByTestId("org-seat-menu"))).toEqual(["stop-runs"]);
+  await expect(main.getByTestId("org-stop-all")).toHaveCount(0);
   await expect(main.getByTestId("org-unplaced")).toHaveCount(0);
 
   await runs.click();

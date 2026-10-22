@@ -4150,6 +4150,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy/stops/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Stop
+         * @description How many runs and people a stop of that scope would cover now, and whether one holds already.
+         */
+        get: operations["preview_stop_v1_autonomy_stops_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Settings
+         * @description The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page.
+         */
+        get: operations["show_settings_v1_autonomy_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Org Autonomy
+         * @description Every seat's effective mode of each class, and the stops that hold, for the web's org page.
+         */
+        get: operations["show_org_autonomy_v1_autonomy_org_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -9107,6 +9167,60 @@ export interface components {
             /** Created At */
             created_at: string | null;
         };
+        /**
+         * AutonomySettings
+         * @description The caller's own autonomy: the effective level and classes, the preference, the ceiling over it, the stop that
+         *     holds them and the figures of each class.
+         */
+        AutonomySettings: {
+            /** Principal */
+            principal: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Level Source */
+            level_source: string;
+            /**
+             * Revision
+             * @description the preference's newest revision; null when none was set
+             */
+            revision: number | null;
+            /** Pref Level */
+            pref_level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Pref Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            pref_classes: {
+                [key: string]: string;
+            };
+            /**
+             * Ceiling
+             * @description the lowest level the sources other than the preference set
+             * @enum {string}
+             */
+            ceiling: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Ceiling Detail
+             * @description what that source is, in words
+             */
+            ceiling_detail: string;
+            /** Classes */
+            classes: {
+                [key: string]: components["schemas"]["SettingsClass"];
+            };
+            /** @description the stop that holds the caller; null when none does */
+            stop: components["schemas"]["HeldStop"] | null;
+            /**
+             * Days
+             * @default 30
+             */
+            days: number;
+        };
         /** AutonomyView */
         AutonomyView: {
             /**
@@ -11949,6 +12063,42 @@ export interface components {
              */
             spent_seconds: number;
         };
+        /**
+         * ClassFigures
+         * @description What the hub saw of one class over the last FIGURE_DAYS days for the person's runs.
+         */
+        ClassFigures: {
+            /**
+             * Refused
+             * @description the acts a gate or the worker's hook refused (autonomy.decided result=refused)
+             */
+            refused: number;
+            /**
+             * Asked
+             * @description the acts a gate held for an answer (result=asked)
+             */
+            asked: number;
+            /**
+             * Decisions
+             * @description the decisions asked in the class's categories
+             */
+            decisions: number;
+            /**
+             * Merged
+             * @description K5: the merges of the person's runs
+             */
+            merged?: number | null;
+            /**
+             * Reverted
+             * @description K5: those of them the hub reverted
+             */
+            reverted?: number | null;
+            /**
+             * Rolled Back
+             * @description K6: those of them PROD was rolled back from
+             */
+            rolled_back?: number | null;
+        };
         /** Clearance */
         Clearance: {
             /** Level */
@@ -13594,6 +13744,35 @@ export interface components {
         HeldRequest: {
             /** Session Ids */
             session_ids: string[];
+        };
+        /** HeldStop */
+        HeldStop: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Login */
+            login: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for a stop of a unit
+             */
+            unit: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
         };
         /** HeldTranscript */
         HeldTranscript: {
@@ -16113,6 +16292,17 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * OrgAutonomy
+         * @description Every seat's effective mode of each class (its ceiling, its units' and the instance's) and the stops that
+         *     hold.
+         */
+        OrgAutonomy: {
+            /** Seats */
+            seats: components["schemas"]["SeatClasses"][];
+            /** Stops */
+            stops: components["schemas"]["HeldStop"][];
         };
         /** OrgChartView */
         OrgChartView: {
@@ -22354,6 +22544,28 @@ export interface components {
             /** Ends On */
             ends_on?: string | null;
         };
+        /** SeatClass */
+        SeatClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /** Source */
+            source: string;
+        };
+        /** SeatClasses */
+        SeatClasses: {
+            /** Id */
+            id: number;
+            /**
+             * Classes
+             * @description K1 to K12, the effective mode of the seat and its units
+             */
+            classes: {
+                [key: string]: components["schemas"]["SeatClass"];
+            };
+        };
         /**
          * SeatEdit
          * @description The fields to change; a field left out keeps its value, reports_to or ends_on null clears it.
@@ -22689,6 +22901,52 @@ export interface components {
              * @description the session's own (main) first, then its subagents'
              */
             transcripts: components["schemas"]["TranscriptFile"][];
+        };
+        /** SettingsClass */
+        SettingsClass: {
+            /**
+             * Name
+             * @description what the class covers, in words
+             */
+            name: string;
+            /**
+             * Mode
+             * @description the effective mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets it, as AutonomyClass.source
+             */
+            source: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Modes
+             * @description the modes the class takes, the strictest first
+             */
+            modes: ("deny" | "ask" | "notify" | "auto")[];
+            /**
+             * Ceiling
+             * @description the loosest mode the sources other than the preference allow
+             * @enum {string}
+             */
+            ceiling: "deny" | "ask" | "notify" | "auto";
+            /** Ceiling Source */
+            ceiling_source: string;
+            /**
+             * Pref
+             * @description the mode the preference sets; null without a preference
+             */
+            pref: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Lowered
+             * @description the effective mode is stricter than the preference sets
+             */
+            lowered: boolean;
+            /** @description null for a class no gate records */
+            figures: components["schemas"]["ClassFigures"] | null;
         };
         /**
          * SettingsLayer
@@ -24424,6 +24682,29 @@ export interface components {
              * @description whether the report wrote a revision; false for a resend that changed nothing
              */
             written: boolean;
+        };
+        /**
+         * StopPreview
+         * @description What a stop of that scope would do now, once the caller may write it.
+         */
+        StopPreview: {
+            /** Target */
+            target: string;
+            /**
+             * Runs
+             * @description the runs it would cancel or ask to stop
+             */
+            runs: number;
+            /**
+             * People
+             * @description the people it covers; null for the whole hub
+             */
+            people: number | null;
+            /**
+             * Holds
+             * @description a stop of that scope holds already
+             */
+            holds: boolean;
         };
         /**
          * StopSet
@@ -41874,6 +42155,151 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_stop_v1_autonomy_stops_preview_get: {
+        parameters: {
+            query: {
+                scope: "login" | "unit" | "all";
+                login?: string | null;
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopPreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_settings_v1_autonomy_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomySettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_org_autonomy_v1_autonomy_org_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgAutonomy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

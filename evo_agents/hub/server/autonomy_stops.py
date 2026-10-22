@@ -11,6 +11,8 @@
   same scope while one holds is refused (409).
 - POST /v1/autonomy/stops/lift: lift the stop that holds for that scope, which the same people may do; it writes
   ``autonomy.stop.lift`` and tells the same people. No stop holding there is a 404.
+- GET /v1/autonomy/stops/preview: what a stop of that scope would cancel now, for the web's confirmation; the same
+  people may read it, and it writes nothing.
 
 A local run is only recorded by the hub, which neither cancels it nor holds it.
 """
@@ -21,14 +23,15 @@ import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org, runs, tables
 from evo_agents.hub.server import audit, autonomy_store, lease_ending, org_store
 from evo_agents.hub.server.autonomy_hold import LOGIN, UNIT, scope_name
+from evo_agents.hub.server.autonomy_page_models import StopPreview
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, one_line
 from evo_agents.hub.server.org_models import LOGIN_PATTERN
@@ -271,3 +274,36 @@ async def lift_stop(request: Request, body: StopSet, user: CurrentUser) -> StopV
         view = await lift(conn, user, body)
     log.info("autonomy stop lifted", extra={"stop": view.id, "target": view.target})
     return view
+
+
+async def preview(conn: AsyncConnection, user: Principal, body: StopSet) -> StopPreview:
+    """What the stop ``body`` names would cancel now, once ``user`` may write it."""
+    user_id, unit, chart, day = await _subject(conn, body, user)
+    covered = _covered(chart, day, user_id, unit)
+    r = tables.runs
+    query = select(func.count()).where(r.c.state.not_in(runs.TERMINAL_STATES), r.c.kind != "local")
+    if covered is not None:
+        query = query.where(r.c.principal_id.in_(covered))
+    return StopPreview(
+        target=scope_name(body.scope, body.login, None if unit is None else unit.slug),
+        runs=(await conn.execute(query)).scalar_one(),
+        people=None if covered is None else len(covered),
+        holds=await _live(conn, body.scope, user_id, unit) is not None,
+    )
+
+
+@router.get("/preview", response_model=StopPreview, responses=REFUSALS)
+async def preview_stop(
+    request: Request,
+    user: CurrentUser,
+    scope: Literal["login", "unit", "all"],
+    login: str | None = Query(None, max_length=100),
+    unit: str | None = Query(None, max_length=63),
+) -> StopPreview:
+    """How many runs and people a stop of that scope would cover now, and whether one holds already."""
+    try:
+        body = StopSet(scope=scope, login=login, unit=unit)
+    except ValidationError as exc:
+        raise HTTPException(422, "; ".join(error["msg"] for error in exc.errors())) from exc
+    async with request.app.state.engine.connect() as conn:
+        return await preview(conn, user, body)
