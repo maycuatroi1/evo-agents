@@ -61,6 +61,9 @@ def test_orgchart_expiry_the_day_a_seat_ended_and_who_is_at_a0():
     assert org.end_day(c, c.seats[12], TODAY) == date(2026, 10, 21)
 
 
+# The job queue is the hub's (the hub-server extra, procrastinate), which macOS and Windows do not install: like the
+# other tests of the hub's periodic jobs, it runs where the hub tests do.
+@needs_pg
 def test_orgchart_expiry_the_job_runs_hourly_and_queues_at_most_one():
     from evo_agents.hub import jobs
     from evo_agents.hub.worker import queue
