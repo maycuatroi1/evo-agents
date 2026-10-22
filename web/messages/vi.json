@@ -5111,7 +5111,8 @@
       "question": "Câu hỏi",
       "triage": "Run lỗi",
       "release": "Phát hành",
-      "loop": "Loop"
+      "loop": "Loop",
+      "autonomy": "Mức tự chủ"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -5134,7 +5135,8 @@
       "loop_paused": "Loop đã tự dừng",
       "goal_review": "Rà goal của tháng",
       "loop_brief": "Bản tin sáng của Loop",
-      "plugin_notice": "Thông báo từ một plugin"
+      "plugin_notice": "Thông báo từ một plugin",
+      "autonomy": "Việc hub đã làm theo mức tự chủ của bạn"
     },
     "item": {
       "unread": "Chưa đọc",

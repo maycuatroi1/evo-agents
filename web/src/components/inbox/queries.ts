@@ -48,6 +48,7 @@ export const NOTICE_KINDS = [
   "goal_review",
   "loop_brief",
   "plugin_notice",
+  "autonomy",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [
@@ -61,9 +62,10 @@ export const DECISION_CATEGORIES = [
 ] as const satisfies readonly DecisionCategory[];
 /**
  * `runs.HUB_DECISION_CATEGORIES`: decisions of the hub's own (a stopped release cycle, a work item of the Loop that
- * failed a third time). The hub does what the option chosen says, whatever state the run they name is in.
+ * failed a third time, a merge, deploy or release the principal's autonomy asks about). The hub does what the option
+ * chosen says, whatever state the run they name is in.
  */
-export const HUB_DECISION_CATEGORIES = ["release", "loop"] as const satisfies readonly DecisionCategory[];
+export const HUB_DECISION_CATEGORIES = ["release", "loop", "autonomy"] as const satisfies readonly DecisionCategory[];
 
 /** `runs.MAX_ANSWER_BYTES`: the owner's own words in an answer are at most 4 KiB of UTF-8. */
 export const MAX_ANSWER_BYTES = 4 * 1024;

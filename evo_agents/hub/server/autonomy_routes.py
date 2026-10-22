@@ -16,7 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from evo_agents.hub.server import autonomy_store
+from evo_agents.hub.server import autonomy_store, route_autonomy
 from evo_agents.hub.server.autonomy_models import AutonomyView, PrefSet, PrefWritten
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import HANDLE_PATTERN, LOGIN_PATTERN
@@ -25,7 +25,9 @@ from evo_agents.hub.server.security import CurrentUser
 Name = Annotated[str | None, Query(min_length=1, max_length=100)]  # a project or a repo, as the hub names them
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422)}
 
-router = APIRouter(prefix="/v1/autonomy", tags=["autonomy"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1/autonomy", tags=["autonomy"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
+)
 
 
 @router.get("", response_model=AutonomyView, responses=REFUSALS)

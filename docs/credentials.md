@@ -128,8 +128,10 @@ evo-agents hub secret list --json
 evo-agents hub secret delete gitlab-docs
 ```
 
-`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U] | --kind forge --url-prefix
-URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
+`secret set NAME (--kind env --env-var VAR [--environment test] | --kind git --url-prefix URL [--username U] | --kind
+forge --url-prefix URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the
+value. `--environment test` labels an env secret for tests: a run whose principal's K7 is `auto:test_secrets` is leased
+those alone, besides its runtime's sign-in (`docs/autonomy-levels.md`). It reads the value from stdin when stdin is not
 a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
 arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
@@ -166,6 +168,12 @@ pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https
 ```
 
 ## Which leases a run gets
+
+K7 of the run's principal narrows what follows (`docs/autonomy-levels.md`, `server/lease_autonomy.py`): under
+`auto:run_branch`, `auto:test_secrets` or deny a run gets a GitHub token that writes only for a repo whose ruleset keeps
+the App off its default branch, a token that reads for that repo alone elsewhere, a git secret only for an origin whose
+default branch on GitLab no one may push to, and no env secret but its runtime's (and those labelled test under
+`auto:test_secrets`). A run without an autonomy snapshot, or at auto or notify, gets what follows unchanged.
 
 `evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
 protocol header, for a run the worker holds: one of the held states, `waiting` of a plan run among them. Any other run,

@@ -50,7 +50,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy, judge, merge_gate, runs, tables, task_runs
-from evo_agents.hub.server import audit, change_tiers
+from evo_agents.hub.server import audit, autonomy_gates, change_tiers
 from evo_agents.hub.server.autonomy_policies import project_repos
 from evo_agents.hub.server.forge import forge_token, has_forge
 from evo_agents.hub.server.gitlab import GitLab, GitLabRefused, GitLabUnavailable, MergeRequest, project_of
@@ -151,9 +151,17 @@ async def close(conn: AsyncConnection, row, why: str, mr: MergeRequest | None = 
     await record(conn, row, "closed", reason=reason, sha=row.head_sha, detail=detail)
 
 
-async def ready(conn: AsyncConnection, row, why: str) -> None:
+async def ready(conn: AsyncConnection, row, why: str) -> bool:
     """Every gate passed at the head of ``row``: it waits for its turn on the target branch (the queue's), at the place
-    it had when its turn sent it back to its gates (``queued_at`` kept), else last."""
+    it had when its turn sent it back to its gates (``queued_at`` kept), else last. Whether it did: K5 of the
+    principal of the run that made it (``autonomy_gates``) keeps it judging while the principal is asked, and blocks it
+    on a deny or a refusal."""
+    said = await autonomy_gates.check(conn, row.run_id, "K5", **merge_act(row))
+    if not said.act:
+        reason = merge_gate.reason_line(merge_gate.WAITS + said.reason if said.waits else said.reason)
+        if reason != row.reason:
+            await set_row(conn, row.id, state="judging" if said.waits else "blocked", reason=reason)
+        return False
     q = tables.merge_queue
     await set_row(
         conn,
@@ -166,6 +174,17 @@ async def ready(conn: AsyncConnection, row, why: str) -> None:
         judge_key=None,
     )
     await record(conn, row, "queued", reason=why, sha=row.head_sha)
+    return True
+
+
+def merge_act(row) -> dict:
+    """The act of merging ``row``, as the gates of autonomy name it."""
+    return {
+        "key": f"merge {row.repo}!{row.iid}",
+        "what": f"merge !{row.iid} of {row.repo} into {row.target_branch}",
+        "repo": row.repo,
+        "risk": bool((row.risk or {}).get("high")),
+    }
 
 
 # What the queue takes
@@ -841,8 +860,8 @@ class RepoPass:
                 for gate in (4, 5, 6, 7):
                     why = f"the patch is the one judged before (fingerprint {fingerprint[:12]}): its verdict holds"
                     await record(conn, row, "gate", gate=gate, passed=True, reason=why, sha=mr.sha)
-                await ready(conn, row, "every gate passed, the Judges' verdicts kept for the same patch")
-                self.outcomes["ready"] += 1
+                if await ready(conn, row, "every gate passed, the Judges' verdicts kept for the same patch"):
+                    self.outcomes["ready"] += 1
                 return
         await self.judging(row_id)
 
@@ -856,8 +875,8 @@ class RepoPass:
                 return
             step = next_round(row.verdict, row.risk)
             if step == "ready":
-                await ready(conn, row, "every gate passed")
-                self.outcomes["ready"] += 1
+                if await ready(conn, row, "every gate passed"):
+                    self.outcomes["ready"] += 1
                 return
             if step == "failed":
                 await hold(conn, row, 5, "the Judges' verdict for this patch did not pass it", blocked=True)

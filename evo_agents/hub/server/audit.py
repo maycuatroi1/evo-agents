@@ -170,6 +170,13 @@ ORG_SEAT_END = "org.seat_end"
 # [ K6=deny ...][ reset] revision=<n>"; never a ceiling's note.
 AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
 AUTONOMY_PREF_SET = "autonomy.pref_set"
+# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy_gates,
+# .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
+# act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
+# told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
+AUTONOMY_REFUSED = "autonomy.refused"
+AUTONOMY_ASKED = "autonomy.asked"
+AUTONOMY_NOTIFIED = "autonomy.notified"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a

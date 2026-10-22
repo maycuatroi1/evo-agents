@@ -232,6 +232,13 @@ class Choice:
     condition: str | None = None
 
 
+def refusal(klass: str, mode: str, choice: Choice) -> str:
+    """The sentence of a refusal of the hub's gates: the class, the mode and the source that sets it."""
+    return f"{klass} ({CLASS_NAMES[klass]}) is {mode} for the run's principal, set by {choice.source}" + (
+        f" ({choice.detail})" if choice.detail else ""
+    )
+
+
 @dataclass(frozen=True)
 class Reached:
     level: str

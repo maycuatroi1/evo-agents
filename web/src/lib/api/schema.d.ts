@@ -11772,7 +11772,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "autonomy";
             /** Question */
             question: string;
             /**
@@ -15250,7 +15250,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -15868,7 +15868,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "autonomy";
             /** Question */
             question: string;
             /**
@@ -21527,6 +21527,11 @@ export interface components {
              */
             username: string | null;
             /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
              * Projects
              * @description the projects whose runs get it
              */
@@ -21573,6 +21578,11 @@ export interface components {
              * @description kind git only: the user git sends with the value; oauth2 when left out
              */
             username?: string | null;
+            /**
+             * Environment
+             * @description kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy-levels.md)
+             */
+            environment?: "test" | null;
             /**
              * Projects
              * @description the projects whose runs get it; the writer role on each, the admin role for kind forge
@@ -21621,6 +21631,11 @@ export interface components {
              * @description kind git: the user git sends with it
              */
             username: string | null;
+            /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
             /**
              * Projects
              * @description the projects whose runs get it
