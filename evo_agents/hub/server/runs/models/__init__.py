@@ -134,6 +134,9 @@ class Dispatch(BaseModel):
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
     plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
     browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
+    identities: list[browser_help.IdentityName] = Field(
+        [], max_length=browser_help.MAX_RUN_IDENTITIES, description=browser_help.IDENTITIES_HELP
+    )
 
     @model_validator(mode="after")
     def _bounded_plugin_config(self) -> Dispatch:
@@ -194,6 +197,9 @@ class PlanRunDispatch(BaseModel):
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
     browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
+    identities: list[browser_help.IdentityName] = Field(
+        [], max_length=browser_help.MAX_RUN_IDENTITIES, description=browser_help.IDENTITIES_HELP
+    )
 
 
 class Rerun(BaseModel):
@@ -322,6 +328,7 @@ class Run(BaseModel):
         "(usage.sessions). False for any other run",
     )
     browser: bool = Field(False, description=browser_help.RUN_HELP)
+    browser_identities: list[int] = Field([], description=browser_help.RUN_IDENTITIES_HELP)
     profile: str | None = Field(
         None, description="the handle of the agent profile the run went under; null for a run from before schema 0030"
     )
@@ -495,6 +502,9 @@ class RunSpec(BaseModel):
         "and the handoff of the plan; false: one session does every step, with the prompt above",
     )
     browser: bool = Field(False, description=browser_help.SPEC_HELP, exclude_if=browser_help.no_browser)
+    browser_identities: list[int] = Field(
+        [], description=browser_help.SPEC_IDENTITIES_HELP, exclude_if=browser_help.no_identities
+    )
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )

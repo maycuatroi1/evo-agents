@@ -575,6 +575,7 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.request,
         r.c.session_per_step,
         r.c.browser,
+        r.c.browser_identities,
         r.c.profile_id,
         r.c.profile_version,
     )

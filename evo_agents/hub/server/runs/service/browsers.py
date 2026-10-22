@@ -5,15 +5,24 @@ A worker whose heartbeat lists the feature browser (``runs.BROWSER``) reports it
 (``models.browser.BrowserReport``), max among it: how many browser runs it holds at once. The claim hands it a browser
 run only while it holds fewer than that (``claim_gate``; the claim locks the worker's row, so two claims of one worker
 never both take the last one), and never hands one to any other worker; a run without a browser claims as before. A
-dispatch pinned to a worker that does not report the feature is refused (``unfit``) rather than queued for good."""
+dispatch pinned to a worker that does not report the feature is refused (``unfit``) rather than queued for good.
+
+A dispatch may name browser identities (criterion a4): ``resolve`` finds each, the caller's own of that name before
+the project's, and the dispatch pins the run to the one worker that holds them all. The claim hands such a run only to
+that worker, and only while none of its identities is held by another run (``claim_gate``); ``browser_holds`` gives
+them to the run as it is claimed and takes them back as it leaves the held states. A rerun keeps them while they are
+still live and the caller's to use (``rerun_browser``)."""
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from fastapi import HTTPException
+from sqlalchemy import and_, any_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.models import Rerun
+from evo_agents.hub.server.security import Principal
 
 NO_BROWSER = (
     "its daemon reports no Chromium (the feature browser): run `evo-agents worker browser install` on it and restart "
@@ -36,7 +45,13 @@ def claim_gate(worker_id: int, features):
         .scalar_subquery()
     )
     room = select(func.coalesce(w.c.browser["max"].as_integer(), 1)).where(w.c.id == worker_id).scalar_subquery()
-    return or_(r.c.browser.is_(False), holding < room)
+    b = tables.browser_identities
+    taken = exists().where(  # an identity of the run another run holds, or one this worker does not hold
+        b.c.id == any_(r.c.browser_identities),
+        b.c.deleted_at.is_(None),
+        or_(b.c.held_by_run.is_not(None), b.c.worker_id != worker_id),
+    )
+    return and_(or_(r.c.browser.is_(False), holding < room), ~taken)
 
 
 def unfit(features, browser: bool) -> list[str]:
@@ -45,9 +60,73 @@ def unfit(features, browser: bool) -> list[str]:
     return [NO_BROWSER] if browser and runs.BROWSER not in features else []
 
 
-async def rerun_browser(conn: AsyncConnection, run_id: int, body: Rerun | None) -> bool:
-    """Whether the rerun of run ``run_id`` gets a browser: as ``body`` asks, else as the run had one."""
-    if body is not None and body.browser is not None:
-        return body.browser
+def _mine_or_project(user: Principal):
+    b = tables.browser_identities
+    return or_(b.c.owner_kind == "project", and_(b.c.owner_kind == "member", b.c.owner_id == user.user_id))
+
+
+async def resolve(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, names, pinned
+) -> tuple[list[int], int]:
+    """The ids of the browser identities ``names`` a dispatch by ``user`` in project ``access`` names, in its order,
+    and the worker that holds them: each the caller's own of that name, else the project's. 422 for a name that is
+    neither, an identity disabled, identities on more than one worker, or a dispatch ``pinned`` to another worker."""
+    names = list(dict.fromkeys(names))
+    if not names:
+        return [], 0
+    b = tables.browser_identities
+    query = select(b.c.id, b.c.name, b.c.owner_kind, b.c.worker_id, b.c.status).where(
+        b.c.project_id == access.project_id, b.c.name.in_(names), b.c.deleted_at.is_(None), _mine_or_project(user)
+    )
+    found: dict = {}
+    for row in sorted((await conn.execute(query)).all(), key=lambda row: row.owner_kind != "member"):
+        found.setdefault(row.name, row)  # the caller's own first
+    missing = [name for name in names if name not in found]
+    if missing:
+        raise HTTPException(
+            422,
+            f"project {access.name} has no browser identity {', '.join(missing)} of yours or its own "
+            "(`evo-agents hub browser identity list`); nothing was dispatched",
+        )
+    disabled = [name for name in names if found[name].status == "disabled"]
+    if disabled:
+        raise HTTPException(422, f"browser identity {', '.join(disabled)} is disabled; nothing was dispatched")
+    workers = {found[name].worker_id for name in names}
+    if len(workers) > 1:
+        raise HTTPException(
+            422,
+            "the browser identities of one run are held by one worker, and these are on several; nothing was "
+            "dispatched",
+        )
+    worker_id = workers.pop()
+    if pinned is not None and pinned.id != worker_id:
+        raise HTTPException(
+            422,
+            f"the run is pinned to worker {pinned.name}, and its browser identities open only on the worker that "
+            "holds them: pin it there or not at all; nothing was dispatched",
+        )
+    return [found[name].id for name in names], worker_id
+
+
+async def rerun_browser(conn: AsyncConnection, user: Principal, run_id: int, body: Rerun | None, worker):
+    """Whether the rerun of run ``run_id`` by ``user`` gets a browser, as ``body`` asks, else as the run had one, and
+    the ids of the browser identities it keeps: the run's, unless it gets no browser. 409 when one of them is deleted,
+    disabled or no longer ``user``'s to use, or the rerun goes to another ``worker`` than theirs."""
     r = tables.runs
-    return bool((await conn.execute(select(r.c.browser).where(r.c.id == run_id))).scalar_one())
+    browser, ids = (await conn.execute(select(r.c.browser, r.c.browser_identities).where(r.c.id == run_id))).one()
+    if body is not None and body.browser is not None:
+        browser = body.browser
+    ids = list(ids or ()) if browser else []
+    if ids:
+        b = tables.browser_identities
+        usable = select(b.c.worker_id).where(
+            b.c.id.in_(ids), b.c.deleted_at.is_(None), b.c.status != "disabled", _mine_or_project(user)
+        )
+        workers = (await conn.execute(usable)).scalars().all()
+        if len(workers) != len(set(ids)) or worker is None or {worker.id} != set(workers):
+            raise HTTPException(
+                409,
+                f"run {run_id} opened browser identities that are deleted, disabled, not yours to use, or on another "
+                "worker than the rerun's: rerun it with browser false, or dispatch the step again with identities",
+            )
+    return bool(browser), ids
