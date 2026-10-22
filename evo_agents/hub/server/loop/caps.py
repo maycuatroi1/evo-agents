@@ -41,15 +41,18 @@ def timeout_s(kind: str, policy: Mapping) -> int:
     return run_budget(kind, policy)["max_seconds"] + GRACE_SECONDS
 
 
-async def hand_task(conn: AsyncConnection, project_id: int, kind: str, task: str, title: str | None = None) -> Handed:
+async def hand_task(
+    conn: AsyncConnection, project_id: int, kind: str, task: str, title: str | None = None, for_id: int | None = None
+) -> Handed:
     """Hand ``task`` to the agent type of a work item of ``kind`` (brainstorm or use_case) in project ``project_id``,
-    in the caller's transaction: the task run, or ``type_refused`` with why the hub handed none."""
+    in the caller's transaction, for the person ``for_id`` (the owner of the item's goal): the task run, or
+    ``type_refused`` with why the hub handed none."""
     # Imported here: task_dispatch's own imports go round a cycle when it is the first module of the server a process
     # loads (evo_agents.core_plugins.srs.auto_tasks says the same).
     from evo_agents.hub.server.task_dispatch import hand_own_task
 
     plugin, name = AGENT_OF[kind]
-    run_id, why = await hand_own_task(conn, plugin, project_id, name, task, title)
+    run_id, why = await hand_own_task(conn, plugin, project_id, name, task, title, for_id)
     if run_id is None:
         return Handed(reason=TYPE_REFUSED, why=why)
     return Handed(run_id=run_id)

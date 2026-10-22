@@ -20,6 +20,10 @@ mode as ``evo_agents.hub.autonomy_levels`` reads it), and the environments and t
 
 autonomy_prefs (0100) holds every revision of a person's own autonomy preference, never changed: the user, the
 revision (1 and up), the level and the class overrides. A person without a row prefers A5.
+
+Revision 0101 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
+autonomy taken when the run was queued (``evo_agents.hub.server.run_autonomy``); ``org_tables`` adds both to the runs
+table it is given, so that ``evo_agents.hub.tables`` describes runs whole.
 """
 
 from __future__ import annotations
@@ -155,6 +159,15 @@ def prefs_table(metadata: MetaData) -> Table:
     )
 
 
-def org_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``."""
+def run_columns(runs: Table) -> None:
+    """The principal of a run and the snapshot of its autonomy (0101)."""
+    runs.append_column(Column("principal_id", BigInteger))
+    runs.append_column(Column("autonomy", JSONB))
+    runs.append_constraint(_key("runs", "principal_id", "users", "RESTRICT"))
+
+
+def org_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table]:
+    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``, and the autonomy columns of
+    ``runs``."""
+    run_columns(runs)
     return units_table(metadata), seats_table(metadata), ceilings_table(metadata), prefs_table(metadata)

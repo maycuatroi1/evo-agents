@@ -61,6 +61,32 @@ are the intersection of the lists the ceilings of sources 2, 3 and 5 give; a cei
 A preference above the ceilings is stored as written, and the ceilings still decide. A ceiling never allows a class
 above the writer's own effective mode on it: a lead whose unit caps K6 at ask cannot give a cohort below K6 notify.
 
+## Runs: principal, snapshot and gates
+
+Every run the hub queues (all kinds but local) acts for a principal, whose effective autonomy bounds it:
+
+| Run | Principal |
+|---|---|
+| step, plan, author or task run | the member who dispatched it (a task run: its agent type's run_as) |
+| chat run | the person who wrote the message that mentions the agent |
+| chat run of an agent type with a run_as | that writer, bounded by the run_as person too: each class takes the stricter of both |
+| run the hub makes on its own (night shift, release cycle, triage) | the sponsor of the agent profile's live seat |
+| run of the Loop | the owner of the work item's goal |
+| agent without a seat | the run's owner, as before |
+| run an agent asks for (a mention by an agent) | the principal of the asking run, never wider than its snapshot |
+
+When the hub queues a run it writes `runs.principal_id` and the snapshot `runs.autonomy`: the level, each class with
+its mode, source and condition, the environments and workers allowed, `restricted` (a class below auto, the project
+policy aside), `also` (logins whose autonomy bounds it besides the principal) and `taken_at`. A next attempt and a
+resumed run copy both. A gate takes the stricter of the snapshot and the value now (`run_autonomy.recheck`, which the
+claim calls), and writes a stricter one back with `tightened_at`: a lower level reaches a running run at its next gate, a
+higher one only the runs queued after it.
+
+A worker claims a run only when its name is among the snapshot's workers and the host or an environment it takes is
+among its environments; a restricted run goes only to a daemon that reports the feature `autonomy`, on claude-code.
+A run at A5, or one without a snapshot, is claimed as before. `GET /v1/projects/<p>/runs/<id>` and
+`evo-agents hub run show --json` add `principal` and `autonomy`.
+
 ## Commands
 
 | Command | What it does |
@@ -78,4 +104,4 @@ ceiling.
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
 caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0100 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`.
+`workers` of `autonomy_ceilings`. Schema 0101 adds `principal_id` and `autonomy` to `runs`.

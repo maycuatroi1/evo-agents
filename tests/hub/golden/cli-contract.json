@@ -8567,7 +8567,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -8738,7 +8740,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -8842,7 +8846,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9163,7 +9169,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9267,7 +9275,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9371,7 +9381,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9830,7 +9842,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -9950,7 +9964,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10103,7 +10119,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -10207,7 +10225,9 @@
           "session_run_id",
           "session_turn",
           "session_turns",
-          "session_title"
+          "session_title",
+          "principal",
+          "autonomy"
         ],
         "schema": "Run"
       }
@@ -85745,6 +85765,29 @@
               ],
               "title": "Last Activity At",
               "description": "the last time a local run's session said anything; null for any other run"
+            },
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null for a local run and one queued before the hub knew principals"
+            },
+            "autonomy": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunAutonomy"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the autonomy it acts under; null where principal is"
             }
           },
           "type": "object",
@@ -85922,6 +85965,144 @@
             "cooldown_until"
           ],
           "title": "RunAccountEvent"
+        },
+        "RunAutonomy": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "title": "Level",
+              "description": "the lowest level of the sources, A0 to A5"
+            },
+            "level_source": {
+              "type": "string",
+              "title": "Level Source",
+              "description": "the source that sets that level"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/RunAutonomyClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, each its mode"
+            },
+            "environments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environments",
+              "description": "the environments it may run in; null: no limit"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "the workers (names, lowered) that may take it; null: any"
+            },
+            "restricted": {
+              "type": "boolean",
+              "title": "Restricted",
+              "description": "whether a class is below auto, so only a daemon that applies the modes takes it",
+              "default": false
+            },
+            "also": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Also",
+              "description": "logins besides the principal whose autonomy bounds it"
+            },
+            "taken_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Taken At",
+              "description": "when the hub took it"
+            },
+            "tightened_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tightened At",
+              "description": "when a gate last made it stricter; null: never"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level",
+            "level_source",
+            "classes",
+            "taken_at"
+          ],
+          "title": "RunAutonomy",
+          "description": "The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,\nmade stricter by every gate that found it lower since (``run_autonomy.recheck``)."
+        },
+        "RunAutonomyClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets the mode, as GET /v1/autonomy names it"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail",
+              "description": "how that source sets it"
+            },
+            "condition": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition",
+              "description": "the condition the mode acts under; null for none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source",
+            "detail"
+          ],
+          "title": "RunAutonomyClass",
+          "description": "One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how."
         },
         "RunBlobCommit": {
           "properties": {

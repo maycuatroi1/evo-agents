@@ -20026,6 +20026,13 @@ export interface components {
              * @description the last time a local run's session said anything; null for any other run
              */
             last_activity_at?: string | null;
+            /**
+             * Principal
+             * @description the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null for a local run and one queued before the hub knew principals
+             */
+            principal?: string | null;
+            /** @description the autonomy it acts under; null where principal is */
+            autonomy?: components["schemas"]["RunAutonomy"] | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -20086,6 +20093,88 @@ export interface components {
              * @description until when the account cools down
              */
             cooldown_until: string | null;
+        };
+        /**
+         * RunAutonomy
+         * @description The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,
+         *     made stricter by every gate that found it lower since (``run_autonomy.recheck``).
+         */
+        RunAutonomy: {
+            /**
+             * Level
+             * @description the lowest level of the sources, A0 to A5
+             */
+            level: string;
+            /**
+             * Level Source
+             * @description the source that sets that level
+             */
+            level_source: string;
+            /**
+             * Classes
+             * @description K1 to K12, each its mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["RunAutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments it may run in; null: no limit
+             */
+            environments?: string[] | null;
+            /**
+             * Workers
+             * @description the workers (names, lowered) that may take it; null: any
+             */
+            workers?: string[] | null;
+            /**
+             * Restricted
+             * @description whether a class is below auto, so only a daemon that applies the modes takes it
+             * @default false
+             */
+            restricted: boolean;
+            /**
+             * Also
+             * @description logins besides the principal whose autonomy bounds it
+             */
+            also?: string[];
+            /**
+             * Taken At
+             * Format: date-time
+             * @description when the hub took it
+             */
+            taken_at: string;
+            /**
+             * Tightened At
+             * @description when a gate last made it stricter; null: never
+             */
+            tightened_at?: string | null;
+        };
+        /**
+         * RunAutonomyClass
+         * @description One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how.
+         */
+        RunAutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode, as GET /v1/autonomy names it
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it
+             */
+            detail: string;
+            /**
+             * Condition
+             * @description the condition the mode acts under; null for none
+             */
+            condition?: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {

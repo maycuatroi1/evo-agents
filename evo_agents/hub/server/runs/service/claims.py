@@ -30,6 +30,7 @@ from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.server import run_autonomy
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -355,6 +356,26 @@ async def _skill_ticket(blobs, skill: HeldSkill) -> RunSkill:
     )
 
 
+AGAIN = object()  # a claim whose run its autonomy no longer lets the worker take: the next try looks again
+TRIES = 3  # claims in one try, each after one AGAIN
+
+
+async def _autonomy_at_claim(conn: AsyncConnection, run_id: int, name: str, worker: tuple, asked: str, rule):
+    """The autonomy of run ``run_id`` at its claim by the worker ``name`` (``worker``: its environments, features and
+    runtimes of the core): the stricter of its snapshot and the value now (``run_autonomy.recheck``, which writes it
+    back), None for a run without one, AGAIN when it no longer lets the worker take the run."""
+    found = await run_autonomy.recheck(conn, run_id)
+    if found is None:
+        return None
+    environments, features, runtimes = worker
+    runtime_ok = run_autonomy.runtime_fits(asked, runtimes, rule)
+    why = run_autonomy.claim_fits(found, name, environments, features, runtime_ok)
+    if why is None:
+        return found
+    log.info("claim passed over a run its autonomy keeps from the worker", extra={"run_id": run_id, "why": why})
+    return AGAIN
+
+
 async def _try_claim(
     engine,
     user: Principal,
@@ -362,6 +383,22 @@ async def _try_claim(
     gone: Callable[[], Awaitable[bool]] | None = None,
     blobs=None,
 ) -> RunSpec | None:
+    """``_claim_once``, again while the run it found turned out to be one its autonomy keeps from the worker (whose
+    tightened snapshot the next query passes over), up to TRIES times."""
+    for _ in range(TRIES):
+        spec = await _claim_once(engine, user, lease, gone, blobs)
+        if spec is not AGAIN:
+            return spec
+    return None
+
+
+async def _claim_once(
+    engine,
+    user: Principal,
+    lease: timedelta,
+    gone: Callable[[], Awaitable[bool]] | None = None,
+    blobs=None,
+):
     """Lease the run the worker of ``user`` may take now, if any, for ``lease`` (see the docstring of the package).
     When ``gone`` says the worker hung up once the run is leased, raise ClaimAbandoned before the transaction
     commits, which rolls the lease back. An author run comes with a presigned GET of its skill from the blob store
@@ -418,6 +455,10 @@ async def _try_claim(
         if row is None:
             return None
         run_id, asked, kind, rule, project_id, environment_rule, packs = row
+        found = await _autonomy_at_claim(conn, run_id, name, (environments, features, runtimes), asked, rule)
+        if found is AGAIN:
+            return AGAIN
+        environment_rule = run_autonomy.environment_rule(environment_rule, found)
         project = served[project_id]
         placed = await _placed_or_failed(conn, run_id, asked if asked in offered else None, project_id, project)
         if placed is not None:
@@ -434,7 +475,7 @@ async def _try_claim(
                 await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
                 log.warning("author run failed at its claim", extra={"run_id": run_id, "worker_id": worker_id})
                 return None
-        runtime = pick_runtime(asked, runtimes, rule)
+        runtime = run_autonomy.claim_runtime(found) or pick_runtime(asked, runtimes, rule)
         await move_run(
             conn,
             run_id,
@@ -447,17 +488,23 @@ async def _try_claim(
             lease=lease,
         )
         await record_run_plugins(conn, run_id)  # the version and config digest of each plugin of its project
-        spec = await _run_spec(conn, run_id, tuple(features or ()))
-        if skill is not None:
-            spec.skills = [await _skill_ticket(blobs, skill)]
-        if placed.runtime is not None:
-            spec.plugin_runtime = PluginRuntime(**placed.runtime.to_json())
-        if placed.container is not None:
-            spec.environment = RunEnvironment(**placed.container.to_json())
-        spec.packs = list(placed.packs)
+        spec = await _dressed(await _run_spec(conn, run_id, tuple(features or ())), placed, skill, blobs)
         if gone is not None and await gone():
             raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
+    return spec
+
+
+async def _dressed(spec: RunSpec, placed: Placed, skill: HeldSkill | None, blobs) -> RunSpec:
+    """``spec`` with what its claim placed: the ticket of its ``skill`` (an author run's), the plugin runtime, the
+    environment and the packs of ``placed``."""
+    if skill is not None:
+        spec.skills = [await _skill_ticket(blobs, skill)]
+    if placed.runtime is not None:
+        spec.plugin_runtime = PluginRuntime(**placed.runtime.to_json())
+    if placed.container is not None:
+        spec.environment = RunEnvironment(**placed.container.to_json())
+    spec.packs = list(placed.packs)
     return spec
 
 

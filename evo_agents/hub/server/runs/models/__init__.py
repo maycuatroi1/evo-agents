@@ -22,6 +22,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     PlanCopy,
     PluginRuntime,
     ReleaseSpec,
+    RunAutonomy,
     RunBudget,
     RunEnvironment,
     RunPack,
@@ -359,6 +360,12 @@ class Run(BaseModel):
     last_activity_at: datetime | None = Field(
         None, description="the last time a local run's session said anything; null for any other run"
     )
+    principal: str | None = Field(
+        None,
+        description="the login of the person the run acts for, whose autonomy bounds it (plan autonomy-levels); null "
+        "for a local run and one queued before the hub knew principals",
+    )
+    autonomy: RunAutonomy | None = Field(None, description="the autonomy it acts under; null where principal is")
 
 
 class ClaimRequest(BaseModel):

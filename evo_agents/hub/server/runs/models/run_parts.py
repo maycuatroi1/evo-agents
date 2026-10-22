@@ -138,3 +138,29 @@ class RunEnvironment(BaseModel):
     image: str = Field(description="[registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest")
     network: Literal["none", "outbound"]
     mounts: list[RunMount] = Field(default_factory=list, description="besides the worktree and the run's home")
+
+
+class RunAutonomyClass(BaseModel):
+    """One class of a run's autonomy snapshot (plan autonomy-levels): its mode, the source that set it and how."""
+
+    mode: Literal["deny", "ask", "notify", "auto"]
+    source: str = Field(description="the source that sets the mode, as GET /v1/autonomy names it")
+    detail: str = Field(description="how that source sets it")
+    condition: str | None = Field(None, description="the condition the mode acts under; null for none")
+
+
+class RunAutonomy(BaseModel):
+    """The autonomy a run acts under: its principal's effective autonomy as the hub took it when it queued the run,
+    made stricter by every gate that found it lower since (``run_autonomy.recheck``)."""
+
+    level: str = Field(description="the lowest level of the sources, A0 to A5")
+    level_source: str = Field(description="the source that sets that level")
+    classes: dict[str, RunAutonomyClass] = Field(description="K1 to K12, each its mode")
+    environments: list[str] | None = Field(None, description="the environments it may run in; null: no limit")
+    workers: list[str] | None = Field(None, description="the workers (names, lowered) that may take it; null: any")
+    restricted: bool = Field(
+        False, description="whether a class is below auto, so only a daemon that applies the modes takes it"
+    )
+    also: list[str] = Field(default_factory=list, description="logins besides the principal whose autonomy bounds it")
+    taken_at: datetime = Field(description="when the hub took it")
+    tightened_at: datetime | None = Field(None, description="when a gate last made it stricter; null: never")

@@ -33,7 +33,7 @@ Standard library only: the CLI reads its names, and the server builds its source
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 LEVELS = ("A0", "A1", "A2", "A3", "A4", "A5")
 HIGHEST = LEVELS[-1]
@@ -309,12 +309,15 @@ def pref_source(login: str, level: str | None, overrides: Mapping[str, str] | No
     return Source(f"pref:{login}", level, dict(overrides or {}), detail="their own preference")
 
 
+POLICY = "policy:"  # the prefix of the name of source 4
+
+
 def policy_source(project: str, repo: str, mode: str, prod_release: str) -> Source:
     """Source 4, the project policy of one repo: mode off caps K5 at ask, prod_release manual caps K6 at ask."""
     overrides = {"K5": ASK} if mode == REPO_OFF else {}
     if prod_release == RELEASE_MANUAL:
         overrides["K6"] = ASK
-    return Source(f"policy:{project}/{repo}", None, overrides, detail=f"mode {mode}, prod_release {prod_release}")
+    return Source(f"{POLICY}{project}/{repo}", None, overrides, detail=f"mode {mode}, prod_release {prod_release}")
 
 
 def credential_source() -> Source:
@@ -335,3 +338,74 @@ def escalation(klass_cells: Mapping[str, Cell], own: Reached) -> str | None:
             choice = own.classes[klass]
             return f"{klass}={given.text()} lies above their own effective mode {held.text()} (from {choice.source})"
     return None
+
+
+# The snapshot of a run (criteria a4, a5 and a7): what the hub took at dispatch, and the strictest of two
+
+
+def _stricter_choice(klass: str, a: Choice, b: Choice) -> Choice:
+    first, other = (b, a) if mode_rank(b.mode) < mode_rank(a.mode) else (a, b)
+    if first.mode not in ACTING or other.mode not in ACTING:
+        return first
+    if condition_rank(klass, other.condition) < condition_rank(klass, first.condition):
+        held = CONDITION_TEXT[other.condition]
+        return replace(first, condition=other.condition, detail=f"{first.detail}; {held} from {other.source}")
+    return first
+
+
+def _both(a: tuple[str, ...] | None, b: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    if a is None or b is None:
+        return b if a is None else a
+    return tuple(sorted(set(a) & set(b)))
+
+
+def stricter(a: Reached, b: Reached) -> Reached:
+    """The strictest of ``a`` and ``b``: each class at the stricter mode, ``a``'s on a tie, under the stricter
+    condition of the two while it acts; the lower level; the environments and the workers both allow."""
+    level, level_source = (b.level, b.level_source) if rank(b.level) < rank(a.level) else (a.level, a.level_source)
+    return Reached(
+        level=level,
+        level_source=level_source,
+        classes={klass: _stricter_choice(klass, a.classes[klass], b.classes[klass]) for klass in CLASSES},
+        environments=_both(a.environments, b.environments),
+        workers=_both(a.workers, b.workers),
+    )
+
+
+def restricted(reached: Reached) -> bool:
+    """Whether a run of ``reached`` is held to a worker that applies the modes (criterion a7): a class below auto
+    that a source other than the project policy sets. The policy's caps of K5 and K6 are the hub's own, the merge
+    queue and the release cycle hold them, and a repo is off by default: they keep no run from any worker."""
+    return any(choice.mode != AUTO and not choice.source.startswith(POLICY) for choice in reached.classes.values())
+
+
+def snapshot(reached: Reached, taken_at: str, also: Iterable[str] = ()) -> dict:
+    """``reached`` as runs.autonomy holds it: the level and its source, each class's mode, source, detail and
+    condition, the environments and the workers (null: no limit), when it was taken, and the logins of the persons
+    besides the principal whose autonomy bounds it (``also``, an agent type's run_as)."""
+    return {
+        "level": reached.level,
+        "level_source": reached.level_source,
+        "classes": {
+            klass: {"mode": c.mode, "source": c.source, "detail": c.detail, "condition": c.condition}
+            for klass, c in reached.classes.items()
+        },
+        "environments": None if reached.environments is None else list(reached.environments),
+        "workers": None if reached.workers is None else list(reached.workers),
+        "taken_at": taken_at,
+        "also": list(also),
+    }
+
+
+def from_snapshot(body: Mapping) -> Reached:
+    """The ``Reached`` of a snapshot ``snapshot`` wrote."""
+    places = {key: None if body.get(key) is None else tuple(body[key]) for key in ("environments", "workers")}
+    return Reached(
+        level=body["level"],
+        level_source=body["level_source"],
+        classes={
+            klass: Choice(held["mode"], held["source"], held["detail"], held.get("condition"))
+            for klass, held in body["classes"].items()
+        },
+        **places,
+    )
