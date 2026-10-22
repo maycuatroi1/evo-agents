@@ -9299,6 +9299,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -9471,6 +9472,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -9576,6 +9578,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -9818,6 +9821,14 @@
         },
         {
           "flags": [
+            "--identity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--model"
           ],
           "value": "string",
@@ -9906,6 +9917,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10011,6 +10023,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10116,6 +10129,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10505,6 +10519,14 @@
         },
         {
           "flags": [
+            "--identity"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--account"
           ],
           "value": "string",
@@ -10585,6 +10607,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10714,6 +10737,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10868,6 +10892,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -10973,6 +10998,7 @@
           "failure_cause",
           "session_per_step",
           "browser",
+          "browser_identities",
           "profile",
           "profile_id",
           "profile_version",
@@ -48701,6 +48727,361 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/browser-profile": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Lease Browser Profile",
+          "description": "One of the run's browser identities, with its profile: what its Chromium opens with.",
+          "operationId": "lease_browser_profile_v1_worker_runs__run_id__browser_profile_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileLease"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-profile/{identity_id}/needs-login": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Browser Needs Login",
+          "description": "The run's Chromium could not use the identity's profile: it waits for a new login.",
+          "operationId": "browser_needs_login_v1_worker_runs__run_id__browser_profile__identity_id__needs_login_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "one of the run's browser identities",
+                "title": "Identity Id"
+              },
+              "description": "one of the run's browser identities"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserNeedsLogin"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserIdentityState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/browser-profile/{identity_id}": {
+        "put": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Save Browser Profile",
+          "description": "Seal the profile the run's Chromium leaves as the identity's next version, while the run holds it.",
+          "operationId": "save_browser_profile_v1_worker_runs__run_id__browser_profile__identity_id__put",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "identity_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "one of the run's browser identities",
+                "title": "Identity Id"
+              },
+              "description": "one of the run's browser identities"
+            },
+            {
+              "name": "base_version",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "the version the run's profile started from",
+                "title": "Base Version"
+              },
+              "description": "the version the run's profile started from"
+            },
+            {
+              "name": "chromium_version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{1,4}(\\.[0-9]{1,6}){0,3}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the worker's Chromium, as it says its version",
+                "title": "Chromium Version"
+              },
+              "description": "the worker's Chromium, as it says its version"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BrowserProfileSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the archive of the profile, as `evo_agents.hub.browser_archive.pack` makes it",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
         "post": {
           "tags": [
@@ -61987,6 +62368,151 @@
           ],
           "title": "BrowserIdentityCreate"
         },
+        "BrowserIdentityState": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "status"
+          ],
+          "title": "BrowserIdentityState"
+        },
+        "BrowserNeedsLogin": {
+          "properties": {
+            "cause": {
+              "type": "string",
+              "enum": [
+                "unopenable",
+                "newer_chromium"
+              ],
+              "title": "Cause",
+              "description": "unopenable: the worker's Chromium could not open the profile; newer_chromium: a Chromium newer than the worker's saved it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "cause"
+          ],
+          "title": "BrowserNeedsLogin"
+        },
+        "BrowserProfileAsk": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Identity Id",
+              "description": "one of the run's browser_identities"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id"
+          ],
+          "title": "BrowserProfileAsk"
+        },
+        "BrowserProfileLease": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Domains",
+              "description": "the sites whose cookies the profile keeps, each with its subdomains; the worker drops every other cookie before it saves the profile"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "needs_login",
+                "disabled"
+              ],
+              "title": "Status"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the profile handed out, the base_version of its save; 0: none"
+            },
+            "chromium_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chromium Version",
+              "description": "the Chromium that saved it, as it said; null for none"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the archive of the profile in base64: a gzipped tar of the profile directory without its caches; null for one never saved, or one the hub could not open, which sets the identity needs_login"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "name",
+            "domains",
+            "status",
+            "version",
+            "chromium_version",
+            "profile"
+          ],
+          "title": "BrowserProfileLease"
+        },
+        "BrowserProfileSaved": {
+          "properties": {
+            "identity_id": {
+              "type": "integer",
+              "title": "Identity Id"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version the profile is at now, the one saved"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identity_id",
+            "version"
+          ],
+          "title": "BrowserProfileSaved"
+        },
         "BrowserReport": {
           "properties": {
             "chromium": {
@@ -69513,6 +70039,19 @@
               "title": "Browser",
               "description": "true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot",
               "default": false
+            },
+            "identities": {
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a browser identity of yours of that name, else the project's (`evo-agents hub browser identity list`)"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Identities",
+              "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
+              "default": []
             }
           },
           "type": "object",
@@ -80389,6 +80928,19 @@
               "title": "Browser",
               "description": "true: the run's agent gets a Chromium of its own, which the worker starts and closes; only a worker whose heartbeat lists the feature browser takes the run, and the browser counts in the run's slot",
               "default": false
+            },
+            "identities": {
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a browser identity of yours of that name, else the project's (`evo-agents hub browser identity list`)"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Identities",
+              "description": "browser identities the run's Chromium opens with, by name, each yours or the project's and all on one worker: it starts on the profile of the first, with the cookies of the others, and saves them as the run ends; implies browser. The run goes only to their worker, pinned to it, and waits in the queue while another run holds one",
+              "default": []
             }
           },
           "type": "object",
@@ -87537,7 +88089,7 @@
                 }
               ],
               "title": "Browser",
-              "description": "true: the rerun gets a Chromium of its own; false: it gets none; null keeps what the run rerun had"
+              "description": "true: the rerun gets a Chromium of its own; false: it gets none, nor the run's browser identities; null keeps what the run rerun had"
             }
           },
           "additionalProperties": false,
@@ -88564,6 +89116,15 @@
               "title": "Browser",
               "description": "a run whose agent got a Chromium of its own on its worker (dispatched with browser); false for any other",
               "default": false
+            },
+            "browser_identities": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Browser Identities",
+              "description": "the ids of the browser identities the run's Chromium opened with, in the order dispatched",
+              "default": []
             },
             "profile": {
               "anyOf": [
@@ -90672,6 +91233,15 @@
               "title": "Browser",
               "description": "true: start a Chromium for the run's agent before its first turn and hand its DevTools endpoint to the agent (EVO_BROWSER_CDP); absent for a run without one",
               "default": false
+            },
+            "browser_identities": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Browser Identities",
+              "description": "the ids of the browser identities to open the run's Chromium with (POST /v1/worker/runs/{id}/browser-profile hands each one's profile), in order; absent for a run without them",
+              "default": []
             },
             "profile": {
               "anyOf": [

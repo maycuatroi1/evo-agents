@@ -463,6 +463,8 @@ runs = Table(
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
     Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0106)
+    # The browser identities its Chromium opens with, the first one's profile and the others' cookies (0107).
+    Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),

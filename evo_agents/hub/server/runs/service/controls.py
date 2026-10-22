@@ -254,6 +254,7 @@ async def rerun_in(
     await lock_plan(conn, access.project_id, plan_id)
     activity = await plan_activity(conn, access.project_id, plan_id)
     no_plan_run(activity, plan_id)
+    browser, identities = await browsers.rerun_browser(conn, user, run_id, body, worker)
     new_id = await queue_run(
         conn,
         access,
@@ -271,7 +272,8 @@ async def rerun_in(
         picked=tuple(picked),
         chosen=chosen,
         plugin_config=await run_layer_of(conn, run_id),
-        browser=await browsers.rerun_browser(conn, run_id, body),
+        browser=browser,
+        identities=identities,
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
     target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"

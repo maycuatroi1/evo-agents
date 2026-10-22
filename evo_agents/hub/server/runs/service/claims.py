@@ -703,6 +703,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         verify=verify,
         session_per_step=view.session_per_step,
         browser=view.browser,
+        browser_identities=view.browser_identities,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),

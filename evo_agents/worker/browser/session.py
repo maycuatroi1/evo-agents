@@ -13,7 +13,11 @@ the end of its log; no Chromium installed is cause missing_tool, which the prefl
 close over its DevTools socket (Browser.close), so it ends writing its profile, then what is left of its process group
 and of the processes it started in groups of their own is killed (``orphans.stop``), and ``runs/<run>/browser`` goes.
 ``browser/chromium.json`` names the process group while Chromium runs, so a daemon that starts after one that died
-stops it and removes the directory of every run it does not hold (``sweep``)."""
+stops it and removes the directory of every run it does not hold (``sweep``).
+
+A run dispatched with browser identities (criterion a4) starts on the profile of the first and with the cookies of the
+others (``profiles.Profiles``), on an empty profile when Chromium does not start on that one; ``save``, as the run ends
+and before its final report, sends each identity's profile back to the hub and closes Chromium."""
 
 from __future__ import annotations
 
@@ -23,13 +27,14 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
 
 from evo_agents.worker import orphans
-from evo_agents.worker.browser import chromium, install
+from evo_agents.worker.browser import chromium, install, profiles
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runtimes.common import descendants, kill_tree
 
@@ -55,9 +60,10 @@ def run_directory(home: WorkerHome, run_id: int) -> Path:
 class BrowserSession:
     """The Chromium of run ``run_id`` on the daemon ``daemon``."""
 
-    def __init__(self, daemon: Daemon, run_id: int):
+    def __init__(self, daemon: Daemon, run_id: int, identities: Iterable[int] = ()):
         self.daemon = daemon
         self.run_id = run_id
+        self.profiles = profiles.Profiles(self, identities)  # its browser identities (spec browser_identities)
         self.directory = run_directory(daemon.home, run_id)
         self.process: subprocess.Popen | None = None
         self.cdp: str | None = None
@@ -86,11 +92,32 @@ class BrowserSession:
             )
         held[self.run_id] = self
         try:
-            await self._start(installed)
+            await self.profiles.prepare(installed)
+            await self._start_on_profile(installed)
+            await self.profiles.restore()
         except BaseException:
             await self.close()
             raise
         return self.cdp
+
+    async def _start_on_profile(self, installed: install.Installed) -> None:
+        """Start Chromium on the first identity's profile, or on an empty one when it does not start on that."""
+        try:
+            await self._start(installed)
+        except (RunFailed, OSError):
+            if not self.profiles.unpacked:
+                raise
+            process, self.process = self.process, None
+            if process is not None:
+                await asyncio.to_thread(chromium.kill, process)
+            await asyncio.to_thread(shutil.rmtree, self.profile, True)
+            await self._start(installed)
+            await self.profiles.unopenable()
+
+    async def save(self) -> None:
+        """Send the profiles of the run's browser identities back to the hub, once, closing its Chromium
+        (``Profiles.save``); nothing for a run without identities."""
+        await self.profiles.save()
 
     async def _start(self, installed: install.Installed) -> None:
         self.directory.mkdir(mode=chromium.DIR_MODE, parents=True, exist_ok=True)

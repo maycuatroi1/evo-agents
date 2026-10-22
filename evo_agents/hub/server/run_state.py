@@ -88,6 +88,7 @@ from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
+from evo_agents.hub.server import browser_holds
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -252,6 +253,7 @@ async def move_run(
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
     if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
         await infer_failure_cause(conn, run_id, row.error)
+    await browser_holds.follow(conn, run_id, new)
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
 
@@ -695,6 +697,7 @@ def _next_attempt(run_id: int):
         "agent_type_id",
         "pulls",
         "browser",
+        "browser_identities",
         *CHAT_COLUMNS,
     )
     source = select(

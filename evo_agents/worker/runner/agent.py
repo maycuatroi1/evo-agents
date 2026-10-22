@@ -419,11 +419,29 @@ class Agent:
         run = self.run
         if run.spec.get("browser") is not True or (self.browser is not None and self.browser.cdp):
             return
-        self.browser = self.browser or browser_session.BrowserSession(run.daemon, run.id)
-        await self.browser.open()
+        identities = run.spec.get("browser_identities") or ()
+        self.browser = self.browser or browser_session.BrowserSession(run.daemon, run.id, identities)
+        try:
+            await self.browser.open()
+        finally:
+            for line in self.browser.profiles.take_notes():
+                run.note(line)
         self.note_once(
             f"Browser: Chromium runs for the run; its agent finds its DevTools in {browser_session.VARIABLE}."
         )
+
+    async def save_browser(self) -> None:
+        """Send the profiles of the run's browser identities back to the hub before its final report, while the run
+        holds them (``BrowserSession.save``); nothing when the daemon stops at once."""
+        browser = self.browser
+        if browser is None or self.run.daemon.hard_stop.is_set():
+            return
+        try:
+            await browser.save()
+        except Exception:
+            log.exception("the run's browser profiles were not saved", extra={"run_id": self.run.id})
+        for line in browser.profiles.take_notes():
+            self.run.note(line)
 
     async def close_browser(self) -> None:
         """Close the run's Chromium and remove its directory (``BrowserSession.close``): the run is over here."""

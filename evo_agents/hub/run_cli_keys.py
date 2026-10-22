@@ -59,6 +59,7 @@ RUN_KEYS = (
     "failure_cause",
     "session_per_step",
     "browser",
+    "browser_identities",
 )
 RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its agent profile, where its agent runs
 RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise

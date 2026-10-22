@@ -124,6 +124,17 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
     return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
 
 
+async def pinned_with_identities(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, names, pinned: Pinned | None
+) -> tuple[list[int], Pinned | None]:
+    """The ids of the browser identities ``names`` a dispatch names (``browsers.resolve``) and the worker its run goes
+    to: ``pinned``, else the one that holds the identities, as ``pinnable`` checks it for ``user``."""
+    ids, worker_id = await browsers.resolve(conn, user, access, names, pinned)
+    if ids and pinned is None:
+        pinned = await pinnable(conn, user, access, worker_id)
+    return ids, pinned
+
+
 async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | None:
     """Worker ``worker_id`` as its last heartbeat reported it, for a run the hub hands out itself in its owner's name
     (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
@@ -271,12 +282,15 @@ async def queue_run(
     chosen: Chosen | None = None,
     plugin_config: dict | None = None,
     browser: bool = False,
+    identities: list[int] | tuple[int, ...] = (),
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
     by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
-    config ``plugin_config`` (checked already), with a Chromium of its own when ``browser``; HTTPException when the
-    step may not run now."""
+    config ``plugin_config`` (checked already), with a Chromium of its own when ``browser`` or browser
+    ``identities`` (resolved already, the run ``pinned`` to their worker); HTTPException when the step may not run
+    now."""
     body = held.body
+    browser = browser or bool(identities)
     try:
         step = body["steps"][step_index(body, key)]
     except PlanProblem as exc:
@@ -313,6 +327,7 @@ async def queue_run(
         "repo": name,
         "branch": _short(repo.get("branch")),
         "browser": browser,
+        "browser_identities": list(identities),
         **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
     }
@@ -371,6 +386,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
         picked = await _picked(conn, user, access, body.account, pinned)
         asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
         chosen = await choose(conn, user, access, body.profile, asked)
@@ -397,6 +413,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 chosen=chosen,
                 plugin_config=layer,
                 browser=body.browser,
+                identities=identities,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
@@ -461,6 +478,8 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        identities, pinned = await pinned_with_identities(conn, user, access, body.identities, pinned)
+        browser = body.browser or bool(identities)
         picked = await _picked(conn, user, access, body.account, pinned)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
@@ -476,7 +495,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             )
         repos = plan_run_repos(held)
         names = [entry["repo"] for entry in repos]
-        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=body.browser)
+        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
         await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
@@ -489,7 +508,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "plan_revision": held.revision,
             "dispatched_by": user.user_id,
             "dispatched_via": dispatch_credential(user.kind),
-            "pinned_worker_id": body.worker_id,
+            "pinned_worker_id": None if pinned is None else pinned.id,
             "requested_runtime": body.runtime,
             "runtime": body.runtime,
             "model": chosen.model,
@@ -498,7 +517,8 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "session_per_step": body.session_per_step,
-            "browser": body.browser,
+            "browser": browser,
+            "browser_identities": identities,
             **chosen.columns(),
         }
         try:

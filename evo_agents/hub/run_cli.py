@@ -812,6 +812,23 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
+def _register_author(rsub, with_project) -> None:
+    authored = rsub.add_parser(
+        "author",
+        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
+        "yours (needs writer)",
+    )
+    authored.add_argument(
+        "request",
+        metavar="REQUEST",
+        help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
+    )
+    with_project(authored)
+    author_options(authored)
+    json_option(authored, RUN)
+    authored.set_defaults(func=cmd_author)
+
+
 def register_runs(hsub) -> None:
     run = hsub.add_parser(
         "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
@@ -857,20 +874,7 @@ def register_runs(hsub) -> None:
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 
-    authored = rsub.add_parser(
-        "author",
-        help="queue an author run: a plan written from your request with the create-exec-plan skill, on a worker of "
-        "yours (needs writer)",
-    )
-    authored.add_argument(
-        "request",
-        metavar="REQUEST",
-        help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
-    )
-    with_project(authored)
-    author_options(authored)
-    json_option(authored, RUN)
-    authored.set_defaults(func=cmd_author)
+    _register_author(rsub, with_project)
 
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
