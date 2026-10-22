@@ -346,6 +346,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import (
         account_views,
         accounts,
+        agent_account_views,
         agent_accounts,
         agent_packs,
         agent_profiles,
@@ -388,6 +389,7 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits.worker_router,
         agent_profiles.router,
         agent_accounts.router,
+        agent_account_views.router,
         agent_packs.router,
         agent_types.router,
         task_dispatch.router,

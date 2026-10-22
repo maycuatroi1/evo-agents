@@ -546,7 +546,13 @@ replaces the value of each account of the agent by `***` in the messages the age
 in events.
 
 Who sees what: every member of the project sees an account's name, variable, workers, state, weight, priority and its
-usage, never the value; only an admin of the project adds, renews, changes and deletes it. Who can read the value, since
+usage, never the value; only an admin of the project adds, renews, changes and deletes it. A member reads them with
+`GET /v1/projects/{p}/agents/{handle}/accounts[/{name}]`, or across every project they hold a grant on with
+`GET /v1/agent-accounts` (the /accounts page), and with `evo-agents hub agent account list|show`
+(`evo_agents/hub/server/agent_account_views.py`): provider, category, state, workers, weight, priority, end, last
+usage, runs and cost over 24 hours and 7 days (null for a service account), the runs holding it and when it was last
+leased, computed by the functions of a member's own accounts (`account_views`). Without a grant it is the 404 or 403
+of reading the profile; `GET /v1/accounts` stays the caller's own accounts. Who can read the value, since
 a run that holds it runs the agent's code: an admin, through the instructions of the profile (the agent runs under
 them); a writer, through the agent of any run they dispatch; the owner of the worker and a root user on it, for every
 account bound to it; and every other run on that worker, as for any lease (see "What is still a risk").

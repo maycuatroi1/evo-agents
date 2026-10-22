@@ -1,6 +1,12 @@
-"""``evo-agents hub agent account add|renew|set|pause|resume|remove``: the accounts of an agent, env secrets its profile
-owns (``evo_agents.hub.server.agent_accounts``), over PUT, PATCH and DELETE /v1/projects/{p}/agents/{handle}/accounts/{name}.
-They need the admin role on the project.
+"""``evo-agents hub agent account list|show|add|renew|set|pause|resume|remove``: the accounts of an agent, env secrets its
+profile owns (``evo_agents.hub.server.agent_accounts``), over PUT, PATCH and DELETE
+/v1/projects/{p}/agents/{handle}/accounts/{name}. Writing needs the admin role on the project.
+
+``list`` and ``show`` need any grant on the project (``evo_agents.hub.server.agent_account_views``): ``list`` reads GET
+/v1/agent-accounts, the accounts of the agents of every project you hold a grant on, narrowed to one agent with HANDLE
+(in ``--project`` or the harness's project) or to one project with ``--project``; ``show HANDLE NAME`` reads one account.
+Both give each account's provider, state, workers, weight, priority, end, last usage, runs and their cost over 24 hours
+and 7 days (none for a service account) and the runs holding it; never a value.
 
 ``add`` gives the agent the account NAME for ``--env-var``, bound to each ``--worker`` (yours that are not revoked, or a
 member's shared worker, each serving the project); it replaces the account of that name whole, keeping its id.
@@ -18,14 +24,15 @@ that day. Standard library only, like the rest of the client.
 from __future__ import annotations
 
 import sys
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, when
+from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli_secrets import Refused, check_name, check_value, expires_at, read_value
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import env_name_refusal
+from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
 # The keys of an account of an agent in --json (the contract, `evo-agents hub contract print`).
@@ -44,7 +51,18 @@ ACCOUNT_KEYS = (
     "state",
     "created_at",
     "updated_at",
+    "provider",
+    "category",
+    "last_usage",
+    "last_usage_at",
+    "runs_24h",
+    "runs_7d",
+    "cost_24h_usd",
+    "cost_7d_usd",
+    "held_by",
 )
+# The keys of an account of `agent account list --json`: an account with its project and agent.
+LISTED_KEYS = (*ACCOUNT_KEYS, "project", "handle", "agent_name", "color", "icon_url")
 
 
 def _path(project: str, handle: str, name: str) -> str:
@@ -193,6 +211,82 @@ def cmd_remove(args) -> int:
     return 0
 
 
+# Reading
+
+
+def _usage_text(usage: dict | None) -> str:
+    if not usage:
+        return "-"
+    used = usage.get("utilization")
+    return usage["status"] if used is None else f"{usage['status']} {round(used * 100)}%"
+
+
+def _runs(account: dict) -> str:
+    runs = f"{account['runs_24h']}/{account['runs_7d']}"
+    return runs if account["cost_7d_usd"] is None else f"{runs} ({money(account['cost_7d_usd'])})"
+
+
+@client_command
+def cmd_list(args) -> int:
+    query = {}
+    if args.handle is not None:
+        query = {"project": project_of(args), "handle": args.handle.removeprefix("@")}
+    elif args.project:
+        query = {"project": args.project}
+    hub, _ = signed_in()
+    found = hub.call("GET", "/v1/agent-accounts" + ("?" + urlencode(query) if query else ""))
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print("No agent of a project you hold a grant on has an account; `hub agent account add` gives one.")
+        return 0
+    rows = [
+        (
+            a["project"],
+            f"@{a['handle']}",
+            a["name"],
+            a["env_var"],
+            a["provider"],
+            a["state"],
+            ", ".join(a["workers"]),
+            f"{a['weight']}/{a['priority']}",
+            _usage_text(a["last_usage"]),
+            _runs(a),
+            " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
+            when(a["last_leased_at"]),
+        )
+        for a in found
+    ]
+    header = ("PROJECT", "AGENT", "NAME", "VARIABLE", "PROVIDER", "STATE", "WORKERS", "WEIGHT/PRIO", "USAGE")
+    table((*header, "RUNS 24H/7D", "HELD BY", "LAST USED"), rows)
+    return 0
+
+
+@client_command
+def cmd_show(args) -> int:
+    if (refusal := _checked(args)) is not None:
+        return _usage(refusal)
+    hub, _ = signed_in()
+    a = hub.call("GET", _path(project_of(args), args.handle, args.name))
+    if args.json:
+        print_json(a)
+        return 0
+    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
+    reported = f", reported {when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
+    print(f"Account {a['name']} ({a['env_var']}, {a['provider']}) of @{args.handle.removeprefix('@')}: {a['state']}.")
+    print(f"  Workers: {', '.join(a['workers'])}; expires: {when(a['expires_at']) if a['expires_at'] else 'never'}.")
+    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.")
+    print(f"  Last usage: {_usage_text(a['last_usage'])}{reported}.")
+    if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
+        print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
+    else:
+        print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
+        print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
+    print(f"  Held by: {held}.")
+    return 0
+
+
 # Registering
 
 
@@ -220,6 +314,15 @@ def register_agent_accounts(asub) -> None:
         "account", help="the accounts of an agent: env secrets its runs take on the workers bound"
     )
     csub = account.add_subparsers(dest="account_command", required=True)
+
+    listed = csub.add_parser(
+        "list", help="the accounts of the agents of your projects, or of one agent: state, usage, runs, never a value"
+    )
+    listed.add_argument("handle", metavar="HANDLE", nargs="?", help="only this agent's, with or without @")
+    listed.add_argument("--project", help="only this project's agents; with HANDLE, " + PROJECT_HELP)
+    json_option(listed, returns_array(*LISTED_KEYS, schema="ListedAgentAccount"))
+    listed.set_defaults(func=cmd_list)
+    _named(csub, "show", "one account of an agent: state, last usage, runs and cost, runs holding it", cmd_show)
 
     add = _named(
         csub,
