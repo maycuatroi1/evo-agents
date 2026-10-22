@@ -33,6 +33,7 @@ import {
   fitWorker,
   modelSuggestions,
   outlookFine,
+  pinRefused,
   planRunScope,
   readModel,
   runtimeCount,
@@ -291,7 +292,7 @@ function PlanRunForm({
               {tDispatch("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} busy={pending} data-testid="plan-run-submit">
+          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null || pinRefused(outlook)} busy={pending} data-testid="plan-run-submit">
             <Play aria-hidden="true" />
             {pending ? t("submitting") : t("submit")}
           </Button>
