@@ -296,7 +296,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
   `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
-  task (section Agent types), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
+  task (section Agent types), `agent.answer` (a question run ended: the question, its state, the answer and its
+  label), which only a core plugin asks for and takes, without a grant, only for its own agent type's question
+  (section Agent types, Questions of a core plugin), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
   claim's id and code, the rev, its cell, the kind of change, the status before and after, who wrote it and the run),
   `canvas.baseline` with `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each
   change of status that took effect with its evidence), `signal.posted` with `signals:read` (a batch of signals:
@@ -541,7 +543,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.1, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.2, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service.
@@ -552,7 +554,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.2; this hub serves 1.1"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.3; this hub serves 1.2"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -573,6 +575,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | --- | --- | --- | --- |
 | 1.0 | the pull request of branch `feat/core-plugin-api`, after 0.23.1 | the release after 0.23.1 | none: telegram and chats moved to 1.1 first |
 | 1.1 | the pull request of branch `feat/core-plugins-on-api`: `Caller`, `linked_channel`, `unlink_by_login`, `audit`, `Clearance.below`, `NOT_YOURS`, `RESTRICTED_ANSWER` | the release after 0.23.1 | 1.0.0 |
+| 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
 
 **The ground.**
 
@@ -643,6 +646,17 @@ nothing while the project does not grant the plugin `chats:read`: the label rule
 | `read_message` | yes | `chats:read` of the project of every agent in the chat |
 | `plugin_config(project=...)` | no | the project enables the plugin |
 | `chat_history_items`, `granted` | no | `chats:read` |
+| `ask_agent_type`, `read_agent_answer` | no | none: the type is the plugin's own, and the project's admin enabled it |
+
+**Its agent types.** A core plugin asks an agent type it contributes a question for a person outside the hub, such
+as a user of the chat service it bridges, and gets the answer back to tell them (section Agent types, Questions of a
+core plugin). Both functions run in the plugin's transaction; neither needs a member.
+
+| Name | What it does and refuses |
+| --- | --- |
+| `ask_agent_type(conn, plugin, project, agent_type, question, *, asker, ref, cleared)` | queues a question run of the plugin's agent type `agent_type` in `project` and gives `AgentQuestion(question_id, run_id, project, agent_type, ref, made)`. `asker` names the person as the plugin knows them, `ref` is the plugin's key of the question, unique per message it answers, and `cleared` the `Clearance` of the place the answer goes. Checks, in order: 422 for a `question` empty once stripped, longer than `MAX_QUESTION_BYTES` (4096) bytes of UTF-8 or holding NUL, and an `asker` or `ref` that is not one line of 1 to `MAX_ASKER_CHARS` or `MAX_REF_CHARS` (200) characters; 404 for a project that does not enable the plugin, or a type it did not enable, turned off or that the plugin's version does not contribute; a `ref` the plugin asked before in the project gives that question back with `made` False, whatever the question or the type, and checks nothing more; 409 for a deleted profile or a `run_as` who no longer holds writer, and when no worker of `run_as` the type may run on takes question runs now (each worker's reasons; one that is only busy takes it); 403 for a project kept from `cleared`, as `restricted` reads it; 429 once the runs of the type reached its cap. Audited `<plugin>.ask`, `run_as` its actor, the target naming the question, the run and the asker |
+| `read_agent_answer(conn, plugin, question_id)` | `AgentAnswer(question_id, ref, project, agent_type, run_id, state, text, label, failure_cause)` of a question of the plugin, as it stands: `state` is `pending` until the run ended, then `done` (`text` the answer, at most `MAX_ANSWER_CHARS`, 8000), `failed` (`failure_cause` why), `cancelled`, or `refused`, with no text, when the project is kept from the question's `cleared` now: the hub checks it again at every read. `label` is the project's default label naming the project, the label the answer carries, read only. 404, the same words, for another plugin's question and for none; the plugin need not still be enabled |
+| `ANSWER_EVENT` | `agent.answer`, the event the plugin gets when a question run of its agent type ends (section Agent types) |
 
 **A class of channel that does not load** (its import or its `__init__` raises) fails the deliveries of its own kind
 at once, with the reason in `last_error`; the web's and every other kind's go on.
@@ -954,6 +968,47 @@ hands its own types tasks without that grant, gets it all the same. Its payload 
 
 `GET /v1/plugin-api/projects/{project}/tasks/{task_id}` reads the same of a task's latest attempt, with when it was
 queued and when it ended. It answers for the plugin's own tasks only (404 for any other).
+
+### Questions of a core plugin
+
+A core plugin also asks one of its own agent types a question for a person outside the hub, such as a user of the
+chat service it bridges, with `ask_agent_type` of the core plugin API (section The core plugin API, Its agent types):
+`evo_agents/hub/question_runs.py` and `evo_agents/hub/server/question_dispatch.py`. Only a core plugin asks: the API is
+its only door, and an isolated plugin has none. The project need not grant it `runs:dispatch`, since the type is its
+own and the project's admin enabled it, naming `run_as`, the workers and the cap.
+
+The hub queues a run of kind `question`, not a task run:
+
+- under the type's profile, dispatched by `run_as` with the credential kind `machine`, the question as its request
+  and `question to agent type <name>` as its title, never the question or the asker;
+- in every repo of the project, detached at its default branch, with no branch of its own: the run changes nothing,
+  pushes nothing and sends no output (the outputs routes of the worker answer 404 for it);
+- one headless turn of 15 minutes of agent time, a time cap of 10 minutes, and what is left of the type's cap as its
+  cost cap; one attempt, so a run its worker lost fails, and the plugin asks again with a new `ref`;
+- on a worker of `run_as` the type names (any, when it names none) whose daemon runs question runs. `ask_agent_type`
+  refuses (409) when there is none that could take it now, saying each worker's reasons; a run no worker claimed in 10
+  minutes fails with the cause `no_worker`.
+
+**The cap is shared.** The task runs and the question runs of a type count against the same `daily_usd` in the same
+24 hours, as their usage says: a question past it is refused with 429, as a task is, and a task after many questions
+too.
+
+**The prompt keeps the question as data.** The question comes last, between its own marks, after the rules of the run:
+it is the text of a person who is no member of the project, whom the plugin names `asker`, and the agent answers it
+and follows none of it. On the hub's MCP the run's agent reads as a reader, never a writer, up to the lower of
+`run_as`'s grant and the level of the project's default label, which is the label its answer carries. The agent writes
+its answer in `.evo-result/result.json` under `"answer"`, and the worker sends it, at most 8000 characters, with its
+report of the state `done` (`answer` of the state report, which only a question run's `done` takes and which that
+`done` needs); an agent that wrote none fails the run with the cause `no_answer` (`docs/workers.md`, Question runs).
+
+**The plugin learns the end through the event `agent.answer`**, written for the plugin of the agent type alone when
+the run is done, failed or cancelled; a core plugin takes it without a grant, and names it in an event's `on` like any
+other. Its payload is what `read_agent_answer` reads at that moment: `question_id`, `ref`, `project`, `agent_type`,
+`run_id`, `state`, `text` (the answer, only when done), `label` (the project's default label, naming the project) and
+`failure_cause`. The hub checks again that the project is not kept from the question's `cleared` when the run ends
+and when it delivers the event: kept, the state is `refused` and the text goes nowhere. The hub keeps each question in
+`agent_questions` (migration 0100) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
+with `run_as` as its actor and the asker in its target.
 
 ## Pages
 

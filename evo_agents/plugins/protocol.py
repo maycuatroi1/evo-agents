@@ -57,6 +57,7 @@ EVENT_KINDS = (
     "signal.posted",
     "srs.version.approved",
     "tasks.status",
+    "agent.answer",
 )
 NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}
