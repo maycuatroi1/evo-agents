@@ -1276,6 +1276,19 @@ Shared pieces built on them:
   are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
   group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
   caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
+- Running now (`run-tasks-panel.tsx`, `run-tasks.ts`): over the Trace, and on a phone between the decision and the
+  trace's preview, a box on `card` lists what the run has going besides its main thread, read from the task events
+  Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`, `task_updated`,
+  `task_notification`): each subagent with its type in mono, "in the background" when it is, what it does now (its
+  last call, `Bash: Wait for verify run`) and its tool calls and tokens so far, the commands it runs indented under
+  it; then the main agent's commands in the background. Each row has its 16 px icon (`Bot`, `SquareTerminal`) in
+  `running` and its time so far on the right in `running` mono; the head carries the live dot, "Running now" and how
+  many sub-agents and commands run. A row is a button that shows the call that started it in the Trace (Show in
+  trace, `ListTree` under the pointer). The ones that ended fold under "5 finished", each with its end (`CircleCheck`
+  `success`, `CircleX` `danger`, `CircleSlash` muted), the first line of what it reported and its duration, eight
+  shown before "Show all". A command the main agent runs in the foreground is left out (the Trace shows it running),
+  and so is a subagent's command once it ended. The box shows only while something runs on a running run; Codex and
+  opencode send no task events, so their runs never show it. Past 40 % of the window its list scrolls.
 - `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
   cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
   a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the
