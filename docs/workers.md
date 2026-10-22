@@ -1655,6 +1655,12 @@ answered decision, a move to another account), the keys stay those of the first 
 when the session started in the terminal UI, whose requests report no usage. A run that resumes a parked one reports
 the first request its own agent made in the session.
 
+When a run's agent takes several turns in its session (the next one after an answered decision or the owner's
+messages), the `usage` the run reports with its end, or with its failure, holds all of them, not the last turn's alone
+(`sessions.session_usage`): their numbers added up, but the largest `peak_context_tokens`, `context_window` and
+`total_cost_usd` (Claude Code's running total of the session, which already holds the turns before), as for each
+session of a plan run with a session per step. Each turn's `usage_update` event stays as the runtime said it.
+
 A Claude Code session of a run asks for the preset system prompt without its dynamic sections
 (`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new
 session reads it from the cache that a session of another run, step or worktree wrote. Claude Code 2.1.296 moves its
