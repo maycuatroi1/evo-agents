@@ -177,7 +177,7 @@ LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 PLUGIN_NOTICE_TABLES = frozenset({"plugin_notice_keys"})
 # migration 0099: the org chart, its units, the seats in them and the revisions of their autonomy ceilings
 ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
-# migration 0101: the files people attach to chat messages
+# migration 0104: the files people attach to chat messages
 CHAT_FILE_TABLES = frozenset({"chat_files"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

@@ -20,7 +20,7 @@ Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and,
 (``direct_user_id``) and its agent (``direct_profile_id``), one direct chat per pair (chats_direct_key). Revision 0051
 gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
 which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
-Revision 0101 adds chat_files: the files a person attached to a message, each a blob of the blob store
+Revision 0104 adds chat_files: the files a person attached to a message, each a blob of the blob store
 (``sha256``, ``size``) under its name and media type, uploaded first (``message_id`` NULL) and then carried by the
 message that names it; ``blob_gc`` counts it as a reference. Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
 """
@@ -198,7 +198,7 @@ def _chat_runs(runs: Table) -> None:
 
 
 def file_table(metadata: MetaData) -> Table:
-    """chat_files (0101), added to ``metadata``: the files people attached to messages."""
+    """chat_files (0104), added to ``metadata``: the files people attached to messages."""
     files = Table(
         "chat_files",
         metadata,

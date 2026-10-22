@@ -1,7 +1,7 @@
 """The files people attach to chat messages (``evo_agents.hub.server.chat_files``): a member uploads a file, the
 message that names it carries it, only the chat's members who read that message read its bytes, a file waits for its
 uploader's message alone, a message may be files without text, and the prompt of the agent's run names each file with
-the command that saves it. Migration 0101 adds chat_files."""
+the command that saves it. Migration 0104 adds chat_files."""
 
 from __future__ import annotations
 
