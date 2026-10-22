@@ -194,7 +194,7 @@ def _task(row) -> dict:
     }
 
 
-async def _type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
+async def type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
     """(status, why) agent type ``name`` (``row`` of ``agent_types.enabled_type``) takes no task now, or None."""
     if contributed(enabled.manifest, name) is None or row is None or row.disabled_at is not None:
         return 404, (
@@ -274,7 +274,7 @@ async def hand_own_task(
     if enabled is None:
         return None, f"plugin {plugin} is not enabled in the project, or it is turned off"
     row = await enabled_type(conn, project_id, enabled.id, name, lock=True)  # one dispatch of a type at once
-    refusal = await _type_refusal(conn, enabled, row, name)
+    refusal = await type_refusal(conn, enabled, row, name)
     if refusal is not None:
         return None, refusal[1]
     spent = await type_spend(conn, row.id)
@@ -303,7 +303,7 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
         plugin_id = await plugin_of_request(request, conn)
         enabled = await _dispatcher(conn, plugin_id, project)
         row = await enabled_type(conn, enabled.project_id, plugin_id, name, lock=True)  # one dispatch of a type at once
-        refusal = await _type_refusal(conn, enabled, row, name)
+        refusal = await type_refusal(conn, enabled, row, name)
         if refusal is not None:
             raise HTTPException(*refusal)
         spent = await type_spend(conn, row.id)

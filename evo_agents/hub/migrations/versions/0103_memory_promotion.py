@@ -1,7 +1,7 @@
 """The Curator promotes an agent's memories into the project's shared ones.
 
-Revision ID: 0102
-Revises: 0101
+Revision ID: 0103
+Revises: 0102
 Create Date: 2026-10-22
 
 Plan agent-profile-workspace, criterion a4 (``evo_agents.hub.server.memory_promotion`` describes the design). A
@@ -23,12 +23,12 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0102"
-down_revision = "0101"
+revision = "0103"
+down_revision = "0102"
 branch_labels = None
 depends_on = None
 
-ACTIONS_0101 = (
+ACTIONS_0102 = (
     "proposed",
     "dropped",
     "accepted",
@@ -46,7 +46,7 @@ ACTIONS_0101 = (
     "skill_release",
 )
 NEW_ACTIONS = ("promoted",)
-ACTIONS = (*ACTIONS_0101, *NEW_ACTIONS)  # evo_agents.hub.ledger.ACTIONS
+ACTIONS = (*ACTIONS_0102, *NEW_ACTIONS)  # evo_agents.hub.ledger.ACTIONS
 CHECK = "curator_ledger_action_check"
 
 col = sa.column
@@ -72,7 +72,7 @@ def downgrade() -> None:
     ledger = sa.table("curator_ledger", col("action"))
     op.execute(ledger.delete().where(ledger.c.action.in_(NEW_ACTIONS)))
     op.drop_constraint(CHECK, "curator_ledger", type_="check")
-    _actions(ACTIONS_0101)
+    _actions(ACTIONS_0102)
     op.drop_constraint("memories_promoted_into_fkey", "memories", type_="foreignkey")
     op.drop_column("memories", "promoted_into")
     op.drop_column("memories", "promoted_at")

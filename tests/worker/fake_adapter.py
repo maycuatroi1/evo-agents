@@ -292,7 +292,7 @@ class FakeAdapter(Adapter):
         path = context.env.get("EVO_FAKE_SCENARIOS")
         scenarios = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
         run = context.run
-        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history", "release"):
+        if run.get("kind") in ("review", "judge", "author", "chat", "task", "replay", "history", "release", "question"):
             key = run["kind"]
         else:
             key = str(run.get("step_key")) if run.get("step_key") is not None else f"plan:{run.get('plan_id')}"

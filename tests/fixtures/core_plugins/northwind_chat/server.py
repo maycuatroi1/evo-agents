@@ -11,6 +11,9 @@
   direct chat with it, ``/agents`` lists the agents to talk to.
 - An agent's message in that direct chat comes back as the event ``chat.message``; the plugin reads it as the member
   and sends it to the chat, once.
+- Any chat user, linked or not, asks the agent type helpdesk of a project ``/ask <project> <question>``
+  (``hub.ask_agent_type``); the answer comes back as the event ``agent.answer`` and goes to the chat that asked, whose
+  ids its ref holds.
 """
 
 from __future__ import annotations
@@ -34,7 +37,11 @@ ADMIN_PATH = "/v1/northwind-chat/admin/users/{user_id}"
 MAX_UPDATE_BYTES = 64 * 1024
 KEEP_SENT = 50  # ids of agents' messages the channel remembers it sent
 NOT_LINKED = "This chat is not linked to the hub: send /link and confirm it on the hub."
-HELP = "Tap a button to answer, reply to a decision with words, /link, /stop, /agents, or @agent and your message."
+HELP = (
+    "Tap a button to answer, reply to a decision with words, /link, /stop, /agents, @agent and your message, or "
+    "/ask <project> <question>."
+)
+HELPDESK = "helpdesk"
 ANSWERS = ("accept", "reject", "defer")
 
 router = APIRouter(include_in_schema=False)  # the hub's OpenAPI document stays the same with or without the plugin
@@ -237,10 +244,32 @@ class Updates:
             return await self.acting(self.agents)
         if update.get("reply_to") and text:
             return await self.acting(lambda conn, member: self.in_words(conn, member, str(update["reply_to"]), text))
+        if text.startswith("/ask "):
+            project, _, question = text.removeprefix("/ask ").strip().partition(" ")
+            return await self.ask(project, question.strip(), str(update.get("message_id") or len(text)))
         if text.startswith("@") and " " in text:
             handle, _, said = text[1:].partition(" ")
             return await self.acting(lambda conn, member: self.talk(conn, member, handle, said.strip()))
         return "help", HELP
+
+    async def ask(self, project: str, question: str, message_id: str) -> tuple[str, str | None]:
+        """A chat user's question to the help desk of ``project``, for whoever they are: no member is needed."""
+        ref = ":".join(("northwind", *self.chat, message_id))
+        try:
+            async with hub.begin(self.request) as conn:
+                asked = await hub.ask_agent_type(
+                    conn,
+                    plugin(),
+                    project,
+                    HELPDESK,
+                    question,
+                    asker=f"northwind user {self.chat[1]}",
+                    ref=ref,
+                    cleared=cleared(self.values),
+                )
+        except hub.Refused as exc:
+            return "refused", f"The hub did not take that: {exc.detail}"
+        return "asked", f"Asked the help desk of {asked.project} (question {asked.question_id})."
 
     async def start(self, code: str) -> tuple[str, str | None]:
         async with hub.begin(self.request) as conn:
@@ -320,4 +349,21 @@ async def on_chat_message(params: dict, context: hub.Context) -> dict:
             text = f"An agent answered in your direct chat on the hub: chat {payload['chat_id']}"
         await Service(settings.values).send(member.config["group_id"], member.config["user_id"], text)
         await hub.set_channel_state(conn, member, {"sent": [*sent, payload["message_id"]][-KEEP_SENT:]})
+    return {}
+
+
+async def on_agent_answer(params: dict, context: hub.Context) -> dict:
+    """The end of a question to the help desk: its answer, read again from the hub, sent to the chat that asked."""
+    payload = params["payload"]
+    prefix, group_id, user_id, _ = (str(payload.get("ref")).split(":") + ["", "", "", ""])[:4]
+    if prefix != "northwind" or not group_id or not user_id:
+        return {}
+    async with hub.transaction(context) as conn:
+        found = await hub.read_agent_answer(conn, plugin(), payload["question_id"])
+        settings = await hub.plugin_config(conn, plugin(), context.config)
+    if found.state == "done":
+        text = f"{found.agent_type} of {found.project}: {found.text}"
+    else:
+        text = f"The help desk of {found.project} gave no answer ({found.state})."
+    await Service(settings.values).send(group_id, user_id, text)
     return {}

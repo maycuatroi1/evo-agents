@@ -984,11 +984,11 @@ work item's last run stands for after its third failure, and `notifications.noti
 notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
 kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
 root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables.
-Schema 0100 adds `memories.profile_id`, the agent profile whose memory a memory is (null for every memory there is),
+Schema 0101 adds `memories.profile_id`, the agent profile whose memory a memory is (null for every memory there is),
 makes `memories_shared_key` and `memories_owned_key` again over the memories of no agent with `memories_agent_key` for
 an agent's, and gives `memory_revisions` the provenance of a run's write (`run_id`, `profile_id`, `profile_version`,
-`origin_id`, `hop`, `chat_id`, `chat_message_id`); going back to 0099 deletes the agents' memories and drops the
-columns. Schema 0101 adds `memories.read_at`, `archived_at` and `stale_at`; schema 0102 adds `proposals.promotion`,
+`origin_id`, `hop`, `chat_id`, `chat_message_id`); going back to 0100 deletes the agents' memories and drops the
+columns. Schema 0102 adds `memories.read_at`, `archived_at` and `stale_at`; schema 0103 adds `proposals.promotion`,
 `memory_revisions.proposal_id`, `memories.promoted_at` and `promoted_into`, and the ledger action `promoted`; going
 back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents).
 

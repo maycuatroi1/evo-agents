@@ -41,9 +41,15 @@ of that member's workers they may run on, the cap of their cost per day, who ena
 turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
 of its branch.
 
+agent_questions (0100) holds each question a core plugin asked an agent type of its own (``evo_agents.hub
+.question_runs``): the plugin, the project, the type, the run of kind question that answers it (its text is the run's
+request), the plugin's key of it (``ref``, one question per plugin, project and ref), who asked it as the plugin names
+them (``asker``, a person outside the hub), the clearance of the place the answer goes (``cleared``), and once the run
+ended its outcome, the answer (only when done) and the label it carries, and when.
+
 ``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``),
 tasks (0047, ``tables_tasks``) and canvas (0073, ``tables_canvas``), each as one attribute of ``evo_agents.hub.tables``
-(``tables.srs``, ``tables.tasks``, ``tables.canvas``).
+(``tables.srs``, ``tables.tasks``, ``tables.canvas``), and with them agent_questions (``tables.agent_questions``).
 """
 
 from __future__ import annotations
@@ -303,7 +309,36 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
     return agent_types
 
 
-def core_plugin_tables(metadata: MetaData) -> tuple[SrsTables, TasksTables, CanvasTables]:
-    """The tables of the core plugins srs, tasks and canvas, added to ``metadata`` (tasks links to srs_items and runs;
-    canvas names runs and chat_messages)."""
-    return srs_tables(metadata), tasks_tables(metadata), canvas_tables(metadata)
+def question_table(metadata: MetaData) -> Table:
+    """agent_questions (0100): the questions of core plugins to their agent types."""
+    return Table(
+        "agent_questions",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("agent_type_id", BigInteger, nullable=False),
+        Column("run_id", BigInteger, nullable=False),
+        Column("ref", Text, nullable=False),
+        Column("asker", Text, nullable=False),
+        Column("cleared", JSONB, nullable=False),
+        Column("outcome", Text),
+        Column("answer", Text),
+        Column("label", JSONB),
+        _stamp("created_at"),
+        Column("answered_at", DateTime(timezone=True)),
+        _fkey("plugin_id", "plugins.id", "agent_questions", "CASCADE"),
+        _fkey("project_id", "projects.id", "agent_questions", "CASCADE"),
+        _fkey("agent_type_id", "project_agent_types.id", "agent_questions", "CASCADE"),
+        _fkey("run_id", "runs.id", "agent_questions", "CASCADE"),
+        PrimaryKeyConstraint("id", name="agent_questions_pkey"),
+        UniqueConstraint("run_id", name="agent_questions_run_id_key"),
+        UniqueConstraint("plugin_id", "project_id", "ref", name="agent_questions_ref_key"),
+    )
+
+
+def core_plugin_tables(metadata: MetaData) -> tuple[SrsTables, TasksTables, CanvasTables, Table]:
+    """The tables of the core plugins srs, tasks and canvas, and agent_questions, the questions core plugins ask their
+    agent types (``question_table``), added to ``metadata`` (tasks links to srs_items and runs; canvas names runs and
+    chat_messages)."""
+    return srs_tables(metadata), tasks_tables(metadata), canvas_tables(metadata), question_table(metadata)
