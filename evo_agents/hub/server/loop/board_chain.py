@@ -24,7 +24,6 @@ from sqlalchemy import Text, cast, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, runs, tables
-from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,
     CHAT_MEMBER,
@@ -38,12 +37,11 @@ from evo_agents.hub.server.loop.board_items import (
     item,
     line,
     project_path,
+    self_approval,
 )
 from evo_agents.hub.server.loop.model import WAITING_HUMAN
 from evo_agents.hub.server.loop.view import run_chains
 from evo_agents.hub.server.notifications import decision_link
-from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.plugins import config as plugin_config
 
 OPEN = "open"  # runs.DECISION_STATES
 ASKING = ("run_decision", "author_question")  # the reasons of a work item whose run's agent asks its owner
@@ -206,16 +204,6 @@ async def _samples(conn: AsyncConnection, reading: Reading, crowd: People) -> li
 # SRS in the chain
 
 
-async def _self_approval(conn: AsyncConnection, project_id: int) -> bool:
-    """Whether the plugin srs lets the author of a version approve it in the project (its config's self_approval)."""
-    row = await enabled_in(conn, SRS, project_id)
-    if row is None:
-        return False
-    stacks = await stored_stacks(conn, [row.id], project_id, None)
-    field = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, [])).fields.get("self_approval")
-    return field is not None and field.value is True
-
-
 async def _documents(conn: AsyncConnection, project_id: int, slugs: set[str]) -> tuple[dict, dict]:
     """(slug -> its document's row, (document id, number) -> its version's row)."""
     d, v = tables.srs.documents, tables.srs.versions
@@ -263,7 +251,7 @@ async def srs_items(conn: AsyncConnection, reading: Reading, crowd: People, wait
     documents, versions = await _documents(
         conn, reading.project_id, {work.detail["srs"].get("document") for work in wanted}
     )
-    anyone = await _self_approval(conn, reading.project_id)
+    anyone = await self_approval(conn, SRS, reading.project_id)  # the author of a version may approve it
     chats = await _chat_members(conn, [row.id for row in versions.values()])
     found = []
     for work in wanted:

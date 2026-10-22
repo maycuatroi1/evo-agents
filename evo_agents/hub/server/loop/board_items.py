@@ -22,7 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.plugins import config as plugin_config
 
 GROUPS = ("goal", "canvas", "policy", "exception", "srs")
 GOAL, CANVAS, POLICY, EXCEPTION, SRS = GROUPS
@@ -35,9 +38,10 @@ KINDS_OF = {
 }
 KINDS = tuple(kind for kinds in KINDS_OF.values() for kind in kinds)
 GROUP_OF = {kind: group for group, kinds in KINDS_OF.items() for kind in kinds}
-# Who may decide an item: an admin of the project; a writer (or an admin); the member a run stands for; a writer who
-# wrote none of the SRS versions under review (any writer once the plugin srs's self_approval is on); a member of the
-# settle chat.
+# Who may decide an item: an admin of the project; a writer (or an admin), of a canvas's baseline one who proposed
+# none of its items (any writer once the plugin canvas's self_approval is on); the member a run stands for; a writer
+# who wrote none of the SRS versions under review (any writer once the plugin srs's self_approval is on); a member of
+# the settle chat.
 DECIDED_BY = ("admin", "writer", "run_owner", "srs_reviewer", "chat_member")
 ADMIN, WRITER, RUN_OWNER, SRS_REVIEWER, CHAT_MEMBER = DECIDED_BY
 TITLE_CHARS = 200
@@ -113,6 +117,20 @@ class People:
         """The logins of the members among ``user_ids`` who still hold a grant."""
         wanted = set(user_ids)
         return [m.login for m in self.members if m.user_id in wanted]
+
+
+SELF_APPROVAL = "self_approval"  # the field of the configs of srs and canvas that lets a proposer decide too
+
+
+async def self_approval(conn: AsyncConnection, plugin: str, project_id: int) -> bool:
+    """Whether core plugin ``plugin``, enabled in the project, lets the member who proposed a thing decide it too (its
+    config's self_approval, as srs and canvas read it); False when the plugin is not enabled."""
+    row = await enabled_in(conn, plugin, project_id)
+    if row is None:
+        return False
+    stacks = await stored_stacks(conn, [row.id], project_id, None)
+    field = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, [])).fields.get(SELF_APPROVAL)
+    return field is not None and field.value is True
 
 
 async def people(conn: AsyncConnection, project_id: int) -> People:
@@ -214,5 +232,6 @@ __all__ = [
     "ordered",
     "people",
     "project_path",
+    "self_approval",
     "sink_of",
 ]

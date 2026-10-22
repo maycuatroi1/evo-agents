@@ -5,10 +5,10 @@ The plugin's job ``baseline`` proposes each canvas's baseline once a week at the
 ``baseline.timezone``, else the Curator charter's zone, else UTC: every change of status since the status in effect,
 the value check's proposals, test cards past their deadline without real evidence (extended or retired), and the new
 claims, included as they are. The writers who may decide get the notice canvas_baseline with a link; the member who
-changed a status, accepted the proposal that did, or opened a baseline at once, never decides it, nor does a run. A
-rejection takes the claim back to the status in effect with a rev of kind baseline; once every item is decided the
-baseline is approved with a snapshot that never changes, and canvas.baseline names the changes that took effect. The
-product, Northwind Pantry, is made up.
+changed a status, accepted the proposal that did, or opened a baseline at once, never decides it unless the config's
+self_approval is on, and a run never does. A rejection takes the claim back to the status in effect with a rev of kind
+baseline; once every item is decided the baseline is approved with a snapshot that never changes, and canvas.baseline
+names the changes that took effect. The product, Northwind Pantry, is made up.
 """
 
 from __future__ import annotations
@@ -368,6 +368,50 @@ def test_canvas_baseline_opened_at_once_waits_for_another_writer_and_the_next_we
     assert [row["status"] for row in client.get(BASELINES, headers=hub["reader"]).json()] == ["proposed", "expired"]
     decide(client, hub["other"], 1, "CL-1", "accepted", expect=409)  # expired takes no decision
     assert set(items(baseline(client, hub["reader"], 2))) == {"CL-1", "CL-2"}
+
+
+def self_approving(client, hub, body: dict) -> None:
+    """The project's layer of the plugin's config, as its admin writes it: ``body`` sets or unsets self_approval."""
+    written = client.post(f"/v1/projects/{PROJECT}/plugins/canvas/config", json=body, headers=hub["owner"])
+    assert written.status_code == 200, written.text
+
+
+def test_canvas_baseline_with_self_approval_on_the_proposer_decides_and_the_item_says_who_did(client, hub, hub_db):
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 1, "status": "testing", "test_card": CARD})
+    self_approving(client, hub, {"values": {"self_approval": True}})
+    made = opened(client, hub["chi"], "CL-1")  # chi changed CL-1's status and opened the baseline
+    assert (items(made)["CL-1"]["proposers"], items(made)["CL-1"]["decisions"]) == (
+        [],
+        ["accepted", "rejected", "deferred"],
+    )
+    assert [login for login, _, _ in told(hub_db)] == ["chi", "owner", "someone-else"]  # chi may decide, so is told
+    i, users = tables.canvas.baseline_items, tables.users
+    (proposers,) = sql(hub_db, select(i.c.proposers))[0]
+    assert sql(hub_db, select(users.c.login).where(users.c.id.in_(proposers))) == [("chi",)], "kept as proposed"
+
+    # turned off again, the four-eyes rule is back for the same item
+    self_approving(client, hub, {"unset": ["self_approval"]})
+    assert items(baseline(client, hub["chi"], 1))["CL-1"]["decisions"] == []
+    assert items(baseline(client, hub["reader"], 1))["CL-1"]["proposers"] == ["chi"]
+    assert "another writer decides it" in decide(client, hub["chi"], 1, "CL-1", "accepted", expect=403)["message"]
+
+    # on: every other rule stays (a reader decides nothing), and chi's decision is recorded as chi's
+    self_approving(client, hub, {"values": {"self_approval": True}})
+    decide(client, hub["reader"], 1, "CL-1", "accepted", expect=403)
+    approved = decide(client, hub["chi"], 1, "CL-1", "accepted", reason="the reorder test starts Monday")
+    decided = items(approved)["CL-1"]
+    assert (approved["status"], approved["approved_by"], approved["waiting"]) == ("approved", ["chi"], 0)
+    assert (decided["decision"], decided["decided_by"], decided["reason"], decided["decisions"]) == (
+        "accepted",
+        "chi",
+        "the reorder test starts Monday",
+        [],
+    )
+    (approval,) = events(hub_db, "canvas.baseline")
+    assert approval["approved_by"] == ["chi"]
+    assert [(moved["claim"], moved["from"], moved["to"]) for moved in approval["transitions"]] == [
+        ("CL-1", "assumption", "testing")
+    ]
 
 
 def test_canvas_baseline_is_never_decided_by_an_agent_or_a_run(client, hub, hub_db):

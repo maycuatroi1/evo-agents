@@ -16,9 +16,11 @@ An author run and a plan run go to worker ``loop.worker``, pinned, in the name o
 writer on the project (the checkpoint of step 1, answer 6), dispatched with a machine credential, with the caps of
 ``loop.caps`` (``caps.run_budget``) and the project's default agent profile; each is linked to the frame task (a link
 ``run`` of the plugin tasks) and audited as ``loop.dispatch``. A worker that cannot take it (its daemon, its checkouts,
-the owner's role), or a plan that cannot run (no step left, a step with no repo, a repo without its origin, another
-run of the plan active), hands out nothing: the work item stays queued with reason ``worker`` and the hub's why. The
-Loop merges nothing and starts no job: a plan run's merge requests go through the merge queue as any plan run's do.
+the owner's role), an author run whose harness no project of the owner's lists an origin for (``repo_origins``, as the
+run's leases read it: the worker's preflight would fail the run, cause origin), or a plan that cannot run (no step
+left, a step with no repo, a repo without its origin, another run of the plan active), hands out nothing: the work
+item stays queued with reason ``worker`` and the hub's why. The Loop merges nothing and starts no job: a plan run's
+merge requests go through the merge queue as any plan run's do.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop import caps, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
 from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, USE_CASE, ItemView, View
+from evo_agents.hub.server.repo_origins import repo_origins
 
 log = logging.getLogger(__name__)
 
@@ -125,6 +128,18 @@ def _values(project_id: int, kind: str, item: ItemView, view: View, worker: Loop
     }
 
 
+async def _harness_origin(conn: AsyncConnection, project_id: int, project: str, worker: LoopWorker, harness: str):
+    """Why an author run in the name of ``worker``'s owner cannot reach the harness ``harness``: no project of the
+    owner's lists an origin for it, so no credential is leased for it and the worker's preflight fails the run; None
+    when one does."""
+    if harness in await repo_origins(conn, project_id, worker.owner_id, [harness]):
+        return None
+    return (
+        f"the author run needs the harness {harness}, for which neither project {project} nor another project of the "
+        f"owner of worker {worker.name} lists an origin"
+    )
+
+
 async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, view: View, worker: LoopWorker):
     """The author run of build ``item`` on ``worker``, in Loop mode."""
     from evo_agents.hub.server.runs.service.dispatch import author_repos, worker_as_pinned
@@ -135,8 +150,9 @@ async def _author_run(conn: AsyncConnection, project_id: int, item: ItemView, vi
     repos = None if pinned is None else await author_repos(conn, project_id, project, pinned.checkouts)
     if problem is not None or repos is None:
         return _refused(problem or "the project was registered without its harness, where plans live")
-    runtime = author.AUTHOR_RUNTIMES[0]
-    problem = await _unfit(conn, project, worker, "author", [repos[0]["repo"]], runtime)
+    harness, runtime = repos[0]["repo"], author.AUTHOR_RUNTIMES[0]
+    problem = await _harness_origin(conn, project_id, project, worker, harness)
+    problem = problem or await _unfit(conn, project, worker, "author", [harness], runtime)
     if problem is not None:
         return _refused(problem)
     request = await texts.author_request(conn, project_id, project, item)

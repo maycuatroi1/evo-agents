@@ -10,6 +10,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
+import pytest
+
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.hub.autonomy import effective
 from evo_agents.hub.server.loop.admit import Capacity, LoopWorker, open_repos, refusal
 from evo_agents.hub.server.loop.caps import run_budget, timeout_s

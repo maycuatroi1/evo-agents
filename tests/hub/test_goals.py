@@ -16,6 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy")
+
 from evo_agents.hub import goals, tables
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
