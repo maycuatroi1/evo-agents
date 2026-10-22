@@ -747,11 +747,11 @@ class ClaudeCodeAdapter(QueueAdapter):
         limits = profiles.claude_settings(profile)
         disallowed = limits.pop("disallowed_tools", [])
         kind = self.context.run.get("kind")
-        if kind in ("author", "chat", "task", "release"):  # nobody at this machine answers a question tool
+        if kind in ("author", "chat", "task", "release", "question"):  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed
-        if kind in ("chat", "task"):  # an @handle or @path in the chat's words or the task never makes it read a file
+        if kind in ("chat", "task", "question"):  # an @handle or @path in the words it is given never makes it read a file
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
