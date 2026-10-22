@@ -61,7 +61,8 @@ GET /v1/projects/{p}/runs/{id}/credentials, the owner's view of a run's leases, 
 
 The owner must still hold writer on the run's project when the worker asks: once the grant is gone or lowered to
 reader, the ask is 403, and the admin route that took it gave back the leases still out of every run the member
-dispatched in the project (``end_member_leases``, from ``admin.grant`` and ``admin.revoke``).
+dispatched in the project (``end_member_leases``, from ``admin.grant`` and ``admin.revoke``). So once the owner's
+primary seat in the org chart ended, on every project (``org_expiry.take_back``).
 
 The hub gives leases back itself (``end_leases``) when a run leaves the held states (``run_state.move_run``: it ends,
 waits in review, or is parked) and when a worker is revoked (``workers.end_worker``, every lease of the worker). Those
@@ -114,6 +115,7 @@ from evo_agents.hub.server.credential_models import (
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.repo_origins import RepoOrigin, repo_origins
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
@@ -362,6 +364,9 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
             f"{row.owner}, who dispatched run {run_id}, no longer holds the writer role on project {row.project}: "
             "the run gets no credentials",
         )
+    ended = await ended_refusal(conn, row.dispatched_by, row.owner, what=f"leasing run {run_id}", lock=lock)
+    if ended is not None:
+        raise HTTPException(403, ended)
     from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes that import this one
 
     return _Run(

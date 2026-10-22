@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable, GitHubUser
 from evo_agents.hub.server.security import (
@@ -153,6 +153,7 @@ async def upsert_user(conn: AsyncConnection, user: GitHubUser) -> tuple[int, str
                 return holder_id, user.login
             if holder_github_id is None:  # granted to the new login of a known account: merge the grants into it
                 await _merge_grants(conn, own.id, holder_id)
+                await org_store.merge_user(conn, own.id, holder_id)
                 await conn.execute(delete(users).where(users.c.id == holder_id))
             else:
                 await _move_aside(conn, holder_id)
@@ -169,6 +170,7 @@ async def upsert_user(conn: AsyncConnection, user: GitHubUser) -> tuple[int, str
         )
         user_id = created.scalar()
         if user_id is not None:
+            await org_store.place_user(conn, user_id)
             return user_id, user.login
     raise RuntimeError(f"could not settle the users row of GitHub account {user.id} after {USER_RETRIES} tries")
 

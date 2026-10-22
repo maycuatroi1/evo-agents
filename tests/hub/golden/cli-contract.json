@@ -1129,6 +1129,79 @@
         "schema": "Agent"
       }
     },
+    "hub autonomy ceiling set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--seat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "scope",
+          "target",
+          "revision",
+          "level",
+          "previous",
+          "note"
+        ],
+        "schema": "CeilingWritten"
+      }
+    },
     "hub canvas brainstorm": {
       "positionals": [
         {
@@ -5690,6 +5763,588 @@
         }
       ],
       "json": null
+    },
+    "hub org seat add": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "lead",
+            "member",
+            "intern",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--reports-to"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sponsor"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--primary"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--starts-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ends-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "unit",
+          "login",
+          "agent",
+          "project",
+          "role",
+          "primary",
+          "reports_to",
+          "reports_to_seat",
+          "sponsor",
+          "starts_on",
+          "ends_on",
+          "ended_at",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgSeatView"
+      }
+    },
+    "hub org seat edit": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--seat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "lead",
+            "member",
+            "intern",
+            "agent"
+          ]
+        },
+        {
+          "flags": [
+            "--reports-to"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sponsor"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--primary"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--starts-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ends-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--clear-reports-to"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--clear-ends-on"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "unit",
+          "login",
+          "agent",
+          "project",
+          "role",
+          "primary",
+          "reports_to",
+          "reports_to_seat",
+          "sponsor",
+          "starts_on",
+          "ends_on",
+          "ended_at",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgSeatView"
+      }
+    },
+    "hub org seat end": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--seat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "unit",
+          "login",
+          "agent",
+          "project",
+          "role",
+          "primary",
+          "reports_to",
+          "reports_to_seat",
+          "sponsor",
+          "starts_on",
+          "ends_on",
+          "ended_at",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgSeatView"
+      }
+    },
+    "hub org show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "units",
+          "seats",
+          "viewer"
+        ],
+        "schema": "OrgChartView"
+      }
+    },
+    "hub org unit archive": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "name",
+          "kind",
+          "parent",
+          "ends_on",
+          "archived_at",
+          "revision",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgUnitView"
+      }
+    },
+    "hub org unit create": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "team",
+            "cohort"
+          ]
+        },
+        {
+          "flags": [
+            "--name"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ends-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "name",
+          "kind",
+          "parent",
+          "ends_on",
+          "archived_at",
+          "revision",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgUnitView"
+      }
+    },
+    "hub org unit edit": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--name"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ends-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--clear-ends-on"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "name",
+          "kind",
+          "parent",
+          "ends_on",
+          "archived_at",
+          "revision",
+          "ceiling",
+          "effective",
+          "source"
+        ],
+        "schema": "OrgUnitView"
+      }
     },
     "hub plan abandon": {
       "positionals": [
@@ -13227,7 +13882,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.34.2"
+      "version": "0.35.1"
     },
     "paths": {
       "/v1/health": {
@@ -34622,6 +35277,674 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/org": {
+        "get": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Show Org",
+          "description": "The whole org chart, with every ceiling and effective level, and the viewer's own.",
+          "operationId": "show_org_v1_org_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgChartView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/runs": {
+        "get": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Org Runs",
+          "description": "Each member's runs at work now, by project, over the projects the viewer holds a grant on.",
+          "operationId": "org_runs_v1_org_runs_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/units": {
+        "post": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Create Unit",
+          "description": "Create a team or a cohort below a unit; a cohort without a level gets a ceiling of A1.",
+          "operationId": "create_unit_v1_org_units_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgUnitView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/units/{slug}": {
+        "patch": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Edit Unit",
+          "description": "Change a unit's name, parent or end date; a field left out keeps its value.",
+          "operationId": "edit_unit_v1_org_units__slug__patch",
+          "parameters": [
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgUnitView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/org/units/{slug}/archive": {
+        "post": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Archive Unit",
+          "description": "Archive a unit with no unit below it left and no live seat.",
+          "operationId": "archive_unit_v1_org_units__slug__archive_post",
+          "parameters": [
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgUnitView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/org/seats": {
+        "post": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Add Seat",
+          "description": "Add a seat of a person or an agent profile to a unit.",
+          "operationId": "add_seat_v1_org_seats_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatAdd"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgSeatView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/seats/{seat_id}": {
+        "patch": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Edit Seat",
+          "description": "Change a live seat's role, reports_to, sponsor or dates, or make it the person's primary seat.",
+          "operationId": "edit_seat_v1_org_seats__seat_id__patch",
+          "parameters": [
+            {
+              "name": "seat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Seat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgSeatView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/org/seats/{seat_id}/end": {
+        "post": {
+          "tags": [
+            "org"
+          ],
+          "summary": "End Seat",
+          "description": "End a seat now.",
+          "operationId": "end_seat_v1_org_seats__seat_id__end_post",
+          "parameters": [
+            {
+              "name": "seat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Seat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgSeatView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/org/ceilings": {
+        "put": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Set Ceiling",
+          "description": "Write the next ceiling revision of a unit, of a person's primary seat or of a seat.",
+          "operationId": "set_ceiling_v1_org_ceilings_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CeilingSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CeilingWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
             }
           }
         }
@@ -61389,6 +62712,151 @@
           ],
           "title": "CanvasWithdrawIn"
         },
+        "CeilingSet": {
+          "properties": {
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login"
+            },
+            "seat": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seat"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "level"
+          ],
+          "title": "CeilingSet",
+          "description": "The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat)."
+        },
+        "CeilingWritten": {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "unit",
+                "seat"
+              ],
+              "title": "Scope"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "unit:<slug> or seat:<id>"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "previous": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Previous",
+              "description": "the level of the revision before; null for the first"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scope",
+            "target",
+            "revision",
+            "level",
+            "previous",
+            "note"
+          ],
+          "title": "CeilingWritten"
+        },
         "Change": {
           "properties": {
             "id": {
@@ -73000,6 +74468,425 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "OrgChartView": {
+          "properties": {
+            "units": {
+              "items": {
+                "$ref": "#/components/schemas/OrgUnitView"
+              },
+              "type": "array",
+              "title": "Units",
+              "description": "every unit, the root first, then by slug"
+            },
+            "seats": {
+              "items": {
+                "$ref": "#/components/schemas/OrgSeatView"
+              },
+              "type": "array",
+              "title": "Seats",
+              "description": "every seat, live and ended, by unit and id"
+            },
+            "viewer": {
+              "$ref": "#/components/schemas/OrgViewer"
+            }
+          },
+          "type": "object",
+          "required": [
+            "units",
+            "seats",
+            "viewer"
+          ],
+          "title": "OrgChartView"
+        },
+        "OrgRunCount": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who dispatched the runs, their owner"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "running": {
+              "type": "integer",
+              "title": "Running",
+              "description": "their runs in that project whose agent works now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "project",
+            "running"
+          ],
+          "title": "OrgRunCount"
+        },
+        "OrgRuns": {
+          "properties": {
+            "running": {
+              "items": {
+                "$ref": "#/components/schemas/OrgRunCount"
+              },
+              "type": "array",
+              "title": "Running",
+              "description": "the runs at work the viewer sees, over the projects they hold a grant on, by login and project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "running"
+          ],
+          "title": "OrgRuns"
+        },
+        "OrgSeatView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "unit": {
+              "type": "string",
+              "title": "Unit",
+              "description": "the slug of its unit"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person holding it; null for an agent's seat"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile holding it; null for a person's seat"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the project of the agent profile; null for a person's seat"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "lead",
+                "member",
+                "intern",
+                "agent"
+              ],
+              "title": "Role"
+            },
+            "primary": {
+              "type": "boolean",
+              "title": "Primary",
+              "description": "whether it decides the person's ceiling; an agent's seat always does"
+            },
+            "reports_to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reports To",
+              "description": "the login holding the seat it reports to"
+            },
+            "reports_to_seat": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reports To Seat"
+            },
+            "sponsor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sponsor",
+              "description": "the login answering for an agent's seat"
+            },
+            "starts_on": {
+              "type": "string",
+              "format": "date",
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "ceiling": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ceiling"
+            },
+            "effective": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Effective",
+              "description": "A0 once the seat ended, else the lowest ceiling of it and its units"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "unit:<slug> or seat:<id> that sets the effective level"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "unit",
+            "login",
+            "agent",
+            "project",
+            "role",
+            "primary",
+            "reports_to",
+            "reports_to_seat",
+            "sponsor",
+            "starts_on",
+            "ends_on",
+            "ended_at",
+            "ceiling",
+            "effective",
+            "source"
+          ],
+          "title": "OrgSeatView"
+        },
+        "OrgUnitView": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "org",
+                "team",
+                "cohort"
+              ],
+              "title": "Kind"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the slug of the unit above it; null for the root"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On",
+              "description": "the day a cohort ends; null for a team and the root"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "1 and up; every change of the unit or of a seat in it raises it"
+            },
+            "ceiling": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ceiling",
+              "description": "the level its newest ceiling revision sets; null without one"
+            },
+            "effective": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Effective",
+              "description": "the lowest ceiling of the unit and every unit above it"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "unit:<slug> that sets the effective level"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "name",
+            "kind",
+            "parent",
+            "ends_on",
+            "archived_at",
+            "revision",
+            "ceiling",
+            "effective",
+            "source"
+          ],
+          "title": "OrgUnitView"
+        },
+        "OrgViewer": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "admin": {
+              "type": "boolean",
+              "title": "Admin",
+              "description": "a hub admin, who may change everything"
+            },
+            "leads": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Leads",
+              "description": "the slugs of the units the viewer leads"
+            },
+            "effective": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Effective",
+              "description": "the viewer's own effective ceiling"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "admin",
+            "leads",
+            "effective",
+            "source"
+          ],
+          "title": "OrgViewer"
         },
         "OtherProject": {
           "properties": {
@@ -85881,6 +87768,218 @@
           ],
           "title": "ScrubRequest"
         },
+        "SeatAdd": {
+          "properties": {
+            "unit": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Unit"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "lead",
+                "member",
+                "intern",
+                "agent"
+              ],
+              "title": "Role"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "reports_to": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reports To",
+              "description": "the person the seat reports to; an intern's needs one"
+            },
+            "sponsor": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sponsor",
+              "description": "the person answering for an agent's seat; it needs one"
+            },
+            "primary": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Primary",
+              "description": "whether the seat decides the person's ceiling; when left out it does if their primary seat now is at the root or they hold none"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On",
+              "description": "today when left out"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "unit",
+            "role"
+          ],
+          "title": "SeatAdd",
+          "description": "A seat for a person (login) or for an agent profile (agent and project)."
+        },
+        "SeatEdit": {
+          "properties": {
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "lead",
+                    "member",
+                    "intern",
+                    "agent"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            },
+            "primary": {
+              "anyOf": [
+                {
+                  "type": "boolean",
+                  "const": true
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Primary",
+              "description": "make it the person's primary seat"
+            },
+            "reports_to": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reports To"
+            },
+            "sponsor": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sponsor"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SeatEdit",
+          "description": "The fields to change; a field left out keeps its value, reports_to or ends_on null clears it."
+        },
         "Secret": {
           "properties": {
             "name": {
@@ -95063,6 +97162,153 @@
             "link"
           ],
           "title": "TriageThread"
+        },
+        "UnitCreate": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Slug"
+            },
+            "parent": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Parent"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "team",
+                "cohort"
+              ],
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "the slug when left out"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On",
+              "description": "a cohort's last day"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level",
+              "description": "its ceiling; a cohort gets A1 when left out, a team none"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "slug",
+            "parent",
+            "kind"
+          ],
+          "title": "UnitCreate"
+        },
+        "UnitEdit": {
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "409 unless the unit is at this revision now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "UnitEdit",
+          "description": "The fields to change; a field left out keeps its value, ends_on null clears it."
         },
         "UpdateNowReport": {
           "properties": {

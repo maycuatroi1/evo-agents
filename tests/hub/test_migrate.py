@@ -118,7 +118,8 @@ TABLES |= pg.GOAL_TABLES  # migration 0091
 TABLES |= pg.LOOP_TABLES  # migration 0093
 TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
-TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0099
+TABLES |= pg.ORG_TABLES  # migration 0099
+TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -193,8 +194,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_one_tables(hub_db):
-    assert len(TABLES) == 141  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_forty_four_tables(hub_db):
+    assert len(TABLES) == 144  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2601,8 +2602,8 @@ def test_constraints_accept_good_rows(schema):
     assert one(schema, select(func.count()).select_from(t.memory_revisions)) == 0
 
 
-def test_0099_keeps_the_questions_of_core_plugins_and_question_runs_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0098")
+def test_0100_keeps_the_questions_of_core_plugins_and_question_runs_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0099")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -2617,11 +2618,11 @@ def test_0099_keeps_the_questions_of_core_plugins_and_question_runs_and_going_ba
         task = one(conn, _task_run(ids, type_id))
         delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "agent.answer", "contribution": "a"}
         delivery["payload"] = {"question_id": 1}
-        with pytest.raises(errors.CheckViolation):  # no run of kind question before 0099
+        with pytest.raises(errors.CheckViolation):  # no run of kind question before 0100
             conn.execute(_task_run(ids, type_id, kind="question", branch=None, pulls=null(), repos=null()))
         with pytest.raises(errors.CheckViolation):  # and no event agent.answer
             conn.execute(insert(t.plugin_deliveries).values(delivery))
-    move_to(hub_db, "0099")
+    move_to(hub_db, "0100")
     q = t.agent_questions
     asked = {"plugin_id": plugin_id, "project_id": ids["project"], "agent_type_id": type_id}
     asked |= {"asker": "Ana", "cleared": {"level": "internal", "location": None, "below": False}}
@@ -2662,11 +2663,11 @@ def test_0099_keeps_the_questions_of_core_plugins_and_question_runs_and_going_ba
     assert query(hub_db, select(q.c.outcome, q.c.answer)) == [("done", "Settings, then Security.")]
 
     # Going back drops the questions and deletes the question runs and the deliveries of agent.answer; the rest stays.
-    move_to(hub_db, "0098", down=True)
+    move_to(hub_db, "0099", down=True)
     assert "agent_questions" not in tables(hub_db)
     assert query(hub_db, select(t.runs.c.id, t.runs.c.kind)) == [(task, "task")]
     assert query(hub_db, select(func.count()).select_from(t.plugin_deliveries)) == [(0,)]
     with live.connect(hub_db) as conn:
-        with pytest.raises(errors.CheckViolation):  # the checks of schema 0098 are back
+        with pytest.raises(errors.CheckViolation):  # the checks of schema 0099 are back
             conn.execute(insert(t.plugin_deliveries).values(delivery))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0099") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0100") :]

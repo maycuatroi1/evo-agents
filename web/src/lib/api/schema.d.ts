@@ -3867,6 +3867,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Org
+         * @description The whole org chart, with every ceiling and effective level, and the viewer's own.
+         */
+        get: operations["show_org_v1_org_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org Runs
+         * @description Each member's runs at work now, by project, over the projects the viewer holds a grant on.
+         */
+        get: operations["org_runs_v1_org_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Unit
+         * @description Create a team or a cohort below a unit; a cohort without a level gets a ceiling of A1.
+         */
+        post: operations["create_unit_v1_org_units_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Unit
+         * @description Change a unit's name, parent or end date; a field left out keeps its value.
+         */
+        patch: operations["edit_unit_v1_org_units__slug__patch"];
+        trace?: never;
+    };
+    "/v1/org/units/{slug}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Unit
+         * @description Archive a unit with no unit below it left and no live seat.
+         */
+        post: operations["archive_unit_v1_org_units__slug__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/seats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Seat
+         * @description Add a seat of a person or an agent profile to a unit.
+         */
+        post: operations["add_seat_v1_org_seats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/seats/{seat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Seat
+         * @description Change a live seat's role, reports_to, sponsor or dates, or make it the person's primary seat.
+         */
+        patch: operations["edit_seat_v1_org_seats__seat_id__patch"];
+        trace?: never;
+    };
+    "/v1/org/seats/{seat_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Seat
+         * @description End a seat now.
+         */
+        post: operations["end_seat_v1_org_seats__seat_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/ceilings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ceiling
+         * @description Write the next ceiling revision of a unit, of a person's primary seat or of a seat.
+         */
+        put: operations["set_ceiling_v1_org_ceilings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -10057,6 +10237,52 @@ export interface components {
             reason: string;
         };
         /**
+         * CeilingSet
+         * @description The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat).
+         */
+        CeilingSet: {
+            /** Unit */
+            unit?: string | null;
+            /** Login */
+            login?: string | null;
+            /** Seat */
+            seat?: number | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Note */
+            note?: string | null;
+        };
+        /** CeilingWritten */
+        CeilingWritten: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "unit" | "seat";
+            /**
+             * Target
+             * @description unit:<slug> or seat:<id>
+             */
+            target: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Previous
+             * @description the level of the revision before; null for the first
+             */
+            previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /** Note */
+            note: string | null;
+        };
+        /**
          * Change
          * @description What an accepted proposal of tier 0 to 2 became, and where it stands.
          */
@@ -15044,6 +15270,180 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /** OrgChartView */
+        OrgChartView: {
+            /**
+             * Units
+             * @description every unit, the root first, then by slug
+             */
+            units: components["schemas"]["OrgUnitView"][];
+            /**
+             * Seats
+             * @description every seat, live and ended, by unit and id
+             */
+            seats: components["schemas"]["OrgSeatView"][];
+            viewer: components["schemas"]["OrgViewer"];
+        };
+        /** OrgRunCount */
+        OrgRunCount: {
+            /**
+             * Login
+             * @description the member who dispatched the runs, their owner
+             */
+            login: string;
+            /** Project */
+            project: string;
+            /**
+             * Running
+             * @description their runs in that project whose agent works now
+             */
+            running: number;
+        };
+        /** OrgRuns */
+        OrgRuns: {
+            /**
+             * Running
+             * @description the runs at work the viewer sees, over the projects they hold a grant on, by login and project
+             */
+            running: components["schemas"]["OrgRunCount"][];
+        };
+        /** OrgSeatView */
+        OrgSeatView: {
+            /** Id */
+            id: number;
+            /**
+             * Unit
+             * @description the slug of its unit
+             */
+            unit: string;
+            /**
+             * Login
+             * @description the person holding it; null for an agent's seat
+             */
+            login: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile holding it; null for a person's seat
+             */
+            agent: string | null;
+            /**
+             * Project
+             * @description the project of the agent profile; null for a person's seat
+             */
+            project: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "lead" | "member" | "intern" | "agent";
+            /**
+             * Primary
+             * @description whether it decides the person's ceiling; an agent's seat always does
+             */
+            primary: boolean;
+            /**
+             * Reports To
+             * @description the login holding the seat it reports to
+             */
+            reports_to: string | null;
+            /** Reports To Seat */
+            reports_to_seat: number | null;
+            /**
+             * Sponsor
+             * @description the login answering for an agent's seat
+             */
+            sponsor: string | null;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Ceiling */
+            ceiling: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Effective
+             * @description A0 once the seat ended, else the lowest ceiling of it and its units
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Source
+             * @description unit:<slug> or seat:<id> that sets the effective level
+             */
+            source: string;
+        };
+        /** OrgUnitView */
+        OrgUnitView: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "org" | "team" | "cohort";
+            /**
+             * Parent
+             * @description the slug of the unit above it; null for the root
+             */
+            parent: string | null;
+            /**
+             * Ends On
+             * @description the day a cohort ends; null for a team and the root
+             */
+            ends_on: string | null;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Revision
+             * @description 1 and up; every change of the unit or of a seat in it raises it
+             */
+            revision: number;
+            /**
+             * Ceiling
+             * @description the level its newest ceiling revision sets; null without one
+             */
+            ceiling: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Effective
+             * @description the lowest ceiling of the unit and every unit above it
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Source
+             * @description unit:<slug> that sets the effective level
+             */
+            source: string;
+        };
+        /** OrgViewer */
+        OrgViewer: {
+            /** Login */
+            login: string;
+            /**
+             * Admin
+             * @description a hub admin, who may change everything
+             */
+            admin: boolean;
+            /**
+             * Leads
+             * @description the slugs of the units the viewer leads
+             */
+            leads: string[];
+            /**
+             * Effective
+             * @description the viewer's own effective ceiling
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Source */
+            source: string;
         };
         /** OtherProject */
         OtherProject: {
@@ -20773,6 +21173,68 @@ export interface components {
             limit: number;
         };
         /**
+         * SeatAdd
+         * @description A seat for a person (login) or for an agent profile (agent and project).
+         */
+        SeatAdd: {
+            /** Unit */
+            unit: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "lead" | "member" | "intern" | "agent";
+            /** Login */
+            login?: string | null;
+            /** Agent */
+            agent?: string | null;
+            /** Project */
+            project?: string | null;
+            /**
+             * Reports To
+             * @description the person the seat reports to; an intern's needs one
+             */
+            reports_to?: string | null;
+            /**
+             * Sponsor
+             * @description the person answering for an agent's seat; it needs one
+             */
+            sponsor?: string | null;
+            /**
+             * Primary
+             * @description whether the seat decides the person's ceiling; when left out it does if their primary seat now is at the root or they hold none
+             */
+            primary?: boolean | null;
+            /**
+             * Starts On
+             * @description today when left out
+             */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+        };
+        /**
+         * SeatEdit
+         * @description The fields to change; a field left out keeps its value, reports_to or ends_on null clears it.
+         */
+        SeatEdit: {
+            /** Role */
+            role?: ("lead" | "member" | "intern" | "agent") | null;
+            /**
+             * Primary
+             * @description make it the person's primary seat
+             */
+            primary?: true | null;
+            /** Reports To */
+            reports_to?: string | null;
+            /** Sponsor */
+            sponsor?: string | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+        };
+        /**
          * Secret
          * @description A secret as its owner sees it: everything but the value.
          */
@@ -24588,6 +25050,52 @@ export interface components {
              * @description the web page of the thread, /chats/ID?message=ID
              */
             link: string;
+        };
+        /** UnitCreate */
+        UnitCreate: {
+            /** Slug */
+            slug: string;
+            /** Parent */
+            parent: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "team" | "cohort";
+            /**
+             * Name
+             * @description the slug when left out
+             */
+            name?: string | null;
+            /**
+             * Ends On
+             * @description a cohort's last day
+             */
+            ends_on?: string | null;
+            /**
+             * Level
+             * @description its ceiling; a cohort gets A1 when left out, a team none
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * UnitEdit
+         * @description The fields to change; a field left out keeps its value, ends_on null clears it.
+         */
+        UnitEdit: {
+            /** Name */
+            name?: string | null;
+            /** Parent */
+            parent?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the unit is at this revision now
+             */
+            if_revision?: number | null;
         };
         /**
          * UpdateNowReport
@@ -39186,6 +39694,547 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_org_v1_org_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgChartView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    org_runs_v1_org_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRuns"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_unit_v1_org_units_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_unit_v1_org_units__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_unit_v1_org_units__slug__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_seat_v1_org_seats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_seat_v1_org_seats__seat_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    end_seat_v1_org_seats__seat_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_ceiling_v1_org_ceilings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CeilingSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CeilingWritten"];
                 };
             };
             /** @description Unauthorized */
