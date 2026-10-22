@@ -3,7 +3,12 @@ together apply each revision once, a database at 0001 with rows in it moves to 0
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
 ``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``, 0012 in ``tests.hub.test_curator``, 0013 in
 ``tests.hub.test_session_digests``, 0014 in ``tests.hub.test_review_runs``, 0015 in ``tests.hub.test_brief``, 0017 in
-``tests.hub.test_curator_changes``, 0018 in ``tests.hub.test_curator_ledger``."""
+``tests.hub.test_curator_changes``, 0018 in ``tests.hub.test_curator_ledger``.
+
+A test of one revision starts from a copy of a template near the revision before it, which the pytest process migrated
+once (``move_to``), and goes on to head one revision a transaction (``pg.migrate_in_steps``); the few tests that
+migrate the whole chain in one transaction take turns on the server (``migrate`` here, ``whole_chain``). That keeps
+the module fast and lets it run under ``pytest -n auto``."""
 
 import re
 import subprocess
@@ -20,7 +25,6 @@ from tests.hub import live, pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from alembic import command
 from alembic.script import ScriptDirectory
 from psycopg import errors
 from sqlalchemy import (
@@ -43,9 +47,10 @@ from sqlalchemy.dialects.postgresql import REGCLASS
 
 from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import tables as hub_tables
-from evo_agents.hub.migrate import LOCK_KEY, MigrationError, alembic_config, head_revision, migrate, revisions
+from evo_agents.hub.migrate import LOCK_KEY, MigrationError, alembic_config, head_revision, revisions
 
-# Every test here migrates a database of its own from nothing, not the copy of the migrated template.
+# Every test here gets an empty database of its own, not the copy of the migrated template: it migrates it, or move_to
+# makes it a copy of a template below the revision the test starts from.
 pytestmark = pytest.mark.empty_db
 
 TABLES = {
@@ -189,6 +194,13 @@ def query(db, statement) -> list[tuple]:
     return live.sql(db, statement)
 
 
+def migrate(dsn: str, **kwargs) -> hub_migrate.MigrationResult:
+    """``evo_agents.hub.migrate.migrate`` in its turn on the server (``pg.one_whole_chain``): from an empty database,
+    or from 0001, it migrates the whole chain in one transaction."""
+    with pg.one_whole_chain():
+        return hub_migrate.migrate(dsn, **kwargs)
+
+
 def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
@@ -220,7 +232,7 @@ def test_a_fresh_database_gets_the_one_hundred_and_forty_three_tables(hub_db):
 
 
 def test_a_second_migrate_changes_nothing(hub_db):
-    migrate(hub_db.dsn)
+    move_to(hub_db, "head")
     before = query(hub_db, SNAPSHOT)
     result = migrate(hub_db.dsn)
     assert (result.before, result.applied, result.after) == ((HEAD,), (), (HEAD,))
@@ -250,7 +262,7 @@ def outcome(lines: list[dict]) -> dict:
     return line
 
 
-def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db):
+def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, whole_chain):
     env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn)
     # Hold the lock until both processes wait on it, so they really race for it when it is released.
     with live.connect(hub_db) as holder:
@@ -284,7 +296,7 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db):
 
 
 def test_a_database_at_an_unknown_revision_is_refused(hub_db):
-    migrate(hub_db.dsn)
+    move_to(hub_db, "head")
     query(hub_db, update(ALEMBIC_VERSION).values(version_num="9999").returning(ALEMBIC_VERSION.c.version_num))
     before = query(hub_db, SNAPSHOT)
     with pytest.raises(
@@ -332,15 +344,14 @@ def test_revisions_form_one_chain_of_numbered_files():
 
 
 def move_to(db, revision: str, *, down: bool = False) -> None:
-    """Upgrade or downgrade the database to ``revision`` with Alembic, as ``migrate`` drives it."""
-    engine = hub_migrate._engine(db.dsn)
-    try:
-        with engine.begin() as conn:
-            config = alembic_config()
-            config.attributes["connection"] = conn
-            (command.downgrade if down else command.upgrade)(config, revision)
-    finally:
-        engine.dispose()
+    """Upgrade or downgrade the database to ``revision`` with Alembic, every revision in one transaction, as
+    ``migrate`` drives it. An empty database first becomes a copy of the nearest template at or below ``revision``
+    (``pg.template_below``), which the pytest process migrated once: from nothing, every test would migrate again the
+    chain below the revision it tests."""
+    if not down and query(db, select(func.to_regclass("public.alembic_version")))[0][0] is None:
+        if below := pg.template_below(revision):
+            pg.copy_into(db, below[1])
+    pg.move(db, revision, down=down)
 
 
 def columns(db, name: str) -> set[str]:
@@ -427,7 +438,7 @@ def test_0008_keeps_the_builds_and_going_back_fails_the_pruned_ones(hub_db):
         (first, "failed", None, True),
         (second, "succeeded", "b" * 64, False),
     ]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0008") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0008") :]
 
 
 def _worker_row(ids, token_id: int, name: str, slots: int, **values):
@@ -500,7 +511,7 @@ def test_0026_takes_up_to_sixteen_slots_and_going_back_refuses_a_live_worker_ove
     ]
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(update(workers).values(slots=9).where(workers.c.id == small_id))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0026") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0026") :]
 
 
 def _author_run(ids, **extra):
@@ -547,7 +558,7 @@ def test_0029_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_
     assert query(hub_db, select(t.notifications.c.decision_id)) == [(planned,)]
     with live.connect(hub_db) as conn, pytest.raises(errors.NotNullViolation):
         conn.execute(_decision_row(ids, run_id, None))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0029") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0029") :]
 
 
 def _chat_run(ids, chat_id: int, message_id: int | None, **extra):
@@ -608,7 +619,7 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
     move_to(hub_db, "0031", down=True)
     assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
     assert query(hub_db, select(t.chat_messages.c.id)) == [(message_id,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0032") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0032") :]
 
 
 def _local_run(ids, session_id: str, **extra):
@@ -659,7 +670,7 @@ def test_0033_takes_local_runs_once_per_session_and_going_back_deletes_them(hub_
     move_to(hub_db, "0032", down=True)
     assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
     assert "machine" not in columns(hub_db, "runs")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0033") :]
 
 
 def _plugin_version(plugin_id: int, user_id: int, **extra):
@@ -705,7 +716,7 @@ def test_0034_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugi
     assert "plugins" not in tables(hub_db) and "plugin_versions" not in tables(hub_db)
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.project_id.is_(None))) == []
     assert query(hub_db, select(t.notifications.c.id)) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0034") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0034") :]
 
 
 def test_0035_places_plugins_in_projects_and_going_back_drops_the_grants_configs_and_run_records(hub_db):
@@ -754,7 +765,7 @@ def test_0035_places_plugins_in_projects_and_going_back_drops_the_grants_configs
     gone = {"project_plugins", "plugin_configs", "run_plugins"}
     assert not gone & tables(hub_db)
     assert query(hub_db, select(t.runs.c.id)) == [(run_id,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0035") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0035") :]
 
 
 def test_0036_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db):
@@ -786,7 +797,7 @@ def test_0036_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db)
 
     move_to(hub_db, "0035", down=True)
     assert not {"plugin_tokens", "plugin_backends"} & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0036") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0036") :]
 
 
 def test_0037_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_drops_them(hub_db):
@@ -817,7 +828,7 @@ def test_0037_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_
     move_to(hub_db, "0036", down=True)
     assert "hub_settings" not in tables(hub_db)
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.kind == "branding-image")) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0037") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0037") :]
 
 
 def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_them(hub_db):
@@ -857,7 +868,7 @@ def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_the
     move_to(hub_db, "0037", down=True)
     assert "plugin_deliveries" not in tables(hub_db)
     assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0038") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0038") :]
 
 
 def test_0039_takes_runs_of_plugins_runtimes_and_the_plugins_of_a_worker_and_going_back_deletes_those_runs(hub_db):
@@ -890,7 +901,7 @@ def test_0039_takes_runs_of_plugins_runtimes_and_the_plugins_of_a_worker_and_goi
     move_to(hub_db, "0038", down=True)
     assert query(hub_db, select(t.runs.c.id)) == [(core,)], "the runs of the plugin's runtime went, retries first"
     assert "plugins" not in columns(hub_db, "workers")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0039") :]
 
 
 def _profile_row(ids, handle: str, permissions: dict, *, default: bool = False):
@@ -936,7 +947,7 @@ def test_0040_gives_every_profile_the_environment_axis_and_runs_their_environmen
     assert "environment" not in columns(hub_db, "runs")
     held = dict(query(hub_db, select(ap.c.id, ap.c.permissions)))
     assert held == {default: seven, reader: seven}, "the axis went, its allowlist with it"
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0040") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0040") :]
 
 
 def test_0041_gives_every_profile_an_empty_list_of_agent_packs_and_going_back_drops_it(hub_db):
@@ -966,7 +977,7 @@ def test_0041_gives_every_profile_an_empty_list_of_agent_packs_and_going_back_dr
     with live.connect(hub_db) as conn:
         with pytest.raises(errors.CheckViolation):  # the check of schema 0040 is back
             conn.execute(update(ap).values(instructions="be brief").where(ap.c.id == default))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0041") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0041") :]
 
 
 def _task_run(ids, agent_type_id: int | None, **extra):
@@ -1032,7 +1043,7 @@ def test_0042_takes_agent_types_and_task_runs_and_going_back_deletes_them(hub_db
     with live.connect(hub_db) as conn:
         with pytest.raises(errors.CheckViolation):  # the checks of schema 0041 are back
             conn.execute(insert(t.plugin_deliveries).values(delivery))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0042") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0042") :]
 
 
 def test_0044_keeps_triage_threads_and_a_project_switch_and_going_back_drops_them(hub_db):
@@ -1053,7 +1064,7 @@ def test_0044_keeps_triage_threads_and_a_project_switch_and_going_back_drops_the
     move_to(hub_db, "0043", down=True)
     assert not {"triage_chats", "run_triage"} & tables(hub_db)
     assert "triage_enabled" not in columns(hub_db, "projects")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0044") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0044") :]
 
 
 def test_0045_lets_a_decision_be_of_category_triage_and_going_back_deletes_those(hub_db):
@@ -1069,7 +1080,7 @@ def test_0045_lets_a_decision_be_of_category_triage_and_going_back_deletes_those
         kept = one(conn, _decision_row(ids, run_id, "p"))
     move_to(hub_db, "0044", down=True)
     assert query(hub_db, select(hub_tables.decisions.c.id)) == [(kept,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0045") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0045") :]
 
 
 def test_0047_keeps_tasks_one_active_sprint_and_links_of_one_kind_and_going_back_drops_them(hub_db):
@@ -1090,7 +1101,7 @@ def test_0047_keeps_tasks_one_active_sprint_and_links_of_one_kind_and_going_back
             conn.execute(insert(k.links).values(kind="plan_step", plan_id="p", step_id="1", url="https://x", **link))
     move_to(hub_db, "0046", down=True)
     assert not pg.TASKS_TABLES & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0047") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0047") :]
 
 
 def test_0048_holds_every_worker_unlocked_checks_the_commit_and_the_report_and_going_back_drops_them(hub_db):
@@ -1122,7 +1133,7 @@ def test_0048_holds_every_worker_unlocked_checks_the_commit_and_the_report_and_g
     assert query(hub_db, shown.where(workers.c.id == worker))[0][:3] == (True, "a" * 64, report)
     move_to(hub_db, "0047", down=True)
     assert not added & columns(hub_db, "workers")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0048") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0048") :]
 
 
 def test_0049_gives_every_run_an_empty_seen_audience_and_going_back_drops_it(hub_db):
@@ -1140,7 +1151,7 @@ def test_0049_gives_every_run_an_empty_seen_audience_and_going_back_drops_it(hub
     ]
     move_to(hub_db, "0048", down=True)
     assert "seen_audience" not in columns(hub_db, "runs")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0049") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0049") :]
 
 
 def test_0053_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(hub_db):
@@ -1165,7 +1176,7 @@ def test_0053_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(h
     assert query(hub_db, shown) == [(report,)]
     move_to(hub_db, "0052", down=True)
     assert "kg_sync" not in columns(hub_db, "workers")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0053") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0053") :]
 
 
 def test_0062_holds_every_worker_unshared_and_going_back_drops_the_column(hub_db):
@@ -1185,7 +1196,7 @@ def test_0062_holds_every_worker_unshared_and_going_back_drops_the_column(hub_db
     assert query(hub_db, shown) == [(True,)]
     move_to(hub_db, "0061", down=True)
     assert "shared" not in columns(hub_db, "workers")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0062") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0062") :]
 
 
 def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_keeps_those_alone(hub_db):
@@ -1213,7 +1224,7 @@ def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_k
     move_to(hub_db, "0062", down=True)
     assert query(hub_db, select(old.c.code_hash)) == [("a" * 64,)]  # the northwind code went, Telegram's stays
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0063") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0063") :]
 
 
 def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_draft_again(hub_db):
@@ -1237,7 +1248,7 @@ def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_dr
     move_to(hub_db, "0063", down=True)
     assert query(hub_db, select(s.versions.c.state, s.versions.c.decided_at)) == [("draft", None)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0064") :]
 
 
 def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
@@ -1281,7 +1292,7 @@ def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
     move_to(hub_db, "0064", down=True)
     assert not added & columns(hub_db, "workers")
     assert not columns(hub_db, "hub_nightly")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0065") :]
 
 
 def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
@@ -1311,7 +1322,7 @@ def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_
             conn.execute(update(accounts).values(oauth_sealed=None).where(accounts.c.secret_id == secret_id))
     move_to(hub_db, "0065", down=True)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0066") :]
 
 
 def test_0068_keeps_user_emails_one_member_an_address_whatever_its_case_and_going_back_drops_them(hub_db):
@@ -1340,7 +1351,7 @@ def test_0068_keeps_user_emails_one_member_an_address_whatever_its_case_and_goin
     move_to(hub_db, "0067", down=True)
     assert "user_emails" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0068") :]
 
 
 def test_0069_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_and_the_review_run(hub_db):
@@ -1381,7 +1392,7 @@ def test_0069_keeps_srs_findings_with_a_source_each_and_going_back_drops_them_an
     assert "srs_findings" not in tables(hub_db)
     assert "review_run_id" not in columns(hub_db, "srs_versions")
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0069") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0069") :]
 
 
 def test_0070_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_group_chats(hub_db):
@@ -1430,7 +1441,7 @@ def test_0070_takes_settle_chats_and_their_srs_rows_and_going_back_makes_them_gr
     assert "srs_settle_chats" not in tables(hub_db)
     assert "commit_authors" not in columns(hub_db, "srs_findings")
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0070") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0070") :]
 
 
 def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it(hub_db):
@@ -1462,7 +1473,7 @@ def test_0071_keeps_one_srs_approval_tasks_row_a_version_and_going_back_drops_it
     move_to(hub_db, "0070", down=True)
     assert "srs_approval_tasks" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0071") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0071") :]
 
 
 def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
@@ -1481,7 +1492,7 @@ def test_0072_drops_the_chat_budget_and_going_back_puts_it_back_at_5(hub_db):
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(update(CHATS_0032).values(budget_usd=0).where(CHATS_0032.c.id == chat_id))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0072") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0072") :]
 
 
 def test_0073_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(hub_db):
@@ -1510,7 +1521,7 @@ def test_0073_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(
         conn.execute(insert(k.evidence).values(**piece, actor="hub", synthetic=True))
     move_to(hub_db, "0072", down=True)
     assert not pg.CANVAS_TABLES & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0073") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0073") :]
 
 
 def test_0074_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_them(hub_db):
@@ -1549,7 +1560,7 @@ def test_0074_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_the
             conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-3", "user_id": ids["user"]}))
     move_to(hub_db, "0073", down=True)
     assert not pg.SIGNAL_TABLES & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0074") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0074") :]
 
 
 def test_0075_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
@@ -1585,7 +1596,7 @@ def test_0075_keeps_canvas_proposals_and_going_back_drops_them(hub_db):
     move_to(hub_db, "0074", down=True)
     assert not pg.CANVAS_PROPOSAL_TABLES & tables(hub_db)
     assert pg.CANVAS_TABLES <= tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0075") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0075") :]
 
 
 def test_0076_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_them(hub_db):
@@ -1659,7 +1670,7 @@ def test_0076_keeps_judgings_and_the_basis_of_hub_evidence_and_going_back_drops_
     assert not pg.CANVAS_JUDGING_TABLES & tables(hub_db)
     assert not {"basis", "rests_on_run"} & columns(hub_db, "canvas_evidence")
     assert "evidence_id" not in columns(hub_db, "canvas_proposals")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0076") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0076") :]
 
 
 def test_0077_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
@@ -1739,7 +1750,7 @@ def test_0077_keeps_baselines_and_hub_events_and_going_back_drops_them(hub_db):
     assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
     assert query(hub_db, select(t.notifications.c.id)) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0077") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0077") :]
 
 
 def test_0078_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
@@ -1763,7 +1774,7 @@ def test_0078_keeps_what_a_claim_links_and_going_back_drops_it(hub_db):
     assert query(hub_db, held) == [(1, [], []), (2, ["UC ORD-1"], ["pantry.stock.outs_per_week"])]
     move_to(hub_db, "0077", down=True)
     assert not {"use_cases", "signal_keys"} & columns(hub_db, "canvas_claims")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0078") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0078") :]
 
 
 def test_0079_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_going_back_drops_them(hub_db):
@@ -1819,7 +1830,7 @@ def test_0079_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
         conn.execute(delete(n))
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0079") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0079") :]
 
 
 def test_0080_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
@@ -1860,7 +1871,7 @@ def test_0080_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_de
     assert query(hub_db, select(s.c.name, s.c.kind)) == [("gitlab-push", "git")]
     assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0080") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0080") :]
 
 
 def test_0081_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_drops_them(hub_db):
@@ -1921,7 +1932,7 @@ def test_0081_takes_the_merge_queue_and_judge_runs_on_no_plan_and_going_back_dro
     assert {"merge_queue", "merge_events"}.isdisjoint(tables(hub_db))
     assert query(hub_db, select(func.count()).select_from(t.runs).where(t.runs.c.kind == "judge")) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0081") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0081") :]
 
 
 def test_0082_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_drops_it(hub_db):
@@ -1955,7 +1966,7 @@ def test_0082_gives_one_merge_queue_turn_to_each_target_branch_and_going_back_dr
     assert query(hub_db, SNAPSHOT) == before
     kept = select(q.c.iid, q.c.state).order_by(q.c.iid)
     assert query(hub_db, kept) == [(1, "merged"), (2, "rebasing"), (3, "merging")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0082") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0082") :]
 
 
 def test_0083_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back_drops_them(hub_db):
@@ -1994,7 +2005,7 @@ def test_0083_follows_a_merge_with_its_checks_reverts_and_samples_and_going_back
     move_to(hub_db, "0082", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state)) == [(1, "reverting")]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0083") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0083") :]
 
 
 def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_back_drops_them(hub_db):
@@ -2036,7 +2047,7 @@ def test_0084_keeps_one_breaker_a_repo_and_the_notice_merge_paused_and_going_bac
     assert query(hub_db, SNAPSHOT) == before
     assert query(hub_db, select(q.c.iid, q.c.state, q.c.reason)) == [(1, "ready", None)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(0,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0084") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0084") :]
 
 
 def test_0085_keeps_tasks_blockers_with_one_side_each_and_a_sprint_activated_at_and_going_back_drops_them(hub_db):
@@ -2074,7 +2085,7 @@ def test_0085_keeps_tasks_blockers_with_one_side_each_and_a_sprint_activated_at_
     move_to(hub_db, "0084", down=True)
     assert "tasks_blockers" not in tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0085") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0085") :]
 
 
 def test_0086_keeps_one_send_a_day_and_the_pm_notices_and_going_back_drops_them(hub_db):
@@ -2107,7 +2118,7 @@ def test_0086_keeps_one_send_a_day_and_the_pm_notices_and_going_back_drops_them(
     with live.connect(hub_db) as conn:
         conn.execute(delete(n).where(n.c.notice_kind.in_(("merge_paused", "release"))))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0086") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0086") :]
 
 
 def test_0088_gives_every_task_an_empty_outcome_and_going_back_drops_the_column(hub_db):
@@ -2126,7 +2137,7 @@ def test_0088_gives_every_task_an_empty_outcome_and_going_back_drops_the_column(
     move_to(hub_db, "0087", down=True)
     assert "outcome_md" not in columns(hub_db, "tasks_items")
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0088") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0088") :]
 
 
 def test_0089_keeps_one_output_a_file_of_a_run_its_links_and_the_switch_and_going_back_drops_them(hub_db):
@@ -2164,7 +2175,7 @@ def test_0089_keeps_one_output_a_file_of_a_run_its_links_and_the_switch_and_goin
     move_to(hub_db, "0088", down=True)
     assert query(hub_db, select(func.count()).select_from(e).where(e.c.kind == "message_changed")) == [(0,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0089") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0089") :]
 
 
 def test_0090_takes_the_notice_run_outputs_and_the_notices_members_turned_off_and_going_back_drops_them(hub_db):
@@ -2194,7 +2205,7 @@ def test_0090_takes_the_notice_run_outputs_and_the_notices_members_turned_off_an
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "merge_paused")) == [(1,)]
     assert query(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "pm_daily")) == [(1,)]
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0090") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0090") :]
 
 
 def _chat(conn, ids) -> int:
@@ -2275,7 +2286,7 @@ def test_0091_keeps_the_revisions_of_goals_and_proposals_of_one_and_going_back_d
         conn.execute(delete(n))
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0091") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0091") :]
 
 
 def test_0092_takes_deliveries_and_grants_of_srs_and_tasks_events_and_going_back_deletes_them(hub_db):
@@ -2310,7 +2321,7 @@ def test_0092_takes_deliveries_and_grants_of_srs_and_tasks_events_and_going_back
     assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
     assert query(hub_db, select(t.hub_events.c.kind)) == [("run.state",)]
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:read"],)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0092") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0092") :]
 
 
 def test_0093_keeps_the_loop_of_a_project_its_work_items_and_their_ledger_and_going_back_drops_them(hub_db):
@@ -2363,23 +2374,23 @@ def test_0093_keeps_the_loop_of_a_project_its_work_items_and_their_ledger_and_go
     move_to(hub_db, "0092", down=True)
     assert not pg.LOOP_TABLES & tables(hub_db)
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0093") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0093") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
-    migrate(hub_db.dsn)
-    move_to(hub_db, "base", down=True)
+    move_to(hub_db, "head")
+    pg.migrate_in_steps(hub_db, "base", down=True)
     assert tables(hub_db) == {"alembic_version"}
     functions = select(func.count()).select_from(PG_PROC).where(PG_PROC.c.proname == "hub_reject_update")
     assert query(hub_db, functions) == [(0,)]
-    assert migrate(hub_db.dsn).applied == ALL
+    assert pg.migrate_in_steps(hub_db) == ALL
     assert tables(hub_db) == TABLES | {"alembic_version"}
 
 
 @pytest.fixture
 def schema(hub_db):
     """A migrated database and a connection to it as its owner, in autocommit."""
-    migrate(hub_db.dsn)
+    move_to(hub_db, "head")
     with live.connect(hub_db) as conn:
         yield conn
 
