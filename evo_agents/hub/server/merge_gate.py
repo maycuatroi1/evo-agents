@@ -141,11 +141,14 @@ async def wait(conn: AsyncConnection, row, why: str) -> None:
         await set_row(conn, row.id, reason=reason)
 
 
-async def close(conn: AsyncConnection, row, why: str) -> None:
-    """``row`` leaves the queue: its merge request is a person's again, or it is merged or closed on GitLab."""
+async def close(conn: AsyncConnection, row, why: str, mr: MergeRequest | None = None) -> None:
+    """``row`` leaves the queue: its merge request is a person's again, or it is merged or closed on GitLab; ``mr``,
+    as GitLab has it now, puts its state there and the commit of a merge in the ledger's line
+    (``merge_gate.closed_detail``), so the Loop counts a merge a person made outside the queue."""
     reason = merge_gate.reason_line(why)
     await set_row(conn, row.id, state="closed", reason=reason, judge_run_id=None, judge_key=None)
-    await record(conn, row, "closed", reason=reason, sha=row.head_sha)
+    detail = merge_gate.closed_detail(mr.state, mr.merge_commit_sha, mr.sha) if mr is not None else {}
+    await record(conn, row, "closed", reason=reason, sha=row.head_sha, detail=detail)
 
 
 async def ready(conn: AsyncConnection, row, why: str) -> None:
@@ -656,7 +659,7 @@ class RepoPass:
             if row is None or row.state not in merge_gate.OPEN_STATES:
                 return
             if verdict == "out":
-                await close(conn, row, f"it left the queue: {why}")
+                await close(conn, row, f"it left the queue: {why}", mr)
                 self.outcomes["closed"] += 1
                 return
             if mr.sha and mr.sha != row.head_sha:

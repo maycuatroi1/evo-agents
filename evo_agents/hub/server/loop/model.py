@@ -236,7 +236,9 @@ class VersionView:
 
 @dataclass(frozen=True)
 class MergeView:
-    """A merge request of the merge queue of a plan; ``checked`` when its repo names a UAT or PROD check job."""
+    """A merge request of the merge queue of a plan; ``checked`` when its repo names a UAT or PROD check job;
+    ``outside`` when the queue closed it because GitLab says a person merged it (its ledger's line ``closed``), its
+    ``after_sha`` and ``merged_at`` then the merge GitLab named and when the queue saw it."""
 
     id: int
     repo: str
@@ -244,6 +246,7 @@ class MergeView:
     after_sha: str | None
     merged_at: datetime | None
     checked: bool
+    outside: bool = False
 
 
 @dataclass(frozen=True)

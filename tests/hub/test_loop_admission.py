@@ -293,3 +293,30 @@ def test_loop_caps_a_task_run_the_loop_hands_out_keeps_the_daily_cap_of_its_agen
     refused = client.portal.call(partial(hand, "use_case"))
     assert (refused.run_id, refused.reason) == (None, "type_refused")
     assert refused.why.startswith("agent type ba of plugin srs is not enabled")
+
+
+def test_loop_a_deliver_whose_held_merge_request_a_person_merged_on_gitlab_is_done(client, hub, hub_db):
+    """The queue closed the merge request of the deliver's plan, which a person merged by hand on GitLab while it was
+    held at gate 3: the ledger's line closed says so, and the deliver is done with the merge GitLab named."""
+    push_plan(client, hub, "pantry-reorder", (REPO,))
+    policy(client, hub, {"enabled": True})
+    pid, q, e = project_id(hub_db), tables.merge_queue, tables.merge_events
+    merge = {"project_id": pid, "repo": REPO, "iid": 9, "source": "plan", "target_branch": "main"}
+    merge |= {"source_branch": "loop/pantry-reorder", "plan_id": "pantry-reorder", "state": "blocked"}
+    merge |= {"reason": "gate 3 (score hacking): the diff shows signs of score hacking (ci_changed)"}
+    ((merge_id,),) = sql(hub_db, insert(q).values(merge).returning(q.c.id))
+    detail = {"merges": [merge_id]}
+    queued(hub_db, "deliver", "deliver:pantry-reorder", plan_id="pantry-reorder")
+    i = tables.loop_items
+    held = update(i).where(i.c.key == "deliver:pantry-reorder")
+    sql(hub_db, held.values(state="waiting_human", reason="merge_blocked", detail=detail))
+    ticked(client, hub_db)
+    assert item(hub_db, "deliver:pantry-reorder")["reason"] == "merge_blocked"
+
+    gone = {"state": "closed", "reason": "it left the queue: it is merged on GitLab"}
+    sql(hub_db, update(q).where(q.c.id == merge_id).values(gone))
+    line = {"project_id": pid, "queue_id": merge_id, "kind": "closed", "reason": gone["reason"]}
+    sql(hub_db, insert(e).values({**line, "detail": {"gitlab": "merged", "merge_commit_sha": "9c1d2e3f"}}))
+    ticked(client, hub_db)
+    deliver = item(hub_db, "deliver:pantry-reorder")
+    assert (deliver["state"], deliver["detail"]["after_sha"]) == ("done", ["9c1d2e3f"])

@@ -210,7 +210,7 @@ class Turn:
                 return False
             verdict, why = self.found.scope_of(row, mr)
             if verdict == "out":
-                await queue.close(conn, row, f"it left the queue: {why}")
+                await queue.close(conn, row, f"it left the queue: {why}", mr)
                 self.found.outcomes["closed"] += 1
                 return False
             if verdict == "wait":

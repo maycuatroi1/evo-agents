@@ -94,6 +94,9 @@ QUEUED_STATES = (*OPEN_STATES, *TURN_STATES)  # a merge request the queue still 
 HOLDING_STATES = ("merged", "verifying", "releasing", "rolling_back", "reverting")
 MAX_REBASES = 3  # rebases again in a row, the target branch moving under each; the next move blocks it
 WAITS = "waits: "  # the reason of a merge request that waits for something on GitLab starts so
+# The keys of the detail of a ledger line ``closed`` for a merge request GitLab no longer has open: its state there
+# (merged or closed) and, merged, the commit GitLab names for the merge (``closed_detail``).
+GITLAB_STATE, MERGE_SHA = "gitlab", "merge_commit_sha"
 EVENT_KINDS = (
     "opened",  # the hub opened the merge request of a run
     "queued",  # the queue took it, or it passed every gate and waits for its turn
@@ -666,6 +669,17 @@ def pass_refusal(state: str, reason: str | None, source: str) -> str | None:
 def pass_line(login: str, reason: str) -> str:
     """The ledger's line of an admin's pass of a hold."""
     return reason_line(f"passed by {login}, an admin of the project: {reason}")
+
+
+def closed_detail(state: str | None, merge_commit_sha: str | None, head: str | None) -> dict:
+    """The detail of the ledger's line ``closed`` of a merge request that left the queue while GitLab has it in
+    ``state``: that state, and for one merged the commit GitLab names for the merge (its head when it names none, as
+    a fast-forward merge leaves it); empty while it is still open there."""
+    if state in (None, "opened"):
+        return {}
+    if state != "merged":
+        return {GITLAB_STATE: state}
+    return {GITLAB_STATE: state, MERGE_SHA: merge_commit_sha or head}
 
 
 def turn_reason(stage: str, why: str) -> str:
