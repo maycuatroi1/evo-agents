@@ -40,6 +40,7 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 | `pnpm build`, `pnpm start` | production build, then the standalone server |
 | `node scripts/bundle-budget.mjs` | after `pnpm build`: First Load JS of each route against `bundle-budget.json`; `--chunks <route>` lists a route's chunks, largest first |
 | `pnpm exec playwright test` | end-to-end tests, see below |
+| `pnpm screenshots` | the README's images, from a made-up demo, into `docs/images/` at the repo's root; see Screenshots below |
 
 CI fails when `schema.d.ts` differs from what `pnpm gen:api` writes. After changing an API model, run it and
 commit the result. The document holds the routes of the core plugins the hub's image installs, Telegram's among them,
@@ -108,3 +109,26 @@ PLAYWRIGHT_BASE_URL=https://hub.example.org EVO_E2E_STORAGE_STATE=e2e/.auth/hub.
 ```
 
 Only the `@deployed` specs run in that mode, and they change nothing on the hub.
+
+## Screenshots
+
+`pnpm screenshots` writes the images the repo's README and the product page show, from a demo that is made up from
+start to end: Larkspur, an online plant shop with three repos (`larkspur-api`, `larkspur-web`, `larkspur-worker`), three
+people and their machines, a plan whose steps branch three ways, three runs of it in progress, a plan run waiting for
+an answer in the Inbox, a run whose test log went to the spool, and the knowledge graph of the three repos.
+
+```sh
+EVO_HUB_TEST_DSN=postgresql://postgres:test@localhost:55433/postgres pnpm screenshots
+```
+
+It runs `e2e/demo/playwright.config.ts`, which starts a stack of its own as the end-to-end tests do, on ports 3344,
+18344 and 18345 so it can run beside them. `e2e/demo/screenshots.shots.ts` seeds the demo through the real API
+(`e2e/demo/seed.ts`, from the people, plans and events of `story.ts` and `trace.ts`), and three routes of the stack
+(`e2e/demo/stack.py`) do what the API cannot: write the demo's git repos and harness and build their graph, set the
+times the hub stamped to the demo's fixed clock (2026-10-20 14:30 UTC), and keep its workers online. Every page is
+taken in light and dark, at 1440 and 375 px, in English and UTC with reduced motion, as
+`docs/images/<page>-<width>-<scheme>.png`; a rerun writes the same file names. `scripts/screenshots.mjs` then
+compresses each image to a palette PNG with sharp. Arguments go on to `playwright test`, such as `--headed`.
+
+Keep the demo made up: names, logins, hosts and repos in `e2e/demo/` are invented, and nothing in it may name a real
+project, customer or person.
