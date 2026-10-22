@@ -13019,7 +13019,8 @@
           "choices": [
             "in_progress",
             "done",
-            "pending"
+            "pending",
+            "verify"
           ]
         }
       ],
@@ -13047,6 +13048,14 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        },
+        {
+          "flags": [
+            "--wait"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
