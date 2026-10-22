@@ -22,6 +22,7 @@ export const LEDGER_ACTIONS = [
   "closed",
   "outcome",
   "skill_release",
+  "promoted",
 ] as const satisfies readonly LedgerLine["action"][];
 export const LEDGER_ACTORS = ["curator", "agent", "user"] as const satisfies readonly LedgerLine["actor"][];
 export const LEDGER_OUTCOMES = ["keep", "revert", "unclear"] as const satisfies readonly NonNullable<LedgerLine["outcome"]>[];
@@ -35,14 +36,15 @@ export type TriggerFigure = { key: string; what: string; value: number };
 export type OutcomeFigure = TriggerFigure & { after: number; beforeRate: number; afterRate: number; change: FigureChange };
 
 /**
- * The mark of a line: success for a merge, a Judge that passed, an outcome kept and a skill the hub published; danger
- * for a Builder that failed, a Judge that failed and an outcome to revert; attention for a change left open for its
- * owner; neutral otherwise.
+ * The mark of a line: success for a merge, a promotion of agents' memories, a Judge that passed, an outcome kept and
+ * a skill the hub published; danger for a Builder that failed, a Judge that failed and an outcome to revert; attention
+ * for a change left open for its owner; neutral otherwise.
  */
 export function ledgerTone(line: Pick<LedgerLine, "action" | "outcome" | "verdict"> & Partial<Pick<LedgerLine, "details">>): LedgerTone {
   const passed = (line.verdict as { passed?: unknown } | null)?.passed;
   switch (line.action) {
     case "merged":
+    case "promoted":
       return "success";
     case "skill_release":
       return releaseOf(line.details ?? null)?.published ? "success" : "neutral";

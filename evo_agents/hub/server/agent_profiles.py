@@ -11,7 +11,8 @@ permissions stay all and its instructions empty (422), while its name, descripti
 handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a version of its
 plugin (``agent_packs.pinned``; the default profile attaches none). Every edit that changes something, the avatar and
 the packs included, raises the version by one and writes the version row; PATCH with ``if_version`` other than the version now is 409, nothing changed. Deleting sets
-``deleted_at``: the profile takes no new run, and reads as before.
+``deleted_at``: the profile takes no new run, and reads as before; its accounts
+(``evo_agents.hub.server.agent_accounts``) are deleted in the same transaction.
 
 The avatar is a PNG, JPEG or WebP image of at most AVATAR_MAX_BYTES, sent as base64 in JSON and checked by its first
 bytes. The hub stores it in the blob store as a blob of kind agent-avatar that the project holds, and serves it back
@@ -43,6 +44,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.agent_accounts import retire_profile_accounts
 from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
@@ -445,6 +447,7 @@ async def edit_agent(
 async def delete_agent(request: Request, project: ProjectName, handle: Handle, user: CurrentUser) -> Agent:
     """Soft-delete an agent profile: it takes no new run; its handle stays taken and it reads as before."""
     ap = tables.agent_profiles
+    retired = 0
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "deleting")
@@ -453,9 +456,12 @@ async def delete_agent(request: Request, project: ProjectName, handle: Handle, u
             raise HTTPException(409, f"@{handle} is the default agent of project {project}, which is never deleted")
         if profile.deleted_at is None:
             await conn.execute(update(ap).values(deleted_at=func.now()).where(ap.c.id == profile.id))
+            retired = await retire_profile_accounts(conn, profile.id)
             await _record(conn, user, access, audit.AGENT_DELETE, _target(profile))
             profile = await _profile(conn, access, handle)
     log.info("agent deleted", extra={"project": project, "handle": handle, "login": user.login})
+    if retired:
+        log.info("agent accounts deleted with it", extra={"project": project, "handle": handle, "accounts": retired})
     return agent_view(profile)
 
 

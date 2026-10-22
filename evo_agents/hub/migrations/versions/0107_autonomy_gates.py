@@ -1,7 +1,7 @@
 """The gates of autonomy: the decision and notice of a gate, and the environment label of a secret.
 
-Revision ID: 0103
-Revises: 0102
+Revision ID: 0107
+Revises: 0106
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.runs`` and ``evo_agents.hub.credentials`` as of this revision, never
@@ -20,8 +20,8 @@ Going back deletes the decisions and notices of the kind, puts the checks of 009
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0103"
-down_revision = "0102"
+revision = "0107"
+down_revision = "0106"
 branch_labels = None
 depends_on = None
 

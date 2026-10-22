@@ -1,10 +1,7 @@
 import { utf8Bytes } from "@/components/runs/run-model";
+import { envVarProblem } from "@/lib/secret-rules";
 
 import {
-  DENIED_ENV,
-  DENIED_ENV_PREFIXES,
-  ENV_NAME,
-  MAX_ENV_VAR_CHARS,
   MAX_SECRET_BYTES,
   MAX_URL_PREFIX_CHARS,
   MAX_USERNAME_CHARS,
@@ -13,6 +10,8 @@ import {
   type SecretKind,
   type SecretWrite,
 } from "./queries";
+
+export { envVarProblem };
 
 /**
  * The Secrets page's form, its checks and the body it sends, without React. The checks repeat the API's own
@@ -100,15 +99,6 @@ export function expiresAt(day: string, original?: Secret | null): string | null 
   return at.toISOString();
 }
 
-/** Why `name` cannot be a secret's env_var, or null when it can (`credentials.env_name_refusal`). */
-export function envVarProblem(name: string): "envVarRequired" | "envVarInvalid" | "envVarDenied" | null {
-  if (!name) return "envVarRequired";
-  if (name.length > MAX_ENV_VAR_CHARS || !ENV_NAME.test(name)) return "envVarInvalid";
-  if ((DENIED_ENV as readonly string[]).includes(name) || DENIED_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) {
-    return "envVarDenied";
-  }
-  return null;
-}
 
 /** Why `text` cannot be a git secret's url_prefix, or null when the hub may take it (it normalises it itself). */
 export function urlPrefixProblem(text: string): "urlPrefixRequired" | "urlPrefixInvalid" | "urlPrefixCredentials" | null {

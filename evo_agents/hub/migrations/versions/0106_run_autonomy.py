@@ -1,7 +1,7 @@
 """Run autonomy: the principal of a run and the snapshot of its effective autonomy.
 
-Revision ID: 0102
-Revises: 0101
+Revision ID: 0106
+Revises: 0105
 Create Date: 2026-10-22
 
 runs gains two columns (plan autonomy-levels, criterion a4): principal_id, the person the run acts for, and autonomy,
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0102"
-down_revision = "0101"
+revision = "0106"
+down_revision = "0105"
 branch_labels = None
 depends_on = None
 

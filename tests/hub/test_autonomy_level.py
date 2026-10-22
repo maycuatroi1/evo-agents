@@ -1,6 +1,6 @@
 """The autonomy levels (``evo_agents.hub.autonomy_levels``, ``evo_agents.hub.org``, ``evo_agents.hub.server.autonomy_store``
 and ``.org_writes``), as criteria a1, a2 and a3 of plan autonomy-levels name them: the catalog of classes, modes and
-levels with every cell of the preset table; schema 0101, a person's preference in revisions and the class overrides,
+levels with every cell of the preset table; schema 0105, a person's preference in revisions and the class overrides,
 environments and workers of a ceiling, without escalation by class, each write audited as an ``autonomy.`` action; the
 effective mode of each class from the seven sources, with the source that sets it, and who sees whose.
 
@@ -262,12 +262,12 @@ def modes(view: dict) -> dict:
 
 
 @needs_pg
-def test_autonomy_level_pref_migration_0101_adds_the_ceiling_columns_and_autonomy_prefs_and_going_back_drops_them(
+def test_autonomy_level_pref_migration_0105_adds_the_ceiling_columns_and_autonomy_prefs_and_going_back_drops_them(
     hub_db,
 ):
-    move_to(hub_db, "0100", down=True)
+    move_to(hub_db, "0104", down=True)
     assert not columns(hub_db, "autonomy_prefs")
-    move_to(hub_db, "0101")
+    move_to(hub_db, "0105")
     assert {"overrides", "environments", "workers"} <= columns(hub_db, "autonomy_ceilings")
     assert columns(hub_db, "autonomy_prefs") == {"user_id", "revision", "level", "overrides", "created_at"}
     c, p = tables.autonomy_ceilings, tables.autonomy_prefs
@@ -287,10 +287,10 @@ def test_autonomy_level_pref_migration_0101_adds_the_ceiling_columns_and_autonom
     ):
         with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
             sql(hub_db, bad)
-    move_to(hub_db, "0100", down=True)
+    move_to(hub_db, "0104", down=True)
     assert not columns(hub_db, "autonomy_prefs")
     assert not {"overrides", "environments", "workers"} & columns(hub_db, "autonomy_ceilings")
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0101") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0105") :]
 
 
 @needs_pg

@@ -20,6 +20,7 @@ import { type Actions } from "./account-columns";
 import { AccountGroup } from "./account-group";
 import { Day } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
+import { LazyAgentAccountsGroup } from "./agent-accounts-lazy";
 import { useChangeAccount, useFailure } from "./hooks";
 import { LazyLoginDialog, preloadLogin } from "./login-lazy";
 import { groupAccounts, isClaudeAccount, policyRows, renewalDue, serviceEntries, sharedVariables } from "./model";
@@ -30,7 +31,7 @@ import { ServiceTable } from "./service-table";
 
 const SECRETS_HREF = "/secrets" as Route;
 
-/** The groups of accounts, each with its own table: model accounts, then service credentials. */
+/** The groups of the visitor's own accounts, each with its own table: model accounts, then service credentials. */
 function Groups({ accounts, now, ...actions }: { accounts: Account[]; now: number } & Actions) {
   const groups = useMemo(() => groupAccounts(accounts), [accounts]);
   const shared = useMemo(() => sharedVariables(accounts), [accounts]);
@@ -171,23 +172,27 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
       <QueryView state={state} loading={<TableSkeleton rows={4} />}>
         {(list) =>
           list.length === 0 ? (
-            <EmptyState
-              icon={UserRoundCog}
-              title={t("empty.title")}
-              description={t.rich("empty.description", {
-                code: (chunks) => <code className="rounded-xs bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
-              })}
-            >
-              <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-empty-add">
-                <UserRoundPlus aria-hidden="true" />
-                {t("add")}
-              </Button>
-            </EmptyState>
+            <div className="flex flex-col gap-8">
+              <EmptyState
+                icon={UserRoundCog}
+                title={t("empty.title")}
+                description={t.rich("empty.description", {
+                  code: (chunks) => <code className="rounded-xs bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
+                })}
+              >
+                <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-empty-add">
+                  <UserRoundPlus aria-hidden="true" />
+                  {t("add")}
+                </Button>
+              </EmptyState>
+              <LazyAgentAccountsGroup now={now} onlyIfAny />
+            </div>
           ) : (
             <div className="flex flex-col gap-8">
               <div className="flex flex-col gap-4">
                 <RenewNotice accounts={list} now={now} onRenew={renew} />
                 <Groups accounts={list} now={now} {...actions} />
+                <LazyAgentAccountsGroup now={now} />
               </div>
               <Policies accounts={list} />
             </div>

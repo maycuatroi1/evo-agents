@@ -31,7 +31,8 @@ def one_line(text: str, limit: int) -> str:
 
 def memory_where(memory) -> str:
     if memory.scope == "project":
-        return f"project {memory.project}, {memory.location}"
+        agent = f", memory of agent @{memory.agent}" if getattr(memory, "agent", None) else ""
+        return f"project {memory.project}, {memory.location}{agent}"
     return f"personal, {memory.location}"
 
 

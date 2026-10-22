@@ -8,10 +8,11 @@ Each proposal has its lines in the ledger, which the hub only ever adds to: none
 acted (ACTORS): ``agent``, an agent of a run of the Curator (the Reviewer that proposed it, the Builder that built it,
 the Judge that judged it), with its run; ``user``, a member (who accepted, rejected or deferred it, or merged or closed
 its pull request by hand); ``curator``, the hub's own code (the plan it made, the pull request it opened, the signs of
-score hacking it found, the merge, the global skill it published from the merge, the outcome, the revert it proposes
-and the skill's version before it published again). A line names what happened (ACTIONS) and,
-when it applies, the commit, the commits before and after on the default branch (``before_sha``, ``after_sha``), the
-figures, the Judge's verdict, the pull request and when it merged.
+score hacking it found, the merge, the global skill it published from the merge, the outcome, the revert it proposes,
+the skill's version before it published again, the shared memory a promotion wrote, and its own accept of a tier 0
+promotion the charter's auto_merge allows). A line names what happened (ACTIONS) and, when it applies, the commit, the
+commits before and after on the default branch (``before_sha``, ``after_sha``), the figures, the Judge's verdict, the
+pull request and when it merged.
 
 The figures that set a proposal off (``trigger_of``) are taken from the night's figures of the review run that wrote
 it (``curator.collect``), as numbers the hub can count again: the figure of the proposal's lens (LENS_METRICS), and the
@@ -55,6 +56,7 @@ ACTIONS = (
     "closed",  # its pull request was closed without a merge (user)
     "outcome",  # the figures counted again after the merge: keep, revert or unclear (curator)
     "skill_release",  # the hub published a global skill from its merge, or its version before again (curator)
+    "promoted",  # accepting it wrote an agent's memories into a shared memory of the project (curator)
 )
 OUTCOMES = ("keep", "revert", "unclear")
 DEFAULT_OUTCOME_DAYS = 7  # the charter's outcome_days by default

@@ -2,7 +2,9 @@ import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
+import { LazyAgentAccountsCard } from "@/components/accounts/agent-accounts-lazy";
 import { AgentDetail } from "@/components/agents/agent-detail";
+import { AgentMemories } from "@/components/memories/agent-memories";
 import { AgentRuns } from "@/components/runs/agent-runs";
 import { NotFoundState } from "@/components/states/states";
 import { agentQuery } from "@/lib/agent-queries";
@@ -19,8 +21,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * One agent of a project. The page composes the agent's own view with its latest runs, which the runs feature draws,
- * so neither feature imports the other.
+ * One agent of a project. The page composes the agent's own view with its latest runs, its memories and its accounts,
+ * which the runs, memories and accounts features draw, so no feature imports another.
  */
 export default async function ProjectAgentPage({ params }: Props) {
   const { project: rawProject, handle: rawHandle } = await params;
@@ -35,7 +37,14 @@ export default async function ProjectAgentPage({ params }: Props) {
   const error = await prefetch(client, agentQuery(() => api, project, handle));
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <AgentDetail project={project} handle={handle} initialError={error} runs={<AgentRuns project={project} handle={handle} />} />
+      <AgentDetail
+        project={project}
+        handle={handle}
+        initialError={error}
+        runs={<AgentRuns project={project} handle={handle} />}
+        memories={<AgentMemories project={project} handle={handle} />}
+        accounts={<LazyAgentAccountsCard project={project} handle={handle} />}
+      />
     </HydrationBoundary>
   );
 }

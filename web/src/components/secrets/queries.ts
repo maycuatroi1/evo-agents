@@ -22,12 +22,9 @@ export const SECRET_KINDS = ["env", "git", "forge"] as const satisfies readonly 
 /** `credentials.SECRET_NAME`: unique among the owner's secrets. */
 export const SECRET_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export const MAX_SECRET_NAME_CHARS = 64;
-/** `credentials.ENV_NAME`, `DENIED_ENV` and `DENIED_ENV_PREFIXES`: what an env secret may set. */
-export const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
-export const DENIED_ENV = ["PATH", "HOME", "SHELL", "USER", "TMPDIR", "SSH_AUTH_SOCK"] as const;
-export const DENIED_ENV_PREFIXES = ["EVO_", "GIT_", "LD_", "DYLD_", "PYTHON"] as const;
-/** `secrets.MAX_ENV_VAR_CHARS`, `MAX_URL_PREFIX_CHARS` and `MAX_USERNAME_CHARS`. */
-export const MAX_ENV_VAR_CHARS = 200;
+/** What an env secret may set, shared with the accounts of an agent. */
+export { DENIED_ENV, DENIED_ENV_PREFIXES, ENV_NAME, MAX_ENV_VAR_CHARS } from "@/lib/secret-rules";
+/** `secrets.MAX_URL_PREFIX_CHARS` and `MAX_USERNAME_CHARS`. */
 export const MAX_URL_PREFIX_CHARS = 2000;
 export const MAX_USERNAME_CHARS = 200;
 /** `credentials.MAX_SECRET_BYTES`: a value is 1 to 16384 bytes of UTF-8. */

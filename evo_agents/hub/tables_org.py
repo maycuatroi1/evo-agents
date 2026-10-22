@@ -15,13 +15,13 @@ seat.
 autonomy_ceilings holds every revision of the ceiling of a unit or a seat, never changed: the scope (unit or seat), the
 id of the unit or the seat, the revision (1 and up within the scope), the level (A0 to A5), the writer's note, who
 wrote it (NULL for the root's first, which schema 0099 wrote) and when. A scope's ceiling is its highest revision.
-From schema 0101 on (plan autonomy-levels) a revision also holds its class overrides (an object of K1 to K12, each a
+From schema 0105 on (plan autonomy-levels) a revision also holds its class overrides (an object of K1 to K12, each a
 mode as ``evo_agents.hub.autonomy_levels`` reads it), and the environments and the workers it allows (empty: no limit).
 
-autonomy_prefs (0101) holds every revision of a person's own autonomy preference, never changed: the user, the
+autonomy_prefs (0105) holds every revision of a person's own autonomy preference, never changed: the user, the
 revision (1 and up), the level and the class overrides. A person without a row prefers A5.
 
-Revision 0102 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
+Revision 0106 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
 autonomy taken when the run was queued (``evo_agents.hub.server.run_autonomy``); ``org_tables`` adds both to the runs
 table it is given, so that ``evo_agents.hub.tables`` describes runs whole.
 """
@@ -160,14 +160,14 @@ def prefs_table(metadata: MetaData) -> Table:
 
 
 def run_columns(runs: Table) -> None:
-    """The principal of a run and the snapshot of its autonomy (0102)."""
+    """The principal of a run and the snapshot of its autonomy (0106)."""
     runs.append_column(Column("principal_id", BigInteger))
     runs.append_column(Column("autonomy", JSONB))
     runs.append_constraint(_key("runs", "principal_id", "users", "RESTRICT"))
 
 
 def secret_columns(secrets: Table) -> None:
-    """The environment an env secret is labelled for, test alone or none (0103)."""
+    """The environment an env secret is labelled for, test alone or none (0107)."""
     secrets.append_column(Column("environment", Text))
 
 
