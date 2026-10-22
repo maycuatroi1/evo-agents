@@ -661,6 +661,8 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "`evo-agents worker plan`",
         "Checkpoint steps (a verification, a review, a merge, a deploy, a release) are yours too, with no question",
         "`evo-agents worker step KEY in_progress --repo REPO`",
+        "`evo-agents worker step KEY verify --repo REPO --verify COMMAND` runs it on its own",
+        "on exit 124 run it again, never a loop of sleep",
         "`evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND`",
         "refuses done when one exits other than 0",
         "Do not call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
@@ -768,6 +770,7 @@ def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff
     for text in (
         "Rules for this session:",
         f"`evo-agents worker step {key} in_progress --repo REPO`",
+        f"`evo-agents worker step {key} verify --repo REPO --verify COMMAND`",
         f"--recommended KEY --step {key}`",
         "  - scope: ",
         '"summary" says what you did of step',

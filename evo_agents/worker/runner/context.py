@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from evo_agents.hub import curator, releases
-from evo_agents.worker import credentials
+from evo_agents.worker import credentials, verify_jobs
 from evo_agents.worker.adapter import AgentEvent, Outcome
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.runner.agent import Agent
@@ -336,6 +336,9 @@ class Run:
                 await sender
         if self.sender.settled:
             self.spool.remove()
+        # A verify job of `worker step` that still runs goes with the run (verify_jobs).
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(verify_jobs.stop_all, self.daemon.home.run_dir(self.id) / verify_jobs.JOBS_DIR)
         # The agent is over: before the run counts as ended here, so a daemon that dies in between leaves an
         # abandoned run rather than an orphan whose worktree the next one would remove.
         with contextlib.suppress(OSError):
