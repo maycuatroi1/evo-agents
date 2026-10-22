@@ -575,7 +575,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | --- | --- | --- | --- |
 | 1.0 | the pull request of branch `feat/core-plugin-api`, after 0.23.1 | the release after 0.23.1 | none: telegram and chats moved to 1.1 first |
 | 1.1 | the pull request of branch `feat/core-plugins-on-api`: `Caller`, `linked_channel`, `unlink_by_login`, `audit`, `Clearance.below`, `NOT_YOURS`, `RESTRICTED_ANSWER` | the release after 0.23.1 | 1.0.0 |
-| 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.34.2 | |
+| 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
 
 **The ground.**
 
