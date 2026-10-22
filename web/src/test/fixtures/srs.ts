@@ -100,7 +100,7 @@ export function documentOf(patch: Partial<SrsDocument> = {}): SrsDocument {
     created_at: "2026-10-01T08:00:00Z",
     archived_at: null,
     versions,
-    shown: { ...versions[0], document: "demo-shop", preamble: "", items: ITEMS, problems: [] },
+    shown: { ...versions[0], document: "demo-shop", preamble: "", items: ITEMS, problems: [], use_cases: [] },
     ...patch,
   };
 }

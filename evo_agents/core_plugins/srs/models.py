@@ -18,6 +18,7 @@ from evo_agents.core_plugins.srs.imports import MAX_MARKDOWN_BYTES, Preview
 from evo_agents.core_plugins.srs.reviews import CommentRow
 from evo_agents.core_plugins.srs.store import DocumentRow, ReviewRow, VersionRow
 from evo_agents.core_plugins.srs.template import code_key
+from evo_agents.core_plugins.srs.use_case_reviews import CaseState
 from evo_agents.hub.runs import RUN_STATES
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_srs import (
@@ -42,6 +43,8 @@ from evo_agents.hub.tables_srs import (
 MAX_BODY_CHARS = 200_000  # of one item
 MAX_CHANGES = 500  # in one save
 CHANGES = ("added", "removed", "changed", "moved")
+USE_CASE_CHANGES = ("added", "changed", "removed")
+USE_CASE_STATES = ("pending", "approved", "changes_requested")
 
 
 class SrsDocumentSummary(BaseModel):
@@ -95,6 +98,36 @@ class SrsVersion(BaseModel):
     reviews: list[SrsReview]
 
 
+class SrsUseCaseReview(BaseModel):
+    """A review of a use case that counts for the version, with the version it was recorded on."""
+
+    reviewer: str
+    role: Literal[REVIEW_ROLES] | None = Field(description="the role the review counts for")
+    decision: Literal[REVIEW_DECISIONS]
+    body: str
+    version: int = Field(description="the version it was recorded on: an earlier one when the use case reads the same")
+    created_at: datetime
+
+
+class SrsUseCase(BaseModel):
+    """A use case a version needs reviewed, with its state and the reviews that count."""
+
+    key: str
+    code: str | None
+    title: str
+    change: Literal[USE_CASE_CHANGES] = Field(description="what the version does to it since the version approved last")
+    state: Literal[USE_CASE_STATES]
+    reviews: list[SrsUseCaseReview]
+
+
+class SrsVersionCases(SrsVersion):
+    """A version with the use cases it needs reviewed: those it adds, changes (the use case, or a business rule under
+    it) or drops since the version approved last, every use case while none was approved; empty for a version that is
+    neither a draft nor in review."""
+
+    use_cases: list[SrsUseCase]
+
+
 class SrsRef(BaseModel):
     rel: Literal[REF_RELS]
     to: str = Field(description="the key of the item it links to")
@@ -126,7 +159,7 @@ class SrsProblem(BaseModel):
     line: int | None = Field(description="the line of the Markdown it came from")
 
 
-class SrsVersionDetail(SrsVersion):
+class SrsVersionDetail(SrsVersionCases):
     """A version with its content and what is wrong with it."""
 
     document: str
@@ -400,6 +433,17 @@ def version_model(row: VersionRow) -> SrsVersion:
     return SrsVersion(**values, review_run=run, reviews=[review_model(review) for review in row.reviews])
 
 
+def use_case_model(case: CaseState) -> SrsUseCase:
+    reviews = [SrsUseCaseReview(**{n: getattr(r, n) for n in SrsUseCaseReview.model_fields}) for r in case.reviews]
+    return SrsUseCase(
+        key=case.key, code=case.code, title=case.title, change=case.change, state=case.state, reviews=reviews
+    )
+
+
+def cases_model(row: VersionRow, cases: list[CaseState]) -> SrsVersionCases:
+    return SrsVersionCases(**version_model(row).model_dump(), use_cases=[use_case_model(case) for case in cases])
+
+
 def problem_model(problem: Problem) -> SrsProblem:
     return SrsProblem(**problem.as_json())
 
@@ -420,9 +464,11 @@ def item_model(doc: Document, item: Item) -> SrsItem:
     )
 
 
-def detail_model(slug: str, row: VersionRow, doc: Document, problems: list[Problem]) -> SrsVersionDetail:
+def detail_model(
+    slug: str, row: VersionRow, doc: Document, problems: list[Problem], cases: list[CaseState]
+) -> SrsVersionDetail:
     return SrsVersionDetail(
-        **version_model(row).model_dump(),
+        **cases_model(row, cases).model_dump(),
         document=slug,
         preamble=doc.preamble,
         items=[item_model(doc, item) for item in doc.items],
