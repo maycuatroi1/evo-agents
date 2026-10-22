@@ -89,7 +89,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
-| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy-levels.md`) |
+| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
@@ -996,8 +996,10 @@ columns. Schema 0102 adds `memories.read_at`, `archived_at` and `stale_at`; sche
 `memory_revisions.proposal_id`, `memories.promoted_at` and `promoted_into`, and the ledger action `promoted`; going
 back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents).
 Schema 0110 adds `autonomy_prefs`, each person's own autonomy preference in revisions, and the class overrides,
-environments and workers of a ceiling (`docs/autonomy-levels.md`); going back to 0109 drops the table and the three
-columns.
+environments and workers of a ceiling (`docs/autonomy.md`); going back to 0109 drops the table and the three
+columns. Schema 0111 adds `runs.principal_id` and the snapshot `runs.autonomy`; 0112 `secrets.environment`, the
+decision category and the notice kind `autonomy`; 0113 the decision categories `merge`, `credential` and `access` and
+`decisions.asked_of`; 0114 `autonomy_stops`, the stops S4. Going back from each drops what it added.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
