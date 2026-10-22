@@ -6,7 +6,7 @@ import { authorWorker, ensureAuthorSkill } from "./support/author";
 import { chatsOf } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
-import { apiOf } from "./support/memories";
+import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
 import { open } from "./support/plans";
 import { PLAN_RUN_PLAN, RUN_PLAN, runsOf, seedPlanRunPlan, seedRunPlan } from "./support/runs";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -183,6 +183,49 @@ test("an admin edits and deletes an agent, which then reads as before; a writer 
   await expect(main(page).getByTestId("agent-instructions")).toHaveText("None: the default agent never has instructions.");
   await expect(main(page).getByTestId("agent-edit")).toHaveCount(0);
   await expect(main(page).getByTestId("agent-avatar-pick")).toHaveCount(0);
+});
+
+test("an agent's page lists its memories with where each stands and its last revision, each opening its page", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("keeper");
+  await createAgentByApi(me, project, { handle, name: "Keeper" });
+  const api = await apiOf(me);
+  const note = (title: string) => memoryFile(title, `the ${title} note`, `${title}.`);
+  const read = await putMemory(api, { project, agent: handle, name: "claims.md", body: note("Claims") });
+  const archived = await putMemory(api, { project, agent: handle, name: "old-deploys.md", body: note("Old deploys") });
+  const stale = await putMemory(api, { project, agent: handle, name: "moved-paths.md", body: note("Moved paths") });
+  await putMemory(api, { project, name: "conventions.md", body: note("Conventions") }); // shared: no agent's
+  await markAgentMemory(read.id, { read: true });
+  await markAgentMemory(archived.id, { archived: true });
+  await markAgentMemory(stale.id, { stale: true });
+
+  await open(page, agentPath(project, handle));
+  const card = main(page).getByTestId("agent-memory-card");
+  await expect(card.getByRole("heading", { level: 2 })).toHaveText("Memory");
+  const table = card.getByTestId("agent-memories-table");
+  await expect(table.locator("[data-memory-name]")).toHaveCount(3);
+  const row = (name: string) => table.locator("tbody tr").filter({ has: page.locator(`[data-memory-name="${name}"]`) });
+  await expect(row("claims.md").getByTestId("memory-status")).toHaveText("Active");
+  await expect(row("old-deploys.md").getByTestId("memory-status")).toHaveAttribute("data-memory-status", "archived");
+  await expect(row("moved-paths.md").getByTestId("memory-status")).toHaveText("Stale");
+  await expect(row("claims.md").locator("time")).toHaveCount(1); // read by a run of the agent
+  await expect(row("old-deploys.md")).toContainText("Never");
+  const revision = row("claims.md").getByTestId("agent-memory-revision");
+  await expect(revision).toHaveAttribute("data-revision", "1");
+  await expect(revision).toContainText(`Revision 1 by ${me.login}`);
+  await expect(revision).toContainText("Not written by a run"); // a person pushed it, not a run of the agent
+  await expect(card.getByTestId("agent-memories-all")).toHaveAttribute("href", `/p/${project}/memories?agent=${handle}`);
+
+  await row("old-deploys.md").getByRole("link", { name: "Old deploys" }).click();
+  await expect(page).toHaveURL(new RegExp(`/p/${project}/memories/${archived.id}$`));
+  await expect(main(page).getByTestId("memory-archived")).toContainText("Archived");
+  await expect(main(page).getByTestId("memory-agent")).toHaveAttribute("href", agentPath(project, handle));
+
+  // The default agent keeps no memory of its own: its page has no Memory card.
+  await open(page, agentPath(project, project));
+  await expect(main(page).getByTestId("agent-default")).toHaveText("Default");
+  await expect(main(page).getByTestId("agent-memory-card")).toHaveCount(0);
 });
 
 test("Dispatch, Run plan and New plan queue their runs under the agent picked, and its page lists them", async ({ page, member }) => {

@@ -1249,7 +1249,9 @@
       "location": "Vị trí",
       "type": "Loại",
       "harness": "Harness",
-      "clear": "Xoá bộ lọc"
+      "clear": "Xoá bộ lọc",
+      "agent": "Agent",
+      "shared": "Dùng chung"
     },
     "types": {
       "project": "Dự án",
@@ -1272,7 +1274,9 @@
       "type": "Loại",
       "location": "Vị trí",
       "label": "Nhãn",
-      "updated": "Cập nhật"
+      "updated": "Cập nhật",
+      "status": "Trạng thái",
+      "read": "Đọc lần cuối"
     },
     "caption": "Danh sách memory",
     "captionSearch": "Kết quả tìm memory, khớp nhất trước",
@@ -1349,7 +1353,52 @@
       "more": "Xem revision cũ hơn",
       "loadingMore": "Đang tải…",
       "moreFailed": "Không tải được revision cũ hơn (mã {status}). Thử lại."
-    }
+    },
+    "status": {
+      "active": "Đang dùng",
+      "stale": "Đã cũ",
+      "archived": "Đã lưu trữ",
+      "promoted": "Đã nâng"
+    },
+    "provenance": {
+      "proposal": "Đề xuất #{id}",
+      "run": "Run #{id}",
+      "agentVersion": "@{handle} v{version}",
+      "origin": "cho {login}",
+      "hop": "hop {hop}",
+      "chat": "Chat #{id}"
+    },
+    "agent": {
+      "revision": "Revision {revision}",
+      "by": "bởi {login}",
+      "noRun": "Không do run nào viết",
+      "status": "Trạng thái",
+      "read": "Đọc lần cuối",
+      "latest": "Revision cuối",
+      "neverRead": "Chưa bao giờ",
+      "caption": "Memory của @{handle}",
+      "failed": "Không đọc được memory của agent.",
+      "empty": "@{handle} chưa có memory nào: các run của nó viết memory bằng công cụ memory.",
+      "scope": "<link>Mở chúng trong danh sách memory của dự án</link> để tìm và lọc."
+    },
+    "state": {
+      "archivedTitle": "Đã lưu trữ",
+      "archivedDescription": "Không run nào của @{handle} mở memory này trong 30 ngày, nên hub đã đưa nó ra khỏi chỉ mục và tìm kiếm của agent. Người viết của dự án có thể đưa nó trở lại.",
+      "archivedReader": "Người viết của dự án có thể khôi phục nó.",
+      "promotedTitle": "Đã nâng",
+      "promotedInto": "Curator đã nâng memory này vào <link>memory dùng chung #{id}</link>; các run của agent không còn liệt kê nó.",
+      "promotedDescription": "Curator đã nâng memory này vào một memory dùng chung; các run của agent không còn liệt kê nó.",
+      "staleTitle": "Đã cũ",
+      "staleDescription": "Một đường dẫn memory này nhắc tới không còn trong knowledge graph của dự án. Các run của agent vẫn đọc nó; hãy kiểm tra trước khi dựa vào.",
+      "restore": "Khôi phục",
+      "restored": "Đã khôi phục {name}",
+      "restoredText": "Các run của agent lại liệt kê nó.",
+      "restoreFailed": "Không khôi phục được memory.",
+      "agent": "Agent",
+      "read": "Đọc lần cuối",
+      "neverRead": "Chưa bao giờ"
+    },
+    "captionAgent": "Memory của @{handle}"
   },
   "skills": {
     "projectTitle": "Skill của dự án",
@@ -2485,6 +2534,9 @@
         "hint": "Được nạp vào mọi run dưới agent này, mỗi gói ở phiên bản đã ghim. Skill và MCP server của gói được tính là đã cho phép.",
         "none": "Không có: các run của nó không nhận gói agent nào.",
         "version": "v{version}"
+      },
+      "memories": {
+        "title": "Memory"
       }
     }
   },
@@ -5484,7 +5536,8 @@
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
       "inbox": "Nằm trong Inbox của chủ dự án từ <ago></ago>.",
-      "revertOf": "Hub đề xuất revert này: số liệu của <link>đề xuất #{id}</link> xấu đi sau khi nó được merge."
+      "revertOf": "Hub đề xuất revert này: số liệu của <link>đề xuất #{id}</link> xấu đi sau khi nó được merge.",
+      "promotion": "Nâng memory"
     },
     "ledger": {
       "title": "Sổ ghi",
@@ -5514,7 +5567,8 @@
         "left_open": "Để mở",
         "closed": "Đã đóng",
         "outcome": "Kết quả",
-        "skill_release": "Phát hành skill"
+        "skill_release": "Phát hành skill",
+        "promoted": "Đã nâng"
       },
       "outcome": {
         "keep": "Giữ",
@@ -5602,8 +5656,11 @@
         "repo": "Một file trong repo của dự án",
         "graph": "Một file trong knowledge graph của dự án",
         "unmatched": "Một file trong repo của dự án mà knowledge graph chưa có",
-        "transcript": "Một dòng của transcript hub đang giữ"
-      }
+        "transcript": "Một dòng của transcript hub đang giữ",
+        "agent_memory": "Memory của một agent",
+        "shared_memory": "Một memory dùng chung của dự án"
+      },
+      "memory": "Memory #{id}, revision {revision}"
     },
     "draft": {
       "view": "Xem plan nháp dạng",
@@ -6252,6 +6309,17 @@
         "runs": "Run",
         "cost": "Chi phí"
       }
+    },
+    "promotion": {
+      "sources": "{count, plural, other {Memory của agent được nâng}}",
+      "memory": "Memory #{id}, revision {revision}",
+      "target": "Vào",
+      "merge": "Gộp vào <link>memory dùng chung #{id}</link>, ở revision {revision}",
+      "new": "Một memory dùng chung mới <code>{name}</code> loại {type} ở {location}",
+      "noTarget": "Không đọc được đích.",
+      "written": "Khi chấp nhận, hub đã viết <link>memory dùng chung #{id}, revision {revision}</link>.",
+      "notWritten": "Chưa viết gì cho tới khi đề xuất được chấp nhận.",
+      "merged": "Memory sau khi gộp"
     }
   },
   "releases": {

@@ -1,33 +1,27 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Brain, Info, NotebookPen, ShieldCheck, TriangleAlert } from "lucide-react";
-import type { Route } from "next";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useFormatter, useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 
 import { DataCard, DataToolbar } from "@/components/data/data-card";
-import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { FacetGroup, type FacetOption } from "@/components/data/facet-group";
 import { ToolbarFilters } from "@/components/data/filter-sheet";
-import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { VisibilityLevel } from "@/components/data/visibility";
-import { projectHref } from "@/components/shell/nav";
 import { PageHeader } from "@/components/shell/page-header";
 import { type HubQueryState, QueryView, useHubQuery } from "@/components/states/query-view";
 import { type ActiveFilter, ApiErrorState, EmptyState, NoResults, NotFoundState, TableSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { agentsQuery } from "@/lib/agent-queries";
 import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { projectQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
-import { LabelBadge, MemoryTypeBadge } from "./badges";
 import {
   applyFilters,
   countBy,
@@ -38,125 +32,15 @@ import {
   NO_FILTERS,
   readFilters,
 } from "./memory-filters";
-import { MEMORY_TYPES, memoryTitle, TYPE_ICONS } from "./memory-meta";
-import { type Memory, memoryListQuery, type MemoryScope, memorySearchQuery } from "./queries";
+import { MEMORY_TYPES, TYPE_ICONS } from "./memory-meta";
+import { type MemoryRow, MemoryTable } from "./memory-table";
+import { memoryListQuery, type MemoryScope, memorySearchQuery } from "./queries";
 
 const HARNESS = "harness";
-const NARROW_HIDDEN = { location: "hidden md:table-cell", updated: "hidden lg:table-cell", label: "hidden sm:table-cell" };
 
-export function memoryHref(scope: MemoryScope, id: number): Route {
-  return scope.kind === "project" ? projectHref(scope.project, `memories/${id}`) : (`/memories/${id}` as Route);
-}
-
-export function memoriesHref(scope: MemoryScope): Route {
-  return scope.kind === "project" ? projectHref(scope.project, "memories") : ("/memories" as Route);
-}
-
-type Row = Memory & { rank?: number };
+type Row = MemoryRow;
 
 const sum = (counts: Map<string, number>) => [...counts.values()].reduce((total, count) => total + count, 0);
-
-function MemoryTable({
-  rows,
-  scope,
-  ranked,
-  unrestricted,
-}: {
-  rows: Row[];
-  scope: MemoryScope;
-  ranked: boolean;
-  unrestricted?: string;
-}) {
-  const t = useTranslations("memories");
-  const format = useFormatter();
-  const columns = useMemo(() => {
-    const helper = dataTableColumns<Row>();
-    return helper.columns([
-      helper.accessor((row) => memoryTitle(row.name, row.body).title, {
-        id: "name",
-        header: () => t("columns.name"),
-        sortFn: "alphanumeric",
-        meta: { primary: true },
-        cell: (info) => {
-          const row = info.row.original;
-          const { title, description } = memoryTitle(row.name, row.body);
-          // One line under the title: what the memory is about, or its file name when the title is not the name.
-          const sub = description ?? (title !== row.name ? <span className="font-mono">{row.name}</span> : null);
-          return (
-            <CellMain sub={sub} subTitle={description ?? row.name}>
-              <Link
-                href={memoryHref(scope, row.id)}
-                className={cn(NAME_LINK, "truncate")}
-                title={title !== row.name ? `${title} (${row.name})` : title}
-                data-memory-name={row.name}
-              >
-                {title}
-              </Link>
-            </CellMain>
-          );
-        },
-      }),
-      helper.accessor("type", {
-        header: () => t("columns.type"),
-        sortFn: "text",
-        cell: (info) => <MemoryTypeBadge type={info.getValue()} />,
-      }),
-      helper.accessor("location", {
-        header: () => t("columns.location"),
-        sortFn: "text",
-        cell: (info) => <span className="font-mono text-xs text-foreground">{info.getValue()}</span>,
-      }),
-      helper.accessor((row) => String(row.label.level ?? ""), {
-        id: "label",
-        header: () => t("columns.label"),
-        enableSorting: false,
-        cell: (info) => <LabelBadge label={info.row.original.label} unrestricted={unrestricted} />,
-      }),
-      helper.accessor((row) => new Date(row.updated_at), {
-        id: "updated",
-        header: () => t("columns.updated"),
-        sortFn: "datetime",
-        meta: { numeric: true },
-        cell: (info) => (
-          <div className="flex flex-col items-end gap-px">
-            <time dateTime={info.row.original.updated_at} className="whitespace-nowrap">
-              {format.dateTime(info.getValue(), { dateStyle: "medium", timeStyle: "short" })}
-            </time>
-            <span className="text-xs leading-4 whitespace-nowrap text-fg-subtle">
-              {t("by", { login: info.row.original.updated_by })}
-            </span>
-          </div>
-        ),
-      }),
-    ]).filter((column) => scope.kind === "project" || column.id !== "label"); // a personal memory has no label
-  }, [t, format, scope, unrestricted]);
-
-  return (
-    <DataTable
-      key={ranked ? "ranked" : "browse"}
-      data={rows}
-      columns={columns}
-      caption={ranked ? t("captionSearch") : t("caption")}
-      getRowId={(row) => String(row.id)}
-      initialSorting={ranked ? [] : [{ id: "updated", desc: true }]}
-      columnClassNames={NARROW_HIDDEN}
-      testId="memories-table"
-      // On a phone: the memory's title opening it, its type, and what it is about (or its file name).
-      mobile={(row) => {
-        const { title, description } = memoryTitle(row.name, row.body);
-        return {
-          title,
-          titleText: title !== row.name ? `${title} (${row.name})` : title,
-          href: memoryHref(scope, row.id),
-          status: <MemoryTypeBadge type={row.type} />,
-          meta: description ?? <span className="font-mono">{row.name}</span>,
-          metaText: description ?? row.name,
-          data: { "memory-name": row.name },
-        };
-      }}
-    />
-  );
-}
 
 /**
  * The filters in the URL. Changing them replaces the URL through the History API, which Next.js syncs with
@@ -226,15 +110,16 @@ function Memories({
   initialError: ApiErrorInfo | null;
 }) {
   const t = useTranslations("memories");
-  const [filters, setFilters] = useFilters();
+  const [read, setFilters] = useFilters();
+  const filters = scope.kind === "project" ? read : { ...read, agent: null }; // a personal memory has no agent
   const searching = filters.q.length > 0;
   // One of the two runs: the whole list, or the search (narrowed to a location on the server).
   const list = useHubQuery(
-    { ...memoryListQuery(browserApi, scope), enabled: !searching },
+    { ...memoryListQuery(browserApi, scope, filters.agent), enabled: !searching },
     searching ? null : initialError,
   );
   const search = useHubQuery(
-    { ...memorySearchQuery(browserApi, scope, filters.q, filters.location), enabled: searching },
+    { ...memorySearchQuery(browserApi, scope, filters.q, filters.location, filters.agent), enabled: searching },
     searching ? initialError : null,
   );
   const state: HubQueryState<{ items: Row[]; truncated: boolean }> = searching
@@ -290,8 +175,9 @@ function MemoryList({
   const declared = isProject && project ? [HARNESS, ...project.repos.map((repo) => repo.name)] : [];
   const searching = filters.q.length > 0;
   const items = state.status === "success" ? state.data.items : null;
+  const agents = useAgentOptions(isProject ? scope.project : null, filters.agent, t("facets.shared"));
 
-  // No memory at all and no filter: the page says what memories are, without a toolbar over nothing.
+  // No memory at all and no filter (an agent's list is a filter: its empty table keeps the facet to go back): the page says what memories are, without a toolbar over nothing.
   if (items !== null && items.length === 0 && !isFiltered(filters)) {
     return (
       <>
@@ -322,6 +208,7 @@ function MemoryList({
       ? [{ label: t("facets.location"), value: harness(filters.location) ? t("facets.harness") : filters.location }]
       : []),
     ...(filters.type ? [{ label: t("facets.type"), value: t(`types.${filters.type}`) }] : []),
+    ...(filters.agent ? [{ label: t("facets.agent"), value: `@${filters.agent}` }] : []),
   ];
   const countLabel = (count: number) => t("count", { count });
 
@@ -346,9 +233,9 @@ function MemoryList({
       />
       {facets ? (
         <ToolbarFilters
-          active={(filters.location ? 1 : 0) + (filters.type ? 1 : 0)}
+          active={(filters.location ? 1 : 0) + (filters.type ? 1 : 0) + (filters.agent ? 1 : 0)}
           summary={count}
-          onClear={() => setFilters({ ...filters, location: null, type: null })}
+          onClear={() => setFilters({ ...filters, location: null, type: null, agent: null })}
           testId="memories-filters"
         >
           <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 max-md:flex-col max-md:items-stretch max-md:gap-5" data-testid="memories-facets">
@@ -361,6 +248,17 @@ function MemoryList({
                 onSelect={(location) => setFilters({ ...filters, location })}
                 countLabel={countLabel}
                 testId="facet-location"
+              />
+            ) : null}
+            {agents.length > 1 ? (
+              <FacetGroup
+                label={t("facets.agent")}
+                showLabel
+                options={agents}
+                selected={filters.agent}
+                onSelect={(agent) => setFilters({ ...filters, agent })}
+                countLabel={countLabel}
+                testId="facet-agent"
               />
             ) : null}
             <FacetGroup
@@ -409,6 +307,7 @@ function MemoryList({
                   scope={scope}
                   ranked={searching}
                   unrestricted={project?.locations[0]}
+                  agent={filters.agent}
                 />
               </>
             )
@@ -428,6 +327,18 @@ function PersonalNote() {
       {t("personalVisibility")}
     </p>
   );
+}
+
+/**
+ * The agents whose memories the list can show instead of the project's shared ones (`null`, labelled `shared`): every
+ * agent of the project but its default, which keeps none, and the one in force even when it is not among them.
+ */
+function useAgentOptions(project: string | null, selected: string | null, shared: string): FacetOption[] {
+  const state = useQuery({ ...agentsQuery(browserApi, project ?? ""), enabled: project !== null });
+  if (project === null) return [];
+  const handles = (state.data ?? []).filter((agent) => !agent.is_default).map((agent) => agent.handle);
+  if (selected && !handles.includes(selected)) handles.push(selected);
+  return [{ value: null, label: shared }, ...handles.map((handle) => ({ value: handle, label: `@${handle}`, mono: true }))];
 }
 
 /** The words of the facets, from the page's messages. */

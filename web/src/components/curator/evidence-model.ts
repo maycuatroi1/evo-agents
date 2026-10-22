@@ -13,6 +13,7 @@ export type EvidenceView =
   | { kind: "session"; session: string; field: string | null; index: number | null }
   | { kind: "transcript"; session: string; file: string; line: number }
   | { kind: "code"; repo: string; path: string; line: number | null; commit: string | null; url: string | null }
+  | { kind: "memory"; memoryId: number; revision: number; agent: string | null; href: Route }
   | { kind: "other"; text: string };
 
 /** A repo's https web page from its origin (https, http or git's scp form), else null; `branchUrl` (forge.ts) uses it. */
