@@ -1457,7 +1457,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
 | `evo-agents worker projects [--add P ...] [--remove P ...] [--worker W]` | shows the projects the worker serves, or changes them in place with `PATCH /v1/workers/{id}` and the owner's machine token; this machine's worker by default, whose `config.json` takes the new list and the repos of its projects at once, or with `--worker` another of the owner's workers by id or name, whose daemon takes them at its next heartbeat ([The projects a worker serves](#the-projects-a-worker-serves)) |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
-| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
+| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run |
 | `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
@@ -1479,7 +1479,8 @@ pairing codes and presigned signatures masked; `service.log` what the daemon pri
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
 decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker step` pushed to a default branch,
-`pushes.jsonl`, and the side branch it pushed instead, `push_conflict.json`; until the run ends on this machine,
+`pushes.jsonl`, the side branch it pushed instead, `push_conflict.json`, and the verify jobs of its steps with their
+output, `verify/`; until the run ends on this machine,
 `agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
@@ -1975,14 +1976,27 @@ as a verify that fails does.
    in its environment, and the daemon reports `running`. The agent works through four commands that read the run
    from those variables and its record under `EVO_WORKER_HOME`, call the hub with the worker's token, and refuse to
    run outside a plan run of the worker (`EVO_RUN_ID` not set, a run that is not running here, or a run of one step):
-   - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` runs each verify command again with
-     `/bin/sh` in R's worktree, all of them, and refuses the step when one exits other than 0: nothing is committed,
-     pushed or reported, and it exits 1. Otherwise it commits what R's worktree has left as `run #N step KEY: title`,
+   - `evo-agents worker step KEY verify --repo R --verify CMD` runs the step's verify commands as a job of the
+     worker, with `/bin/sh` in R's worktree, all of them, and waits on it `--wait` seconds (540 by default, -1 until it
+     ends). The job runs in a process of its own (`evo_agents.worker.verify_jobs`), which neither the end of the
+     command, of the agent's turn or of a subagent's stops, and is kept in `runs/<run>/verify/` with the tree R's
+     worktree held (what `git add -A` would stage there, `.evo-run/` left out) and the commands. A wait that runs out
+     exits 124 and the job goes on; the same command again waits on it. It exits 0 when the job passed, 1 when it
+     failed. A job for another tree of R stops the one running there, and the end of the run stops what still runs.
+   - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` takes the result of a job that passed
+     with the same commands on the tree R's worktree holds now (or on the tree such a job left, as when a formatter
+     wrote a file), and otherwise runs the job, or waits on the one running, as `verify` does (exit 124 when the wait
+     runs out); a job that failed is never taken, and runs again. When the verify fails, nothing is committed,
+     pushed or reported, and it exits 1. The evidence it reports ends with a line naming the job, its tree, and
+     whether `done` reused it, waited on it or ran it. Otherwise it commits what R's worktree has left as
+     `run #N step KEY: title`,
      leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
      detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
      (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
      results. On a default branch the remote moved on, it first rebases the run's commits on top of the remote's tip
-     and runs the verify commands again there; when that cannot be done it pushes them to `evo-run/<run>`, reports
+     and runs the verify commands again there, as a job of the new tree (the worktree stays on the rebased commits
+     when the wait for it runs out, and `done` again picks the job up); when that cannot be done it pushes them to
+     `evo-run/<run>`, reports
      nothing, and the run fails (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)).
      Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
    - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
