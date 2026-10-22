@@ -32,7 +32,7 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import cli_memory, tables
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
-from evo_agents.hub.server import memory_upkeep
+from evo_agents.hub.server import memory_upkeep, run_audience
 from evo_agents.hub.server.change_tiers import GraphView
 from evo_agents.hub.server.runs.service import claims
 from tests.hub import live
@@ -47,6 +47,7 @@ from tests.hub.test_memory_agents import (  # noqa: F401 (hub and agents are fix
     hub,
     write,
 )
+from tests.hub.test_memory_audience import say
 
 NOW = datetime.now(UTC)
 
@@ -125,13 +126,24 @@ def test_the_index_of_memories_in_a_prompt_is_at_most_4_kib_and_within_the_promp
     assert index(hub, scout, room=100) == ""  # no room for one memory: no index
 
 
-def test_the_index_of_memories_lists_none_that_names_an_audience(hub, agents):
+def test_the_index_of_memories_lists_those_of_an_audience_its_run_may_read_and_notes_it(hub, agents):
     shown = by_member(hub, "orbit-open.md")
-    hidden = {"scope": "project", "project": A, "location": "harness", "name": "orbit-few.md", "type": "project"}
-    hidden |= {"agent": "scout", "body": body("orbit-few"), "audience": [f"chat:{hub.one}"]}
-    done(hub.client.put("/v1/memories", json=hidden, headers=hub.alice))
-    listed = index(hub, a_run(hub, agents.studio, "alice", "scout"))
-    assert f"id {shown['id']}" in listed and "orbit-few.md" not in listed
+    memory = {"scope": "project", "project": A, "location": "harness", "type": "project", "agent": "scout"}
+    for name, chat in (("orbit-one.md", hub.one), ("orbit-two.md", hub.two)):
+        audience = {"name": name, "body": body(name[:-3]), "audience": [f"chat:{chat}"]}
+        done(hub.client.put("/v1/memories", json={**memory, **audience}, headers=hub.alice))
+    # a run of alice, who is in both chats: every memory of @scout, the chats' too
+    author = a_run(hub, agents.studio, "alice", "scout")
+    listed = index(hub, author)
+    assert f"id {shown['id']}" in listed and "orbit-one.md" in listed and "orbit-two.md" in listed
+    assert on_hub(hub, lambda conn: run_audience.seen(conn, author)) >= {f"chat:{hub.one}", f"chat:{hub.two}"}
+    # a run in chat one that bob woke, on alice's worker: what both may read; bob is in chat one alone
+    asked = say(hub, hub.one, "bob", "what do you know about orbit?")
+    chat = a_run(hub, agents.studio, "alice", "scout", chat_id=hub.one, chat_message_id=asked["id"], hop=1)
+    listed = index(hub, chat)
+    assert "orbit-open.md" in listed and "orbit-one.md" in listed and "orbit-two.md" not in listed
+    noted = on_hub(hub, lambda conn: run_audience.seen(conn, chat))
+    assert f"chat:{hub.one}" in noted and f"chat:{hub.two}" not in noted
 
 
 # Reads

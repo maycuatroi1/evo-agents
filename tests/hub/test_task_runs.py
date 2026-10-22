@@ -21,7 +21,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from evo_agents.hub import runs, tables, task_runs
+from evo_agents.hub import autonomy_card, runs, tables, task_runs
 from evo_agents.hub.server import plugin_tokens
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
@@ -308,7 +308,7 @@ def test_task_dispatch_goes_only_to_a_worker_of_run_as_the_agent_type_names_with
     spec = claim(client, laptop)
     assert (spec["id"], spec["kind"], spec["branch"], spec["mode"]) == (run_id, "task", f"task/{run_id}", "headless")
     assert spec["budget"]["max_usd"] == 5 and spec["budget"]["max_seconds"] == task_runs.TIME_CAP_SECONDS
-    prompt = spec["prompt"]
+    prompt = autonomy_card.without_card(spec["prompt"])  # the card opens it (autonomy-levels)
     assert prompt.startswith(f"You are @triager (Triager), agent type triager of plugin {PLUGIN} in project {PROJECT}")
     assert f"Plugin {PLUGIN} hands you the task below for {OTHER}" in prompt
     assert f"each a worktree on the branch task/{run_id}" in prompt and prompt.endswith(f"# The task\n{TASK}\n")

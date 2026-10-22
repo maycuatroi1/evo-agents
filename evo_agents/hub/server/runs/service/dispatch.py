@@ -88,7 +88,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
     query = select(
         w.c.owner_id,
-        shared_in(access.project_id).label("shared_here"),
+        shared_in(access.project_id, user.user_id).label("shared_here"),
         w.c.name,
         w.c.revoked_at,
         serves.label("serves"),

@@ -184,6 +184,12 @@ CLONES_CHECKOUTS = "clones_checkouts"
 AUTONOMY = "autonomy"
 AUTONOMY_RUNTIME = "claude-code"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
+# a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
+# /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
+# finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
+DOCTOR_REPORT = "doctor_report"
+DOCTOR_EVERY_SECONDS = 24 * 3600  # how often the daemon sends a doctor report, besides when it starts
+DOCTOR_FRESH_SECONDS = 48 * 3600  # a worker is narrowed to a unit only with a report this recent
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -200,6 +206,7 @@ WORKER_FEATURES = (
     CLONES_CHECKOUTS,
     AUTONOMY,
     AGENT_HOME,
+    DOCTOR_REPORT,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -331,6 +338,7 @@ NOTICE_KINDS = (
     "loop_brief",
     "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
     AUTONOMY_DECISION_CATEGORY,
+    "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

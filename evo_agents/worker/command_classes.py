@@ -1,5 +1,5 @@
 """The classes of action (plan autonomy-levels, ``evo_agents.hub.autonomy_levels``) of a Bash command an agent runs: the
-table of patterns the worker's PreToolUse hook reads (``autonomy_hook``; ``docs/autonomy-levels.md``, The hook of
+table of patterns the worker's PreToolUse hook reads (``autonomy_hook``; ``docs/autonomy.md``, The hook of
 autonomy on the worker).
 
 Each pattern names a class and what it matched:

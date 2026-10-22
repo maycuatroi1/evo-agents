@@ -21,7 +21,7 @@ Note = Annotated[str, StringConstraints(max_length=org.MAX_NOTE_CHARS)]
 Level = Literal["A0", "A1", "A2", "A3", "A4", "A5"]
 PLACE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"  # an environment (host, <plugin>/<name>) or a worker's name
 Place = Annotated[str, StringConstraints(pattern=PLACE_PATTERN)]
-MAX_PLACES = 100  # environments or workers of one ceiling (schema 0105)
+MAX_PLACES = 100  # environments or workers of one ceiling (schema 0110)
 CLASSES_FIELD = "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
 ChildKind = Literal["team", "cohort"]
 Role = Literal["lead", "member", "intern", "agent"]

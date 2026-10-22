@@ -187,7 +187,7 @@ class Conversation:
         if self.resume_of is None:
             return prompt, None
         messages = await run.inbox.unread()
-        said = run.inbox.take(messages) if messages else ""
+        said = await run.inbox.take(messages) if messages else ""
         if self.session_id is None:  # the parked run never told its session: start again, with the messages
             run.note("The parked run left no session to go on with: the agent starts a new one.")
             return runs.clip(prompt + ("\n\n" + said if said else ""), runs.MAX_PROMPT_BYTES), None
@@ -227,7 +227,9 @@ class Conversation:
             messages = await self.after_turn()
             if not messages:
                 return
-            prompt = runs.clip(self.prompt_for(messages) + "\n\n" + run.inbox.take(messages), runs.MAX_PROMPT_BYTES)
+            prompt = runs.clip(
+                self.prompt_for(messages) + "\n\n" + await run.inbox.take(messages), runs.MAX_PROMPT_BYTES
+            )
 
     def session_usage(self, start: int) -> dict | None:
         """The usage of the turns of the session from ``usages[start]`` on: the one turn's as it is, else them added

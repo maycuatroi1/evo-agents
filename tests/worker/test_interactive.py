@@ -827,7 +827,7 @@ def test_an_interactive_run_starts_in_tmux_on_its_prompt_and_leaving_the_ui_hand
     assert session
     shown = _on_screen(tmux_socket, name, "fake tui: prompt", stack)
     assert f"fake tui: session {session} in {name}" in shown
-    assert "fake tui: prompt You are running step 2 of the plan" in shown, "the UI starts on the run's prompt"
+    assert "fake tui: prompt # Your autonomy on this run" in shown, "the UI starts on the run's prompt, its card first"
 
     tmux(tmux_socket, "send-keys", "-t", f"={name}:", "exit", "Enter")
     run = stack.wait_state(run_id, "done", "failed")
@@ -925,3 +925,21 @@ def test_a_worker_that_does_not_allow_the_web_terminal_says_so_and_attaches_noth
     run = stack.wait_state(run_id, "done", "failed")
     assert run["state"] == "done", (run["error"], stack.daemon_output()[-6000:])
     finished_cleanly(stack, proc)
+
+
+def test_claude_codes_ui_with_a_config_dir_of_its_own_gets_the_hub_server_alone(tmp_path):
+    from evo_agents.worker.runtimes import claude_home
+
+    bin_dir = _fake_bin(tmp_path / "bin")
+    own = {"CLAUDE_CONFIG_DIR": str(claude_home.config_dir(tmp_path / "worktree"))}
+    context = _tui_context(tmp_path, env=own, own_home=True, runtime="claude-code")
+    fresh = interactive.ClaudeCodeTui(context, None)
+    argv = fresh.command("evo-run-7")
+    assert argv[0] == str(bin_dir / "claude") and argv[-1] == "Do the step."
+    assert argv[-2] == "--strict-mcp-config"  # before the prompt, so the prompt is no config file
+    servers = json.loads(argv[argv.index("--mcp-config") + 1])["mcpServers"]
+    assert list(servers) == ["evo-hub"] and servers["evo-hub"]["env"] == {}
+    resumed = interactive.ClaudeCodeTui(context, "sid-1")
+    assert resumed.command("evo-run-7")[-1] == "--strict-mcp-config"
+    shared = interactive.ClaudeCodeTui(_tui_context(tmp_path, own_home=False, runtime="claude-code"), None)
+    assert "--strict-mcp-config" not in shared.command("evo-run-7")

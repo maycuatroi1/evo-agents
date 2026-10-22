@@ -13,7 +13,7 @@ reads the mode of the run's principal for the class of the act, the stricter of 
 A K5 cell ``notify:ask_on_risk_paths`` asks when the merge touches a risk path. An ask that a project policy sets (a
 repo in mode off caps K5 at ask, prod_release manual caps K6 at ask: source ``policy:<project>/<repo>``) is left to the
 flows that already hold that policy, the merge queue that acts on repos in mode auto alone and the approval of a manual
-release; the gate acts as before. A run without a snapshot (a local run, one queued before schema 0106) acts as before
+release; the gate acts as before. A run without a snapshot (a local run, one queued before schema 0111) acts as before
 too, and so does a principal at A5.
 
 Every refusal names the class, the mode and its source, and writes the audit row ``autonomy.refused`` once for each

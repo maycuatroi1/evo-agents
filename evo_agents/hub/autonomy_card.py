@@ -4,7 +4,7 @@ autonomy-levels, criterion a12).
 Categories (``DECISION_CATEGORIES``): each class of action that takes ask has its own (``CLASS_CATEGORIES``): K5
 ``merge``, K6 ``deploy``, K8 ``credential``, K9 ``delete_data`` and ``live_migration``, K10 ``external_send``, K11
 ``spend_money``, K12 ``access``; ``architecture`` and ``scope`` belong to no class, and every agent of a plan run may ask
-them. A run without a snapshot of autonomy (a local run, one queued before schema 0106) tells its agent the fixed list
+them. A run without a snapshot of autonomy (a local run, one queued before schema 0111) tells its agent the fixed list
 ``PROMPTED_DECISION_CATEGORIES`` instead, as before.
 
 The card (``card``): built by the hub from the run's snapshot (``runs.autonomy``) and its principal when the worker
@@ -222,3 +222,11 @@ def with_card(prompt: str, autonomy: Mapping | None) -> str:
     """``prompt`` opened by the card of ``autonomy`` (``Card.spec``); as it is for a run without one."""
     text = (autonomy or {}).get("card")
     return f"{text}\n\n{prompt}" if text else prompt
+
+
+def without_card(prompt: str) -> str:
+    """``prompt`` without the card ``with_card`` opened it with; as it is when it opens with none."""
+    if not prompt.startswith(HEADING):
+        return prompt
+    _, _, rest = prompt.partition("\n\n")
+    return rest

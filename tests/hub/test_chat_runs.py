@@ -30,7 +30,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import chat_runs, chats, runs, tables
+from evo_agents.hub import autonomy_card, chat_runs, chats, runs, tables
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
@@ -266,7 +266,7 @@ def test_a_chat_run_claim_has_the_bounded_snapshot_and_its_moves_react_by_rule(c
     sent(client, hub["other"], chat["id"], "It hits tests/test_wait.py the most.", reply_to=root["id"])
     mention = sent(client, hub["owner"], chat["id"], "@reviewer replace the sleep with a poll, please", root["id"])
     spec = claim(client, worker)
-    prompt = spec["prompt"]
+    prompt = autonomy_card.without_card(spec["prompt"])  # the card opens it (autonomy-levels)
     assert prompt.startswith(f"You are @reviewer (Reviewer), an agent of project {PROJECT} on the evo-agents hub")
     assert f"Work for {OWNER}" in prompt and f"the branch chat/{spec['id']}" in prompt
     assert "## The chat before the thread" in prompt and "The nightly build is red since Tuesday." in prompt

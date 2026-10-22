@@ -1,18 +1,20 @@
 """Which of its owner's accounts a run gets for each variable (``docs/credentials.md``, section "Accounts"), chosen in
 the transaction of ``credentials.lease_credentials`` that leases them, while the run's row is locked.
 
-``choose_accounts`` takes the env secrets the run may be leased (``credentials._bound_secrets``: the owner's, bound to
-the run's project on any of their workers or on this one, live and not past their end; for a run of the Curator only
-those its charter lists) and gives back one for each variable:
+``choose_accounts`` takes the env secrets the run may be leased (``share_leases``: the owner's, bound to the run's
+project on any of their workers or on this one, live and not past their end, and those other members shared with the
+owner that their shares lend now; for a run of the Curator only those its charter lists) and gives back one for each
+variable:
 
 1. the account the run took already (run_accounts), the one its owner picked when dispatching it among them, or the
    one the run it resumes took, while it is still one of those secrets: a run keeps its account on every ask for its
    leases, whatever happened to the account since; else the secret of a lease the run holds for that variable;
 2. else among the accounts bound to this worker (for a run of the Curator: the accounts its charter lists), then
    among the others bound to the project, by the strategy of the owner's policy for the project
-   (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down;
-3. else, when every account left cools down, the one whose cooldown ends first, and a ``system`` event of the run says
-   so; when every account is paused, none, and an event says that.
+   (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down; then, the same way,
+   among the accounts shared with the owner (how ``shared``): the owner's own come first;
+3. else, when every account of the owner's left cools down, the one whose cooldown ends first, and a ``system`` event
+   of the run says so; when every account is paused, none, and an event says that.
 
 The accounts of an agent profile (``agent_accounts``) come in the same list, and ``credentials.survey_run`` leaves out
 of it every secret of the dispatcher for a variable the agent has an account for on this worker, so a variable's group
@@ -60,6 +62,7 @@ class Secret(Protocol):
     kind: str
     env_var: str | None
     on_worker: bool
+    share_id: int | None  # the share another member lent it under; None for the owner's own
     agent: str | None  # the handle of the agent profile that owns it; None for a member's
 
 
@@ -153,11 +156,20 @@ def _candidate(secret: Secret, state: _State) -> Candidate:
 def _tiers(secrets: list[Secret], curator: bool) -> list[tuple[str, list[Secret]]]:
     if curator:
         return [("charter", secrets)]
-    return [("worker", [s for s in secrets if s.on_worker]), ("pool", [s for s in secrets if not s.on_worker])]
+    own = [s for s in secrets if s.share_id is None]
+    return [
+        ("worker", [s for s in own if s.on_worker]),
+        ("pool", [s for s in own if not s.on_worker]),
+        ("shared", [s for s in secrets if s.share_id is not None]),
+    ]
 
 
 def _fallback(env_var: str, secrets: list[Secret], states: dict[int, _State], strategy: str) -> _Choice:
-    """Nothing is ready: the account whose cooldown ends first, else none since every one is paused."""
+    """Nothing is ready: the owner's own account whose cooldown ends first, else none since every one is paused. An
+    account shared with the owner is never taken cooling: its owner's runs go first (``share_leases``)."""
+    secrets = [s for s in secrets if s.share_id is None]
+    if not secrets:
+        return _Choice(None, None, note=f"no account for {env_var} is ready: the run gets none")
     allowed = {c.id for c in usable([_candidate(s, states[s.id]) for s in secrets], strategy)}
     cooling = [s for s in secrets if s.id in allowed and not states[s.id].paused and states[s.id].cooling_until]
     if not cooling:
@@ -302,7 +314,8 @@ def _why_not(how: str | None, policy: dict, failovers: int, whose: str = "its ow
     if how == "manual":
         return "its account was picked by hand"
     if not policy["failover"]:
-        return f"{whose} policy turns failover off"
+        policy_of = "the owner's" if whose == "its owner's" else whose  # the words a member's run always had
+        return f"{policy_of} policy turns failover off"
     if failovers >= policy["max_failovers"]:
         return f"it failed over {failovers} times, the most {whose} policy allows"
     return None

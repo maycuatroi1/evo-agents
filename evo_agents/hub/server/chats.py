@@ -37,14 +37,14 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import attachment_store, audit
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -92,6 +92,7 @@ from evo_agents.hub.server.chat_views import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
+from evo_agents.hub.server.runs.models.attachment_parts import AttachmentIds
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -122,17 +123,17 @@ class ChatCreate(BaseModel):
 
 
 class ChatMessageIn(BaseModel):
-    body: str = Field(min_length=1, description=f"at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
+    body: str = Field(description=f"at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8; empty only with attachment_ids")
     reply_to: int | None = Field(None, ge=1, le=MAX_ID, description="the message it answers: it goes in its thread")
+    attachment_ids: AttachmentIds = Field(default_factory=list)
 
-    @field_validator("body")
-    @classmethod
-    def _bounded(cls, value: str) -> str:
-        if not value.strip():
+    @model_validator(mode="after")
+    def _bounded(self):
+        if not self.body.strip() and not self.attachment_ids:
             raise ValueError("a message has some text")
-        if len(value.encode()) > chats.MAX_MESSAGE_BYTES:
+        if len(self.body.encode()) > chats.MAX_MESSAGE_BYTES:
             raise ValueError(f"a message is at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
-        return value
+        return self
 
 
 class ChatReactionIn(BaseModel):
@@ -343,7 +344,9 @@ async def deliver_message(conn: AsyncConnection, chat: ChatAccess, user: Princip
         root = answered.thread_root_id or answered.id
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
+    files = await attachment_store.take(conn, body.attachment_ids, user.user_id, chat_id=chat.chat_id)
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
+    await attachment_store.hold_in_chat(conn, message_id, files)  # before hand_mentions, whose inboxes carry them
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)
     elif chat.kind == chats.SETTLE:

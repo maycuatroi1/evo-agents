@@ -1,7 +1,7 @@
 """The gates of autonomy: the decision and notice of a gate, and the environment label of a secret.
 
-Revision ID: 0107
-Revises: 0106
+Revision ID: 0112
+Revises: 0111
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.runs`` and ``evo_agents.hub.credentials`` as of this revision, never
@@ -14,14 +14,14 @@ class is ask; notifications.notice_kind takes ``autonomy``, what a gate tells th
 secrets gains environment, the environment an env secret is labelled for (``test`` alone, or none): a run whose K7
 is ``auto:test_secrets`` is leased the env secrets labelled ``test`` and no other that reaches an environment.
 
-Going back deletes the decisions and notices of the kind, puts the checks of 0097 and 0095 back and drops the column.
+Going back deletes the decisions and notices of the kind, puts the checks of 0108 and 0095 back and drops the column.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0107"
-down_revision = "0106"
+revision = "0112"
+down_revision = "0111"
 branch_labels = None
 depends_on = None
 
@@ -40,7 +40,7 @@ CATEGORIES_0095 = (  # decisions_category_check as 0095 set it
     "loop",
 )
 CATEGORIES = (*CATEGORIES_0095, KIND)  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
-NOTICE_KINDS_0097 = (  # notifications_notice_kind_check as 0097 set it
+NOTICE_KINDS_0108 = (  # notifications_notice_kind_check as 0108 set it
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -62,8 +62,9 @@ NOTICE_KINDS_0097 = (  # notifications_notice_kind_check as 0097 set it
     "goal_review",
     "loop_brief",
     "plugin_notice",
+    "worker_doctor",
 )
-NOTICE_KINDS = (*NOTICE_KINDS_0097, KIND)  # evo_agents.hub.runs.NOTICE_KINDS
+NOTICE_KINDS = (*NOTICE_KINDS_0108, KIND)  # evo_agents.hub.runs.NOTICE_KINDS
 ENVIRONMENTS = ("test",)  # evo_agents.hub.credentials.SECRET_ENVIRONMENTS
 
 col = sa.column
@@ -86,7 +87,7 @@ def downgrade() -> None:
     decisions = sa.table("decisions", col("category"))
     op.execute(notifications.delete().where(notifications.c.notice_kind == KIND))
     op.execute(decisions.delete().where(decisions.c.category == KIND))  # with their notifications (on delete cascade)
-    _check("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS_0097)
+    _check("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS_0108)
     _check("decisions", "decisions_category_check", "category", CATEGORIES_0095)
     op.drop_constraint("secrets_environment_check", "secrets", type_="check")
     op.drop_column("secrets", "environment")

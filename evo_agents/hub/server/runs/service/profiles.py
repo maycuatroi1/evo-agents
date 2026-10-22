@@ -154,7 +154,7 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
         return
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
-    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id))
+    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id, user.user_id))
     rows = await conn.execute(select(w.c.name, w.c.labels).where(mine_or_shared, w.c.revoked_at.is_(None), serves))
     if not any(profiles.allows_worker(profile.permissions, row.name, row.labels) for row in rows):
         raise _refuse(

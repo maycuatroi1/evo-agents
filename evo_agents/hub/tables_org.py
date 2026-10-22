@@ -15,18 +15,21 @@ seat.
 autonomy_ceilings holds every revision of the ceiling of a unit or a seat, never changed: the scope (unit or seat), the
 id of the unit or the seat, the revision (1 and up within the scope), the level (A0 to A5), the writer's note, who
 wrote it (NULL for the root's first, which schema 0099 wrote) and when. A scope's ceiling is its highest revision.
-From schema 0105 on (plan autonomy-levels) a revision also holds its class overrides (an object of K1 to K12, each a
+From schema 0110 on (plan autonomy-levels) a revision also holds its class overrides (an object of K1 to K12, each a
 mode as ``evo_agents.hub.autonomy_levels`` reads it), and the environments and the workers it allows (empty: no limit).
 
-autonomy_prefs (0105) holds every revision of a person's own autonomy preference, never changed: the user, the
+autonomy_prefs (0110) holds every revision of a person's own autonomy preference, never changed: the user, the
 revision (1 and up), the level and the class overrides. A person without a row prefers A5.
 
-Revision 0106 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
+Revision 0111 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
 autonomy taken when the run was queued (``evo_agents.hub.server.run_autonomy``); ``org_tables`` adds both to the runs
 table it is given, so that ``evo_agents.hub.tables`` describes runs whole.
 
-autonomy_stops (0109) holds every stop of autonomy S4, never deleted: the scope (login, unit or all), the person or the
+autonomy_stops (0114) holds every stop of autonomy S4, never deleted: the scope (login, unit or all), the person or the
 unit it names, the reason, who stopped and when, who lifted it and when (NULL while it holds).
+
+worker_shares (0107, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
+added the row and when (``evo_agents.hub.server.worker_shares``).
 """
 
 from __future__ import annotations
@@ -186,21 +189,38 @@ def stops_table(metadata: MetaData) -> Table:
 
 
 def run_columns(runs: Table) -> None:
-    """The principal of a run and the snapshot of its autonomy (0106)."""
+    """The principal of a run and the snapshot of its autonomy (0111)."""
     runs.append_column(Column("principal_id", BigInteger))
     runs.append_column(Column("autonomy", JSONB))
     runs.append_constraint(_key("runs", "principal_id", "users", "RESTRICT"))
 
 
 def secret_columns(secrets: Table) -> None:
-    """The environment an env secret is labelled for, test alone or none (0107)."""
+    """The environment an env secret is labelled for, test alone or none (0112)."""
     secrets.append_column(Column("environment", Text))
 
 
-def org_tables(metadata: MetaData, runs: Table, secrets: Table) -> tuple[Table, Table, Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops), added to ``metadata``, the autonomy
-    columns of ``runs`` and the environment label of ``secrets``."""
+def worker_shares_table(metadata: MetaData) -> Table:
+    return Table(
+        "worker_shares",
+        metadata,
+        Column("worker_id", BigInteger, nullable=False),
+        Column("unit_id", BigInteger, nullable=False),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        _key("worker_shares", "worker_id", "workers", "CASCADE"),
+        _key("worker_shares", "unit_id", "org_units", "RESTRICT"),
+        _key("worker_shares", "created_by", "users", ondelete="SET NULL"),
+        PrimaryKeyConstraint("worker_id", "unit_id", name="worker_shares_pkey"),
+        Index("worker_shares_unit_idx", "unit_id"),
+    )
+
+
+def org_tables(metadata: MetaData, runs: Table, secrets: Table) -> tuple[Table, ...]:
+    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops, worker_shares), added to ``metadata``,
+    the autonomy columns of ``runs`` and the environment label of ``secrets``."""
     run_columns(runs)
     secret_columns(secrets)
     units, seats = units_table(metadata), seats_table(metadata)
-    return units, seats, ceilings_table(metadata), prefs_table(metadata), stops_table(metadata)
+    ceilings, prefs, stops = ceilings_table(metadata), prefs_table(metadata), stops_table(metadata)
+    return units, seats, ceilings, prefs, stops, worker_shares_table(metadata)

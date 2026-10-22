@@ -12,9 +12,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.worker import gitops
-from evo_agents.worker.runner import authorship, push
-from tests.worker.test_claude_home import Notes, agent
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
+from evo_agents.worker import gitops  # noqa: E402
+from evo_agents.worker.runner import authorship, push  # noqa: E402
+from tests.worker.test_claude_home import Notes, agent  # noqa: E402
 
 HUB = "https://agents.omelet.tech"
 SANDBOX = {"handle": "evo-sandbox", "version": 3, "name": "Evo Sandbox", "instructions": "", "permissions": {}}

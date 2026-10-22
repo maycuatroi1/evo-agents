@@ -18,6 +18,7 @@ the class, the mode and the source, and a lease that withheld something writes t
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -36,9 +37,10 @@ log = logging.getLogger(__name__)
 K7 = "K7"
 
 
-async def k7(conn: AsyncConnection, run_id: int) -> Choice | None:
-    """K7 of run ``run_id`` now (``run_autonomy.recheck``); None for a run without a snapshot."""
-    found = await run_autonomy.recheck(conn, run_id)
+async def k7(conn: AsyncConnection, run_id: int, lending: Iterable[int] = ()) -> Choice | None:
+    """K7 of run ``run_id`` now (``run_autonomy.recheck``), under the credential shares ``lending`` lend it besides
+    those it holds a lease under (source 6); None for a run without a snapshot."""
+    found = await run_autonomy.recheck(conn, run_id, lending=lending)
     return None if found is None else found.classes[K7]
 
 

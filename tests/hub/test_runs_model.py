@@ -372,6 +372,7 @@ def test_decisions_and_notices_the_plan_names():
         "loop_brief",
         "plugin_notice",
         "autonomy",
+        "worker_doctor",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")

@@ -1,5 +1,5 @@
 """The principal and the autonomy snapshot of a run (``evo_agents.hub.server.run_autonomy``), as criteria a4, a5 and a7
-of plan autonomy-levels name them: schema 0106 gives runs principal_id and autonomy; a dispatched run acts for its
+of plan autonomy-levels name them: schema 0111 gives runs principal_id and autonomy; a dispatched run acts for its
 dispatcher, a run the hub makes on its own for its agent's sponsor, and its snapshot is the effective autonomy when it was
 queued, over its repos; each gate takes the stricter of the snapshot and the value now, so a lower level reaches the run
 at its next gate and a higher one only later runs; a claim gives a run only to a worker its snapshot allows, and a run
@@ -86,17 +86,17 @@ def user_id(db, login: str) -> int:
     return sql(db, select(u.c.id).where(u.c.login == login))[0][0]
 
 
-# Schema 0106
+# Schema 0111
 
 
 def test_autonomy_level_snapshot_migration_0106_adds_principal_and_autonomy_to_runs_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0105", down=True)
+    move_to(hub_db, "0110", down=True)
     assert not {"principal_id", "autonomy"} & columns(hub_db, "runs")
-    move_to(hub_db, "0106")
+    move_to(hub_db, "0111")
     assert {"principal_id", "autonomy"} <= columns(hub_db, "runs")
-    move_to(hub_db, "0105", down=True)
+    move_to(hub_db, "0110", down=True)
     assert not {"principal_id", "autonomy"} & columns(hub_db, "runs")
-    move_to(hub_db, "0106")
+    move_to(hub_db, "0111")
 
 
 # The principal and the snapshot (criterion a4)

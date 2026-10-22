@@ -75,6 +75,8 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.kg_audience import person_audience
+from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import RunStep, write_event
@@ -383,6 +385,7 @@ async def resolve(
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
     graph = await graph_view(request, run.owner, access, sorted(set(code))) if code else None
     found = []
+    held = await person_audience(conn, run.owner.user_id) if any(item.kind == "memory" for item in items) else None
     for position, item in enumerate(items, start=1):
         where = f"evidence {position} ({review.evidence_text(item.stored())})"
         stored = item.stored()
@@ -394,7 +397,7 @@ async def resolve(
                 raise _refused(where, why)
             found.append({**stored, "resolved": "transcript"})
         elif item.kind == "memory":
-            found.append(await memory_promotion.evidence(conn, run.project_id, run.project, access, item, where))
+            found.append(await memory_promotion.evidence(conn, run.project_id, run.project, access, held, item, where))
         elif item.kind == "run":
             query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
                 r.c.id == item.run_id, r.c.project_id == run.project_id
@@ -825,8 +828,8 @@ async def list_proposals(
         if run_id is not None:
             query = query.where(p.c.run_id == run_id)
         rows = (await conn.execute(query.order_by(p.c.id.desc()).limit(MAX_OFFSET))).all()
-    through = plan_routes._sink(access, sink)
-    readable = [row for row in rows if access.visible(row.label, through)]
+        through, reader = plan_routes._sink(access, sink), Reader(conn, user)
+        readable = [row for row in rows if await label_reaches(reader, access, row.label, through)]
     states, tiers_asked = set(state), set(tier)
 
     def kept(row, but: str | None = None) -> bool:
@@ -851,15 +854,17 @@ async def list_proposals(
     )
 
 
-async def readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
-    """Proposal ``proposal_id`` of the project, its row locked with ``lock``, when its label reaches the caller through
-    ``sink`` (else the project's hub sink); 404 otherwise."""
+async def readable_proposal(
+    conn, access: ProjectAccess, proposal_id: int, sink: str | None, user: Principal, *, lock: bool = False
+):
+    """Proposal ``proposal_id`` of the project, its row locked with ``lock``, when its label reaches ``user`` through
+    ``sink`` (else the project's hub sink), its audience included; 404 otherwise."""
     p = tables.proposals
     query = _proposals().where(p.c.project_id == access.project_id, p.c.id == proposal_id)
     if lock:
         query = query.with_for_update(of=p)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or not access.visible(row.label, plan_routes._sink(access, sink)):
+    if row is None or not await label_reaches(Reader(conn, user), access, row.label, plan_routes._sink(access, sink)):
         raise HTTPException(404, f"project {access.name} has no proposal {proposal_id}")
     return row
 
@@ -886,7 +891,7 @@ async def show_proposal(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        row = await readable_proposal(conn, access, proposal_id, sink)
+        row = await readable_proposal(conn, access, proposal_id, sink, user)
         change = await _change_of(conn, access, proposal_id, sink)
     return _proposal(access.name, row, change)
 
@@ -910,7 +915,7 @@ async def answer_proposal_as(
         raise HTTPException(
             403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
         )
-    row = await readable_proposal(conn, access, proposal_id, None, lock=True)
+    row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
     if row.state not in ("open", "deferred"):
         raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
     state = review.ANSWERED[body.action]
@@ -952,7 +957,7 @@ async def answer_proposal_as(
         target=target if via is None else f"{target} via={via}",
         project_id=access.project_id,
     )
-    row = await readable_proposal(conn, access, proposal_id, None)
+    row = await readable_proposal(conn, access, proposal_id, None, user)
     return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None))
 
 
