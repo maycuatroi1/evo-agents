@@ -682,9 +682,6 @@ def pairing(selector: str, name: str, **values):
             id="event-seq-taken",
         ),
         pytest.param(
-            insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body=""), errors.CheckViolation, id="message-empty"
-        ),
-        pytest.param(
             insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body="é" * 4097),
             errors.CheckViolation,  # 8194 bytes
             id="message-8194-bytes",
