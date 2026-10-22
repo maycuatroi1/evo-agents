@@ -102,6 +102,7 @@ HUB_TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 HUB_TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 HUB_TABLES |= pg.ORG_TABLES  # migration 0099
 HUB_TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
+HUB_TABLES |= pg.BROWSER_TABLES  # migration 0105
 
 
 @pytest.fixture
