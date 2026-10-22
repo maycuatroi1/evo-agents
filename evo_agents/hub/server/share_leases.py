@@ -20,7 +20,9 @@ the secret's name or value (``note_refusals``), when the run got nothing else fo
 - its owner has not paused the account and it does not cool down: while it waits, the owner's runs go first (they
   take a cooling account as a last resort, ``account_choice._fallback``; a run under a share never does);
 - the highest usage among the windows of accounts.last_usage whose reset has not passed is under the share's
-  usage_ceiling_pct (``peak_usage``); an account whose usage is unknown is lent;
+  usage_ceiling_pct (``peak_usage``); an account whose usage is unknown is lent. The CLI reports a window's usage as a
+  fraction of its limit (0.35), the ceiling is a percent (1 to 100): ``peak_usage`` gives whole percent, a fraction
+  above 1 read as the limit reached, as the web's usage bars read it;
 - fewer than max_running runs hold a lease under the share now;
 - the cost of the runs that took a lease under the share this month (UTC, as ``account_views`` counts a run's cost),
   plus an estimate for each run holding one that reported no cost yet and for this run, is within budget_usd. The
@@ -224,7 +226,8 @@ def _when(value) -> datetime | None:
 
 def peak_usage(usage, now: datetime) -> float | None:
     """The highest utilization in ``usage`` (accounts.last_usage) among its windows whose reset has not passed, the
-    limit it reported first among them; None when it gives none."""
+    limit it reported first among them, in whole percent (0 to 100) of the fraction the CLI reports, one above 1
+    being the limit reached; None when it gives none."""
     if not isinstance(usage, dict):
         return None
     found: list[float] = []
@@ -234,7 +237,7 @@ def peak_usage(usage, now: datetime) -> float | None:
             continue
         value, resets = window.get("utilization"), _when(window.get("resets_at"))
         if isinstance(value, int | float) and not isinstance(value, bool) and (resets is None or resets > now):
-            found.append(float(value))
+            found.append(float(round(min(max(value, 0.0), 1.0) * 100)))
     return max(found, default=None)
 
 

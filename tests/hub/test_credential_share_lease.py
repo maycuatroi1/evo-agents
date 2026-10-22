@@ -27,17 +27,32 @@ def test_credential_share_usage_peak_skips_the_windows_whose_reset_passed_and_un
     later, earlier = (NOW + timedelta(hours=1)).isoformat(), (NOW - timedelta(hours=1)).isoformat()
     usage = {
         "status": "allowed",
-        "utilization": 40,
+        "utilization": 0.4,
         "resets_at": later,
-        "windows": {"five_hour": {"utilization": 97, "resets_at": earlier}, "seven_day": {"utilization": 62}},
+        "windows": {"five_hour": {"utilization": 0.97, "resets_at": earlier}, "seven_day": {"utilization": 0.62}},
     }
     assert peak_usage(usage, NOW) == 62
     assert (
-        peak_usage({"status": "allowed", "windows": {"five_hour": {"utilization": 90, "resets_at": later}}}, NOW) == 90
+        peak_usage({"status": "allowed", "windows": {"five_hour": {"utilization": 0.9, "resets_at": later}}}, NOW) == 90
     )
     assert peak_usage(None, NOW) is None
     assert peak_usage({"status": "allowed"}, NOW) is None
     assert peak_usage({"utilization": True, "windows": "?"}, NOW) is None
+
+
+def test_credential_share_usage_peak_is_whole_percent_of_the_fraction_the_cli_reports():
+    """The CLI reports usage as a fraction of the limit (``worker.runner.limits``) and the ceiling is a percent: 0.9
+    is 90%, at or above a ceiling of 80, and a fraction above 1 is the limit reached, never 150%."""
+    later = (NOW + timedelta(hours=1)).isoformat()
+
+    def window(utilization):
+        return {"status": "allowed", "windows": {"five_hour": {"utilization": utilization, "resets_at": later}}}
+
+    assert peak_usage(window(0.9), NOW) == 90
+    assert peak_usage(window(0.9), NOW) >= 80
+    assert peak_usage(window(0.005), NOW) == 0
+    assert peak_usage(window(1.5), NOW) == 100
+    assert peak_usage(window(0), NOW) == 0
 
 
 def test_credential_share_budget_estimate_is_the_mean_cost_else_the_default_and_never_zero():
@@ -264,7 +279,7 @@ def test_credential_share_usage_ceiling_counts_the_windows_not_reset_and_lends_u
     later = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
     earlier = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
     set_usage(
-        hub_db, "team-key", {"status": "allowed", "windows": {"five_hour": {"utilization": 91, "resets_at": later}}}
+        hub_db, "team-key", {"status": "allowed", "windows": {"five_hour": {"utilization": 0.91, "resets_at": later}}}
     )
     second = run_on(client, hub["other"], desk, "evo-agents")
     assert env_of(client, desk, second) == {}
@@ -273,7 +288,7 @@ def test_credential_share_usage_ceiling_counts_the_windows_not_reset_and_lends_u
     assert "91%" in why["text"] and "80%" in why["text"] and why["env_var"] == VAR
     assert env_of(client, desk, first)["name"] == "team-key"  # a run holding it keeps it
     set_usage(
-        hub_db, "team-key", {"status": "allowed", "windows": {"five_hour": {"utilization": 91, "resets_at": earlier}}}
+        hub_db, "team-key", {"status": "allowed", "windows": {"five_hour": {"utilization": 0.91, "resets_at": earlier}}}
     )
     assert env_of(client, desk, second)["name"] == "team-key"
 
