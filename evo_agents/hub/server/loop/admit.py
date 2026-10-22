@@ -20,7 +20,9 @@ says why not: a task run's agent type off, its run_as no writer, or its daily ca
 with the run, adds one to its attempts, writes the ledger row ``dispatched`` with the run, and counts against the
 checks of the work items after it in the same pass. Without a hand-out for its kind a work item that passes stays
 queued with no reason. A reason is written, with its ledger row (``waiting``, or ``ready`` once none holds), only when
-it changes, so a tick that finds the same reasons writes nothing.
+it changes; its figures (the cap and the count, the worker and why) go into the work item's detail too, where the
+routes read them, and are written again without a ledger row when they change under the same reason, so a tick that
+finds the same reasons and figures writes nothing.
 
 There is no budget among the checks (checkpoint of step 1, answer 1): the Loop reserves nothing, holds nothing back for
 lack of money and settles no cost. What a run may cost is its own cap (``loop.caps``). Nothing here calls a model.
@@ -34,7 +36,8 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import Text, func, insert, literal, or_, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, runs, tables
@@ -60,6 +63,12 @@ WORKER_KINDS = (BUILD, DELIVER)  # the kinds whose runs go to worker loop.worker
 RATE_WINDOW = timedelta(hours=1)
 NOT_MERGED = (*merge_gate.QUEUED_STATES, "paused")  # a merge request of the queue its repo still waits on
 HANDED_REASONS = (WORKER, TYPE_REFUSED)  # why a hand-out hands out no run
+# The figures of a reason admission writes into a work item's detail (``refusal``, ``_refused_by``); each hold puts
+# its own in the place of those of the reason before.
+FIGURE_KEYS = (
+    *("cycle", "running", "max_running", "repos", "repo_max_running"),
+    *("dispatched", "dispatches_per_hour", "worker", "why"),
+)
 
 
 @dataclass(frozen=True)
@@ -272,15 +281,23 @@ async def _running(conn: AsyncConnection, project_id: int, item: ItemView, hande
 
 
 async def _hold(conn: AsyncConnection, project_id: int, item: ItemView, refused: tuple[str, dict] | None) -> int:
-    """Work item ``item`` stays queued with the reason of ``refused`` (None: none); 1 when its reason changed."""
-    reason, detail = refused if refused is not None else (None, {})
-    if reason == item.reason:
+    """Work item ``item`` stays queued with the reason of ``refused`` (None: none), and the figures of that reason in
+    its detail in the place of those of the reason before (FIGURE_KEYS), which the routes show as ``waiting``
+    (``items.figures``); 1 when its reason changed, with its ledger row. Figures that changed under the same reason are
+    written with no ledger row; the same reason with the same figures writes nothing."""
+    reason, figures = refused if refused is not None else (None, {})
+    held = {key: item.detail.get(key) for key in FIGURE_KEYS if key in item.detail}
+    if reason == item.reason and (reason is None or held == figures):
         return 0
     i = tables.loop_items
+    kept = i.c.detail.op("-")(literal(list(FIGURE_KEYS), ARRAY(Text)))
+    values: dict = {"detail": kept.op("||")(literal(dict(figures), JSONB))}
+    if reason != item.reason:
+        values |= {"reason": reason, "updated_at": func.now()}
     query = update(i).where(i.c.id == item.id, i.c.project_id == project_id, i.c.state == QUEUED)
-    if await conn.scalar(query.values(reason=reason, updated_at=func.now()).returning(i.c.id)) is None:
+    if await conn.scalar(query.values(values).returning(i.c.id)) is None or reason == item.reason:
         return 0
-    await _ledger(conn, item.id, WAITING if reason else READY, QUEUED, reason, detail)
+    await _ledger(conn, item.id, WAITING if reason else READY, QUEUED, reason, figures)
     return 1
 
 

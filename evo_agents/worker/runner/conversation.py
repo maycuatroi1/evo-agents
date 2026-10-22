@@ -37,6 +37,7 @@ from evo_agents.worker.runner.common import (
     now,
     wait_or,
 )
+from evo_agents.worker.runner.sessions import session_usage
 from evo_agents.worker.runner.transitions import answer_note, waits_for_owner
 from evo_agents.worker.runtimes.common import with_first_request
 
@@ -195,17 +196,19 @@ class Conversation:
 
     async def turns(self, cls, prompt: str, session_id: str | None) -> None:
         """Turns of the agent until one ends with nothing to wait for: after each, the owner's messages that came in
-        the meantime, or the answer the run waits for, start the next in the same session. The usage of each turn's
-        outcome holds the first request of the session's first turn that reports one (``with_first_request``), null
-        when the session started in the terminal UI."""
+        the meantime, or the answer the run waits for, start the next in the same session. The usage of each turn
+        holds the first request of the session's first turn that reports one (``with_first_request``), null when the
+        session started in the terminal UI; ``usages`` keeps each turn's, and the run's outcome holds those of every
+        turn of the session so far (``sessions.session_usage``: the numbers added up, the largest peak, context
+        window and running total of the session's cost), not the last turn's alone."""
         run = self.run
         terminal_first = run.mode == "interactive"
         start, unseen = len(self.usages), terminal_first  # the usages of this session's turns follow
         while True:
             outcome, session_id = await run.agent.turns(cls, prompt, session_id, terminal_first=terminal_first)
             turns = [*self.usages[start:], outcome.usage]
-            run.outcome = replace(outcome, usage=with_first_request(outcome.usage, turns, unseen=unseen))
-            self.usages.append(run.outcome.usage)
+            self.usages.append(with_first_request(outcome.usage, turns, unseen=unseen))
+            run.outcome = replace(outcome, usage=self.session_usage(start))
             terminal_first = False
             self.session_id = session_id or self.session_id
             run.record["session_id"] = self.session_id
@@ -225,6 +228,12 @@ class Conversation:
             if not messages:
                 return
             prompt = runs.clip(self.prompt_for(messages) + "\n\n" + run.inbox.take(messages), runs.MAX_PROMPT_BYTES)
+
+    def session_usage(self, start: int) -> dict | None:
+        """The usage of the turns of the session from ``usages[start]`` on: the one turn's as it is, else them added
+        up (``sessions.session_usage``)."""
+        found = self.usages[start:]
+        return found[-1] if len(found) == 1 else session_usage(found)
 
     def open_asked(self) -> set[int]:
         """The decisions the agent asked whose answers it has not had."""

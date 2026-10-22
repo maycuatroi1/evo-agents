@@ -11,7 +11,9 @@ An admin of the project answers what the hub asks after a merge (``evo_agents.hu
 .../merge-queue/samples/{id} answers an audit sample ``ok`` or ``faulty`` with a note, POST .../merge-queue/{id}/release
 approves the PROD release of a merge when the policy releases its repo by hand, and POST .../merge-queue/{id}/revert
 asks the hub to revert a merge it followed, one of the suspects it could not tell apart. POST .../merge-queue/repos/
-{repo}/resume resets the breaker of a repo that tripped: its paused merge requests wait for their turn again.
+{repo}/resume resets the breaker of a repo that tripped: its paused merge requests wait for their turn again. POST
+.../merge-queue/{id}/pass passes, with a reason, the hold of a merge request at a gate that holds it for a person
+(gate 3, score hacking; ``evo_agents.hub.server.merge_pass``): the queue goes on from that gate at the same head.
 ``evo_agents.hub.server.merge_gate`` moves the merge requests; no value of a secret is ever in a row.
 """
 
@@ -27,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_breaker, merge_gate, post_merge, tables
 from evo_agents.hub.server import merge_breaker as breaker_rows
+from evo_agents.hub.server import merge_pass
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.autonomy_policies import effective_policy
@@ -145,6 +148,14 @@ class MergeQueueView(BaseModel):
 class SampleAnswer(BaseModel):
     result: Literal[post_merge.SAMPLE_RESULTS] = Field(description="faulty counts as a pass of the Judge found wrong")
     note: str | None = Field(None, max_length=after_merge.MAX_NOTE_CHARS)
+
+
+class HoldPass(BaseModel):
+    reason: str = Field(
+        min_length=1,
+        max_length=merge_pass.MAX_REASON_CHARS,
+        description="why the hold may go on: the ledger and the audit keep it with the admin's login",
+    )
 
 
 class MergeFigure(BaseModel):
@@ -363,6 +374,19 @@ async def ask_revert(request: Request, project: ProjectName, queue_id: RowId, us
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         row = await after_merge.ask_revert(conn, user, access, queue_id)
+        return await _answered(conn, row)
+
+
+@router.post("/{project}/merge-queue/{queue_id}/pass", response_model=QueuedMergeRequest, responses=ANSWER_REFUSALS)
+async def pass_hold(
+    request: Request, project: ProjectName, queue_id: RowId, body: HoldPass, user: CurrentUser
+) -> QueuedMergeRequest:
+    """An admin of the project passes the hold of a merge request at a gate that holds it for a person (gate 3, score
+    hacking), with a reason: it is gated again at the same head, and the queue goes on from that gate; the later gates,
+    the Judges, its turn and its pipeline still apply, and a new push takes the pass back."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        row = await merge_pass.pass_hold(conn, user, access, queue_id, body.reason)
         return await _answered(conn, row)
 
 
