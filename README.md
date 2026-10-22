@@ -240,12 +240,14 @@ Hooks:
   add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
   matched line.
 
-The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
-`plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version
-on first start. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so they never wait on the network.
-When uvx cannot run that release (uvx missing, the version not in uv's cache yet, or never published because its tag's
-CI failed), a hook runs `evo-agents` from the PATH with the same arguments and says so in one line on stderr; with no
-`evo-agents` there either, its line on stderr says the hook did not run. Either way it exits 0.
+The plugin needs [uv](https://docs.astral.sh/uv/) or `evo-agents` on `PATH`, and a POSIX `sh` (on Windows, Git for
+Windows' `sh` on `PATH`). It pins the release it runs, the version in its `plugin.json`. The server's `.mcp.json` runs
+`sh -c`: `uvx --from evo-ak==<version> evo-agents --version` first, which downloads and caches that version on first
+start, then the server itself from uv's cache. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so
+they never wait on the network. When uvx cannot run that release (uvx missing, the version not in uv's cache yet, or
+never published: the plugins follow `main`, and a release reaches PyPI only once its tag's CI passes), the server and
+each hook run `evo-agents` from the PATH with the same arguments and say so in one line on stderr. With no
+`evo-agents` there either, the server exits 1 and a hook exits 0, each with a line on stderr saying it did not run.
 
 ### The team hub
 
