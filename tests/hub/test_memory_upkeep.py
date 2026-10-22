@@ -73,7 +73,9 @@ def by_member(hub, name: str, agent: str = "scout", text: str | None = None) -> 
     """A memory of @``agent`` alice writes through the API."""
     memory = {"scope": "project", "project": A, "location": "harness", "name": name, "type": "project"}
     return done(
-        hub.client.put("/v1/memories", json={**memory, "agent": agent, "body": text or body(name[:-3])}, headers=hub.alice)
+        hub.client.put(
+            "/v1/memories", json={**memory, "agent": agent, "body": text or body(name[:-3])}, headers=hub.alice
+        )
     )
 
 

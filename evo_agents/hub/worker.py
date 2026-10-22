@@ -539,9 +539,7 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(
-    config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None
-) -> int:
+async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
     it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
     (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``)."""
