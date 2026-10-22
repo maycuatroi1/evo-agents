@@ -12,7 +12,7 @@ run, whose three options are to go on with one more cap of the schedule, to clos
 (``release_answer`` does the one chosen), notified to the owner on their channels; and a thread of the hub's in the
 project's triage chat (``triage.project_thread``) that says why, the tags with their workflow runs, the cost and the
 decision. A stopped cycle moves no further until the owner answers, and no check opens another cycle while it is
-there. Asking happens in a savepoint: a thread or a decision that cannot be made leaves the cycle stopped, saying so in
+there, unless a newer tag made outside it supersedes it (``release_check.supersede``). Asking happens in a savepoint: a thread or a decision that cannot be made leaves the cycle stopped, saying so in
 the log.
 
 ``notify_release`` sends the owner a notice of kind release: a version published, or a CI the hub cannot read.
