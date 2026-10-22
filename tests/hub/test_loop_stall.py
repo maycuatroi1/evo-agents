@@ -40,6 +40,7 @@ from tests.hub.test_loop_admission import enable_strategist, queued
 from tests.hub.test_loop_rules import NOW, view
 from tests.hub.test_loop_tick import (  # noqa: F401 (client, hub and loop_core are fixtures)
     client,
+    harness_listed,
     hub,
     item,
     ledger,
@@ -156,6 +157,7 @@ def test_loop_stall_an_author_run_that_failed_twice_tells_its_own_triage_thread_
     client, hub, hub_db, tmp_path
 ):
     publish_skill(client, hub, tmp_path, "The author mode.")
+    harness_listed(client, hub)
     studio = add_worker(client, hub["owner"], "studio", slots=3, checkouts=AUTHOR_CHECKOUTS)
     heartbeat(client, studio, KINDS)
     policy(client, hub, {"enabled": True, "worker": "studio"})

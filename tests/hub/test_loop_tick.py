@@ -41,7 +41,17 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
-from tests.hub.test_ba_agent import delivered, enable, granted, imported, members, review, submitted  # noqa: F401
+from tests.hub.test_author_runs import HARNESS
+from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
+    OPEN_SINKS,
+    delivered,
+    enable,
+    granted,
+    imported,
+    members,
+    review,
+    submitted,
+)
 from tests.hub.test_runs import PROJECT
 from tests.hub.test_strategist_agent import BASE, CANVAS, CARD, SLUG, edit
 from tests.hub.test_value_check import NUMBER_KEY, add_key
@@ -59,6 +69,7 @@ JOBS = table(
     "procrastinate_jobs", column("task_name"), column("args", JSONB), column("queueing_lock"), column("status")
 )
 FRAME = frame_task_key("demo-shop", 1, "UC ORD-1")
+HARNESS_ORIGIN = f"https://git.example.org/evo/{HARNESS}.git"
 
 
 @pytest.fixture
@@ -106,6 +117,17 @@ def policy(client, hub, loop: dict) -> dict:
     written = client.put(POLICY, json={"policy": {"loop": loop} if loop else {}}, headers=hub["owner"])
     assert written.status_code == 200, written.text
     return written.json()
+
+
+def harness_listed(client, hub) -> None:
+    """Register the project again with its harness among its repos, with an origin (``test_plans.registration``
+    gives the harness's path alone): the Loop hands out an author run only then."""
+    body = {
+        **credentials_api.registration({**credentials_api.DISPATCHED, HARNESS: HARNESS_ORIGIN}),
+        "sinks": OPEN_SINKS,
+    }
+    registered = client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"])
+    assert registered.status_code == 200, registered.text
 
 
 def ticked(client, db) -> dict:
