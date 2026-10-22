@@ -5,14 +5,20 @@ gets a database of its own, owned by a role of its own with a random password, s
 superuser rights, a re-run starts clean, nothing lands in the server's own databases, and a password that
 reaches a log line is easy to find. Such a database is a copy of a template the pytest process migrated once
 (``make_template``, ``clone_database``): a copy takes about a quarter of the time of migrating an empty database,
-which some 900 tests did each; a test of migrating itself gets an empty one. The tests run in parallel with
-``pytest -n 4`` (pytest-xdist): each worker has a template of its own, and nothing else is shared but the server.
-psycopg and SQLAlchemy are imported inside the helpers: this module loads on a core install too.
+which some 900 tests did each; a test of migrating itself gets an empty one, which a test of one revision makes a
+copy of the template at the nearest tenth revision below it (``template_below``). The tests run in parallel with
+``pytest -n auto`` (pytest-xdist): each worker has templates of its own, and nothing else is shared but the server.
+Templates are migrated one revision a transaction (``migrate_in_steps``), and a test migrating the whole chain in one
+transaction waits for the others (``one_whole_chain``): such a transaction holds some 2,700 locks until it commits,
+and the lock table of a server with the default settings (max_locks_per_transaction 64 for each of 100 connections)
+fits two.
+psycopg, SQLAlchemy and Alembic are imported inside the helpers: this module loads on a core install too.
 
 The SQL kept here is the CREATE, ALTER and DROP of databases and roles and the REASSIGN OWNED of a copy, which have no
 SQLAlchemy construct; the catalogs it reads and the functions it calls are Core statements on ``admin_engine()``.
 """
 
+import functools
 import json
 import os
 import secrets
@@ -21,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -172,6 +179,8 @@ ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
+TEMPLATE_EVERY = 10  # revision templates are made at every tenth revision (and head), not at each one a test needs
+WHOLE_CHAIN_KEY = 0x65766F2D63686E  # "evo-chn": the advisory lock of one_whole_chain, on the server's own database
 
 
 @dataclass(frozen=True)
@@ -274,20 +283,141 @@ def make_template(db: Database) -> None:
 def clone_database(template: Database) -> Database:
     """A database of its own as ``template`` is, for a role of its own that owns everything in it: a copy of a
     migrated database costs a fraction of migrating an empty one. Dropped with ``drop_database`` as any other."""
+    with admin() as conn:
+        name, password = _new_owner(conn)
+    db = _database(name, password)
+    _create_copy(db, template)
+    return db
+
+
+def copy_into(db: Database, template: Database) -> None:
+    """Make ``db`` a copy of ``template``, for its own role and password: drop it, connections and all, and create it
+    again from the template."""
     from psycopg import sql
 
     with admin() as conn:
-        name, password = _new_owner(conn)
+        conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(db.name)))
+    _create_copy(db, template)
+
+
+def _create_copy(db: Database, template: Database) -> None:
+    from psycopg import sql
+
+    with admin() as conn:
         conn.execute(
             sql.SQL("CREATE DATABASE {} OWNER {} TEMPLATE {}").format(
-                sql.Identifier(name), sql.Identifier(name), sql.Identifier(template.name)
+                sql.Identifier(db.name), sql.Identifier(db.name), sql.Identifier(template.name)
             )
         )
-    db = _database(name, password)
-    # The copy's tables, sequences, types and functions are still the template's role's: give them to the clone's.
+    # The copy's tables, sequences, types and functions are still the template's role's: give them to the copy's.
     with admin(db.admin_dsn) as conn:
-        conn.execute(sql.SQL("REASSIGN OWNED BY {} TO {}").format(sql.Identifier(template.name), sql.Identifier(name)))
+        conn.execute(
+            sql.SQL("REASSIGN OWNED BY {} TO {}").format(sql.Identifier(template.name), sql.Identifier(db.name))
+        )
+
+
+def move(db: Database, revision: str, *, down: bool = False, in_steps: bool = False) -> tuple[str, ...]:
+    """Upgrade ``db`` to ``revision`` with Alembic, or downgrade it, as ``alembic.command`` does but over scripts
+    loaded once per process (loading them costs some 60 ms a move); the revisions upgraded, in order. Every revision
+    commits together, as ``evo_agents.hub.migrate.migrate`` applies them, or with ``in_steps`` each on its own: one
+    transaction keeps a lock on each table, index and sequence its revisions touch until it commits, some 2,700 for the
+    whole chain, where one revision takes at most a few hundred."""
+    from alembic.runtime.environment import EnvironmentContext
+
+    from evo_agents.hub import migrate as hub_migrate
+
+    script = _script()
+
+    def steps(current, context):
+        return script._downgrade_revs(revision, current) if down else script._upgrade_revs(revision, current)
+
+    applied: list[str] = []
+    engine = hub_migrate._engine(db.dsn)
+    try:
+        with engine.connect() as conn:
+            config = hub_migrate.alembic_config()
+            config.attributes.update(connection=conn, applied=applied, transaction_per_migration=in_steps)
+            with EnvironmentContext(config, script, fn=steps, destination_rev=revision):
+                script.run_env()
+    finally:
+        engine.dispose()
+    return tuple(applied)
+
+
+def migrate_in_steps(db: Database, revision: str = "head", *, down: bool = False) -> tuple[str, ...]:
+    """``move`` with each revision committed on its own: the way along many revisions for tests that run at once."""
+    return move(db, revision, down=down, in_steps=True)
+
+
+@functools.cache
+def _script():
+    from alembic.script import ScriptDirectory
+
+    from evo_agents.hub.migrate import alembic_config
+
+    return ScriptDirectory.from_config(alembic_config())
+
+
+@functools.cache
+def revisions() -> tuple[str, ...]:
+    """Every revision of the hub migrations, oldest first, as ``evo_agents.hub.migrate.revisions`` has them."""
+    return tuple(reversed([revision.revision for revision in _script().walk_revisions()]))
+
+
+_REVISION_TEMPLATES: dict[str, Database] = {}
+
+
+def revision_template(revision: str) -> Database:
+    """A template at ``revision`` ("head" or a revision number) for ``copy_into`` or ``clone_database``, made once per
+    process: a copy of the nearest template below it moved up the revisions in between, so the templates of a pytest
+    process migrate the chain once between them. ``drop_revision_templates`` drops them."""
+    chain = revisions()
+    revision = chain[-1] if revision == "head" else revision
+    if revision in _REVISION_TEMPLATES:
+        return _REVISION_TEMPLATES[revision]
+    below = [rev for rev in chain[: chain.index(revision)] if rev in _REVISION_TEMPLATES]
+    db = clone_database(_REVISION_TEMPLATES[below[-1]]) if below else create_database()
+    try:
+        migrate_in_steps(db, revision)
+        make_template(db)
+    except BaseException:
+        drop_database(db)
+        raise
+    _REVISION_TEMPLATES[revision] = db
     return db
+
+
+def template_below(revision: str) -> tuple[str, Database] | None:
+    """The template of the revision at or below ``revision`` that is head or a multiple of ``TEMPLATE_EVERY``, and that
+    revision; None below the first. A test that copies it moves up the few revisions left: a template of its own
+    would cost one more copy."""
+    chain = revisions()
+    at = len(chain) - 1 if revision == "head" else chain.index(revision)
+    if at != len(chain) - 1:
+        at = (at + 1) // TEMPLATE_EVERY * TEMPLATE_EVERY - 1
+    if at < 0:
+        return None
+    return chain[at], revision_template(chain[at])
+
+
+def drop_revision_templates() -> None:
+    while _REVISION_TEMPLATES:
+        drop_database(_REVISION_TEMPLATES.popitem()[1])
+
+
+@contextmanager
+def one_whole_chain():
+    """Wait until no other test on the server holds this lock, and hold it while the block runs: around a test that
+    migrates the whole chain in one transaction, as ``evo_agents.hub.migrate.migrate`` does from an empty database."""
+    from sqlalchemy import BigInteger, func, literal, select
+
+    key = literal(WHOLE_CHAIN_KEY, BigInteger)
+    with admin_engine().connect() as conn:  # the lock is the session's: closing the connection releases it too
+        conn.execute(select(func.pg_advisory_lock(key)))
+        try:
+            yield
+        finally:
+            conn.execute(select(func.pg_advisory_unlock(key)))
 
 
 def drop_database(db: Database) -> None:

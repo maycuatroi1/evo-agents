@@ -39,6 +39,9 @@ context.configure(
     compare_type=True,
     compare_server_default=True,
     on_version_apply=record,
+    # tests that move a database along many revisions commit each one on its own, on a connection outside a
+    # transaction: one transaction holding the whole chain takes thousands of locks
+    transaction_per_migration=bool(config.attributes.get("transaction_per_migration")),
 )
 with context.begin_transaction():
     context.run_migrations()
