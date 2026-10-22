@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ExternalLink, FileCode, MessagesSquare, ScrollText, TextQuote } from "lucide-react";
+import { Brain, ChevronDown, ExternalLink, FileCode, MessagesSquare, ScrollText, TextQuote } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
@@ -21,10 +21,10 @@ import { digestQuery, transcriptLinesQuery } from "./queries";
  * A finding's or a proposal's evidence, each piece where it leads: a run's event opens the run's log; a session's
  * digest shows the entry it cites, read when asked for (the digest is the project's, under its label); a line of a
  * transcript shows the lines around it, read when asked for; a line of code opens on the forge at the commit the
- * review run read, or the repo's default branch.
+ * review run read, or the repo's default branch; a memory (an agent's or a shared one) opens at the revision it names.
  */
 
-const ICONS = { run: ScrollText, session: MessagesSquare, transcript: TextQuote, code: FileCode, other: ScrollText } as const;
+const ICONS = { run: ScrollText, session: MessagesSquare, transcript: TextQuote, code: FileCode, memory: Brain, other: ScrollText } as const;
 
 function Toggle({ open, controls, onClick, show, hide }: { open: boolean; controls: string; onClick: () => void; show: string; hide: string }) {
   return (
@@ -141,6 +141,16 @@ function Piece({ project, piece }: { project: string; piece: EvidenceView }) {
       <Link href={piece.href} className="font-medium text-brand underline-offset-4 hover:underline" data-testid="evidence-run-link">
         {t("run", { run: piece.runId, seq: piece.seq })}
       </Link>
+    );
+  }
+  if (piece.kind === "memory") {
+    return (
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <Link href={piece.href} className="font-medium text-brand underline-offset-4 hover:underline" data-testid="evidence-memory-link">
+          {t("memory", { id: piece.memoryId, revision: piece.revision })}
+        </Link>
+        {piece.agent ? <span className="font-mono text-xs text-muted-foreground">@{piece.agent}</span> : null}
+      </span>
     );
   }
   if (piece.kind === "session") return <SessionEvidence project={project} piece={piece} />;

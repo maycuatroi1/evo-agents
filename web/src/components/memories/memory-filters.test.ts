@@ -15,24 +15,38 @@ describe("memory filters", () => {
       q: "deploy",
       location: "api",
       type: "feedback",
+      agent: null,
     });
     expect(readFilters(new URLSearchParams(`type=secret&location=${"x".repeat(256)}`))).toEqual({
       q: "",
       location: null,
       type: null,
+      agent: null,
     });
     expect(readFilters(new URLSearchParams(`q=${"a".repeat(600)}`)).q).toHaveLength(500);
-    expect(readFilters(recordParams({ q: ["first", "second"], type: "user" }))).toEqual({ q: "first", location: null, type: "user" });
+    expect(readFilters(recordParams({ q: ["first", "second"], type: "user" }))).toEqual({
+      q: "first",
+      location: null,
+      type: "user",
+      agent: null,
+    });
+  });
+
+  it("reads an agent's handle, without its @, and drops one the API would refuse", () => {
+    expect(readFilters(new URLSearchParams("agent=%40Reviewer")).agent).toBe("reviewer");
+    expect(readFilters(new URLSearchParams("agent=no%20such")).agent).toBeNull();
+    expect(readFilters(new URLSearchParams("agent=")).agent).toBeNull();
   });
 
   it("writes only what is set", () => {
-    expect(filtersQuery({ q: "", location: null, type: null })).toBe("");
-    expect(filtersQuery({ q: " a b ", location: "api", type: "user" })).toBe("?q=a+b&location=api&type=user");
+    expect(filtersQuery({ q: "", location: null, type: null, agent: null })).toBe("");
+    expect(filtersQuery({ q: " a b ", location: "api", type: "user", agent: null })).toBe("?q=a+b&location=api&type=user");
+    expect(filtersQuery({ q: "", location: null, type: null, agent: "reviewer" })).toBe("?agent=reviewer");
   });
 
   it("narrows by location and type and counts each facet", () => {
-    expect(applyFilters(items, { q: "", location: "api", type: null })).toHaveLength(2);
-    expect(applyFilters(items, { q: "", location: "api", type: "user" })).toEqual([{ location: "api", type: "user" }]);
+    expect(applyFilters(items, { q: "", location: "api", type: null, agent: null })).toHaveLength(2);
+    expect(applyFilters(items, { q: "", location: "api", type: "user", agent: null })).toEqual([{ location: "api", type: "user" }]);
     expect(countBy(items, (item) => item.location)).toEqual(new Map([["harness", 1], ["api", 2], ["old-repo", 1]]));
   });
 

@@ -330,6 +330,35 @@ def backdate_run(dsn: str, body: dict) -> dict:
     return {"run_id": row[0], "started_at": row[1].isoformat() if row[1] else None, "finished_at": row[2].isoformat()}
 
 
+MEMORY_STATE = """
+UPDATE memories SET
+    archived_at = CASE WHEN %(archived)s THEN now() - interval '1 day' ELSE archived_at END,
+    stale_at = CASE WHEN %(stale)s THEN now() - interval '1 day' ELSE stale_at END,
+    read_at = CASE WHEN %(read)s THEN now() - interval '2 hours' ELSE read_at END
+WHERE id = %(memory)s AND profile_id IS NOT NULL
+RETURNING id, archived_at, stale_at, read_at
+"""
+
+
+def memory_state(dsn: str, body: dict) -> dict:
+    """Mark agent's memory ``memory_id`` as the daily upkeep would: ``archived`` (out of the agent's index), ``stale``
+    (a path it cites is gone), and ``read`` (a run of the agent opened it two hours ago). LookupError for a memory that
+    is no agent's."""
+    import psycopg
+
+    params = {
+        "memory": int(body["memory_id"]),
+        "archived": bool(body.get("archived")),
+        "stale": bool(body.get("stale")),
+        "read": bool(body.get("read")),
+    }
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(MEMORY_STATE, params).fetchone()
+    if row is None:
+        raise LookupError(f"no agent's memory {body['memory_id']}")
+    return {"memory_id": row[0], **{k: v.isoformat() if v else None for k, v in zip(("archived_at", "stale_at", "read_at"), row[1:])}}
+
+
 def idle_token(dsn: str, body: dict) -> dict:
     """Make token ``token_id`` last used ``days`` days ago and expire TOKEN_TTL after that. LookupError for a token
     the stack never issued."""
@@ -721,6 +750,11 @@ def control_server(
             elif self.path == "/runs/backdate":
                 try:
                     self._reply(200, backdate_run(dsn, body))
+                except LookupError as exc:
+                    self._reply(404, {"error": str(exc)})
+            elif self.path == "/memories/state":
+                try:
+                    self._reply(200, memory_state(dsn, body))
                 except LookupError as exc:
                     self._reply(404, {"error": str(exc)})
             elif self.path == "/tokens/idle":

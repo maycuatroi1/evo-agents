@@ -21,7 +21,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `${t("projectTitle")}: ${decodeURIComponent((await params).project)}` };
 }
 
-/** The memories of a project the visitor holds a grant on, filtered by the API to what the grant reaches. */
+/**
+ * The memories of a project the visitor holds a grant on, filtered by the API to what the grant reaches: its shared
+ * ones, or those of the agent ?agent= names.
+ */
 export default async function ProjectMemoriesPage({ params, searchParams }: Props) {
   const name = decodeURIComponent((await params).project);
   const t = await getTranslations("states");
@@ -35,8 +38,8 @@ export default async function ProjectMemoriesPage({ params, searchParams }: Prop
   const [projectError, error] = await Promise.all([
     prefetch(client, projectQuery(() => api, name)),
     filters.q
-      ? prefetch(client, memorySearchQuery(() => api, scope, filters.q, filters.location))
-      : prefetch(client, memoryListQuery(() => api, scope)),
+      ? prefetch(client, memorySearchQuery(() => api, scope, filters.q, filters.location, filters.agent))
+      : prefetch(client, memoryListQuery(() => api, scope, filters.agent)),
   ]);
   return (
     <HydrationBoundary state={dehydrate(client)}>
