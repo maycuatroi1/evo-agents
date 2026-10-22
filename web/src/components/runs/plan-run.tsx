@@ -53,6 +53,7 @@ function useLockText() {
   const tState = useStatusText("run");
   return (lock: PlanRunLock | "loading"): string => {
     if (lock === "loading") return t("loading");
+    if (lock.kind === "curator") return t("curator");
     if (lock.kind === "planRun") return t("planRun", { id: lock.id, state: tState(lock.state) });
     if (lock.kind === "stepRun") return t("stepRun", { id: lock.id, state: tState(lock.state), step: lock.step });
     return t("noPending");
@@ -61,7 +62,8 @@ function useLockText() {
 
 /**
  * Run plan, for a writer of the project (whoami's grants; the API decides again). It is offered but locked, with the
- * reason beside it, while the plan has an active run or no step left to run; `pending` is how many steps are pending
+ * reason beside it, for a Curator's plan, which only the night shift runs, and while the plan has an active run or no
+ * step left to run; `pending` is how many steps are pending
  * (on the list, how many are not done). `layout` stack puts the reason under the button; row, on a table's row
  * that holds two lines at most, puts it in a tooltip on the button and in its description for screen readers.
  */

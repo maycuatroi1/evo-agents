@@ -142,7 +142,7 @@ function PlanRunForm({
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
   const defaults = Object.fromEntries((projectState.data?.repos ?? []).map((repo) => [repo.name, repo.default_branch ?? null]));
   const scope = view && ready.data ? planRunScope(ready.data.steps, view, defaults) : null;
-  const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null) : [];
+  const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null, planId) : [];
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
   const repos = scope?.repos.map((repo) => repo.repo) ?? [];

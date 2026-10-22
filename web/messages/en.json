@@ -3497,6 +3497,7 @@
         "loading": "Checking the plan's runs…",
         "planRun": "Plan run #{id} is {state}.",
         "stepRun": "Run #{id} of step {step} is {state}; a plan run waits until it ends.",
+        "curator": "The Curator's plan: only the night shift runs it.",
         "noPending": "No step is pending."
       },
       "model": {
@@ -3532,6 +3533,7 @@
         "repoBranch": "{repo} ({branch})"
       },
       "blocker": {
+        "curator": "This is a plan of the Curator: only the night shift of the project's charter runs it, on its worker on duty and its own branch.",
         "planRun": "<link>Plan run #{id}</link> is {state}, dispatched by {login}: one plan run at a time.",
         "stepRun": "<link>Run #{id}</link> of step {step} is {state}: a plan run waits until no run of the plan's steps is active.",
         "noPending": "No step of this plan is pending: a plan run has nothing to do.",
