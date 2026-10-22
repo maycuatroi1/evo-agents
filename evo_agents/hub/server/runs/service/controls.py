@@ -21,6 +21,7 @@ from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
     check_dispatcher,
+    check_seat,
     no_plan_run,
     pinnable,
     queue_run,
@@ -223,6 +224,7 @@ async def rerun_in(
     triage of a failed run, ``evo_agents.hub.server.triage_actions``, is the one that changes either)."""
     access, row = await owned_run(conn, user, project, run_id, "rerun")
     check_dispatcher(access)
+    await check_seat(conn, user, "running a run again")
     _, _, state, plan_id, key, _, asked_runtime, mode, approval, timeout_s, pinned, kind, model = row
     if kind == "plan":
         raise HTTPException(

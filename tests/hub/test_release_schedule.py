@@ -223,7 +223,7 @@ def test_ls_refs_asks_for_the_prefixes_and_reads_what_an_annotated_tag_peels_to(
 
 
 def test_release_is_a_run_kind_that_the_release_schedule_alone_dispatches():
-    assert runs.RUN_KINDS[-2] == releases.RELEASE_KIND == "release"  # question (0099) comes after it
+    assert runs.RUN_KINDS[-2] == releases.RELEASE_KIND == "release"  # question (0100) comes after it
     assert "release" in runs.SHOWN_KINDS
 
 

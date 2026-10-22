@@ -55,7 +55,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
-from evo_agents.hub.server import audit, kg_scrub
+from evo_agents.hub.server import audit, kg_scrub, org_store
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -341,7 +341,10 @@ async def grant(request: Request, body: GrantRequest, project: ProjectName, logi
             levels = ", ".join(ladder)
             raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
         users = tables.users
-        await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing())
+        made = await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing().returning(users.c.id))
+        made_id = made.scalar()
+        if made_id is not None:  # a login that never signed in: its seat at the root comes with its row
+            await org_store.place_user(conn, made_id)
         found = await conn.execute(
             select(users.c.id, users.c.login).where(func.lower(users.c.login) == func.lower(login))
         )

@@ -1,7 +1,7 @@
 """The questions core plugins ask their agent types: agent_questions, the run kind question, the event agent.answer.
 
-Revision ID: 0099
-Revises: 0098
+Revision ID: 0100
+Revises: 0099
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.runs``, ``evo_agents.hub.question_runs`` and
@@ -26,8 +26,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0099"
-down_revision = "0098"
+revision = "0100"
+down_revision = "0099"
 branch_labels = None
 depends_on = None
 

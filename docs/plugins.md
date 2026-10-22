@@ -1007,7 +1007,7 @@ other. Its payload is what `read_agent_answer` reads at that moment: `question_i
 `run_id`, `state`, `text` (the answer, only when done), `label` (the project's default label, naming the project) and
 `failure_cause`. The hub checks again that the project is not kept from the question's `cleared` when the run ends
 and when it delivers the event: kept, the state is `refused` and the text goes nowhere. The hub keeps each question in
-`agent_questions` (migration 0099) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
+`agent_questions` (migration 0100) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
 with `run_as` as its actor and the asker in its target.
 
 ## Pages

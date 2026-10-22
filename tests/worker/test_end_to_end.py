@@ -35,6 +35,7 @@ import asyncio
 import functools
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -75,6 +76,11 @@ SECOND_REPO = "evo-cli"  # another repo of the project as registration() lists t
 BRANCH = "feat/queue"  # the branch plan_body() gives the repo
 TWO_REPOS = "two-repos"  # the plan of the plan runs: three steps over REPO and SECOND_REPO
 PLAN_BRANCH = "feat/plan-run"  # its branch for REPO; it names main, the default branch, for SECOND_REPO
+# The last line of a done step's evidence: the worker's verify job, its tree, and how done came by its result.
+VERIFY_LINE = (
+    r"Verify by the worker: job [0-9a-f]{12} on tree [0-9a-f]{12}, started \S+, \d+m\d{2}s of commands; "
+    r"(reused by done, no run again|started before done, which waited on it|run by done)\."
+)
 DECISION_WAIT_SECONDS = 2  # EVO_HUB_DECISION_WAIT_SECONDS of the job worker in the test of a parked run
 ORPHAN_DEALT_WITH = "the agent a previous daemon left was dealt with"  # the line of worker.log on an orphan agent
 LEASE_SECONDS = 8  # EVO_HUB_RUN_LEASE_SECONDS of the hub here; the daemons beat every second
@@ -849,7 +855,11 @@ def assert_step_done(world: World, key: int, run_id: int, attempt: int = 1) -> N
     head = f"run #{run_id} on worker mac-mini (claude-code, attempt {attempt}): {repo}@"
     assert step["evidence"].startswith(head), step["evidence"]
     assert f" on {branch}." in step["evidence"].splitlines()[0]
-    assert f"`test -f {name}` exit 0" in step["evidence"] and step["evidence"].endswith(f"Wrote {name}.")
+    assert f"`test -f {name}` exit 0" in step["evidence"], step["evidence"]
+    # The agent's words, then the line of the worker's verify job that done ran or reused (verify_jobs.describe).
+    *_, words, verified = step["evidence"].splitlines()
+    assert words.endswith(f"Wrote {name}."), step["evidence"]
+    assert re.fullmatch(VERIFY_LINE, verified), step["evidence"]
 
 
 def test_a_plan_run_does_three_steps_over_two_repos_and_goes_on_once_the_owner_answers_its_decision(world):
