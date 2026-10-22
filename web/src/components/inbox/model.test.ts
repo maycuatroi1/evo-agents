@@ -16,6 +16,7 @@ import {
   notificationOfDecision,
   parkTiming,
   readInboxFilters,
+  runLinkWords,
   notificationOfProposal,
   splitInbox,
   unreadIds,
@@ -146,6 +147,13 @@ describe("answers", () => {
     expect(answerAccess({ ...open, run_state: "review" }, "octo")).toBe("runGone");
     expect(answerAccess({ ...open, state: "answered" }, "octo")).toBe("closed");
     expect(answerAccess({ ...open, state: "expired" }, "mona")).toBe("closed");
+  });
+
+  it("names the run a decision names by what it is", () => {
+    expect(runLinkWords({ category: "triage", plan_id: null })).toBe("triageRunLink");
+    expect(runLinkWords({ category: "release", plan_id: null })).toBe("releaseRunLink");
+    expect(runLinkWords({ category: "scope", plan_id: null })).toBe("authorRunLink");
+    expect(runLinkWords({ category: "deploy", plan_id: "lumen-sso" })).toBe("runLink");
   });
 
   it("lets the owner answer a decision of the hub's own whatever its run is", () => {
