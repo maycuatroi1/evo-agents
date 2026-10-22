@@ -1526,7 +1526,8 @@ at a time, under a lock of where the repo goes, so two runs never clone one repo
 The checkout is the daemon's from then on: in the next heartbeat's `checkouts` and in `checkouts` of `config.json`. A
 repo for which no project names an origin fails the run with cause `origin`, and a clone git cannot make with cause
 `credentials` (the remote refused the credential) or `checkout`; a chat run or a task run goes on without such a repo
-instead, with a note, as an author run does without any repo but its harness. A dispatch names such a repo only when
+instead, with a note, as an author run does without any repo but its harness, and so do they without a repo they have
+a checkout of but the project lists no origin for (the preflight, below). A dispatch names such a repo only when
 some project the dispatcher holds a grant on lists its origin: otherwise the hub answers 409 and queues nothing. A chat
 run's agent opens a repo the worker has no checkout of likewise (`evo-agents worker repo open`): the hub refuses it, 409,
 only when no project of the run's owner lists an origin for it, and a chat run on a daemon of `lazy_chat_repos` starts
@@ -2453,7 +2454,10 @@ on in a session's worktrees leaves git's checks of those repos to their fetch ([
 machine](#a-chat-run-on-the-machine)). The checks:
 
 - each repo of the run has an origin in the project: a repo the hub's answer for the leases names missing with no
-  origin is one the project lists none for, and no credential can be leased for it;
+  origin is one the project lists none for, and no credential can be leased for it. A chat run or a task run, and an
+  author run for every repo but its harness, goes on without such a repo instead, as it does without one it has no
+  checkout of: the repo is left out of the run, noted ("Project ... lists no origin for ...: the agent works without
+  them") and named at the end of the agent's prompt; any other run, and an author run's harness, fails;
 - git reads each repo from its origin with what the run holds, its leases or else the machine's own credentials, and
   pushes to it when the run pushes that repo (a run of one step its repo, a plan run every repo of its plan); a
   review, judge or author run pushes nothing. The daemon asks the remote, as cheaply as git can: `git ls-remote origin
