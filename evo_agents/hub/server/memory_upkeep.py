@@ -5,8 +5,11 @@ The index: the prompt of a run under an agent profile that is not its project's 
 profile, newest first: each one's name, id, type, description and a stale mark, at most INDEX_BYTES and within the room
 the prompt of the run's kind leaves under MAX_PROMPT_BYTES (``with_index``). It lists only what the agent of the run
 could open with memory_get: a memory neither deleted nor archived, whose label the run's owner reads through the
-agent's sink (``AGENT_SINK``) and that names no audience. A profile without such a memory, and the default profile,
-leave the prompt as it was.
+agent's sink (``AGENT_SINK``) and whose audience, if it names one, the agent of the run holds as memory_get judges it
+(``kg_audience.agent_audience``: for a chat run what both people it is cleared for hold, so a memory a chat run wrote,
+which carries ``chat:<id>``, is listed in the next runs of that chat and in runs of people in it). The hub notes the
+audiences the index lists as shown to the run (``run_audience``), so what the run writes carries them. A profile
+without such a memory, and the default profile, leave the prompt as it was.
 
 The upkeep, the daily job ``hub.memory_upkeep`` (``upkeep``): an agent's memory nobody opened for EXPIRE_AFTER (the
 agent of a run opening it with memory_get, ``memory_state.opened``; a new revision counts too) is archived: out of the
@@ -35,15 +38,17 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.review import EvidenceProblem, parse_evidence
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
-from evo_agents.hub.server import memories
+from evo_agents.hub.server import memories, run_audience
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.change_tiers import GraphReader, impact_as_owner
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about
 from evo_agents.hub.server.memory_audience import label_audience
 from evo_agents.hub.server.memory_paging import BoundedRoute
 from evo_agents.hub.server.security import CurrentUser
+from evo_agents.kg.policy import audience_below
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +67,7 @@ _INDEX_RUN = (
     select(
         tables.agent_profiles.c.id.label("profile_id"),
         tables.agent_profiles.c.handle,
+        tables.runs.c.kind,
         tables.projects.c.name.label("project"),
         tables.users.c.id.label("owner_id"),
         tables.users.c.login,
@@ -111,15 +117,22 @@ async def memory_index(conn: AsyncConnection, run_id: int, room: int = INDEX_BYT
         "one with memory_get and its id before relying on it; a stale one cites code the project's knowledge graph no "
         "longer has. A memory_write under your handle adds to them.",
     ]
-    budget, lines = min(room, INDEX_BYTES), []
+    budget, lines, held, shown = min(room, INDEX_BYTES), [], None, set()
     for memory in (await conn.execute(_INDEXED, {"profile_id": run.profile_id})).all():
-        if label_audience(memory.label) or not access.visible(memory.label, AGENT_SINK):
+        if not access.visible(memory.label, AGENT_SINK):
             continue
+        named = label_audience(memory.label)
+        if named:  # read once, at the first memory that names an audience, as memory_get does
+            held = await agent_audience(conn, run.owner_id, run_id, run.kind) if held is None else held
+            if not audience_below(named, held):
+                continue
         stale = ", stale" if memory.stale_at is not None else ""
         line = f"- {memory.name} (id {memory.id}, {memory.type}{stale}): {memory_about(memory.body)}"
         if _size([*head, *lines, line]) > budget:
             break
         lines.append(line)
+        shown.update(named)
+    await run_audience.note(conn, run_id, shown)
     return "\n".join([*head, *lines]) + "\n" if lines else ""
 
 

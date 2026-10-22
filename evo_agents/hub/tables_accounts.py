@@ -1,6 +1,7 @@
-"""The tables of accounts (0027) and of members' emails (0068), which ``evo_agents.hub.tables`` adds to its metadata
-and exposes as its own attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accounts``,
-``tables.user_emails``): queries name them there.
+"""The tables of accounts (0027), of members' emails (0068) and of credential shares (0105), which
+``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes (``tables.accounts``,
+``tables.account_policies``, ``tables.run_accounts``, ``tables.user_emails``, ``tables.credential_shares``,
+``tables.credential_share_projects``): queries name them there.
 
 accounts holds what a member set on one of their env secrets as an account, and where it stands: its weight and
 priority, when its owner paused it, until when it cools down and why, when a run last took it, its place in the
@@ -12,6 +13,12 @@ holds the account each run took for each variable and how, so the run keeps it o
 user_emails holds each email a member listed, or a hub admin listed for them, as it was written: one member an
 address, whatever its case (user_emails_email_key, on lower(email)). ``evo_agents.hub.user_emails`` names the login of
 an address from these rows, or from GitHub's noreply address, which needs none.
+
+credential_shares holds each share an owner gave of a secret or an account (``evo_agents.hub.credential_shares``): to
+one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
+moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
+holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
+made for and the share it came under (0106).
 """
 
 from __future__ import annotations
@@ -28,6 +35,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     SmallInteger,
     Table,
@@ -116,3 +124,57 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         Index("run_accounts_secret_idx", "secret_id"),
     )
     return accounts, account_policies, run_accounts, email_table(metadata)
+
+
+def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, Table]:
+    """(credential_shares, credential_share_projects), added to ``metadata`` (0105); the principal and share columns
+    added to ``credential_leases`` (0106)."""
+
+    def key(table: str, column: str, target: str, ondelete: str) -> ForeignKeyConstraint:
+        return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
+
+    shares = Table(
+        "credential_shares",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("secret_id", BigInteger, nullable=False),
+        Column("grantee_kind", Text, nullable=False),
+        Column("grantee_user_id", BigInteger),
+        Column("grantee_unit_id", BigInteger),
+        Column("level", Text),
+        Column("budget_usd", Numeric(12, 2)),
+        Column("usage_ceiling_pct", SmallInteger),
+        Column("max_running", Integer),
+        _when("expires_at"),
+        _when("terms_ack_at"),
+        Column("created_by", BigInteger, nullable=False),
+        _stamp("created_at"),
+        _when("revoked_at"),
+        Column("revoked_by", BigInteger),
+        key("credential_shares", "secret_id", "secrets", "CASCADE"),
+        key("credential_shares", "grantee_user_id", "users", "CASCADE"),
+        key("credential_shares", "grantee_unit_id", "org_units", "RESTRICT"),
+        key("credential_shares", "created_by", "users", "RESTRICT"),
+        key("credential_shares", "revoked_by", "users", "RESTRICT"),
+        PrimaryKeyConstraint("id", name="credential_shares_pkey"),
+        Index("credential_shares_user_idx", "grantee_user_id"),
+        Index("credential_shares_unit_idx", "grantee_unit_id"),
+    )
+    Index("credential_shares_secret_idx", shares.c.secret_id, postgresql_where=shares.c.revoked_at.is_(None))
+    projects = Table(
+        "credential_share_projects",
+        metadata,
+        Column("share_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        key("credential_share_projects", "share_id", "credential_shares", "CASCADE"),
+        key("credential_share_projects", "project_id", "projects", "CASCADE"),
+        PrimaryKeyConstraint("share_id", "project_id", name="credential_share_projects_pkey"),
+        Index("credential_share_projects_project_idx", "project_id"),
+    )
+    credential_leases.append_column(Column("principal_id", BigInteger))  # who the lease was made for
+    credential_leases.append_column(Column("share_id", BigInteger))  # the share it came under; null for one's own
+    credential_leases.append_constraint(key("credential_leases", "principal_id", "users", ondelete="SET NULL"))
+    credential_leases.append_constraint(key("credential_leases", "share_id", "credential_shares", ondelete="SET NULL"))
+    leases = credential_leases.c
+    Index("credential_leases_share_idx", leases.share_id, postgresql_where=leases.share_id.is_not(None))
+    return shares, projects

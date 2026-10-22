@@ -24,6 +24,7 @@ import { useDeleteSecret, useSecretFailure } from "./hooks";
 import { isExpired } from "./model";
 import { type Secret, type SecretKind, secretsQuery } from "./queries";
 import { SecretDialog } from "./secret-dialog";
+import { SecretSharing } from "./secret-sharing";
 
 const NARROW_HIDDEN = {
   kind: "hidden sm:table-cell",
@@ -309,7 +310,7 @@ function DeleteSecret({ secret, open, onOpenChange }: { secret: Secret | null; o
 /**
  * The visitor's secrets: what each one is for, where it goes and when it ends, never its value. Add opens an empty
  * form; Replace opens the form of a secret without its value, which the visitor types again; Delete asks first. Each
- * result is a toast.
+ * result is a toast. Under the list, the secrets' shares with other members.
  */
 export function SecretsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("secrets");
@@ -352,14 +353,17 @@ export function SecretsPage({ initialError }: { initialError: ApiErrorInfo | nul
               </Button>
             </EmptyState>
           ) : (
-            <section aria-labelledby="secrets-list-title">
-              <h2 id="secrets-list-title" className="sr-only">
-                {t("caption")}
-              </h2>
-              <DataCard>
-                <SecretsTable secrets={list} onReplace={replace} onDelete={remove} />
-              </DataCard>
-            </section>
+            <div className="flex flex-col gap-8">
+              <section aria-labelledby="secrets-list-title">
+                <h2 id="secrets-list-title" className="sr-only">
+                  {t("caption")}
+                </h2>
+                <DataCard>
+                  <SecretsTable secrets={list} onReplace={replace} onDelete={remove} />
+                </DataCard>
+              </section>
+              <SecretSharing secrets={list} />
+            </div>
           )
         }
       </QueryView>

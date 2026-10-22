@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.server import run_audience
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.policy import TOP_AUDIENCE, audience_of
+from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_of
 
 
 def label_audience(label) -> frozenset[str]:
@@ -77,3 +77,13 @@ async def raised(conn: AsyncConnection, user: Principal, held, given: Iterable[s
     if user.scope is not None:
         found.update(await run_audience.seen(conn, user.scope.run_id))
     return frozenset(found)
+
+
+async def label_reaches(reader: Reader, access, label, through: str) -> bool:
+    """Whether a row labelled ``label`` (a proposal of the Curator) reaches ``reader``'s caller through sink
+    ``through`` of ``access`` (``projects.ProjectAccess``): the read rule, and the audience its label names, if any
+    (the memories its evidence names, ``memory_promotion.cited_audience``)."""
+    if not access.visible(label, through):
+        return False
+    named = label_audience(label)
+    return not named or audience_below(named, await reader.audience(label))

@@ -1952,7 +1952,8 @@
       "sharedSuccessText": "Từ giờ writer của các dự án của nó dispatch được cho nó.",
       "privateSuccess": "{name} chỉ nhận run của bạn",
       "privateSuccessText": "Run của member khác mà worker đang giữ vẫn chạy xong; từ giờ worker không nhận thêm run nào của họ.",
-      "failed": "Không đổi được chế độ chia sẻ của {name}"
+      "failed": "Không đổi được chế độ chia sẻ của {name}",
+      "locked": "Doctor của nó chặn nó khỏi các đơn vị được thu hẹp: {reason}"
     },
     "settings": {
       "title": "Cài đặt",
@@ -2077,6 +2078,40 @@
       "askFailed": "Không yêu cầu {name} cập nhật ngay được",
       "cancelFailed": "Không huỷ được Cập nhật ngay của {name}",
       "refused": "Hub từ chối, lý do ở dưới. Trang vừa được tải lại."
+    },
+    "sharing": {
+      "title": "Chia sẻ",
+      "description": "Worker nhận run của ai ngoài bạn, và doctor của nó tìm thấy gì ở lần chạy gần nhất.",
+      "loading": "Đang tải",
+      "loadFailed": "Không tải được thông tin chia sẻ. Trang sẽ thử lại sau ít phút.",
+      "noUnits": "Chưa thu hẹp: khi được chia sẻ, nó nhận run của mọi writer của dự án nó phục vụ.",
+      "unitsLabel": "Các đơn vị được chia sẻ",
+      "addLabel": "Thu hẹp cho một đơn vị",
+      "pick": "Chọn một đơn vị",
+      "noChoice": "Không còn đơn vị nào khác",
+      "chartFailed": "Không tải được sơ đồ tổ chức",
+      "unitOption": "{name} ({slug})",
+      "add": "Thêm",
+      "addFailed": "Không chia sẻ được cho đơn vị {unit}",
+      "removeFailed": "Không thu hồi được đơn vị {unit}",
+      "added": "{name} đã được chia sẻ cho đơn vị {unit}",
+      "addedText": "Nó nhận run của member trong đơn vị đó và các đơn vị bên dưới.",
+      "removed": "Đã thu hồi đơn vị {unit} khỏi {name}",
+      "removedText": "Run của member đơn vị đó mà nó đang giữ vẫn chạy xong; từ giờ nó không nhận thêm.",
+      "removedLastText": "Đó là đơn vị cuối cùng, nên từ giờ worker chỉ nhận run của bạn.",
+      "removeLabel": "Thu hồi đơn vị {unit}",
+      "blocked": {
+        "none": "Daemon của nó chưa gửi báo cáo doctor nào: hãy cập nhật lên bản có gửi, rồi chia sẻ.",
+        "stale": "Báo cáo doctor mới nhất, lúc {at} UTC, đã cũ hơn 48 giờ.",
+        "high": "Báo cáo doctor mới nhất có {count, plural, other {# lỗi mức high}}: chạy evo-agents worker doctor trên máy để xem cách sửa."
+      },
+      "doctor": {
+        "title": "Báo cáo doctor",
+        "counts": "{high} high, {medium} medium",
+        "high": "{count} high",
+        "stale": "Cũ hơn 48 h",
+        "none": "Chưa có"
+      }
     }
   },
   "secrets": {
@@ -3279,6 +3314,24 @@
     "apiValue": "Giá trị API",
     "costLabel": "Chi phí",
     "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run.",
+    "sharing": {
+      "overCeiling": "Vượt ngưỡng: run được chia sẻ phải chờ"
+    },
+    "costByPrincipal": {
+      "title": "Chi phí theo member",
+      "description": "Run của các member được chia sẻ account của bạn, và chi phí ước tính của chúng. Run của chính bạn nằm ở dòng của từng account.",
+      "empty": "Chưa có run nào của member khác dùng chúng.",
+      "caption": "Run và chi phí của từng account theo member",
+      "gone": "Một member không còn nữa",
+      "columns": {
+        "principal": "Member",
+        "day": "Chi phí 24 h",
+        "week": "Chi phí 7 ngày",
+        "month": "Chi phí tháng này",
+        "runs": "Run 24 h / 7 ngày / tháng"
+      },
+      "runs": "{day} / {week} / {month}"
+    },
     "agent": {
       "title": "Tài khoản",
       "description": "Các secret của agent này. Run dưới @{handle} nhận chúng trên những worker mà mỗi tài khoản gắn vào.",
@@ -4123,7 +4176,8 @@
           "worker": "Gắn với worker",
           "charter": "Do charter chỉ định",
           "pool": "Từ nhóm tài khoản",
-          "cooling": "Tất cả đang nghỉ: cái sớm hết nghỉ nhất"
+          "cooling": "Tất cả đang nghỉ: cái sớm hết nghỉ nhất",
+          "shared": "Do thành viên khác chia sẻ"
         },
         "gone": "một tài khoản đã xoá",
         "failovers": "{count, plural, =0 {Chưa failover} other {# lần failover}}",
@@ -5278,7 +5332,8 @@
       "loop_paused": "Loop đã tự dừng",
       "goal_review": "Rà goal của tháng",
       "loop_brief": "Bản tin sáng của Loop",
-      "plugin_notice": "Thông báo từ một plugin"
+      "plugin_notice": "Thông báo từ một plugin",
+      "worker_doctor": "Doctor của một worker được chia phát hiện mức high"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -9075,6 +9130,92 @@
       "run_owner": "Chủ của run",
       "srs_reviewer": "Người duyệt SRS",
       "chat_member": "Thành viên của chat"
+    }
+  },
+  "sharing": {
+    "title": "Chia sẻ với member khác",
+    "description": "Member bạn chia sẻ dùng được credential trong run của họ trên các dự án bạn chọn, trong giới hạn bạn đặt. Value không bao giờ rời hub: một run chỉ nhận nó trong lúc chạy.",
+    "share": "Chia sẻ",
+    "nothingToShare": "Chỉ chia sẻ được credential đã gắn với một dự án, và không bao giờ chia sẻ token GitLab của hub.",
+    "empty": "Chưa chia sẻ gì.",
+    "terms": {
+      "title": "Đọc kỹ trước khi chia sẻ",
+      "ack": "Tôi đã đọc và vẫn chia sẻ, dưới tên của tôi."
+    },
+    "dialog": {
+      "title": "Chia sẻ một credential",
+      "description": "Chia sẻ cho ai, trên dự án nào, và tới mức nào. Mọi ô trong phần Giới hạn đều không bắt buộc.",
+      "credential": "Credential",
+      "grantee": "Chia sẻ với",
+      "kind": {
+        "user": "Một member",
+        "unit": "Một đơn vị và các đơn vị bên dưới",
+        "all": "Mọi member"
+      },
+      "login": "Member",
+      "loginHint": "Login của họ trên hub.",
+      "unit": "Đơn vị",
+      "unitHint": "Các member có seat chính nằm trong đơn vị này hoặc bên dưới.",
+      "unitPick": "Chọn một đơn vị",
+      "unitOption": "{name} ({slug})",
+      "loading": "Đang tải",
+      "noUnit": "Sơ đồ tổ chức chưa có đơn vị nào còn hoạt động.",
+      "allHint": "Mọi member giữ quyền writer trên một trong các dự án bạn chọn.",
+      "projects": "Dự án",
+      "projectsHint": "Run trên các dự án này được dùng nó; nó đã được gắn vào chúng.",
+      "limits": "Giới hạn",
+      "limitsHint": "Để trống một ô nghĩa là không giới hạn.",
+      "level": "Level cao nhất",
+      "levelAny": "Mọi level",
+      "levelHint": "Run có level cao hơn không được dùng nó.",
+      "budget": "Ngân sách, USD",
+      "budgetHint": "Run được chia sẻ ngừng dùng nó khi chi phí của chúng chạm mức này.",
+      "ceiling": "Ngưỡng usage, %",
+      "ceilingHint": "Run được chia sẻ phải chờ khi usage của account chạm hoặc vượt ngưỡng.",
+      "maxRunning": "Số run cùng lúc",
+      "maxRunningHint": "Số run được chia sẻ tối đa giữ nó cùng một lúc.",
+      "expires": "Hết hạn ngày",
+      "expiresHint": "Lúc 00:00 UTC ngày đó. Để trống: hết khi bạn thu hồi.",
+      "save": "Chia sẻ",
+      "saving": "Đang chia sẻ",
+      "cancel": "Huỷ",
+      "done": "Đã chia sẻ {name}",
+      "doneText": "Run tiếp theo được chia sẻ có thể dùng nó.",
+      "conflict": "Hub không chia sẻ nó.",
+      "termsNeeded": "Hub yêu cầu bạn đọc cảnh báo trước: tick vào ô bên dưới rồi chia sẻ.",
+      "problems": {
+        "required": "Hãy điền ô này.",
+        "pattern": "Giá trị này không đúng dạng hub nhận.",
+        "range": "Nhập một số từ {min} đến {max}.",
+        "whole": "Nhập một số nguyên.",
+        "past": "Chọn một ngày sau hôm nay."
+      }
+    },
+    "list": {
+      "all": "mọi member",
+      "user": "{name}",
+      "unit": "đơn vị {name}",
+      "to": "chia sẻ với",
+      "endsSoon": "Sắp hết hạn",
+      "projects": "Dự án",
+      "level": "tới {level}",
+      "budget": "ngân sách {usd}",
+      "ceiling": "ngưỡng {pct}%",
+      "running": "{count, plural, other {# run}} cùng lúc",
+      "noLimit": "không giới hạn",
+      "ends": "hết hạn <day></day>",
+      "revoke": "Thu hồi",
+      "revokeLabel": "Thu hồi chia sẻ {id} của {name}"
+    },
+    "revoke": {
+      "title": "Thu hồi chia sẻ của {name}?",
+      "description": "Không run nào còn dùng nó qua chia sẻ này, và các lease đang giữ qua nó kết thúc. Thao tác được ghi vào audit.",
+      "confirm": "Thu hồi",
+      "pending": "Đang thu hồi",
+      "cancel": "Huỷ",
+      "done": "Đã thu hồi chia sẻ của {name}",
+      "doneText": "Không run nào còn dùng nó qua chia sẻ này.",
+      "gone": "Chia sẻ này đã bị thu hồi. Danh sách vừa được tải lại."
     }
   },
   "attachments": {

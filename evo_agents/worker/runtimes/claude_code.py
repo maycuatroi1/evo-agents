@@ -10,7 +10,9 @@ here.
 - The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
   (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
   their own names, and their instructions after the profile's in the appended system prompt. A run of the Curator
-  gets the hub's MCP server there too, unless the owner's Claude Code gives it one (``hub_tools``).
+  gets the hub's MCP server there too, unless the owner's Claude Code gives it one (``hub_tools``). An agent with a
+  config dir of its own (``claude_home.isolated``) gets these servers alone (``--strict-mcp-config``): the hub's, when
+  its profile allows it, and the packs'; never one of the owner's or of a ``.mcp.json`` in the worktree.
 - The system prompt holds nothing of the machine, the worktree or the step, so a new session reads it from the cache a
   session in another worktree, run or step wrote: the preset leaves its dynamic sections out
   (``exclude_dynamic_sections``, sent in the SDK's initialize request; the CLI's
@@ -145,7 +147,7 @@ from evo_agents.worker.adapter import (
     ToolImage,
     command_output,
 )
-from evo_agents.worker.runtimes import hub_tools, profiles
+from evo_agents.worker.runtimes import claude_home, hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -756,7 +758,12 @@ class ClaudeCodeAdapter(QueueAdapter):
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
-        servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
+        if claude_home.isolated(self.context.run, self.runtime, self.context.env, self.context.worktree):
+            hub = hub_tools.home_server(self.context, profile)  # strict: its .claude.json is not read for servers
+            servers = {**({hub_tools.SERVER: hub} if hub else {}), **settings.get("mcp_servers", {})}
+            settings["extra_args"] = {**settings.get("extra_args", {}), claude_home.STRICT_MCP.removeprefix("--"): None}
+        else:
+            servers = {**hub_tools.claude_servers(self.context, profile), **settings.get("mcp_servers", {})}
         settings.update({"mcp_servers": servers} if servers else {})
         hooks = profiles.claude_hooks(profile)
         if hooks is not None:
