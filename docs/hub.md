@@ -32,6 +32,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Merge queue, `/p/{project}/merge-queue`, `.../merge-queue/figures` and `.../merge-queue/policy` | the hub's merge queue on GitLab (`docs/merge-queue.md`): the merge requests waiting, in their turn and after their merge, why each waits or is blocked, its gates, verdicts and ledger, each repo's breaker and the audit samples waiting for an answer; the figures of each repo, agent and model; the autonomy policy, its form, its revisions and the comparison of two. A reader reads; an admin edits the policy, answers samples, approves a manual release, asks for a revert and resets a breaker | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`, `GET` and `PUT .../policy`, `.../policy/revisions`, `.../policy/compare` |
 | Goals, `/p/{project}/goals` and `.../goals/{code}`; Loop, `/p/{project}/loop` and `.../loop/items/{id}`; Decisions, `/p/{project}/decide` | the project's goals with their metric against the target and their work items by state; the Loop's work items by state or by chain, why each waits, and a work item's chain from the goal to the release with its ledger; the decision board, the three gates first (`docs/loop.md`). A reader reads; an admin turns the Loop on or off and resets its breaker | `GET /v1/projects/{project}/goals`, `.../loop`, `.../loop/items`, `.../loop/items/{id}`, `.../loop/goals`, `.../decision-board`, `GET` and `PUT .../policy`, `POST .../loop/resume` |
+| Org, `/org` | the org chart: units, seats, ceilings and effective levels, each person's runs at work, and for an admin the people still Unplaced; admins and leads change it there (`docs/org-chart.md`) | `GET /v1/org`, `GET /v1/org/runs` and the writes under `/v1/org` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 | Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
 
@@ -87,6 +88,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
+| org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
@@ -344,6 +346,17 @@ Memories add one rule on top: `project` and `reference` memories go to every mem
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
 only their owner sees them. A memory whose label names an audience goes only to a reader whose audience holds it
 (Memories, skills and knowledge graphs, Audience of memories).
+
+## The org chart
+
+The hub keeps an org chart of its people and agent profiles (`docs/org-chart.md`): a tree of units (the root, teams
+and cohorts), the seats people and agents hold in them (lead, member, intern, agent), and an autonomy ceiling from A0
+to A5 on each unit and seat, which no unit below may loosen. A hub admin changes all of it and the lead of a unit what
+lies below them, never above their own level; each change writes an `org.` audit row. `evo-agents hub org show`,
+`evo-agents hub org unit create`, `evo-agents hub org seat add` and `evo-agents hub autonomy ceiling set` drive it from
+the command line, the page `/org` from the web. The chart grants nothing on a project. Everyone starts with a primary
+seat at the root at A5, so nothing changes for them; a person whose primary seat ended is at A0, and the hub takes back
+the leases of their runs and refuses the runs they would start (`docs/org-chart.md`, Seats that end).
 
 ## Agent profiles
 
@@ -969,7 +982,8 @@ take the Curator's lens `product` (`docs/curator.md`, The lens product); going b
 proposals of that lens. Schema 0095 lets `decisions.category` take `loop`, the decision the Loop asks the person a
 work item's last run stands for after its third failure, and `notifications.notice_kind` take `loop_paused`, the
 notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
-kinds of 0090.
+kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
+root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -2627,6 +2641,11 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched
   (The merge queue on GitLab, above; `docs/merge-queue.md`).
+- `hub.expire_seats`, hourly at minute 5: ends the org seats past their own end date or that of a cohort holding
+  them, each with an `org.seat_end` audit row whose actor is the hub, and takes back the leases still held by the runs
+  of every person whose primary seat ended, revoking their GitHub tokens (`docs/org-chart.md`, Seats that end). Such a
+  person is at A0: the hub refuses with 403 the runs they would dispatch, rerun or run a plugin task as, and the
+  credentials their runs' workers ask for; a chat run they ask for is refused with a reply in the thread.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

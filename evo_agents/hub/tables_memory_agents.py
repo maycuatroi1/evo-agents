@@ -1,8 +1,8 @@
-"""The memories of agents and the provenance of every memory revision (0099), which ``evo_agents.hub.tables`` adds to
+"""The memories of agents and the provenance of every memory revision (0100), which ``evo_agents.hub.tables`` adds to
 memories and memory_revisions so that it describes both tables whole.
 
 memories.profile_id is the namespace of a memory: NULL for the project's shared memories and a person's own (every
-memory before 0099), else the agent profile whose memory it is, in that profile's project (scope project alone, a
+memory before 0100), else the agent profile whose memory it is, in that profile's project (scope project alone, a
 CHECK of the migration). The keys of a memory take the namespace in: memories_shared_key and memories_owned_key hold
 the memories of no agent, as before, and memories_agent_key gives one memory per (profile, location, name), whatever
 its type.
@@ -12,12 +12,12 @@ memory_agents``): the run, the profile and version it ran under, the person at i
 hop, and its chat and chat message; all NULL for a write that came from no run. The run and the chat are plain ids,
 kept as the history of the memory whatever happens to them; memory_revisions_run_idx counts what one run wrote.
 
-The upkeep of an agent's memories (0100, ``evo_agents.hub.server.memory_upkeep``): memories.read_at is when the agent
+The upkeep of an agent's memories (0101, ``evo_agents.hub.server.memory_upkeep``): memories.read_at is when the agent
 of a run last opened it (memory_get), archived_at when the daily job archived it, nobody having opened it for 30 days
 (out of the index and the searches of runs until a writer restores it), and stale_at when the job found that a path it
 cites (code:REPO:PATH) is gone from the project's knowledge graph; all NULL for a memory of no agent.
 
-The Curator's promotion of an agent's memories (0101, ``evo_agents.hub.server.memory_promotion``): memories.promoted_at
+The Curator's promotion of an agent's memories (0102, ``evo_agents.hub.server.memory_promotion``): memories.promoted_at
 is when an accepted proposal wrote an agent's memory into a shared one, promoted_into that shared memory (NULL once it
 is deleted); memory_revisions.proposal_id names the proposal whose promotion wrote a revision, a plain id kept as
 history.
@@ -29,7 +29,7 @@ from sqlalchemy import BigInteger, Column, DateTime, ForeignKeyConstraint, Index
 
 SHARED = ("project", "reference")
 OWNED = ("user", "feedback")
-UPKEEP = ("read_at", "archived_at", "stale_at")  # 0100
+UPKEEP = ("read_at", "archived_at", "stale_at")  # 0101
 
 
 def memory_agent_tables(memories: Table, memory_revisions: Table) -> None:

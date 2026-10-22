@@ -58,6 +58,7 @@ LOOP_TICKS = "hub.loop_ticks"  # every 5 minutes: a tick of the Loop of each pro
 LOOP_TICK = "hub.loop_tick"  # one tick of a project's Loop, under its lock; also queued by each of its events
 LOOP_NOTICES = "hub.loop_notices"  # every 5 minutes: the month's review of goals and the Loop's brief, when due
 MEMORY_UPKEEP = "hub.memory_upkeep"  # daily: agents' memories nobody opened for 30 days archived, stale ones marked
+EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
 
 
 def kg_lock(project: str) -> str:

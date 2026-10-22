@@ -306,6 +306,7 @@ def create_app(config: HubConfig) -> FastAPI:
         history_search,
         kg_health,
         ledger,
+        org,
         playbook,
         proposal_plans,
         protection,
@@ -330,6 +331,7 @@ def create_app(config: HubConfig) -> FastAPI:
         earlier.router,
         playbook.router,
         playbook.worker_router,
+        org.router,  # the org chart (plan org-chart)
     ):
         app.include_router(routes)
 

@@ -870,6 +870,14 @@ def _hours(span: timedelta) -> str:
     return f"{seconds} seconds"
 
 
+async def expire_seats(engine: AsyncEngine, sealer, github_app) -> dict:
+    """The job hub.expire_seats (``org_expiry.expire_seats``): the org seats past their end date ended, and the leases
+    of the people whose primary seat ended taken back. The hub's worker reaches it through this module, as the reaper."""
+    from evo_agents.hub.server.org_expiry import expire_seats as expire
+
+    return await expire(engine, sealer, github_app)
+
+
 async def recover_runs(
     engine: AsyncEngine,
     batch: int = RECOVER_BATCH,
