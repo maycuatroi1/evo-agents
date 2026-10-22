@@ -358,6 +358,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_people,
         chat_read,
         chats,
+        credential_shares,
         credentials,
         features,
         goals,
@@ -380,6 +381,7 @@ def create_app(config: HubConfig) -> FastAPI:
 
     for routes in (
         secrets.router,
+        credential_shares.router,  # the shares of secrets and accounts
         run_leases.router,
         credentials.worker_router,
         accounts.router,

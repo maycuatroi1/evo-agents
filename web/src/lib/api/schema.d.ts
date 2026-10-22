@@ -5397,6 +5397,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets/{name}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shares
+         * @description The shares of the caller's secret or account ``name``, revoked ones too, newest first.
+         */
+        get: operations["list_shares_v1_secrets__name__shares_get"];
+        put?: never;
+        /**
+         * Create Share
+         * @description Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.
+         */
+        post: operations["create_share_v1_secrets__name__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Share
+         * @description Revoke a share: its secret's owner may, and a hub admin may revoke any.
+         */
+        delete: operations["revoke_share_v1_shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -7708,6 +7752,11 @@ export interface components {
              * @description the runs a worker holds now with it
              */
             held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -11454,6 +11503,82 @@ export interface components {
              * @description when it stops working; ask again before, for a GitHub token
              */
             expires_at: string | null;
+        };
+        /**
+         * CredentialShare
+         * @description A share of a secret or an account, as its owner sees it.
+         */
+        CredentialShare: {
+            /** Id */
+            id: number;
+            /**
+             * Secret
+             * @description the name of the secret or account shared
+             */
+            secret: string;
+            /**
+             * Credential
+             * @description subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env
+             * @enum {string}
+             */
+            credential: "subscription" | "api_key" | "git" | "env";
+            /**
+             * Grantee Kind
+             * @description user: one member; unit: a unit and below; all: everyone
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Grantee
+             * @description the member's login or the unit's slug; null for all
+             */
+            grantee: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to; null for none
+             */
+            level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD; null for none
+             */
+            budget_usd: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description 1 to 100: no run takes the account while its usage is at this percent or above; null for none
+             */
+            usage_ceiling_pct: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once; null for no limit
+             */
+            max_running: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; null for no end
+             */
+            expires_at: string | null;
+            /**
+             * Terms Ack At
+             * @description when its owner acknowledged the terms warning; null for none
+             */
+            terms_ack_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
         };
         /** Credentials */
         Credentials: {
@@ -21284,6 +21409,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** SecretWrite */
         SecretWrite: {
@@ -21379,6 +21509,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
             /**
              * Created
              * @description false when a secret of this name was replaced
@@ -21606,6 +21741,61 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShareWrite */
+        ShareWrite: {
+            /**
+             * Grantee Kind
+             * @description user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Login
+             * @description grantee_kind user only: the member's login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description grantee_kind unit only: the unit's slug
+             */
+            unit?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it, each one the secret is bound to
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD
+             */
+            budget_usd?: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description no run takes the account while its usage is at this percent or above
+             */
+            usage_ceiling_pct?: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once
+             */
+            max_running?: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Terms Ack
+             * @description the owner acknowledges the terms warning, which sharing a personal subscription token needs
+             * @default false
+             */
+            terms_ack: boolean;
         };
         /** Sign */
         Sign: {
@@ -45764,6 +45954,205 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shares_v1_secrets__name__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_v1_secrets__name__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_share_v1_shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the id of the share */
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

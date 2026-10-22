@@ -547,6 +547,39 @@ applications, and says developers may not collect, store or intermediate Claude.
 account against that page, and `account login` with a setup-token is the route that keeps the sign-in inside
 Anthropic's own binary.
 
+### Sharing a secret or an account
+
+The owner of a secret or an account may share it with one member, a unit of the org chart and every unit below it,
+or everyone on the hub, for some of the projects it is bound to (`POST /v1/secrets/{name}/shares`, table
+`credential_shares` of migration 0100):
+
+```
+evo-agents hub account share claude-a --login someone-else --project demo --level A2 --budget-usd 50 \
+    --usage-ceiling 80 --max-running 2 --expires 2027-01-31 --ack-terms
+evo-agents hub secret share notes-key --unit lab --project demo
+evo-agents hub account unshare --share 12
+```
+
+Only the owner creates a share, a hub admin included. The owner revokes it (`DELETE /v1/shares/{id}`), and a hub admin
+may revoke any share; a revoked share stays, with who revoked it and when, and deleting the secret revokes its shares.
+A forge secret is never shared. A unit grantee is a live unit: neither it nor a unit above it is archived, and no
+cohort holding it has ended. `hub secret list --json` and `hub account show --json` carry each one's live shares under
+`shares`; `GET /v1/secrets/{name}/shares` lists revoked ones too.
+
+The hub sorts each credential into a class: `subscription` for an account of provider claude, whether its token was
+pasted or came from OAuth; `api_key` for an Anthropic or OpenAI API key; `git`; and `env` for the rest. A subscription
+token is shared only with the owner's acknowledgement of this warning (`terms_ack` in the API, `--ack-terms` on the
+command line), which the web, the command line and the audit show word for word
+(`evo_agents.hub.credential_shares.TERMS_WARNING`):
+
+> This is a personal Claude subscription token. Anthropic's Consumer Terms (section 2) do not allow you to let anyone
+> else use your account. Anthropic may limit, suspend or close the account without notice. Every request a run makes
+> with this token is made in your name, as the account holder.
+
+Without the acknowledgement the hub answers 409 with that warning, and the command prints it and exits non-zero. With
+it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` holding the warning after the row
+`share.create`. Every write adds a `share.` audit row that names the secret by id, never by value.
+
 ## Plugins
 
 A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).

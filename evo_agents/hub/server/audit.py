@@ -90,6 +90,14 @@ TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
+# A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
+# and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
+# slug>] projects=<names> level=<level> budget_usd=<n> usage_ceiling_pct=<n> max_running=<n> expires=<when>", each limit
+# that is set. share.terms_ack follows share.create for a subscription token: "share:<id> secret:<id> warning=<the
+# terms warning, word for word>". share.revoke: "share:<id> secret:<id> by=<owner|admin>".
+SHARE_CREATE = "share.create"
+SHARE_TERMS_ACK = "share.terms_ack"
+SHARE_REVOKE = "share.revoke"
 # A member's accounts (docs/credentials.md, section Accounts): an env secret's settings, by its id ("secret:<id>
 # weight=<n> priority=<n> paused=<yes|no>"), and the member's policy for a project, in that project ("<project>
 # strategy=<s> cooldown=<seconds> failover=<yes|no> max_failovers=<n>", or the project alone when it was dropped).
