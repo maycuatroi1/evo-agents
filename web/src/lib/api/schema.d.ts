@@ -12124,7 +12124,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "autonomy";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy";
             /** Question */
             question: string;
             /**
@@ -12146,9 +12146,14 @@ export interface components {
             state: "open" | "answered" | "expired" | "cancelled";
             /**
              * Owner
-             * @description the login of the run's owner, the one member who may answer
+             * @description the login of the run's owner
              */
             owner: string;
+            /**
+             * Asked Of
+             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0108
+             */
+            asked_of: string;
             /** Answer Option */
             answer_option: string | null;
             /** Answer Text */
@@ -12185,7 +12190,7 @@ export interface components {
              * @description the agent asks only about these
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "triage";
             /** Question */
             question: string;
             /**
@@ -14528,7 +14533,7 @@ export interface components {
              * @default question
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question";
             /** Question */
             question: string;
             /**
@@ -16416,7 +16421,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop" | "autonomy";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "merge" | "credential" | "access" | "question" | "triage" | "release" | "loop" | "autonomy";
             /** Question */
             question: string;
             /**
@@ -20876,6 +20881,30 @@ export interface components {
              */
             max_seconds?: number | null;
         };
+        /**
+         * RunCard
+         * @description The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built
+         *     from the run's snapshot and its principal when the worker claims it.
+         */
+        RunCard: {
+            /**
+             * Card
+             * @description the card's text, first in the run's prompt
+             */
+            card: string;
+            /**
+             * Modes
+             * @description K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto
+             */
+            modes: {
+                [key: string]: "deny" | "ask" | "notify" | "auto";
+            };
+            /**
+             * Categories
+             * @description the categories of decision its agent may ask
+             */
+            categories: string[];
+        };
         /** RunChat */
         RunChat: {
             /**
@@ -21785,6 +21814,8 @@ export interface components {
             packs?: components["schemas"]["RunPack"][];
             /** @description a release run's cycle, mode and start commit; null for any other run */
             release?: components["schemas"]["ReleaseSpec"] | null;
+            /** @description the autonomy card its prompt opens with; null for a run without a snapshot of autonomy */
+            autonomy?: components["schemas"]["RunCard"] | null;
         };
         /** RunState */
         RunState: {

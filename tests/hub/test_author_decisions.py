@@ -311,7 +311,7 @@ def test_an_author_decision_without_a_plan_notifies_its_owner_naming_the_run_and
     )
     assert notification["title"] == f"Author run #{run_id} asks: {QUESTION}"
     assert notification["body"] == (
-        f"{QUESTION}\n\nscope decision for author run #{run_id}, {title} in project {PROJECT}."
+        f"{QUESTION}\n\nscope decision for author run #{run_id}, {title} in project {PROJECT}, asked of {OWNER}."
     )
     assert client.get("/v1/me/notifications", headers=hub["other"]).json()["notifications"] == []
 

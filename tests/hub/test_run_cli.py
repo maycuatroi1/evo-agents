@@ -1107,7 +1107,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
         "RUN",
         "PLAN",
         "STEP",
-        "OWNER",
+        "ANSWERER",
         "QUESTION",
         "ASKED",
         "(UTC)",
@@ -1123,7 +1123,8 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     assert shown.splitlines()[0] == f"Decision #{number}: architecture, open"
     fields = fields_of(shown.split("Question:")[0])
     assert fields["run"] == f"#{run_id} (running) of plan {FLEET}, step 2"
-    assert fields["owner"] == f"{OWNER}, who alone answers it"
+    assert fields["owner"] == OWNER
+    assert fields["answerer"] == f"{OWNER}, who answers it"
     assert shown.split("Question:\n")[1].split("Options:\n")[0] == (
         f"  {QUESTION}\nContext:\n  ## Why\n  The plan leaves it open.\n"
     )
@@ -1177,7 +1178,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
 
     # answering: another member, an option the decision does not have, then the owner
     other = decisions_of(hub, monkeypatch, capsys, "other", "answer", number, "--option", "postgres")
-    assert other.code == 1 and f"only {OWNER}, who dispatched its run, may answer decision {number}" in other.err
+    assert other.code == 1 and f"only {OWNER}, whom it is asked of, may answer decision {number}" in other.err
     wrong = decisions_of(hub, monkeypatch, capsys, "owner", "answer", number, "--option", "mysql")
     assert wrong.code == 1 and "has no option 'mysql'" in wrong.err
     answered = ok(

@@ -233,6 +233,9 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "spend_money",
         "architecture",
         "scope",
+        "merge",
+        "credential",
+        "access",
         "triage",
     ]
     notify = {o["flags"][0]: o for o in printed["worker notify"]["options"]}

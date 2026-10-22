@@ -174,3 +174,14 @@ class RunAutonomy(BaseModel):
     also: list[str] = Field(default_factory=list, description="logins besides the principal whose autonomy bounds it")
     taken_at: datetime = Field(description="when the hub took it")
     tightened_at: datetime | None = Field(None, description="when a gate last made it stricter; null: never")
+
+
+class RunCard(BaseModel):
+    """The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built
+    from the run's snapshot and its principal when the worker claims it."""
+
+    card: str = Field(description="the card's text, first in the run's prompt")
+    modes: dict[str, Literal["deny", "ask", "notify", "auto"]] = Field(
+        description="K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto"
+    )
+    categories: list[str] = Field(description="the categories of decision its agent may ask")

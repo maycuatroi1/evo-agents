@@ -287,6 +287,47 @@ def ended_refusal(chart: Chart, user_id: int, login: str, today: date, *, what: 
     )
 
 
+# Who answers for a person (plan autonomy-levels, criterion a12)
+
+
+def placement(chart: Chart, user_id: int, today: date) -> tuple[str, str]:
+    """The role and the unit slug of the person's primary seat; a person holding none is a member of the root."""
+    seat = chart.primary_seat(user_id, today)
+    if seat is None:
+        return MEMBER, chart.root.slug
+    return seat.role, chart.units[seat.unit_id].slug
+
+
+def mentor(chart: Chart, user_id: int, today: date) -> int | None:
+    """The person an intern reports to: who holds the live seat their primary seat's reports_to names; None for
+    anyone who is not an intern, or when that seat ended."""
+    seat = chart.primary_seat(user_id, today)
+    if seat is None or seat.role != INTERN or seat.reports_to is None:
+        return None
+    target = chart.seats.get(seat.reports_to)
+    if target is None or target.user_id is None or chart.ended(target, today):
+        return None
+    return target.user_id
+
+
+def unit_leads(chart: Chart, user_id: int, today: date) -> list[int]:
+    """The people who hold a live seat of role lead in the unit of the person's primary seat, the person aside, or in
+    the nearest unit above it that has one (a cohort has its team's)."""
+    seat = chart.primary_seat(user_id, today)
+    unit_id = None if seat is None else seat.unit_id
+    while unit_id is not None:
+        leads = {
+            other.user_id
+            for other in chart.seats.values()
+            if other.unit_id == unit_id and other.role == LEAD and other.user_id not in (None, user_id)
+            if not chart.ended(other, today)
+        }
+        if leads:
+            return sorted(leads)
+        unit_id = chart.units[unit_id].parent_id
+    return []
+
+
 # Who may change what
 
 

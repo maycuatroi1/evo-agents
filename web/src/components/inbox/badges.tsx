@@ -14,6 +14,7 @@ import {
   Hammer,
   Images,
   IterationCw,
+  KeyRound,
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
@@ -49,6 +50,10 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   spend_money: Wallet,
   architecture: Boxes,
   scope: Target,
+  // The categories of the classes of autonomy K5, K8 and K12 at ask: a merge, a credential, a grant or a policy.
+  merge: GitMerge,
+  credential: KeyRound,
+  access: ShieldCheck,
   // What the agent of a local Claude Code session asks that is none of the above.
   question: MessageCircleQuestionMark,
   // What the agent of a chat run asks while it triages a failed run.

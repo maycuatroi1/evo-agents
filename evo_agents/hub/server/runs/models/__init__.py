@@ -24,6 +24,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     ReleaseSpec,
     RunAutonomy,
     RunBudget,
+    RunCard,
     RunEnvironment,
     RunOrigin,
     RunPack,
@@ -525,6 +526,9 @@ class RunSpec(BaseModel):
     )
     release: ReleaseSpec | None = Field(
         None, description="a release run's cycle, mode and start commit; null for any other run"
+    )
+    autonomy: RunCard | None = Field(
+        None, description="the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
     )
 
 

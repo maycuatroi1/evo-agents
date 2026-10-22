@@ -565,7 +565,9 @@ decisions = Table(
     _stamp("asked_at"),
     _when("answered_at"),
     _when("delivered_at"),
+    Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0108: its owner
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
+    ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="decisions_run_id_fkey"),
     PrimaryKeyConstraint("id", name="decisions_pkey"),

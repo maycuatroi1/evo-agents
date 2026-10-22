@@ -197,16 +197,24 @@ export function answerBody(option: string | null, text: string): { option?: stri
 }
 
 /**
- * Whether the visitor may answer a decision, and if not why: only its run's owner answers, only while it is open, and
+ * Whether the visitor may answer a decision, and if not why: only the person it is asked of answers, only while it is open, and
  * only while its run is queued or held by a worker (an agent may still read the answer), parked (the answer resumes
  * it) or, for a local session, idle (it takes the answer at its next turn). A decision of the hub's own takes its
  * answer whatever its run is: the hub, not an agent, does what it chooses. The API decides again on every answer.
  */
 export type AnswerAccess = "answer" | "notOwner" | "closed" | "runGone";
 
-export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_state" | "category">, login: string | null): AnswerAccess {
+/** Who a decision is asked of, who answers it: `asked_of`, or its run's owner from a hub that does not send it. */
+export function askedOf(decision: Pick<Decision, "owner"> & Partial<Pick<Decision, "asked_of">>): string {
+  return decision.asked_of ?? decision.owner;
+}
+
+export function answerAccess(
+  decision: Pick<Decision, "state" | "owner" | "run_state" | "category"> & Partial<Pick<Decision, "asked_of">>,
+  login: string | null,
+): AnswerAccess {
   if (decision.state !== "open") return "closed";
-  if (login === null || login !== decision.owner) return "notOwner";
+  if (login === null || login !== askedOf(decision)) return "notOwner";
   if (isHubDecision(decision)) return "answer";
   // idle: a local session whose turn ended; it takes the answer at its next turn.
   if (decision.run_state !== "parked" && decision.run_state !== "idle" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
