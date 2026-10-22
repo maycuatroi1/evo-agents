@@ -117,6 +117,7 @@ async def _run(conn: AsyncConnection, run_id: int):
         r.c.profile_id,
         r.c.worker_id,
         r.c.dispatched_by,
+        r.c.requested_runtime,
     ).where(r.c.id == run_id)
     return (await conn.execute(query)).one()
 
@@ -178,7 +179,7 @@ def _ready_on(worker_id: int, ready: dict, found) -> list[tuple[int, str]]:
 def _worker_view(row, profile, run, repos, project, accounts, cause):
     """(the candidate of worker ``row``, its sort key): the run's owner's own workers before those shared with them."""
     found, ready, used = accounts
-    reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind)
+    reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind, run.requested_runtime or "any")
     missing = [name for name in repos if f"{project}/{name}" not in (row.checkouts or {})]
     clones = runs.CLONES_CHECKOUTS in (row.features or ())
     if missing and not clones:
