@@ -1,7 +1,7 @@
 """The files people attach to chat messages: chat_files.
 
-Revision ID: 0101
-Revises: 0100
+Revision ID: 0104
+Revises: 0103
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.tables_chats`` as of this revision, never imports, so a later change to
@@ -22,8 +22,8 @@ cleanup.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0101"
-down_revision = "0100"
+revision = "0104"
+down_revision = "0103"
 branch_labels = None
 depends_on = None
 

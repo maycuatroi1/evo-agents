@@ -125,7 +125,7 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
-TABLES |= pg.CHAT_FILE_TABLES  # migration 0101
+TABLES |= pg.CHAT_FILE_TABLES  # migration 0104
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
