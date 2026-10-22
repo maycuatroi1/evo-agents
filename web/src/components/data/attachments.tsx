@@ -193,7 +193,9 @@ export function FileDropFrame({ children, className, ...props }: ComponentProps<
   return (
     <DropTarget.Provider value={register}>
       <div
-        className={cn("relative", className)}
+        // Positioned only while files are dragged, for the overlay: a frame around a composer under a scrolling panel
+        // must not paint over what that panel shows.
+        className={cn(over && "relative", className)}
         onDragEnter={(event) => {
           if (!hasFiles(event) || !take.current) return;
           event.preventDefault();
