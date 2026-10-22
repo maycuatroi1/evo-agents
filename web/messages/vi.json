@@ -3487,6 +3487,25 @@
           "failed": "{count} lỗi"
         }
       },
+      "tasks": {
+        "title": "Đang chạy",
+        "agents": "{count, plural, other {# sub-agent}}",
+        "commands": "{count, plural, other {# lệnh}}",
+        "runningLabel": "Sub-agent và lệnh nền đang chạy",
+        "background": "chạy nền",
+        "calls": "{count, plural, other {# lần gọi công cụ}}",
+        "tokens": "{tokens} token",
+        "commandsOf": "Lệnh của {name}",
+        "show": ", xem trong trace",
+        "finished": "{count, plural, other {# đã xong}}",
+        "finishedLabel": "Sub-agent và lệnh nền đã kết thúc",
+        "showAll": "Xem cả {count}",
+        "status": {
+          "completed": "Hoàn tất:",
+          "failed": "Thất bại:",
+          "stopped": "Đã dừng:"
+        }
+      },
       "usage": {
         "title": "Mức dùng",
         "soFar": "đến giờ",

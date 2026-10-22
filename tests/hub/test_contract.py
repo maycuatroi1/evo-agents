@@ -213,10 +213,12 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     step = printed["worker step"]
     assert [(p["name"], p.get("choices")) for p in step["positionals"]] == [
         ("key", None),
-        ("status", ["in_progress", "done", "pending"]),
+        ("status", ["in_progress", "done", "pending", "verify"]),
     ]
     verify = next(o for o in step["options"] if o["flags"] == ["--verify"])
     assert verify["repeatable"] and not verify["required"]
+    wait = next(o for o in step["options"] if o["flags"] == ["--wait"])
+    assert wait["value"] == "number" and not wait["repeatable"] and not wait["required"]
     ask = {o["flags"][0]: o for o in printed["worker ask"]["options"]}
     assert ask["--category"]["required"] and ask["--option"]["required"] and ask["--option"]["repeatable"]
     assert ask["--attach"]["repeatable"] and not ask["--attach"]["required"]
