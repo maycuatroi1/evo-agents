@@ -291,6 +291,7 @@ skills = Table(
     Column("name", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
     _stamp("created_at"),
+    Column("audience", Text, nullable=False, server_default="everyone"),  # or "admins", a global skill only
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="skills_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),

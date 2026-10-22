@@ -807,7 +807,8 @@
         "plan_put": "Write plan",
         "plan_patch": "Edit plan",
         "plan_complete": "Complete plan",
-        "skill_publish": "Publish skill"
+        "skill_publish": "Publish skill",
+        "skill_audience": "Change skill audience"
       }
     },
     "branding": {
@@ -1412,6 +1413,17 @@
     "onGitHub": "(opens the commit on GitHub in a new tab)",
     "scopeGlobal": "Shared",
     "scopeProject": "Project {project}",
+    "audience": {
+      "admins": "Hub admins only",
+      "adminsHint": "Only hub admins see, download and sync this skill",
+      "title": "Who sees this skill",
+      "description": "A shared skill is for every signed-in member: they see it here, download it and sync it to their machines. You can keep it for hub admins alone. Only hub admins see this card.",
+      "adminsOnly": "Hub admins only",
+      "adminsOnlyHint": "On: members no longer see, download or sync it, and their next sync removes it from their machines after a backup. Off: every signed-in member has it again. Each change goes into the audit log.",
+      "nowAdmins": "{name} is for hub admins alone now",
+      "nowEveryone": "{name} is for every signed-in member now",
+      "failed": "Could not change who sees {name}"
+    },
     "by": "by {login}",
     "columns": {
       "name": "Name",

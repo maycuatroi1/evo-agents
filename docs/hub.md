@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`; `?agent=` for an agent's), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience`, `POST .../restore` |
-| skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
+| skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle`; `PUT /v1/skills/global/{name}/audience`, for hub admins |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
@@ -161,7 +161,8 @@ shared worker another member than the worker's owner, `docs/workers.md`, Shared 
 
 - the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
 - every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
-  lists that one, and `skill_list` the global skills and that project's;
+  lists that one, and `skill_list` the global skills its owner sees (Memories, skills and knowledge graphs, Skills) and
+  that project's;
 - the owner's role there counts as writer at most, and the level as the owner's grant allows, through the session's
   sink as for anyone;
 - the agent is never a hub admin, whoever owns the run, and it neither reads nor writes its owner's personal
@@ -2193,6 +2194,21 @@ writes the latest version of every skill you see into the skills directories of 
 (`claude`, `agents`, `codex`, `cursor`, `gemini`), and project skills into the harness's `.claude/skills` and
 `.agents/skills`. It changes only directories it wrote itself (`--adopt` also takes over copies made by hand),
 saves a copy before replacing anything (under `~/.evo/hub/backups/`), and `--check` reports without writing.
+
+A global skill has an audience: `everyone` (every signed-in member reads it) or `admins` (hub admins alone, the logins
+of `EVO_HUB_ADMINS`). A project skill is always `everyone`; the project's grants decide who reads it. For a member who
+is not a hub admin an `admins` skill does not exist: `GET /v1/skills`, the `skill_list` tool, `hub skills list` and
+the `/skills` pages leave it out, its page, `GET /v1/skills/global/{name}` and its bundle answer 404 as for a skill the
+hub does not have, and `hub skills sync` (with the `SessionStart` check of the evo-hub plugin, which counts what it
+would change) never writes it. The agent of a run sees what the run's owner sees: the `admins` skills when the owner is
+a hub admin, although the agent itself is never one. A new global skill is `everyone`'s unless `hub skills publish
+--audience admins` says otherwise; publishing a version with `--audience` changes it, and without it the skill keeps
+its own. A hub admin changes it alone with `evo-agents hub skills audience house-style admins` (or `everyone`), with
+`PUT /v1/skills/global/{name}/audience`, or with the switch "Hub admins only" of the card "Who sees this skill" on
+the skill's page on the web, a card only hub admins see; the lists and the page tag such a skill "Hub admins only".
+Each change adds one audit row, action `skill.audience`, target `skill:global/<name> audience=<was>-><is>`. Upgrading
+to the hub version that adds it leaves every skill that exists `everyone`'s, so nobody loses one; a skill made `admins`
+later is removed, after a backup, by the next `hub skills sync` of a member who no longer sees it.
 
 **Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg push
 --project demo` (or `evo-agents kg sync --push`) sends the connector runs the hub lacks; a run whose label the hub sink
