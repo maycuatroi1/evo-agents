@@ -137,7 +137,11 @@ work item's reason; it stays queued and no run is handed out:
    draining, or has no free slot.
 
 A hand-out the agent type refuses (off, its run_as no writer, its daily cap spent) leaves the work item queued with
-`type_refused`. A reason is written, with its ledger row, only when it changes.
+`type_refused`. A reason is written, with its ledger row, only when it changes. Its figures (the cycle, the count and
+the cap for `concurrency`, the repos held for a deliver, the hand-outs of the hour and the cap for `rate`, the worker
+and why for `worker` and `type_refused`) go into the work item's detail in the place of those of its reason before, so
+`GET .../loop/items` and the Loop page show them as `waiting`; figures that change under the same reason are written
+again with no ledger row.
 
 Each run carries its own caps. An author run and a plan run of the Loop take `max_turns` and `max_seconds` from
 `loop.caps.author` or `loop.caps.plan`, `max_usd` empty, and a timeout of that time plus 300 seconds. A task run of
