@@ -1952,7 +1952,8 @@
       "sharedSuccessText": "The writers of its projects may dispatch to it from now on.",
       "privateSuccess": "{name} takes your runs alone",
       "privateSuccessText": "The runs of other members it holds finish; it claims none of theirs from now on.",
-      "failed": "Couldn't change whether {name} is shared"
+      "failed": "Couldn't change whether {name} is shared",
+      "locked": "Its doctor keeps it from the units it is narrowed to: {reason}"
     },
     "settings": {
       "title": "Settings",
@@ -2077,6 +2078,40 @@
       "askFailed": "Couldn't ask {name} to update now",
       "cancelFailed": "Couldn't cancel the Update now of {name}",
       "refused": "The hub refused it; its reason follows. The page was reloaded."
+    },
+    "sharing": {
+      "title": "Sharing",
+      "description": "Whom it takes runs from besides you, and what its doctor found the last time it ran.",
+      "loading": "Loading",
+      "loadFailed": "Couldn't load whom it is shared with. The page tries again shortly.",
+      "noUnits": "Not narrowed: shared, it takes the runs of every writer of a project it serves.",
+      "unitsLabel": "Units it is shared with",
+      "addLabel": "Narrow to a unit",
+      "pick": "Pick a unit",
+      "noChoice": "No other live unit",
+      "chartFailed": "Couldn't load the org chart",
+      "unitOption": "{name} ({slug})",
+      "add": "Add",
+      "addFailed": "Couldn't share it with unit {unit}",
+      "removeFailed": "Couldn't take unit {unit} back",
+      "added": "{name} is shared with unit {unit}",
+      "addedText": "It takes the runs of that unit's members, and of the units below it.",
+      "removed": "Unit {unit} taken back from {name}",
+      "removedText": "Its members' runs it holds finish; it claims none of theirs from now on.",
+      "removedLastText": "It was the last unit, so the worker takes your runs alone now.",
+      "removeLabel": "Take unit {unit} back",
+      "blocked": {
+        "none": "Its daemon has sent no doctor report: update it to a release that sends one, then share it.",
+        "stale": "Its newest doctor report, from {at} UTC, is more than 48 hours old.",
+        "high": "Its newest doctor report has {count, plural, one {# high finding} other {# high findings}}: run evo-agents worker doctor on the machine to see how to fix them."
+      },
+      "doctor": {
+        "title": "Doctor report",
+        "counts": "{high} high, {medium} medium",
+        "high": "{count} high",
+        "stale": "Older than 48 h",
+        "none": "None yet"
+      }
     }
   },
   "secrets": {
@@ -3279,6 +3314,24 @@
     "apiValue": "API value",
     "costLabel": "Cost",
     "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run.",
+    "sharing": {
+      "overCeiling": "Over its ceiling: shared runs wait"
+    },
+    "costByPrincipal": {
+      "title": "Cost by member",
+      "description": "The runs of the members your accounts are shared with, and what they cost, an estimate. Your own runs are in each account's row.",
+      "empty": "No run of another member has used them yet.",
+      "caption": "Runs and cost of each account by member",
+      "gone": "A member now gone",
+      "columns": {
+        "principal": "Member",
+        "day": "Cost 24 h",
+        "week": "Cost 7 d",
+        "month": "Cost this month",
+        "runs": "Runs 24 h / 7 d / month"
+      },
+      "runs": "{day} / {week} / {month}"
+    },
     "agent": {
       "title": "Accounts",
       "description": "Secrets this agent owns. A run under @{handle} takes them on the workers each one is bound to.",
@@ -4123,7 +4176,8 @@
           "worker": "Bound to the worker",
           "charter": "Named by the charter",
           "pool": "From the pool",
-          "cooling": "All cooling: the first to be back"
+          "cooling": "All cooling: the first to be back",
+          "shared": "Shared by another member"
         },
         "gone": "a deleted account",
         "failovers": "{count, plural, =0 {No failover} one {# failover} other {# failovers}}",
@@ -5278,7 +5332,8 @@
       "loop_paused": "The Loop stopped itself",
       "goal_review": "The month's review of the goals",
       "loop_brief": "The Loop's morning brief",
-      "plugin_notice": "A notice from a plugin"
+      "plugin_notice": "A notice from a plugin",
+      "worker_doctor": "A shared worker's doctor found something high"
     },
     "item": {
       "unread": "Unread",
@@ -9075,6 +9130,92 @@
       "run_owner": "The run's owner",
       "srs_reviewer": "An SRS reviewer",
       "chat_member": "A member of the chat"
+    }
+  },
+  "sharing": {
+    "title": "Shared with other members",
+    "description": "Members you share with may use a credential in their runs on the projects you pick, within the limits you set. Its value never leaves the hub: a run gets it for its duration.",
+    "share": "Share",
+    "nothingToShare": "Only a credential bound to a project can be shared, and never a GitLab token for the hub.",
+    "empty": "Nothing is shared.",
+    "terms": {
+      "title": "Read this before you share it",
+      "ack": "I have read this and share it anyway, in my name."
+    },
+    "dialog": {
+      "title": "Share a credential",
+      "description": "Whom it is for, on which projects, and how far. Every field under Limits is optional.",
+      "credential": "Credential",
+      "grantee": "Share with",
+      "kind": {
+        "user": "One member",
+        "unit": "A unit and the units below it",
+        "all": "Every member"
+      },
+      "login": "Member",
+      "loginHint": "Their login on the hub.",
+      "unit": "Unit",
+      "unitHint": "The members whose primary seat is in it or below it.",
+      "unitPick": "Pick a unit",
+      "unitOption": "{name} ({slug})",
+      "loading": "Loading",
+      "noUnit": "The org chart has no live unit.",
+      "allHint": "Every member who holds writer on one of the projects you pick.",
+      "projects": "Projects",
+      "projectsHint": "Runs on these projects may take it; it is bound to them.",
+      "limits": "Limits",
+      "limitsHint": "Leave a field empty for no limit.",
+      "level": "Highest level",
+      "levelAny": "Any level",
+      "levelHint": "A run of a higher level does not take it.",
+      "budget": "Budget, USD",
+      "budgetHint": "Shared runs stop taking it once theirs cost this much.",
+      "ceiling": "Usage ceiling, %",
+      "ceilingHint": "Shared runs wait while the account's usage is at or above it.",
+      "maxRunning": "Runs at once",
+      "maxRunningHint": "The most shared runs that hold it at the same time.",
+      "expires": "Ends on",
+      "expiresHint": "At 00:00 UTC that day. Empty: it ends when you revoke it.",
+      "save": "Share",
+      "saving": "Sharing",
+      "cancel": "Cancel",
+      "done": "{name} is shared",
+      "doneText": "The next run it is for may take it.",
+      "conflict": "The hub did not share it.",
+      "termsNeeded": "The hub asks you to read its warning first: tick the box under it, then share.",
+      "problems": {
+        "required": "Fill this in.",
+        "pattern": "This is not in the form the hub takes.",
+        "range": "Enter a number from {min} to {max}.",
+        "whole": "Enter a whole number.",
+        "past": "Pick a day after today."
+      }
+    },
+    "list": {
+      "all": "every member",
+      "user": "{name}",
+      "unit": "unit {name}",
+      "to": "shared with",
+      "endsSoon": "Ends soon",
+      "projects": "Projects",
+      "level": "up to {level}",
+      "budget": "{usd} budget",
+      "ceiling": "{pct}% ceiling",
+      "running": "{count, plural, one {# run} other {# runs}} at once",
+      "noLimit": "no limit",
+      "ends": "ends <day></day>",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke share {id} of {name}"
+    },
+    "revoke": {
+      "title": "Revoke the share of {name}?",
+      "description": "No run takes it under this share any more, and the leases runs hold under it now end. This is recorded in the audit.",
+      "confirm": "Revoke",
+      "pending": "Revoking",
+      "cancel": "Cancel",
+      "done": "Share of {name} revoked",
+      "doneText": "No run takes it under this share any more.",
+      "gone": "This share is already revoked. The list was read again."
     }
   },
   "attachments": {

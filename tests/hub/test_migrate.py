@@ -125,7 +125,9 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
-TABLES |= pg.ATTACHMENT_TABLES  # migration 0105
+TABLES |= pg.SHARE_TABLES  # migration 0105
+TABLES |= pg.WORKER_SHARE_TABLES  # migration 0107
+TABLES |= pg.ATTACHMENT_TABLES  # migration 0109
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -207,8 +209,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_six_tables(hub_db):
-    assert len(TABLES) == 146  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_forty_nine_tables(hub_db):
+    assert len(TABLES) == 149  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2727,18 +2729,18 @@ def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_wh
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
 
 
-def test_0105_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_back_restores_them(hub_db):
-    move_to(hub_db, "0104")
+def test_0109_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_back_restores_them(hub_db):
+    move_to(hub_db, "0108")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         run_id = one(conn, _author_run(ids))
         chat_id = _chat(conn, ids)
         message = {"chat_id": chat_id, "seq": 1, "author_user_id": ids["user"], "body": "", "label": []}
-        with pytest.raises(errors.CheckViolation):  # no message without text before 0105
+        with pytest.raises(errors.CheckViolation):  # no message without text before 0109
             conn.execute(insert(t.chat_messages).values(message))
     before = query(hub_db, SNAPSHOT)
-    move_to(hub_db, "0105")
+    move_to(hub_db, "0109")
     a, k = t.attachments, t.run_inbox_attachments
     with live.connect(hub_db) as conn:
         inbox_id = one(
@@ -2763,7 +2765,7 @@ def test_0105_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_bac
             with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
                 conn.execute(bad)
     # Going back gives each empty body a placeholder and drops the files.
-    move_to(hub_db, "0104", down=True)
+    move_to(hub_db, "0108", down=True)
     assert query(hub_db, select(t.run_inbox.c.body)) == [("(files)",)]
     assert query(hub_db, select(t.chat_messages.c.body)) == [("(files)",)]
     assert {"attachments", "run_inbox_attachments"}.isdisjoint(tables(hub_db))
@@ -2771,4 +2773,4 @@ def test_0105_keeps_the_attachments_of_messages_takes_empty_bodies_and_going_bac
         conn.execute(delete(t.run_inbox))
         conn.execute(delete(t.chat_messages))
     assert query(hub_db, SNAPSHOT) == before
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0105") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0109") :]

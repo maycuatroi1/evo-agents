@@ -1,7 +1,7 @@
 """The files people attach to messages to a run's agent and in group chats, and messages of files with no text.
 
-Revision ID: 0105
-Revises: 0104
+Revision ID: 0109
+Revises: 0108
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.attachments`` and ``evo_agents.hub.tables_attachments`` as of this
@@ -22,8 +22,8 @@ blobs of kind attachment lose the rows that referred to them and wait for the co
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0105"
-down_revision = "0104"
+revision = "0109"
+down_revision = "0108"
 branch_labels = None
 depends_on = None
 

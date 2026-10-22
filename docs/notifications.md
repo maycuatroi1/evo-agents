@@ -168,10 +168,11 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
+| `worker_doctor` | the doctor report of a worker shared with units of the org chart has a high finding and the one before had none (`docs/workers.md`, Shared workers), to the worker's owner; the worker takes no run of those units' members until a report has none | the worker, the codes of the high findings, and a link to the worker's page; never a credential |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
 `curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `plugin_notice`, `author_waiting`, `pm_daily`,
-`pm_escalation`, `chat_mention`, `chat_added` and `run_outputs`, and the `merge_default_branch` of its merge queue. A
+`pm_escalation`, `chat_mention`, `chat_added`, `run_outputs` and `worker_doctor`, and the `merge_default_branch` of its merge queue. A
 release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting

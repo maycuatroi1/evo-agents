@@ -1,9 +1,8 @@
 """The hub's tables as SQLAlchemy Core metadata, which queries are written on and Alembic autogenerates the next
-migration from (``migrations/env.py``); the modules ``tables_<area>`` imported below hold them by area, and
-``tables.srs``, ``tables.tasks`` and ``tables.canvas`` are core plugins'. The migrations make the schema and this
-module describes it; ``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server
-defaults, identities, keys and indexes, named as the migrations name them (CHECK constraints and triggers live in the
-migrations only). A table is an attribute of its name."""
+migration from (``migrations/env.py``); modules ``tables_<area>`` hold them by area, and ``tables.srs``, ``.tasks`` and
+``.canvas`` are core plugins'. The migrations make the schema and this module describes it; the test
+``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server defaults, identities,
+keys and indexes as the migrations name them (CHECK constraints and triggers are the migrations' alone)."""
 
 from __future__ import annotations
 
@@ -940,7 +939,7 @@ hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_ta
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
-attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0105)
+attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
 goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0091)
@@ -955,7 +954,8 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
-org_units, org_seats, autonomy_ceilings = tables_org.org_tables(metadata)  # the org chart (0099)
+org_units, org_seats, autonomy_ceilings, worker_shares = tables_org.org_tables(metadata)  # 0099, 0107
+credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

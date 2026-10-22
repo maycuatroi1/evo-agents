@@ -1,4 +1,4 @@
-"""The tables of the files people attach to messages (0105, ``evo_agents.hub.attachments``), which
+"""The tables of the files people attach to messages (0109, ``evo_agents.hub.attachments``), which
 ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes (``tables.attachments``,
 ``tables.run_inbox_attachments``): queries name them there.
 

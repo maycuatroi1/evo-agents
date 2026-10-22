@@ -246,6 +246,7 @@ class Agent:
         env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
         if claude_home.wanted(run.spec, run.runtime) and run.worktree is not None:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
+            env["GH_CONFIG_DIR"] = str(claude_home.gh_dir(run.worktree))  # empty: none of the owner's gh logins
         if run.venvs:  # the .venv/bin of each repo whose environment the worker made, first (runner.venv)
             for key in venvs.FOREIGN:
                 env.pop(key, None)
@@ -294,8 +295,17 @@ class Agent:
         server = hub_tools.home_server(context, profiles.Profile.of(run.spec))
         try:
             login = await asyncio.to_thread(
-                claude_home.prepare, directory, owner_env=run.daemon.env, leased=leased_oauth(context), server=server
+                claude_home.prepare,
+                directory,
+                owner_env=run.daemon.env,
+                leased=leased_oauth(context),
+                server=server,
+                lock=Path(run.daemon.home.root) / claude_home.REFRESH_LOCK,
             )
+        except claude_home.RefreshFailed as exc:
+            why = f"the owner's Claude login expires within the hour and was not refreshed: {exc}"
+            run.note(f"{why}; the agent did not start.", cause="credentials")
+            raise RunFailed(why, cause="credentials") from None
         except OSError as exc:
             raise RunFailed(f"Claude Code's config dir {directory} was not written: {exc}", cause="runtime") from None
         if login is None:

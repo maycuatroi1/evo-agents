@@ -37,7 +37,9 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -118,7 +120,9 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -199,7 +203,9 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -248,7 +254,9 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -376,7 +384,9 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
       }
@@ -441,9 +451,142 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
+      }
+    },
+    "hub account share": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--budget-usd"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--usage-ceiling"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--max-running"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ack-terms"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "secret",
+          "credential",
+          "grantee_kind",
+          "grantee",
+          "projects",
+          "level",
+          "budget_usd",
+          "usage_ceiling_pct",
+          "max_running",
+          "expires_at",
+          "terms_ack_at",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "CredentialShare"
       }
     },
     "hub account show": {
@@ -462,6 +605,14 @@
             "--json"
           ],
           "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--owner"
+          ],
+          "value": "string",
           "required": false,
           "repeatable": false
         }
@@ -490,9 +641,54 @@
           "runs_7d",
           "cost_24h_usd",
           "cost_7d_usd",
-          "held_by"
+          "held_by",
+          "shares",
+          "cost_by_principal"
         ],
         "schema": "Account"
+      }
+    },
+    "hub account unshare": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--share"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "secret",
+          "credential",
+          "grantee_kind",
+          "grantee",
+          "projects",
+          "level",
+          "budget_usd",
+          "usage_ceiling_pct",
+          "max_running",
+          "expires_at",
+          "terms_ack_at",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "CredentialShare"
       }
     },
     "hub admin grant": {
@@ -7050,6 +7246,119 @@
         "schema": "OrgUnitView"
       }
     },
+    "hub org worker list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
+    "hub org worker share": {
+      "positionals": [
+        {
+          "name": "worker",
+          "metavar": "WORKER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
+    "hub org worker unshare": {
+      "positionals": [
+        {
+          "name": "worker",
+          "metavar": "WORKER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
     "hub plan abandon": {
       "positionals": [
         {
@@ -10822,7 +11131,8 @@
           "workers",
           "expires_at",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "shares"
         ],
         "schema": "Secret"
       }
@@ -10901,6 +11211,180 @@
         }
       ],
       "json": null
+    },
+    "hub secret share": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--budget-usd"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--usage-ceiling"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--max-running"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ack-terms"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "secret",
+          "credential",
+          "grantee_kind",
+          "grantee",
+          "projects",
+          "level",
+          "budget_usd",
+          "usage_ceiling_pct",
+          "max_running",
+          "expires_at",
+          "terms_ack_at",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "CredentialShare"
+      }
+    },
+    "hub secret unshare": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--share"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "secret",
+          "credential",
+          "grantee_kind",
+          "grantee",
+          "projects",
+          "level",
+          "budget_usd",
+          "usage_ceiling_pct",
+          "max_running",
+          "expires_at",
+          "terms_ack_at",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "schema": "CredentialShare"
+      }
     },
     "hub send": {
       "positionals": [
@@ -14612,7 +15096,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.35.1"
+      "version": "0.36.0"
     },
     "paths": {
       "/v1/health": {
@@ -37746,6 +38230,292 @@
           }
         }
       },
+      "/v1/org/workers": {
+        "get": {
+          "tags": [
+            "org"
+          ],
+          "summary": "List Worker Shares",
+          "description": "The caller's live workers, every live worker for a hub admin, with whom each is shared.",
+          "operationId": "list_worker_shares_v1_org_workers_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/WorkerShares"
+                    },
+                    "type": "array",
+                    "title": "Response List Worker Shares V1 Org Workers Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/workers/{worker_id}/units/{slug}": {
+        "put": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Share Worker",
+          "description": "Narrow the worker to a live unit of the org chart, sharing it when it was not.",
+          "operationId": "share_worker_v1_org_workers__worker_id__units__slug__put",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerShares"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Unshare Worker",
+          "description": "Take a unit back from the worker; with its last unit, sharing ends too.",
+          "operationId": "unshare_worker_v1_org_workers__worker_id__units__slug__delete",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerShares"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/doctor": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Doctor",
+          "description": "Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a\nhigh finding stops it taking the runs of the units it is shared with.",
+          "operationId": "report_doctor_v1_worker_doctor_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DoctorAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -46382,6 +47152,267 @@
           }
         }
       },
+      "/v1/secrets/{name}/shares": {
+        "get": {
+          "tags": [
+            "shares"
+          ],
+          "summary": "List Shares",
+          "description": "The shares of the caller's secret or account ``name``, revoked ones too, newest first.",
+          "operationId": "list_shares_v1_secrets__name__shares_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "one of the caller's secrets",
+                "title": "Name"
+              },
+              "description": "one of the caller's secrets"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CredentialShare"
+                    },
+                    "title": "Response List Shares V1 Secrets  Name  Shares Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "shares"
+          ],
+          "summary": "Create Share",
+          "description": "Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.",
+          "operationId": "create_share_v1_secrets__name__shares_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "one of the caller's secrets",
+                "title": "Name"
+              },
+              "description": "one of the caller's secrets"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CredentialShare"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/shares/{share_id}": {
+        "delete": {
+          "tags": [
+            "shares"
+          ],
+          "summary": "Revoke Share",
+          "description": "Revoke a share: its secret's owner may, and a hub admin may revoke any.",
+          "operationId": "revoke_share_v1_shares__share_id__delete",
+          "parameters": [
+            {
+              "name": "share_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "the id of the share",
+                "title": "Share Id"
+              },
+              "description": "the id of the share"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CredentialShare"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runs/{run_id}/credentials": {
         "get": {
           "tags": [
@@ -46677,7 +47708,7 @@
             "accounts"
           ],
           "summary": "Get Account",
-          "description": "The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.",
+          "description": "The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;\n404 for a name that is neither.",
           "operationId": "get_account_v1_accounts__name__get",
           "parameters": [
             {
@@ -46691,6 +47722,25 @@
                 "title": "Name"
               },
               "description": "one of the caller's env secrets"
+            },
+            {
+              "name": "owner",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member who shared the account with the caller; omit for one's own",
+                "title": "Owner"
+              },
+              "description": "the member who shared the account with the caller; omit for one's own"
             }
           ],
           "responses": {
@@ -59013,6 +60063,22 @@
               "type": "array",
               "title": "Held By",
               "description": "the runs a worker holds now with it"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "cost_by_principal": {
+              "items": {
+                "$ref": "#/components/schemas/PrincipalCost"
+              },
+              "type": "array",
+              "title": "Cost By Principal",
+              "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
             }
           },
           "type": "object",
@@ -59038,7 +60104,9 @@
             "runs_7d",
             "cost_24h_usd",
             "cost_7d_usd",
-            "held_by"
+            "held_by",
+            "shares",
+            "cost_by_principal"
           ],
           "title": "Account",
           "description": "One of the caller's env secrets as an account: everything but its value."
@@ -68515,6 +69583,195 @@
           "title": "CredentialLease",
           "description": "One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."
         },
+        "CredentialShare": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret",
+              "description": "the name of the secret or account shared"
+            },
+            "credential": {
+              "type": "string",
+              "enum": [
+                "subscription",
+                "api_key",
+                "git",
+                "env"
+              ],
+              "title": "Credential",
+              "description": "subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env"
+            },
+            "grantee_kind": {
+              "type": "string",
+              "enum": [
+                "user",
+                "unit",
+                "all"
+              ],
+              "title": "Grantee Kind",
+              "description": "user: one member; unit: a unit and below; all: everyone"
+            },
+            "grantee": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Grantee",
+              "description": "the member's login or the unit's slug; null for all"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may use it"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level",
+              "description": "the autonomy level a run using it is held to; null for none"
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most the runs using it may cost a month, in USD; null for none"
+            },
+            "usage_ceiling_pct": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usage Ceiling Pct",
+              "description": "1 to 100: no run takes the account while its usage is at this percent or above; null for none"
+            },
+            "max_running": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Running",
+              "description": "the most runs that may hold it at once; null for no limit"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when the share ends; null for no end"
+            },
+            "terms_ack_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Terms Ack At",
+              "description": "when its owner acknowledged the terms warning; null for none"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "revoked_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "secret",
+            "credential",
+            "grantee_kind",
+            "grantee",
+            "projects",
+            "level",
+            "budget_usd",
+            "usage_ceiling_pct",
+            "max_running",
+            "expires_at",
+            "terms_ack_at",
+            "created_by",
+            "created_at",
+            "revoked_at",
+            "revoked_by"
+          ],
+          "title": "CredentialShare",
+          "description": "A share of a secret or an account, as its owner sees it."
+        },
         "Credentials": {
           "properties": {
             "leases": {
@@ -69790,6 +71047,85 @@
             "value"
           ],
           "title": "DispatchFrom"
+        },
+        "DoctorAnswer": {
+          "properties": {
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id"
+            },
+            "doctor_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Doctor At",
+              "description": "when the hub took the report"
+            },
+            "doctor_high": {
+              "type": "integer",
+              "title": "Doctor High"
+            },
+            "doctor_medium": {
+              "type": "integer",
+              "title": "Doctor Medium"
+            }
+          },
+          "type": "object",
+          "required": [
+            "worker_id",
+            "doctor_at",
+            "doctor_high",
+            "doctor_medium"
+          ],
+          "title": "DoctorAnswer"
+        },
+        "DoctorFinding": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Code",
+              "description": "what the doctor found, as `worker doctor --json` names it"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Severity"
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Detail",
+              "description": "what it found, as the doctor prints it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "severity",
+            "detail"
+          ],
+          "title": "DoctorFinding"
+        },
+        "DoctorReport": {
+          "properties": {
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/DoctorFinding"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Findings"
+            }
+          },
+          "type": "object",
+          "required": [
+            "findings"
+          ],
+          "title": "DoctorReport"
         },
         "EarlierFinding": {
           "properties": {
@@ -77773,7 +79109,8 @@
                     "loop_paused",
                     "goal_review",
                     "loop_brief",
-                    "plugin_notice"
+                    "plugin_notice",
+                    "worker_doctor"
                   ]
                 },
                 {
@@ -82982,6 +84319,59 @@
             "changed"
           ],
           "title": "PolicyWritten"
+        },
+        "PrincipalCost": {
+          "properties": {
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the member the runs were made for, by login; null for one now gone"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D"
+            },
+            "runs_month": {
+              "type": "integer",
+              "title": "Runs Month",
+              "description": "the runs that took it since the month began, UTC"
+            },
+            "cost_24h_usd": {
+              "type": "number",
+              "title": "Cost 24H Usd"
+            },
+            "cost_7d_usd": {
+              "type": "number",
+              "title": "Cost 7D Usd"
+            },
+            "cost_month_usd": {
+              "type": "number",
+              "title": "Cost Month Usd",
+              "description": "what those runs cost since the month began, in USD, an estimate"
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "runs_24h",
+            "runs_7d",
+            "runs_month",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "cost_month_usd"
+          ],
+          "title": "PrincipalCost"
         },
         "Problem": {
           "properties": {
@@ -89135,10 +90525,11 @@
                 "worker",
                 "charter",
                 "pool",
-                "cooling"
+                "cooling",
+                "shared"
               ],
               "title": "How",
-              "description": "picked by hand, bound to the worker, by the charter, the pool, cooling"
+              "description": "picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member"
             },
             "failovers": {
               "type": "integer",
@@ -92076,6 +93467,14 @@
               "format": "date-time",
               "title": "Updated At",
               "description": "when its value was last written"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
             }
           },
           "type": "object",
@@ -92089,7 +93488,8 @@
             "workers",
             "expires_at",
             "created_at",
-            "updated_at"
+            "updated_at",
+            "shares"
           ],
           "title": "Secret",
           "description": "A secret as its owner sees it: everything but the value."
@@ -92300,6 +93700,14 @@
               "title": "Updated At",
               "description": "when its value was last written"
             },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
             "created": {
               "type": "boolean",
               "title": "Created",
@@ -92318,6 +93726,7 @@
             "expires_at",
             "created_at",
             "updated_at",
+            "shares",
             "created"
           ],
           "title": "SecretWritten"
@@ -92918,6 +94327,145 @@
           "type": "object",
           "title": "SettingsWrite",
           "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
+        },
+        "ShareWrite": {
+          "properties": {
+            "grantee_kind": {
+              "type": "string",
+              "enum": [
+                "user",
+                "unit",
+                "all"
+              ],
+              "title": "Grantee Kind",
+              "description": "user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "grantee_kind user only: the member's login"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit",
+              "description": "grantee_kind unit only: the unit's slug"
+            },
+            "projects": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Projects",
+              "description": "the projects whose runs may use it, each one the secret is bound to"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level",
+              "description": "the autonomy level a run using it is held to"
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most the runs using it may cost a month, in USD"
+            },
+            "usage_ceiling_pct": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usage Ceiling Pct",
+              "description": "no run takes the account while its usage is at this percent or above"
+            },
+            "max_running": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Running",
+              "description": "the most runs that may hold it at once"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At",
+              "description": "when the share ends; in the future"
+            },
+            "terms_ack": {
+              "type": "boolean",
+              "title": "Terms Ack",
+              "description": "the owner acknowledges the terms warning, which sharing a personal subscription token needs",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "grantee_kind",
+            "projects"
+          ],
+          "title": "ShareWrite"
         },
         "Sign": {
           "properties": {
@@ -102687,6 +104235,84 @@
             "version_locked"
           ],
           "title": "WorkerSettings"
+        },
+        "WorkerShares": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker",
+              "description": "the worker's name, unique among its owner's live workers"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who registered it"
+            },
+            "shared": {
+              "type": "boolean",
+              "title": "Shared",
+              "description": "whether other members' runs may go to it"
+            },
+            "units": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Units",
+              "description": "the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves"
+            },
+            "doctor_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor At",
+              "description": "when its daemon sent the newest doctor report; null: none"
+            },
+            "doctor_high": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor High",
+              "description": "findings of severity high in that report; null: no report"
+            },
+            "doctor_medium": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor Medium",
+              "description": "findings of severity medium in that report; null: no report"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "worker",
+            "owner",
+            "shared",
+            "units"
+          ],
+          "title": "WorkerShares",
+          "description": "Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any."
         },
         "WorkerUpdate": {
           "properties": {

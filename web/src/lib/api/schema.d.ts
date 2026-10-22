@@ -4210,6 +4210,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/org/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Worker Shares
+         * @description The caller's live workers, every live worker for a hub admin, with whom each is shared.
+         */
+        get: operations["list_worker_shares_v1_org_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers/{worker_id}/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Share Worker
+         * @description Narrow the worker to a live unit of the org chart, sharing it when it was not.
+         */
+        put: operations["share_worker_v1_org_workers__worker_id__units__slug__put"];
+        post?: never;
+        /**
+         * Unshare Worker
+         * @description Take a unit back from the worker; with its last unit, sharing ends too.
+         */
+        delete: operations["unshare_worker_v1_org_workers__worker_id__units__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Doctor
+         * @description Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
+         *     high finding stops it taking the runs of the units it is shared with.
+         */
+        post: operations["report_doctor_v1_worker_doctor_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -5560,6 +5625,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets/{name}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shares
+         * @description The shares of the caller's secret or account ``name``, revoked ones too, newest first.
+         */
+        get: operations["list_shares_v1_secrets__name__shares_get"];
+        put?: never;
+        /**
+         * Create Share
+         * @description Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.
+         */
+        post: operations["create_share_v1_secrets__name__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Share
+         * @description Revoke a share: its secret's owner may, and a hub admin may revoke any.
+         */
+        delete: operations["revoke_share_v1_shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -5635,7 +5744,8 @@ export interface paths {
         };
         /**
          * Get Account
-         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         * @description The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+         *     404 for a name that is neither.
          */
         get: operations["get_account_v1_accounts__name__get"];
         put?: never;
@@ -7944,6 +8054,16 @@ export interface components {
              * @description the runs a worker holds now with it
              */
             held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -11977,6 +12097,82 @@ export interface components {
              */
             expires_at: string | null;
         };
+        /**
+         * CredentialShare
+         * @description A share of a secret or an account, as its owner sees it.
+         */
+        CredentialShare: {
+            /** Id */
+            id: number;
+            /**
+             * Secret
+             * @description the name of the secret or account shared
+             */
+            secret: string;
+            /**
+             * Credential
+             * @description subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env
+             * @enum {string}
+             */
+            credential: "subscription" | "api_key" | "git" | "env";
+            /**
+             * Grantee Kind
+             * @description user: one member; unit: a unit and below; all: everyone
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Grantee
+             * @description the member's login or the unit's slug; null for all
+             */
+            grantee: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to; null for none
+             */
+            level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD; null for none
+             */
+            budget_usd: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description 1 to 100: no run takes the account while its usage is at this percent or above; null for none
+             */
+            usage_ceiling_pct: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once; null for no limit
+             */
+            max_running: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; null for no end
+             */
+            expires_at: string | null;
+            /**
+             * Terms Ack At
+             * @description when its owner acknowledged the terms warning; null for none
+             */
+            terms_ack_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+        };
         /** Credentials */
         Credentials: {
             /** Leases */
@@ -12500,6 +12696,44 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DoctorAnswer */
+        DoctorAnswer: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Doctor At
+             * Format: date-time
+             * @description when the hub took the report
+             */
+            doctor_at: string;
+            /** Doctor High */
+            doctor_high: number;
+            /** Doctor Medium */
+            doctor_medium: number;
+        };
+        /** DoctorFinding */
+        DoctorFinding: {
+            /**
+             * Code
+             * @description what the doctor found, as `worker doctor --json` names it
+             */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /**
+             * Detail
+             * @description what it found, as the doctor prints it
+             */
+            detail: string;
+        };
+        /** DoctorReport */
+        DoctorReport: {
+            /** Findings */
+            findings: components["schemas"]["DoctorFinding"][];
         };
         /** EarlierFinding */
         EarlierFinding: {
@@ -15881,7 +16115,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "worker_doctor") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -18238,6 +18472,32 @@ export interface components {
              * @description false when the newest revision is this policy already: nothing was written
              */
             changed: boolean;
+        };
+        /** PrincipalCost */
+        PrincipalCost: {
+            /**
+             * Principal
+             * @description the member the runs were made for, by login; null for one now gone
+             */
+            principal: string | null;
+            /** Runs 24H */
+            runs_24h: number;
+            /** Runs 7D */
+            runs_7d: number;
+            /**
+             * Runs Month
+             * @description the runs that took it since the month began, UTC
+             */
+            runs_month: number;
+            /** Cost 24H Usd */
+            cost_24h_usd: number;
+            /** Cost 7D Usd */
+            cost_7d_usd: number;
+            /**
+             * Cost Month Usd
+             * @description what those runs cost since the month began, in USD, an estimate
+             */
+            cost_month_usd: number;
         };
         /** Problem */
         Problem: {
@@ -20730,10 +20990,10 @@ export interface components {
             account: string | null;
             /**
              * How
-             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member
              * @enum {string}
              */
-            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            how: "manual" | "worker" | "charter" | "pool" | "cooling" | "shared";
             /**
              * Failovers
              * @description the times the run moved to another account
@@ -22187,6 +22447,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** SecretWrite */
         SecretWrite: {
@@ -22282,6 +22547,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
             /**
              * Created
              * @description false when a secret of this name was replaced
@@ -22529,6 +22799,61 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShareWrite */
+        ShareWrite: {
+            /**
+             * Grantee Kind
+             * @description user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Login
+             * @description grantee_kind user only: the member's login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description grantee_kind unit only: the unit's slug
+             */
+            unit?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it, each one the secret is bound to
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD
+             */
+            budget_usd?: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description no run takes the account while its usage is at this percent or above
+             */
+            usage_ceiling_pct?: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once
+             */
+            max_running?: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Terms Ack
+             * @description the owner acknowledges the terms warning, which sharing a personal subscription token needs
+             * @default false
+             */
+            terms_ack: boolean;
         };
         /** Sign */
         Sign: {
@@ -26596,6 +26921,49 @@ export interface components {
              * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
              */
             projects?: string[];
+        };
+        /**
+         * WorkerShares
+         * @description Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any.
+         */
+        WorkerShares: {
+            /** Id */
+            id: number;
+            /**
+             * Worker
+             * @description the worker's name, unique among its owner's live workers
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description the login of the member who registered it
+             */
+            owner: string;
+            /**
+             * Shared
+             * @description whether other members' runs may go to it
+             */
+            shared: boolean;
+            /**
+             * Units
+             * @description the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves
+             */
+            units: string[];
+            /**
+             * Doctor At
+             * @description when its daemon sent the newest doctor report; null: none
+             */
+            doctor_at?: string | null;
+            /**
+             * Doctor High
+             * @description findings of severity high in that report; null: no report
+             */
+            doctor_high?: number | null;
+            /**
+             * Doctor Medium
+             * @description findings of severity medium in that report; null: no report
+             */
+            doctor_medium?: number | null;
         };
         /**
          * WorkerUpdate
@@ -41927,6 +42295,222 @@ export interface operations {
             };
         };
     };
+    list_worker_shares_v1_org_workers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    share_worker_v1_org_workers__worker_id__units__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unshare_worker_v1_org_workers__worker_id__units__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_doctor_v1_worker_doctor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_proposals_v1_x_builder__project__proposals_get: {
         parameters: {
             query?: {
@@ -47430,6 +48014,205 @@ export interface operations {
             };
         };
     };
+    list_shares_v1_secrets__name__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_v1_secrets__name__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_share_v1_shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the id of the share */
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_credentials_v1_projects__project__runs__run_id__credentials_get: {
         parameters: {
             query?: never;
@@ -47638,7 +48421,10 @@ export interface operations {
     };
     get_account_v1_accounts__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the member who shared the account with the caller; omit for one's own */
+                owner?: string | null;
+            };
             header?: never;
             path: {
                 /** @description one of the caller's env secrets */

@@ -7,6 +7,7 @@ import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
+import { otherMember, shareByApi } from "./support/sharing";
 import { toast } from "./support/toast";
 import { PROTOCOL_HEADER, registerWorker } from "./support/workers";
 
@@ -397,6 +398,26 @@ test("a hub with model accounts only says there is no service credential, and th
     await expect(row(page, "claude-a").getByTestId("account-target")).toContainText("weight 1, priority 0");
     expect(await overflow(page)).toBe(0);
   }
+});
+
+test("a share whose account is past its usage ceiling says shared runs wait, and only that one", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  await twoAccounts(me);
+  const { project, live, run, leaseId } = await heldRun(me);
+  const windows = { five_hour: { utilization: 0.9, resets_at: RESET } };
+  expect((await rateLimit(live, run.id, { lease_id: leaseId, status: "allowed_warning", rate_limit_type: "five_hour", windows })).action).toBe("none");
+  const lan = await otherMember("lan-tran");
+  for (const name of ["claude-a", "claude-b"]) {
+    await shareByApi(me, name, { grantee_kind: "user", login: lan.login, projects: [project], usage_ceiling_pct: 80, terms_ack: true });
+  }
+
+  await page.goto("/accounts");
+  const shares = main(page).getByTestId("account-shares").getByTestId("share-row");
+  await expect(shares).toHaveCount(2);
+  const over = shares.filter({ has: page.getByTestId("share-over-ceiling") });
+  await expect(over).toHaveCount(1);
+  await expect(over.getByTestId("share-secret-name")).toHaveText("claude-a");
+  await expect(over.getByTestId("share-over-ceiling")).toHaveText("Over its ceiling: shared runs wait");
 });
 
 test("the accounts of the agents of the visitor's projects are a third group, each row with its agent, project and page", async ({ page, member }) => {

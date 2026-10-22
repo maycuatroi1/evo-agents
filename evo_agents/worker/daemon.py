@@ -54,6 +54,9 @@
   (``kg_sync``), one project at a time in a thread, under the lock of each checkout it fetches; each heartbeat says what
   the last look at each project found (``kg_sync``). EVO_WORKER_KG_SYNC=off turns it off: the daemon then neither says
   the feature nor sends the report.
+- When it starts and every 24 hours it runs the checks of ``worker doctor`` in a thread and sends the findings, each
+  detail redacted, to the hub (``doctor_report``, feature doctor_report): a worker narrowed to units of the org chart
+  needs a fresh report with no high finding.
 - After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
   ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
   passed, stops it.
@@ -81,7 +84,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans, verify_jobs
+from evo_agents.worker import checkouts, doctor_report, gitops, interactive, kg_sync, orphans, verify_jobs
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
@@ -288,7 +291,10 @@ class Daemon:
             claims = asyncio.create_task(self._claim_loop())
             cleanup = asyncio.create_task(self._cleanup_loop())
             updates = asyncio.create_task(self._self_update_loop())
-            background = [leftovers, heartbeat, cleanup, updates]
+            doctoring = doctor_report.report_loop(
+                self.hub, self.stopping, lambda: doctor_report.examine_here(self.env), secrets=(self.token,)
+            )
+            background = [leftovers, heartbeat, cleanup, updates, asyncio.create_task(doctoring)]
             if self.kg_on:
                 background.append(asyncio.create_task(self._kg_sync_loop()))
             await self.stopping.wait()
