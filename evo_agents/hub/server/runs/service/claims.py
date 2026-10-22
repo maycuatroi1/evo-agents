@@ -32,6 +32,7 @@ from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
+from evo_agents.hub.server.loop.runs_of import item_of_run
 from evo_agents.hub.server.plugin_configs import record_run_plugins
 from evo_agents.hub.server.run_state import RUNS_CHANNEL, move_run
 from evo_agents.hub.server.runs.models import (
@@ -173,8 +174,10 @@ def _claimable(
     author_runs: bool = False,
     chat_runs: bool = False,
     task_runs: bool = False,
+    question_runs: bool = False,
     release_runs: bool = False,
     step_sessions: bool = False,
+    clones: bool = False,
     steady: bool = True,
     shared: bool = False,
     profile_gate=None,
@@ -192,9 +195,10 @@ def _claimable(
     leaves out the other repos it has no checkout of. A chat run is pinned to the worker the hub picked for it and
     needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
     has any, a daemon that says it runs task runs (``task_runs``) and, when its agent type names workers, to be one of
-    them. A release run needs a checkout of its one repo and a daemon that says it runs release runs
-    (``release_runs``). A plan run with a session per
-    step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched from the web
+    them; a question run likewise, with a daemon that says it runs question runs (``question_runs``). A release run needs a checkout of its one repo and a daemon that says it runs release runs
+    (``release_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
+    A worker whose daemon clones the repos it lacks (``clones``, runs.CLONES_CHECKOUTS) needs no checkout of any of
+    them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
     whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
     takes). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
@@ -224,14 +228,23 @@ def _claimable(
         _dispatcher_clause(worker_id, owner_id, shared),
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(*asked),
-        case(
-            (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "release")), every_repo),
-            (r.c.kind == "author", harness),
-            (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
-            (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
-            else_=own_repo,
-        ),
     )
+    if not clones:  # an older daemon fails a run of a repo it has no checkout of
+        query = query.where(
+            case(
+                (r.c.kind.in_(("plan", "review", "judge", "replay", "history", "release")), every_repo),
+                (r.c.kind == "author", harness),
+                (
+                    r.c.kind == "chat",
+                    true(),
+                ),  # pinned to the worker the hub picked, which works without a repo it lacks
+                (
+                    r.c.kind.in_(("task", "question")),
+                    or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed)),
+                ),
+                else_=own_repo,
+            )
+        )
     if web_only:
         query = query.where(r.c.dispatched_via == "web")
     if not plan_runs:
@@ -243,7 +256,8 @@ def _claimable(
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
         query = query.where(r.c.kind.not_in(left_out))
-    query = query.where(or_(r.c.kind != "task", _task_worker(worker_id)) if task_runs else r.c.kind != "task")
+    typed = [kind for kind, runs_it in (("task", task_runs), ("question", question_runs)) if runs_it]
+    query = query.where(or_(r.c.kind.not_in(("task", "question")), and_(r.c.kind.in_(typed), _task_worker(worker_id))))
     if not steady:
         query = query.where(~lost_here(worker_id))
     if profile_gate is not None:
@@ -272,7 +286,7 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
 
 
 def _task_worker(worker_id: int):
-    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it among the
+    """Whether worker ``worker_id`` may take the task or question run: its agent type names no worker, or names it among the
     workers of the run's dispatcher (the type's run_as), never a shared worker of another member by the same name."""
     w, t, r = tables.workers, tables.project_agent_types, tables.runs
     own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
@@ -374,7 +388,8 @@ async def _try_claim(
             return None
         served = {row.project_id: row.name for row in await conn.execute(_served(worker_id, owner_id))}
         pairs = _checkout_pairs(served, checkouts)
-        if not pairs:
+        clones = runs.CLONES_CHECKOUTS in (features or ())
+        if not pairs and not clones:
             return None
         w = tables.workers
         steadiness = select(func.coalesce(steady(w), False)).where(w.c.id == worker_id)
@@ -397,8 +412,10 @@ async def _try_claim(
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
             task_runs="task" in (kinds or ()),
+            question_runs="question" in (kinds or ()),
             release_runs="release" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
+            clones=clones,
             steady=is_steady,
             shared=shared,
             profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
@@ -547,7 +564,16 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
     return None
 
 
-OWN_PROMPTS = ("review", "chat", "task", "judge", "replay", "history", "release")  # whose prompt their module builds
+OWN_PROMPTS = (
+    "review",
+    "chat",
+    "task",
+    "judge",
+    "replay",
+    "history",
+    "release",
+    "question",
+)  # whose prompt their module builds
 
 
 async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = ()) -> str:
@@ -566,6 +592,10 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.task_dispatch import task_prompt
 
         return await task_prompt(conn, view)
+    if view.kind == "question":
+        from evo_agents.hub.server.question_dispatch import question_prompt
+
+        return await question_prompt(conn, view)
     if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
         from evo_agents.hub.server.changes import judge_prompt
         from evo_agents.hub.server.merge_judge import merge_prompt
@@ -615,6 +645,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
             version,
             plan=target,
             decisions=runs.AUTHOR_DECISIONS in features,
+            loop=await item_of_run(conn, view.id) is not None,
         )
         title = view.title
     elif view.kind == "plan":

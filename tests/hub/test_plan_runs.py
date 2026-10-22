@@ -291,8 +291,9 @@ def test_a_plan_run_needing_a_repo_without_origin_gets_409_naming_it(client, hub
     refused = plan_run(client, hub["owner"])
     assert refused.status_code == 409, refused.text
     assert refused.json()["message"] == (
-        f"plan {PLAN} needs agent-skills, for which project {PROJECT} lists no origin: add the repo with its origin to "
-        "the harness and run `evo-agents hub project register` again; nothing was dispatched"
+        f"plan {PLAN} needs agent-skills, for which neither project {PROJECT} nor another project you hold a grant on "
+        "lists an origin: add the repo with its origin to the harness of either and run `evo-agents hub project "
+        "register` again; nothing was dispatched"
     )
     assert count_runs(hub_db) == [(0,)]
     # the repos of the steps done count for nothing: evo-cli, of step 5 alone, may lack its origin
@@ -428,7 +429,8 @@ def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_q
     refused = plan_run(client, hub["owner"], worker_id=half["id"])
     assert refused.status_code == 409, refused.text
     assert refused.json()["message"].startswith(
-        f"worker half-box cannot take this run: it has no checkout of {PROJECT}/agent-skills: clone each one"
+        f"worker half-box cannot take this run: it has no checkout of {PROJECT}/agent-skills, and its daemon "
+        "(evo-agents 0.4.0) does not clone what it lacks: upgrade it"
     )
     assert refused.json()["message"].endswith("or dispatch it to another worker; nothing was dispatched")
     old = on_version(client, fleet_worker(client, hub["owner"], "old-box"), "0.3.0")
@@ -459,6 +461,50 @@ def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_q
     assert claim(client, old)["id"] == taken.json()[0]["id"]
     run = dispatched_plan(client, hub["owner"], worker_id=full["id"])
     assert claim(client, full)["id"] == run["id"]
+
+
+def test_a_worker_that_clones_what_it_lacks_takes_a_run_whatever_its_checkouts(client, hub, hub_db):
+    # an older daemon without a checkout of a repo of the run neither claims it nor is pinned it
+    bare = fleet_worker(client, hub["owner"], "bare-box", checkouts={})
+    run = dispatched_plan(client, hub["owner"])
+    assert claim(client, bare) is None and state_of(hub_db, run["id"]) == "queued"
+    # one that clones what it lacks claims it with no checkout at all
+    with_features(client, bare, [runs.CLONES_CHECKOUTS])
+    assert claim(client, bare)["id"] == run["id"]
+    # and a run pinned to it is queued, a step of a repo it lacks among them
+    loose = plan_body("loose")
+    del loose["steps"][2]["depends_on"]
+    push(client, hub["owner"], loose)
+    other = with_features(client, fleet_worker(client, hub["owner"], "other-box", checkouts={}), ["clones_checkouts"])
+    body = {"plan_id": "loose", "steps": [3], "worker_id": other["id"]}
+    pinned = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"])
+    assert pinned.status_code == 201, pinned.text
+    assert claim(client, other)["id"] == pinned.json()[0]["id"]
+
+
+def test_a_repo_another_project_of_the_owner_lists_is_dispatched_with_its_origin(client, hub, hub_db):
+    body = registration()
+    body["repos"] = [repo for repo in body["repos"] if repo["name"] != "agent-skills"]
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    refused = plan_run(client, hub["owner"])
+    assert refused.status_code == 409 and "needs agent-skills" in refused.json()["message"], refused.text
+    # a second project lists it, on which the owner holds a grant: its origin and path answer for the run
+    lab = {**registration(), "repos": [{"name": "agent-skills", "path": "skills", "origin": origin_of("lab-skills")}]}
+    lab["harness"] = {"name": "lab", "workspace": "~/ws", "path": "lab-harness"}
+    assert client.put("/v1/projects/lab", json=lab, headers=hub["admin"]).status_code == 200
+    stranger = plan_run(client, hub["owner"])
+    assert stranger.status_code == 409, "no grant on lab yet: its repos answer for nothing"
+    grant = {"role": "reader", "max_level": "internal"}
+    assert client.put(f"/v1/admin/projects/lab/grants/{OWNER}", json=grant, headers=hub["admin"]).status_code == 200
+    run = dispatched_plan(client, hub["owner"])
+    worker = with_features(client, fleet_worker(client, hub["owner"], "lab-box", checkouts={}), ["clones_checkouts"])
+    assert claim(client, worker)["id"] == run["id"]
+    leased = client.post(f"/v1/worker/runs/{run['id']}/credentials", headers=worker["headers"])
+    assert leased.status_code == 200, leased.text
+    assert leased.json()["repos"] == [
+        {"repo": "evo-agents", "origin": origin_of("evo-agents"), "path": "evo-agents", "project": PROJECT},
+        {"repo": "agent-skills", "origin": origin_of("lab-skills"), "path": "skills", "project": "lab"},
+    ]
 
 
 def with_features(client, worker: dict, features: list[str]) -> dict:

@@ -32,36 +32,57 @@ class LiveHub:
         return self.log_path.read_text(encoding="utf-8")
 
 
+# uvicorn's words when another process took the port between pg.free_port() and the bind
+PORT_TAKEN = "address already in use"
+
+
 @contextmanager
 def running_hub(db: pg.Database, tmp_path: Path, **variables: str):
     """``hub serve`` on a free port with ``variables`` added to a clean environment; its stdout and stderr go
-    to a file, readable while it runs and after it stopped."""
-    port = pg.free_port()
+    to a file, readable while it runs and after it stopped. A port taken before the hub binds it is tried
+    again with another one, up to three times."""
     log_path = tmp_path / "hub-serve.log"
     env = pg.clean_env(EVO_HUB_DSN=db.dsn, EVO_HUB_DATA_DIR=str(tmp_path / "cache"), **variables)
-    command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(port)]
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        proc = subprocess.Popen(command, env=env, stdout=log_file, stderr=subprocess.STDOUT)
-    hub = LiveHub(f"http://127.0.0.1:{port}", proc, log_path)
+    for attempt in range(3):
+        port = pg.free_port()
+        command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(port)]
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            proc = subprocess.Popen(command, env=env, stdout=log_file, stderr=subprocess.STDOUT)
+        hub = LiveHub(f"http://127.0.0.1:{port}", proc, log_path)
+        try:
+            if _answers(hub):
+                break
+        except BaseException:
+            _stop(proc)
+            raise
+        assert attempt < 2 and PORT_TAKEN in hub.log(), hub.log()
     try:
-        deadline = time.monotonic() + 60
-        while True:
-            assert proc.poll() is None, hub.log()
-            try:
-                with urllib.request.urlopen(f"{hub.url}/v1/health/live", timeout=2) as response:
-                    if response.status == 200:
-                        break
-            except OSError:
-                assert time.monotonic() < deadline, "hub serve did not answer within 60s"
-                time.sleep(0.2)
         yield hub
     finally:
-        proc.terminate()
+        _stop(proc)
+
+
+def _answers(hub: LiveHub) -> bool:
+    """Wait for ``hub`` to answer its health probe: True once it does, False when its process ended first."""
+    deadline = time.monotonic() + 60
+    while hub.proc.poll() is None:
         try:
-            proc.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            with urllib.request.urlopen(f"{hub.url}/v1/health/live", timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except OSError:
+            assert time.monotonic() < deadline, "hub serve did not answer within 60s"
+            time.sleep(0.2)
+    return False
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
 
 def session_secret() -> str:

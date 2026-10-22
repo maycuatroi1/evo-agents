@@ -31,7 +31,7 @@ if not pg.DSN:
 
 from sqlalchemy import func, select
 
-from evo_agents.hub import kg_plans, plugin_calls, tables
+from evo_agents.hub import kg_plans, plugin_calls, plugin_events, tables
 from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.server import kg
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -134,7 +134,8 @@ def queued(hub) -> int:
 
 
 def approve_sample(hub) -> None:
-    """Import the sample SRS as alice, submit it, and have dave, who wrote none of it, approve it."""
+    """Import the sample SRS as alice, submit it, and have dave, who wrote none of it, approve it; then deliver its
+    event srs.version.approved, from which the plugin srs makes the frame tasks."""
     base = f"/v1/x/srs/{PROJECT}"
     body = {"markdown": SAMPLE_SRS.read_text(encoding="utf-8"), "slug": "demo-shop"}
     assert hub.client.post(f"{base}/import", json=body, headers=hub.alice).status_code == 200
@@ -142,6 +143,8 @@ def approve_sample(hub) -> None:
     assert hub.client.post(f"{doc}/submit", headers=hub.alice).status_code == 200
     approved = hub.client.post(f"{doc}/reviews", json={"decision": "approve"}, headers=hub.dave)
     assert approved.status_code == 200 and approved.json()["state"] == "approved", approved.text
+    report = hub.client.portal.call(lambda: plugin_events.deliver(hub.client.app.state.engine))
+    assert (report["retried"], report["failed"]) == (0, 0), report
 
 
 def node(hub, node_id: str, member: str = "alice") -> dict:

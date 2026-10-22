@@ -15,15 +15,17 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { newTaskHref, TASKS_BOARD, TASKS_PLUGIN } from "@/lib/core-plugin-links";
 
-import { type SrsDocument, type SrsItem, srsCommentsQuery, srsDiffQuery, srsDocumentQuery } from "./api";
+import { type SrsDocument, type SrsItem, type SrsUseCase, srsCommentsQuery, srsDiffQuery, srsDocumentQuery } from "./api";
 import { CodeChip, KindTag, VersionBadge } from "./badges";
 import { CommentForm, ThreadView } from "./comments";
 import { rulesOf } from "./content-model";
 import { useSrsViewer } from "./hooks";
 import { ItemBody, type ItemLinks } from "./item-body";
+import { ItemReviewCard } from "./item-review-card";
 import { compareHref, documentHref, itemHref } from "./links";
 import { canWrite, CODED_KINDS, findItem, pathOf, shownNumber, threadsOf, versionOf } from "./model";
 import { TraceCard } from "./trace-card";
+import { caseOf } from "./use-case-model";
 import { VersionMenu } from "./version-menu";
 
 const LATER = { added: "laterAdded", changed: "laterChanged", moved: "laterMoved", removed: "laterRemoved" } as const;
@@ -58,7 +60,7 @@ function ItemComments({ project, slug, items, item, version, writer }: { project
   );
 }
 
-function ItemView({ project, latest, item, items, shown, asked }: { project: string; latest: SrsDocument; item: SrsItem; items: SrsItem[]; shown: number; asked: number | null }) {
+function ItemView({ project, latest, item, items, cases, shown, asked }: { project: string; latest: SrsDocument; item: SrsItem; items: SrsItem[]; cases: SrsUseCase[]; shown: number; asked: number | null }) {
   const t = useTranslations("srs.itemPage");
   const tState = useTranslations("srs.versionState");
   const viewer = useSrsViewer(project);
@@ -70,6 +72,7 @@ function ItemView({ project, latest, item, items, shown, asked }: { project: str
   const later = diff.data?.items.find((change) => change.key === item.key) ?? null;
   const version = versionOf(latest, shown);
   const newestVersion = versionOf(latest, newest);
+  const useCase = caseOf(cases, item);
   const path = pathOf(items, item.key).map((above) => above.code ?? above.title);
   const links: ItemLinks = {
     item: (ref) => itemHref(project, slug, ref, asked),
@@ -148,6 +151,7 @@ function ItemView({ project, latest, item, items, shown, asked }: { project: str
           <ItemComments project={project} slug={slug} items={items} item={item} version={shown} writer={writer} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
+          {useCase ? <ItemReviewCard project={project} slug={slug} version={shown} state={version?.state ?? null} useCase={useCase} /> : null}
           <TraceCard project={project} item={item} tasksOn={tasksOn} />
         </div>
       </div>
@@ -171,7 +175,8 @@ function ItemAt({ project, latest, itemRef, asked }: { project: string; latest: 
           return <NotFoundState title={t("missingTitle", { ref: itemRef })} description={t("missingText", { version: at ?? 0 })} />;
         }
         const items = (fromLatest ? latest.shown?.items : doc.shown?.items) ?? [];
-        return <ItemView project={project} latest={latest} item={item} items={items} shown={at} asked={asked} />;
+        const cases = (fromLatest ? latest.shown?.use_cases : doc.shown?.use_cases) ?? [];
+        return <ItemView project={project} latest={latest} item={item} items={items} cases={cases} shown={at} asked={asked} />;
       }}
     </QueryView>
   );

@@ -4,12 +4,15 @@ The checks step 2 of the curator-agent plan names for criterion a3: the Stop hoo
 digest of every Claude Code session of 6 messages or more to the project of the session's directory, with every string
 that looks like a secret replaced before it leaves the machine; the digest carries the project's label and only a
 member whose grant and sink clear it reads it; a job deletes the digests not pushed for 90 days; a session inside a
-worker run pushes none; and a digest the hub did not take waits for a later Stop. Around them: the write rule, the
-owner of a session, the limits of a digest, and schema 0013."""
+worker run pushes none; and a digest the hub did not take waits for a later Stop. A session whose every turn the person
+interrupted runs no Stop: SessionEnd pushes its digest, and when SessionEnd did not run either, the next SessionStart
+finds it and the next Stop pushes it. Around them: the write rule, the owner of a session, the limits of a digest, and
+schema 0013."""
 
 import json
 import subprocess
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,7 +39,9 @@ from tests.hub.live import bearer, sql
 from tests.hub.test_digest import (
     SESSION,
     SPOOL,
+    aged,
     answered,
+    interrupted_lines,
     output_note,
     result,
     said,
@@ -44,7 +49,7 @@ from tests.hub.test_digest import (
     tool_use,
     write_transcript,
 )
-from tests.hub.test_hooks import closed_port_url, live_project, machine
+from tests.hub.test_hooks import closed_port_url, context_of, live_project, machine
 from tests.hub.test_mcp import MCP_HEADERS, call
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plans import registration
@@ -285,6 +290,33 @@ def test_the_hub_keeps_the_spool_figures_of_a_digest_and_digest_show_returns_the
     assert [shown_digest[key] for key in SPOOL_FIGURES] == [1, 42_442, 1]
 
 
+def test_a_digest_keeps_its_skills_and_kinds_and_one_of_an_older_client_reads_them_null(hub):
+    from tests.hub.test_digest import skill_session
+
+    body = a_digest(hub.tmp_path, skill_session())
+    assert put(hub, "owner", body).status_code == 200
+    digest = shown(hub, "reader").json()["digest"]
+    for key in ("skills", "bash_kinds", "bash_compound", "turns", "interrupts"):
+        assert digest[key] == body[key], key
+    assert digest["skills"][0]["skill"] == "execute-plan" and digest["skills"][0]["typed"] == 1
+
+    added = ("skills", "bash_kinds", "bash_compound", "turns", "interrupts")
+    older = {key: value for key, value in body.items() if key not in added}  # the evo-hub plugin before them
+    assert put(hub, "owner", older).status_code == 200
+    digest = shown(hub, "reader").json()["digest"]
+    assert [digest[key] for key in added] == [None] * len(added)
+
+    skill = body["skills"][0]
+    for broken in (
+        {**body, "skills": [{**skill, "skill": ""}]},
+        {**body, "skills": [{**skill, "calls": -1}]},
+        {**body, "skills": [{**skill, "skill": f"s{n}"} for n in range(101)]},
+        {**body, "bash_kinds": [{"program": "git", "usage_errors": 1}]},
+        {**body, "bash_compound": {"calls": 1, "errors": -1}},
+    ):
+        assert put(hub, "owner", broken).status_code == 422
+
+
 def test_a_worker_token_cannot_push_a_digest(hub):
     from tests.hub.test_runs import add_worker
 
@@ -514,3 +546,72 @@ def test_the_gen_ai_tool_name_key_is_the_one_the_hub_takes(hub):
     body["tools"] = [{"name": "Bash", "calls": 1, "errors": 0}]  # the field's own name works too
     assert put(hub, "owner", body).status_code == 200
     assert shown(hub, "owner").json()["digest"]["tools"] == [{"gen_ai.tool.name": "Bash", "calls": 1, "errors": 0}]
+
+
+# Sessions Stop never ran for
+
+
+def hook(name: str, home: Path, session_dir: Path, payload: dict) -> subprocess.CompletedProcess:
+    """``evo-agents hub hook NAME`` as Claude Code runs it for a session in ``session_dir``, the transcripts' upload
+    off so no sync is left running."""
+    env = pg.clean_env(HOME=str(home), CLAUDE_PROJECT_DIR=str(session_dir), EVO_HUB_TRANSCRIPTS="0")
+    for variable in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_SESSION_ID", "EVO_RUN_ID", "EVO_WORKER_HOME"):
+        env.pop(variable, None)
+    command = [sys.executable, "-m", "evo_agents", "hub", "hook", name]
+    return subprocess.run(command, env=env, input=json.dumps(payload), capture_output=True, text=True, timeout=60)
+
+
+def test_session_end_pushes_the_redacted_digest_of_a_session_whose_every_turn_was_interrupted(hub_db, tmp_path):
+    with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
+        admin = hub_client.Hub(served.url, live.insert_token(hub_db, live.ADMIN))
+        admin.call("PUT", "/v1/projects/demo", live_project())
+        admin.call("PUT", "/v1/admin/projects/demo/grants/alice", {"role": "writer", "max_level": "internal"})
+        token = live.insert_token(hub_db, "alice")
+        home, root = machine(tmp_path, "laptop", served.url, "alice", token)
+        lines = [*interrupted_lines(str(root)), said(f"Use {ANTHROPIC_KEY}, my hub token is {token}.", 8)]
+        transcript = transcript_of(home, root, SESSION, lines)
+        payload = {
+            "session_id": SESSION,
+            "transcript_path": str(transcript),
+            "cwd": str(root),
+            "hook_event_name": "SessionEnd",
+            "reason": "prompt_input_exit",
+        }
+        ended = hook("session-end", home, root, payload)
+        assert (ended.returncode, ended.stdout, ended.stderr) == (0, "", "")
+        held = stored(hub_db)
+        assert list(held) == [SESSION] and held[SESSION][3] == 8 and held[SESSION][1]["interrupts"] == 2
+        text = json.dumps(held[SESSION][1])
+        assert token not in text and ANTHROPIC_KEY not in text and "***" in text
+        assert DigestState(home / ".evo" / "hub", served.url).get(SESSION)["pending"] is False
+    assert ANTHROPIC_KEY not in served.log()
+
+
+def test_session_start_finds_a_session_no_hook_pushed_and_the_next_stop_pushes_it(hub_db, tmp_path):
+    with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
+        admin = hub_client.Hub(served.url, live.insert_token(hub_db, live.ADMIN))
+        admin.call("PUT", "/v1/projects/demo", live_project())
+        admin.call("PUT", "/v1/admin/projects/demo/grants/alice", {"role": "writer", "max_level": "internal"})
+        home, root = machine(tmp_path, "laptop", served.url, "alice", live.insert_token(hub_db, "alice"))
+        # Interrupted, then closed by a kill: neither Stop nor SessionEnd ran, an hour ago.
+        lost = transcript_of(home, root, SESSION, interrupted_lines(str(root)))
+        aged(lost, 3600, time.time())
+
+        start = {"session_id": OTHER_SESSION, "cwd": str(root), "hook_event_name": "SessionStart", "source": "startup"}
+        started = hook("session-start", home, root, start)
+        told = context_of(started.stdout)
+        assert (started.returncode, started.stderr, told["message"]) == (0, "", None)
+        assert "1 session whose digest no hook sent, queued for the next Stop" in told["context"]
+        assert stored(hub_db) == {}, "SessionStart sends no digest"
+        waiting = DigestState(home / ".evo" / "hub", served.url).get(SESSION)
+        assert (waiting["pending"], waiting["project"], waiting["cwd"]) == (True, "demo", str(root))
+
+        current = transcript_of(home, root, OTHER_SESSION, session_lines())
+        pushed = stop_hook(home, root, OTHER_SESSION, current, EVO_HUB_TRANSCRIPTS="0")
+        assert (pushed.returncode, pushed.stdout, pushed.stderr) == (0, "", "")
+        held = stored(hub_db)
+        assert sorted(held) == sorted([SESSION, OTHER_SESSION]) and held[SESSION][3] == 7
+
+        # The next session finds nothing more to queue.
+        again = hook("session-start", home, root, {**start, "session_id": "0199b1c2-7d3e-7a10-9c41-5e2f3a4b5c7f"})
+        assert "no hook sent" not in context_of(again.stdout)["context"]

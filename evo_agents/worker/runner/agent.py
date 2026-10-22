@@ -463,7 +463,7 @@ class Agent:
         looks = 0
         async for item in adapter.events():
             if isinstance(item, AgentEvent):
-                run.event(item.kind, item.body, item.at)
+                run.agent_event(item)
                 self.limits.see(self, item)
             if not self.group_noted and looks < NOTE_GROUP_LOOKS:  # a runtime that started after start returned
                 looks += 1

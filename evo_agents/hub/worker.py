@@ -11,6 +11,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 
 - ``hub.ping``: waits a few seconds and returns; deferring it shows that a worker takes jobs.
 - ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER.
+- ``hub.expire_seats``, hourly: the org seats past their end date or that of a cohort holding them are ended, audited
+  with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
+  and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
 - ``hub.prune_jobs``, daily: finished jobs older than JOB_RETENTION, failed ones included.
 - ``hub.kg_build``: one build of a project's knowledge graph (``evo_agents.hub.kg_build``), deferred by the api
   under the project's kg lock.
@@ -25,7 +28,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
   channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
-- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed
+- ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, the outputs of
+  source tool of those runs that no question or chat message carries (``evo_agents.hub.output_prune``), and the sealed
   values of the GitHub tokens leased to runs that are past their end.
 - ``hub.prune_audit``, daily: the audit rows older than EVO_HUB_AUDIT_DAYS (365 by default).
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
@@ -54,6 +58,14 @@ Jobs (names in ``evo_agents.hub.jobs``):
   same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
   down (``HubContext.release_pass``), since this module imports no server module beyond its job list
   (docs/structure.md, section Package boundaries).
+- ``hub.loop_ticks``, every 5 minutes: a ``hub.loop_tick`` of each project whose Loop is on, queued under the
+  project's Loop lock (``evo_agents.hub.loop_jobs``); ``hub.loop_tick`` runs one tick of a project's Loop, one at a
+  time per project and at most one waiting, also queued by each event of the project. The tick is the server's
+  (``evo_agents.hub.server.loop.tick``): the ``hub worker`` command hands it down (``HubContext.loop_tick``), as it
+  does the release pass.
+- ``hub.loop_notices``, every 5 minutes: for each project whose Loop is on, the notice goal_review on the first day of
+  a month, and the Loop's part of the morning brief (loop_brief) at 07:00 for a project whose Curator sends none, in
+  the Loop's zone, each once (``evo_agents.hub.server.loop.notices``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -148,6 +160,9 @@ class HubContext:
     # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
     # None checks and lands no release
     release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
+    # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way; None ticks
+    # no Loop
+    loop_tick: Callable[[AsyncEngine, int], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -196,6 +211,15 @@ async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> 
     return await remove_stale_uploads(found.blobs, found.engine)
 
 
+@queue.periodic(cron="5 * * * *")
+@queue.task(name=jobs.EXPIRE_SEATS, pass_context=True, queueing_lock=jobs.EXPIRE_SEATS)
+async def expire_seats(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.run_state import expire_seats as expire
+
+    found = hub(context)
+    return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
+
+
 @queue.task(name=jobs.KG_BUILD, pass_context=True)
 async def kg_build(context: JobContext, project: str, build_id: int | None = None) -> dict:
     from evo_agents.hub.kg_build import run_build
@@ -242,7 +266,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.server.notifications import deliver_notifications as deliver
 
     found = hub(context)
-    return await deliver(found.engine, config=found.config)
+    return await deliver(found.engine, config=found.config, blobs=found.blobs)
 
 
 @queue.periodic(cron="* * * * *")
@@ -353,13 +377,39 @@ async def release_schedules(context: JobContext, timestamp: int | None = None) -
     return await release_pass(found.engine, found.github_app)
 
 
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.LOOP_TICKS, pass_context=True, queueing_lock=jobs.LOOP_TICKS)
+async def loop_ticks(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.loop_jobs import queue_ticks
+
+    return await queue_ticks(hub(context).engine, context.app.job_manager)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.LOOP_NOTICES, pass_context=True, queueing_lock=jobs.LOOP_NOTICES)
+async def loop_notices(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.brief import send_loop_notices
+
+    return await send_loop_notices(hub(context).engine)
+
+
+@queue.task(name=jobs.LOOP_TICK, pass_context=True)
+async def loop_tick(context: JobContext, project_id: int) -> dict:
+    found = hub(context)
+    tick = getattr(found, "loop_tick", None)
+    if tick is None:
+        log.warning("no loop tick was handed to this worker: no Loop ticks", extra={"project_id": project_id})
+        return {"no_loop_tick": 1}
+    return await tick(found.engine, project_id)
+
+
 @queue.periodic(cron="13 4 * * *")
 @queue.task(name=jobs.PRUNE_RUN_EVENTS, pass_context=True, queueing_lock=jobs.PRUNE_RUN_EVENTS)
 async def prune_run_events(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.run_state import prune_run_events as prune
 
     found = hub(context)
-    return await prune(found.engine, found.config.run_log_days)
+    return await prune(found.engine, found.config.run_log_days, found.blobs)
 
 
 @queue.periodic(cron="33 4 * * *")
@@ -472,9 +522,10 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
+async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself. ``release_pass`` is the server's (``HubContext.release_pass``)."""
+    it could not start or stopped by itself. ``release_pass`` and ``loop_tick`` are the server's
+    (``HubContext.release_pass``, ``HubContext.loop_tick``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -529,6 +580,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> 
                     engine,
                     curator_app,
                     release_pass,
+                    loop_tick,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -553,7 +605,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> 
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1, *, release_pass=None) -> int:
+def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
-    return asyncio.run(run(config, concurrency, release_pass=release_pass))
+    return asyncio.run(run(config, concurrency, release_pass=release_pass, loop_tick=loop_tick))

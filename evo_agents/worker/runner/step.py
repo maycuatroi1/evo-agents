@@ -69,15 +69,15 @@ class StepRun:
         )
         cls = run.agent.runtime_class()
         run.agent.check_interactive(cls)
-        checkout = run.daemon.checkout_for(run.project, run.repo)
-        if checkout is None:
-            raise RunFailed(f"this worker has no checkout of {run.project}/{run.repo}")
         if not run.branch:
             raise RunFailed(
                 f"the plan names no branch for {run.repo}, and the worker never works on the default branch"
             )
-        await access.take_credentials(run, [run.repo])
+        await access.take_credentials(run, [run.repo])  # cloning the repo first when this worker has no checkout of it
         run.check()
+        checkout = run.daemon.checkout_for(run.project, run.repo)
+        if checkout is None:
+            raise RunFailed(f"this worker has no checkout of {run.project}/{run.repo}")
         await access.check(run, [run.repo], path=access.run_path(run), pushes=[run.repo], verify=self.claimed_verify())
         run.check()
         await self.prepare(checkout)

@@ -20,6 +20,9 @@
     "hub": "Hub",
     "project": "Project",
     "overview": "Overview",
+    "decide": "Decisions",
+    "goals": "Goals",
+    "loop": "Loop",
     "plans": "Plans",
     "runs": "Runs",
     "insights": "Insights",
@@ -63,7 +66,8 @@
     "plugins": "Plugins",
     "mergeQueue": "Merge queue",
     "mergeQueueFigures": "Figures",
-    "mergeQueuePolicy": "Policy"
+    "mergeQueuePolicy": "Policy",
+    "org": "Org chart"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -449,6 +453,18 @@
       "path": "Harness folder",
       "created": "Registered",
       "updated": "Updated"
+    },
+    "outputs": {
+      "title": "Run outputs",
+      "description": "The files the agents of this project's runs make: those they send, those they leave in .evo-run/outputs/, and the images of tools' results.",
+      "toolImages": "Keep images of tools' results",
+      "toolImagesHint": "Screenshots and images a tool returns become files of the run, and go with the run's log. Off, the machines send none and the hub refuses them.",
+      "adminOnly": "An admin of the project switches this.",
+      "limits": "At most {file} a file, {count, number} files and {run} a run.",
+      "loadFailed": "Couldn't read the project's outputs settings.",
+      "turnedOn": "Images of tools' results are kept",
+      "turnedOff": "Images of tools' results are no longer kept",
+      "failed": "Couldn't switch the images of tools' results"
     }
   },
   "admin": {
@@ -1910,6 +1926,10 @@
       "pluginsHint": "Optional. The plugins whose runtimes this worker runs, by id, separated by commas or spaces. It reports a plugin's runtime once the program is on this machine's PATH, and takes no run of a plugin left out here.",
       "pluginsInvalid": "Not a plugin id: {plugins}. An id starts with a lowercase letter and holds lowercase letters, digits and dashes, at most 63 in all.",
       "pluginsTooMany": "At most {max} plugins.",
+      "projects": "Projects",
+      "projectsHint": "The projects it takes runs of. You add one you write to; one it serves already stays even where you only read now. A project cannot be dropped while a run of it is active on this worker or its night shift is on duty here.",
+      "projectsRequired": "Choose one project at least.",
+      "projectsStillNeeded": "The hub keeps the projects as they were: {message}",
       "save": "Save",
       "saving": "Saving",
       "discard": "Discard changes",
@@ -2140,6 +2160,183 @@
     },
     "forgeTarget": "<code>{prefix}</code>, the hub alone",
     "hubOnly": "The hub alone"
+  },
+  "org": {
+    "title": "Org chart",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "newUnit": "New unit",
+    "showAll": "Show ended seats and archived units",
+    "yourLevel": "Your level: {level}",
+    "summary": "{units, plural, one {# unit} other {# units}}, {seats, plural, one {# seat} other {# seats}}",
+    "treeTitle": "Units and seats",
+    "archived": "Archived",
+    "endsOn": "Ends {day}",
+    "hidden": "{count, plural, one {# entry hidden} other {# entries hidden}}",
+    "seatsOf": "Seats of {name}",
+    "unitsBelow": "Units below {name}",
+    "noSeats": "No seats yet.",
+    "primary": "Primary",
+    "ended": "Ended",
+    "endsToday": "Ends today",
+    "endsIn": "{count, plural, one {Ends in # day} other {Ends in # days}}",
+    "reportsTo": "Reports to {login}",
+    "sponsor": "Sponsor {login}",
+    "running": "{count, plural, one {# run at work} other {# runs at work}} in {project}",
+    "runningMany": "{count, plural, one {# run at work} other {# runs at work}} in {projects} projects",
+    "runsOf": "Runs of {login}",
+    "runningIn": "{project}: {count, plural, one {# run} other {# runs}}",
+    "effective": "Level {level}",
+    "ceiling": "ceiling {level}",
+    "noCeiling": "no ceiling of its own",
+    "fromThisSeat": "from this seat",
+    "fromSeat": "from seat #{id}",
+    "fromUnit": "from {name}",
+    "empty": {
+      "title": "No units yet",
+      "description": "The org chart holds the hub's teams and cohorts, who sits in each and the level each one works at. Create the first unit below the root to start."
+    },
+    "errors": {
+      "forbidden": "The hub refused this change.",
+      "notFound": "This unit or seat is no longer there.",
+      "conflict": "The chart changed or this already exists.",
+      "invalid": "The hub could not accept these values.",
+      "hubReason": "Hub: {message}"
+    },
+    "problems": {
+      "slug": "Use lowercase letters, digits and hyphens, starting with a letter or digit, at most 63 characters.",
+      "slugTaken": "A unit already has this slug.",
+      "name": "Give a name of at most 200 characters.",
+      "login": "Give the person's login: letters, digits, hyphens or underscores.",
+      "handle": "Give the agent's handle: lowercase letters, digits and hyphens.",
+      "project": "Give the project's name: lowercase letters, digits and hyphens.",
+      "reportsTo": "Give a login: letters, digits, hyphens or underscores.",
+      "internReportsTo": "An intern reports to someone: give their login.",
+      "sponsor": "Give a login: letters, digits, hyphens or underscores.",
+      "agentSponsor": "An agent's seat needs a sponsor: give their login.",
+      "dates": "The end comes on or after the start.",
+      "note": "Keep the note within 1000 characters.",
+      "level": "Choose a level."
+    },
+    "levels": {
+      "A0": "A0",
+      "A1": "A1",
+      "A2": "A2",
+      "A3": "A3",
+      "A4": "A4",
+      "A5": "A5"
+    },
+    "roles": {
+      "lead": "Lead",
+      "member": "Member",
+      "intern": "Intern",
+      "agent": "Agent"
+    },
+    "kinds": {
+      "org": "Organization",
+      "team": "Team",
+      "cohort": "Cohort"
+    },
+    "actions": {
+      "createUnit": "New unit below",
+      "addSeat": "Add seat",
+      "editUnit": "Edit unit",
+      "setCeiling": "Set ceiling",
+      "archiveUnit": "Archive unit",
+      "editSeat": "Edit seat",
+      "endSeat": "End seat",
+      "seatMenu": "Actions for the seat of {who}",
+      "unitMenu": "Actions for {name}"
+    },
+    "unitDialog": {
+      "createTitle": "New unit",
+      "editTitle": "Edit {name}",
+      "createDescription": "The unit goes below {parent}.",
+      "editDescription": "Change the unit's name, where it sits or when the cohort ends.",
+      "save": "Save",
+      "create": "Create unit",
+      "saved": "{name} saved",
+      "created": "{slug} created",
+      "slug": "Slug",
+      "slugHint": "The unit's id in the hub and in its links; it cannot change later.",
+      "name": "Name",
+      "nameHint": "Left empty, the name is the slug.",
+      "kind": "Kind",
+      "team": "Team",
+      "cohort": "Cohort",
+      "teamHint": "A team lasts until it is archived.",
+      "cohortHint": "A cohort has an end date; its seats end with it.",
+      "parent": "Below",
+      "endsOn": "Ends on",
+      "endsOnHint": "The last day of the cohort, in UTC.",
+      "level": "Ceiling",
+      "levelHint": "The highest level its seats may work at. Left empty, it takes the level of the unit above.",
+      "levelCohortHint": "The highest level its seats may work at. Left empty, a cohort gets A1.",
+      "levelNone": "None of its own",
+      "levelCohortNone": "A1, the cohorts' default",
+      "note": "Why this ceiling"
+    },
+    "seatDialog": {
+      "saved": "Seat of {who} saved",
+      "added": "{who} placed in {unit}",
+      "editTitle": "Edit the seat of {who}",
+      "addTitle": "Add seat",
+      "editDescription": "A seat in {unit}.",
+      "addDescription": "Place a person or an agent in a unit.",
+      "save": "Save",
+      "add": "Add seat",
+      "unit": "Unit",
+      "who": "Seat for",
+      "person": "A person",
+      "agent": "An agent",
+      "login": "Login",
+      "agentHandle": "Agent",
+      "project": "Project",
+      "role": "Role",
+      "reportsTo": "Reports to",
+      "reportsToIntern": "An intern's mentor: the login they report to.",
+      "reportsToHint": "Optional: the login this person reports to.",
+      "sponsor": "Sponsor",
+      "sponsorHint": "The person who answers for this seat.",
+      "startsOn": "Starts on",
+      "startsOnHint": "Left empty, the seat starts today.",
+      "endsOn": "Ends on",
+      "primary": "Primary seat",
+      "primaryHint": "The seat whose level the person works at when no other seat applies."
+    },
+    "ceilingDialog": {
+      "saved": "Ceiling of {name} set to {level}",
+      "title": "Ceiling of {name}",
+      "current": "Its ceiling now: {level}.",
+      "noCurrent": "It sets no ceiling of its own now.",
+      "save": "Set ceiling",
+      "level": "Level",
+      "levelHint": "Up to your own level.",
+      "choose": "Choose a level",
+      "note": "Why",
+      "noteHint": "Kept with the ceiling's history."
+    },
+    "confirm": {
+      "seatEnded": "Seat of {name} ended",
+      "unitArchived": "{name} archived",
+      "endSeatTitle": "End the seat of {name}?",
+      "archiveTitle": "Archive {name}?",
+      "endSeatText": "The seat ends today and its level no longer applies. The chart keeps it in its history.",
+      "archiveText": "The unit leaves the chart. Its seats must end first; the hub says so if any is left.",
+      "endSeat": "End seat",
+      "archive": "Archive",
+      "ending": "Ending…",
+      "archiving": "Archiving…",
+      "cancel": "Cancel"
+    },
+    "unplaced": {
+      "title": "Unplaced",
+      "summary": "{count, plural, one {# person with a grant and no seat below the root} other {# people with a grant and no seat below the root}}",
+      "none": "Everyone with a grant holds a seat below the root.",
+      "grants": "{count, plural, one {# grant} other {# grants}}",
+      "placeLabel": "Add a seat for {login}",
+      "place": "Add seat"
+    }
   },
   "agents": {
     "title": "Agents",
@@ -2749,7 +2946,7 @@
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
     "caption": "Your accounts",
-    "listSummary": "Your env secrets that runs take in turn for the same variable. Yours alone, and no value is ever shown.",
+    "listSummary": "Your env secrets, by what they sign in to. Yours alone, and no value is ever shown.",
     "secrets": "Secrets",
     "add": "Add Claude account",
     "columns": {
@@ -2760,7 +2957,8 @@
       "runs": "Runs 24 h / 7 d",
       "cost": "Cost 24 h / 7 d",
       "heldBy": "Held by",
-      "actions": "Actions"
+      "actions": "Actions",
+      "lastUsed": "Last used"
     },
     "anyWorker": "Any of yours",
     "state": {
@@ -2809,7 +3007,6 @@
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
     "costTitle": "Estimated from the usage of its runs: {day} in 24 hours, {week} in 7 days",
-    "notHeld": "No run",
     "heldLabel": "Open run #{id} of {project}",
     "edit": "Edit",
     "editLabel": "Edit the weight and priority of {name}",
@@ -2992,7 +3189,35 @@
       "saved": "Policy for {project} saved",
       "savedText": "Runs dispatched from now on follow it.",
       "failed": "Couldn't save the policy for {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Other"
+    },
+    "groups": {
+      "model": {
+        "title": "Model accounts",
+        "description": "The sign-in of the model a run talks to. Runs take them in turn, and their cost is counted here.",
+        "none": "No model account. Add a Claude account to give runs a model."
+      },
+      "service": {
+        "title": "Service credentials",
+        "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
+        "none": "No service credential. Add one as a secret bound to a project."
+      }
+    },
+    "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
+    "variablesLabel": "Variables of {provider}",
+    "apiValue": "API value",
+    "costLabel": "Cost",
+    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run."
   },
   "runs": {
     "title": "Runs",
@@ -3166,7 +3391,8 @@
         "pinnedNow": "{name} can take {subject, select, plan {it now} author {it now} other {them now}}.",
         "pinnedBusy": "{subject, select, plan {The plan run waits} author {The author run waits} other {The runs wait}} in the queue until {name} has a free slot.",
         "pinnedOffline": "{name} is offline; {subject, select, plan {the plan run waits} author {the author run waits} other {the runs wait}} in the queue until it comes back.",
-        "pinnedNo": "{name} cannot take {subject, select, plan {it as it is} author {it as it is} other {them as it is}} ({problem}). {subject, select, plan {The plan run waits} author {The author run waits} other {The runs wait}} in the queue.",
+        "pinnedDraining": "{name} is draining; {subject, select, plan {the plan run waits} author {the author run waits} other {the runs wait}} in the queue until it takes runs again.",
+        "pinnedNo": "{name} cannot take {subject, select, plan {it as it is} author {it as it is} other {them as it is}} ({problem}), and the hub queues no run pinned to a worker that cannot take it: pick another worker{subject, select, author {} other { or any worker that fits}}.",
         "free": "{name} ({count, plural, one {# free slot} other {# free slots}})",
         "busy": "{name} (every slot in use)",
         "offline": "{name} (offline)",
@@ -3440,6 +3666,25 @@
           "failed": "{count} failed"
         }
       },
+      "tasks": {
+        "title": "Running now",
+        "agents": "{count, plural, one {# sub-agent} other {# sub-agents}}",
+        "commands": "{count, plural, one {# command} other {# commands}}",
+        "runningLabel": "Sub-agents and background commands running",
+        "background": "in the background",
+        "calls": "{count, plural, one {# tool call} other {# tool calls}}",
+        "tokens": "{tokens} tokens",
+        "commandsOf": "Commands of {name}",
+        "show": ", show in trace",
+        "finished": "{count, plural, one {# finished} other {# finished}}",
+        "finishedLabel": "Sub-agents and background commands that ended",
+        "showAll": "Show all {count}",
+        "status": {
+          "completed": "Completed:",
+          "failed": "Failed:",
+          "stopped": "Stopped:"
+        }
+      },
       "usage": {
         "title": "Usage",
         "soFar": "so far",
@@ -3569,7 +3814,8 @@
           "trace": "Trace",
           "log": "Raw log",
           "terminal": "Terminal",
-          "chat": "Chat"
+          "chat": "Chat",
+          "outputs": "Outputs"
         },
         "where": "The agent's TUI on {worker}, relayed through the hub.",
         "connect": "Connect terminal",
@@ -3977,6 +4223,37 @@
         "unknown": "unknown",
         "plan": "Plan",
         "step": "Step"
+      },
+      "outputs": {
+        "count": "{count, plural, one {# file} other {# files}}",
+        "label": "Outputs of run #{id}",
+        "filter": "Source",
+        "all": "All",
+        "sources": {
+          "sent": "Sent",
+          "tool": "Tools",
+          "outputs": "Output folder"
+        },
+        "summary": "{count, plural, one {# file} other {# files}}, {size}",
+        "toolImagesOff": "Images of tools' results are off in this project.",
+        "noMatch": "No file of this source.",
+        "none": "This run has no files.",
+        "loading": "Loading the files",
+        "failed": "The files could not be read.",
+        "retry": "Try again",
+        "arrived": "{count, plural, one {# new file} other {# new files}}",
+        "showInTrace": "Show in trace",
+        "delete": "Delete",
+        "deleteTitle": "Delete {name}?",
+        "deleteDescription": "It goes from the run, and from the questions and chat messages that carry it; its bytes go once nothing else refers to them. This cannot be undone.",
+        "deleteConfirm": "Delete file",
+        "deleting": "Deleting",
+        "keep": "Keep it",
+        "deleted": "Deleted {name}",
+        "deleteFailed": "Couldn't delete {name}",
+        "deleteForbidden": "Only who dispatched the run, or an admin of the project, deletes its files.",
+        "preview": "Outputs",
+        "previewOpen": "Open all outputs"
       }
     },
     "diff": {
@@ -4833,7 +5110,8 @@
       "scope": "Scope",
       "question": "Question",
       "triage": "Failed run",
-      "release": "Release"
+      "release": "Release",
+      "loop": "Loop"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -4849,7 +5127,14 @@
       "builder_proposal": "@builder proposed a change for you to approve",
       "canvas_baseline": "A Lean Canvas baseline waits for your review",
       "merge_paused": "The merge queue of a repo stopped",
-      "release": "Daily release"
+      "release": "Daily release",
+      "pm_daily": "Daily digest of a project",
+      "pm_escalation": "A blocked task waits to be escalated",
+      "run_outputs": "Files from a run",
+      "loop_paused": "The Loop stopped itself",
+      "goal_review": "The month's review of the goals",
+      "loop_brief": "The Loop's morning brief",
+      "plugin_notice": "A notice from a plugin"
     },
     "item": {
       "unread": "Unread",
@@ -4859,6 +5144,7 @@
       "viewLabel": "View decision #{id}",
       "openRun": "Open run #{id}",
       "openBaseline": "Review the baseline",
+      "openPluginNotice": "Open",
       "markRead": "Mark as read",
       "markReadLabel": "Mark as read: {title}",
       "showMore": "Show all",
@@ -4867,6 +5153,8 @@
       "branch": "Branch",
       "commits": "{count, plural, one {# commit} other {# commits}}",
       "commitFull": "commit {sha}",
+      "plugin": "Plugin",
+      "topic": "Topic",
       "moreCommits": "and {count} more",
       "fewerCommits": "Show fewer",
       "answerProposalLabel": "Answer proposal #{id}",
@@ -4901,6 +5189,7 @@
       "answerText": "In their words:",
       "delivered": "The agent got the answer",
       "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
+      "hubTook": "The hub did what the answer chose.",
       "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
       "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
@@ -4916,7 +5205,9 @@
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Triage run #{id}",
-      "triageRun": "triage run #{id}"
+      "releaseRunLink": "Release run #{id}",
+      "triageRun": "triage run #{id}",
+      "releaseRun": "release run #{id}"
     },
     "answer": {
       "title": "Answer decision #{id}",
@@ -4924,21 +5215,27 @@
       "text": "Your answer",
       "bytes": "{count} of {max} bytes",
       "empty": "Pick an option or write an answer first.",
+      "option": "Pick one of the options: the hub does what it says.",
       "long": "The words of an answer are at most {max} bytes of UTF-8. Shorten them.",
       "send": "Send answer",
       "sending": "Sending…",
       "sentResumed": "Run #{run} was parked; it resumes as run #{next} on the same worker.",
       "sentTitle": "Answer sent to run #{run}",
       "sentText": "The worker hands it to the agent at its next turn.",
+      "sentHubTitle": "Answer taken",
+      "sentHubText": "The hub did what the option chose.",
       "sentResumedTitle": "Answer sent",
       "openRun": "Open run #{id}",
       "failed": "Couldn't send the answer",
       "legend": "Your answer",
       "note": "Note for the agent (optional)",
+      "hubNote": "Note (optional)",
       "notePlaceholder": "Add a note for the agent",
       "textPlaceholder": "Write your answer for the agent",
+      "hubPlaceholder": "Kept with the answer",
       "foot": "The agent continues as soon as you answer.",
       "footParked": "The run resumes on the same worker as soon as you answer.",
+      "footHub": "The hub does what the option says as soon as you answer.",
       "takeOver": "Take over",
       "takeOverLabel": "Take over run #{run} in the terminal"
     },
@@ -5035,6 +5332,22 @@
       "resumeConflict": "This breaker is not tripped any more.",
       "resumeGone": "The breaker was reset by {login}.",
       "resumed": "Breaker of {repo} reset"
+    },
+    "settings": {
+      "button": "Notices",
+      "title": "Notices",
+      "description": "Which notices reach you, in the Inbox and on Telegram. The questions of your runs always reach you.",
+      "loadFailed": "Couldn't read your notices from the hub.",
+      "retry": "Try again",
+      "close": "Close",
+      "kind": {
+        "run_outputs": {
+          "label": "Files from your runs",
+          "hint": "The files an agent sends while it works on a run you dispatched, a minute at a time."
+        }
+      },
+      "saved": "{on, select, true {You get the notice again} other {You no longer get the notice}}: {kind}",
+      "failed": "Couldn't change the notice"
     }
   },
   "toast": {
@@ -5280,6 +5593,7 @@
       "cost": "Cost",
       "security": "Security",
       "product_goals": "Product goals",
+      "product": "Product",
       "kg_health": "Graph health"
     },
     "kinds": {
@@ -6975,7 +7289,18 @@
       "compare": "Compare",
       "missingTitle": "No item {ref}",
       "missingText": "Version {version} of this document has no item by that code, alias or key.",
-      "createTask": "Create task"
+      "createTask": "Create task",
+      "review": {
+        "title": "Review of this use case in v{version}",
+        "draft": "v{version} is a draft: its use cases are reviewed once it is submitted.",
+        "reviewers": "Reviews that count",
+        "open": "Open the review of v{version}",
+        "state": {
+          "pending": "Waiting for the approvals the policy asks for.",
+          "approved": "Approved. v{version} is approved once every use case it needs reviewed is.",
+          "changes_requested": "A reviewer asked for changes: v{version} cannot be approved until it is settled."
+        }
+      }
     },
     "versions": {
       "oneVersion": "Only one version so far: nothing to compare.",
@@ -7112,6 +7437,36 @@
         "openChat": "Open the settle chat",
         "reviewTitle": "Approve waits for @ba's review of round {round}",
         "reviewText": "Approve unlocks when the run ends. You can still request changes."
+      },
+      "cases": {
+        "title": "Use cases to review",
+        "summary": "{approved} of {total} approved",
+        "summaryAsked": "{approved} of {total} approved, {asked} with changes requested",
+        "auto": "Once every use case below has the approvals the policy asks for, v{version} is approved with them, and so are its changes outside use cases: sections, screens, requirements and the rest. Approve or ask for changes on each one here.",
+        "empty": "No use case changed in v{version}, so no use case needs a review of its own: a review of the whole version approves it.",
+        "holdsTitle": "v{version} cannot be approved yet",
+        "holdsText": "A use case has a request for changes. Until its reviewer approves it again, no approval of the version goes through, a review of the whole version included.",
+        "listLabel": "Use cases of v{version} to review",
+        "state": {
+          "pending": "Pending",
+          "approved": "Approved",
+          "changes_requested": "Changes requested"
+        },
+        "reviewsLabel": "Reviews that count on {name}",
+        "noReviews": "No review counts yet.",
+        "fromVersion": "kept from v{version}, the use case reads the same",
+        "you": "you",
+        "approveFor": "Approve {name}",
+        "requestFor": "Request changes on {name}",
+        "approving": "Approving",
+        "noteLabel": "What to change in {name} (required)",
+        "send": "Send request",
+        "cancel": "Cancel",
+        "roleLabel": "Your reviews of use cases count for",
+        "roleAuto": "The hub's pick",
+        "approvedToast": "Approved {name}",
+        "versionApprovedToast": "Approved {name}; v{version} is now approved",
+        "requestedToast": "Asked for changes on {name}"
       }
     },
     "findings": {
@@ -7453,6 +7808,10 @@
       "bodyHint": "Markdown. A code such as UC ORD-3 in it is linked in the knowledge graph.",
       "cancel": "Cancel",
       "save": "Save",
+      "outcomeHeading": "Outcome",
+      "outcomeNone": "No outcome stated: the daily report uses a section headed Outcome or Kết quả in the description.",
+      "outcome": "Outcome",
+      "outcomeHint": "Markdown. What the task came to; the daily report reads it before the description.",
       "saved": "Saved {ref}"
     },
     "links": {
@@ -7482,6 +7841,33 @@
       "hint": "SRS codes, plan#step, a run as #431, or a pull request URL; part several with commas.",
       "bad": "Not a link: {refs}",
       "added": "{count, plural, one {Linked # item} other {Linked # items}} to {ref}"
+    },
+    "blockers": {
+      "blocked": "Blocked",
+      "heading": "Blockers",
+      "none": "Nothing blocks this task.",
+      "waitingMember": "Waiting on",
+      "waitingTask": "Waiting on task",
+      "waitingText": "Waiting on",
+      "since": "since",
+      "setBy": "set by {login}",
+      "openDecision": "Open decision #{id}",
+      "decisionHint": "It ends when the decision is answered.",
+      "clearButton": "Clear",
+      "clear": "Clear the blocker: {reason}",
+      "cleared": "Cleared a blocker of {ref}",
+      "clearFailed": "Couldn't clear the blocker of {ref}",
+      "added": "Blocked {ref}",
+      "reason": "Why it is blocked",
+      "reasonPlaceholder": "Waiting for the payment sandbox",
+      "waitsOn": "Waits on",
+      "kindText": "Someone or something else",
+      "kindMember": "A member",
+      "kindTask": "Another task",
+      "memberPlaceholder": "Choose a member",
+      "taskPlaceholder": "T-12",
+      "textPlaceholder": "The payment vendor",
+      "addButton": "Block this task"
     },
     "details": {
       "heading": "Details",
@@ -7516,6 +7902,7 @@
       "hub": "Evo Agent Hub",
       "created": "created the task",
       "description": "changed the description",
+      "outcome": "changed the outcome",
       "status": "moved it from {from} to {to}",
       "statusSet": "set its status to {to}",
       "changed": "changed {field} from {from} to {to}",
@@ -7594,6 +7981,78 @@
       "noPreviewText": "Paste or read a file, then Preview: the hub reads it against the project and writes nothing.",
       "readerTitle": "Importing tasks into {project} takes the writer role",
       "backToBoard": "Back to the board"
+    }
+  },
+  "pm": {
+    "meta": {
+      "daily": "PM daily of {project}"
+    },
+    "sub": "Report for {date}. What was done is the working day before: {previous}.",
+    "day": "Day",
+    "today": "Today",
+    "count": "{count, plural, one {# item} other {# items}}",
+    "hidden": "{count, plural, one {# more item you may not see is counted here.} other {# more items you may not see are counted here.}}",
+    "bareTitle": "This project has no task to report yet",
+    "bareText": "The report fills in once tasks exist, and once a sprint is active. Add a task or start a sprint on the board.",
+    "openBoard": "Open the board",
+    "notReady": {
+      "title": "The daily report is not ready",
+      "text": "It reads the project's tasks and its pm config. Enable the Tasks plugin, or fix the pm config named below.",
+      "tasks": "Tasks plugin",
+      "config": "pm config"
+    },
+    "done": {
+      "title": "Done on {day}",
+      "empty": "Nothing moved to done that day."
+    },
+    "sprint": {
+      "title": "Active sprint",
+      "empty": "No sprint is active.",
+      "done": "Done",
+      "time": "Time gone",
+      "scope": "Tasks at opening",
+      "changed": "Since opening",
+      "changedValue": "+{added} added, -{removed} removed",
+      "useCases": "Use cases of the sprint",
+      "ratio": "{done} of {total} done"
+    },
+    "late": {
+      "title": "Late and at risk",
+      "empty": "Nothing is late.",
+      "overdue": "Due {due}, {days, plural, one {# working day} other {# working days}} late",
+      "atRisk": "Due {due}, {days, plural, one {# working day} other {# working days}} left"
+    },
+    "review": {
+      "title": "In review",
+      "empty": "Nothing waits for review.",
+      "age": "{days, plural, =0 {since today} one {# working day in review} other {# working days in review}}",
+      "qa": "QA {who}"
+    },
+    "stale": {
+      "title": "Stale",
+      "empty": "No task in progress has gone quiet.",
+      "idle": "No activity for {days, plural, one {# working day} other {# working days}}"
+    },
+    "blocked": {
+      "title": "Blocked",
+      "empty": "Nothing is blocked.",
+      "byDecision": "Open decision",
+      "byHand": "Set by hand",
+      "waitingMember": "Waiting on",
+      "waitingTask": "Waiting on task",
+      "waitingText": "Waiting on",
+      "age": "{days, plural, =0 {since today} one {# working day} other {# working days}}"
+    },
+    "escalate": {
+      "title": "To escalate",
+      "empty": "No blocker is old enough to escalate."
+    },
+    "load": {
+      "title": "Load per member",
+      "empty": "No member has write access.",
+      "overloaded": "Overloaded",
+      "free": "Free",
+      "counts": "{doing} in progress of {limit}, {review} to review as QA, {late} late"
     }
   },
   "canvas": {
@@ -8077,6 +8536,384 @@
       "emptyTitle": "No signals in this span",
       "empty": "Nothing was measured in the last {days} days.",
       "emptyTenant": "Nothing was measured for {tenant} in the last {days} days."
+    }
+  },
+  "outputs": {
+    "open": "Open {name}, {kind}, {size}",
+    "more": "{count, plural, one {# more file} other {# more files}}",
+    "source": {
+      "sent": "Sent by the agent",
+      "tool": "From a tool's result",
+      "outputs": "Output folder"
+    },
+    "strip": {
+      "question": "Files of this question",
+      "message": "Files of this message",
+      "notice": "Files of this notice",
+      "calls": "Files of these calls",
+      "recorded": "Files the hub recorded"
+    },
+    "viewer": {
+      "kind": {
+        "image": "Image",
+        "video": "Video",
+        "audio": "Audio",
+        "pdf": "PDF",
+        "text": "Text",
+        "html": "Web page",
+        "none": "File"
+      },
+      "kindSize": "{kind}, {size}",
+      "navigation": "Files",
+      "previous": "Previous file",
+      "next": "Next file",
+      "position": "{index} of {total}",
+      "zoom": "Zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fit": "Fit to the window",
+      "download": "Download",
+      "close": "Close the viewer",
+      "frameTitle": "Preview of {name}",
+      "pdfNote": "If your browser shows no PDF here, open it in a tab of its own.",
+      "openTab": "Open in a new tab",
+      "sandboxNote": "Shown in a sandbox: its scripts run, but it cannot reach the hub or your session.",
+      "noPreview": "There is no preview of this kind of file. Download it to open it.",
+      "imageFailed": "Your browser could not show this image.",
+      "loading": "Reading the file",
+      "readFailed": "The file could not be read.",
+      "retry": "Try again",
+      "emptyFile": "The file is empty.",
+      "tableLabel": "Rows of the file",
+      "textLabel": "Contents of the file",
+      "csvMore": "Showing the first {count, number} rows.",
+      "textCut": "Showing the first {size}. Download the file for the rest."
+    }
+  },
+  "loop": {
+    "state": {
+      "queued": "Queued",
+      "running": "Running",
+      "watching": "Watching",
+      "waiting_human": "Waiting for a person",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "openState": {
+      "running": "{count} running",
+      "waiting_human": "{count} waiting for a person",
+      "queued": "{count} queued",
+      "watching": "{count} watching"
+    },
+    "kind": {
+      "brainstorm": "Brainstorm",
+      "use_case": "Use case",
+      "build": "Build",
+      "deliver": "Deliver"
+    },
+    "title": {
+      "brainstorm": "Brainstorm for {subject}",
+      "use_case": "Use case for {subject}",
+      "build": "Build {subject}",
+      "deliver": "Deliver {subject}"
+    },
+    "cycle": {
+      "business": "Business cycle",
+      "development": "Development cycle"
+    },
+    "reason": {
+      "breaker": "The Loop's breaker tripped: nothing is handed out until an admin resets it",
+      "concurrency": "{running} of {max} runs of the {cycle} at work",
+      "concurrencyRepos": "Repos at their cap of {max} deliveries: {repos}",
+      "rate": "{dispatched} of {max} hand-outs this hour",
+      "worker": "Worker {worker}: {why}",
+      "workerNone": "No worker can take it: {why}",
+      "type_refused": "Its agent type refused the run: {why}",
+      "stable": "Waits until {at} for the baseline to settle",
+      "stableSoon": "Waits for the baseline to settle",
+      "auto_tasks": "Waits for the frame task of its use case",
+      "split": "Waits for task {task} to be split",
+      "merge_queue": "In the merge queue",
+      "triage": "In triage after {failures, plural, one {# failure} other {# failures}}",
+      "srs_review": "Its SRS version waits for review",
+      "srs_finding": "{findings, plural, one {# finding} other {# findings}} to settle in chat",
+      "srs_changes": "Changes were asked of its SRS version",
+      "author_question": "The author run asks its owner in chat",
+      "run_decision": "Its run waits for a decision",
+      "loop_decision": "Asks a person after {failures, plural, one {# failure} other {# failures}}",
+      "merge_blocked": "{merges, plural, one {# merge request} other {# merge requests}} held for a person",
+      "merge_manual": "Merge by hand, then mark merged in the plan: {repos}",
+      "merge_manualAny": "Merge its repos by hand, then mark them merged in the plan",
+      "claim_invalidated": "Its claim was invalidated",
+      "claim_retired": "Its claim was retired",
+      "goal_paused": "Its goal was paused",
+      "goal_closed": "Its goal was closed",
+      "loop_off": "The Loop was turned off",
+      "task_closed": "Its frame task was closed",
+      "no_frame_task": "The approval made no frame task for it",
+      "person": "A person cancelled its run",
+      "dropped": "A person dropped it",
+      "manual": "A person took it over"
+    },
+    "event": {
+      "created": "Made",
+      "ready": "Ready",
+      "admitted": "Admitted",
+      "dispatched": "Run handed out",
+      "waiting": "Waiting",
+      "failed": "Failed",
+      "triaged": "Triage opened",
+      "asked": "Person asked",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "noted": "Result noted"
+    },
+    "goalStatus": {
+      "active": "Active",
+      "paused": "Paused",
+      "achieved": "Achieved",
+      "dropped": "Dropped",
+      "expired": "Expired"
+    },
+    "switch": {
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "turningOn": "Turning on",
+      "turningOff": "Turning off",
+      "cancel": "Cancel",
+      "confirmOnTitle": "Turn the Loop on?",
+      "confirmOnText": "The Loop reads the project's events from now on, makes work items toward its active goals and hands out runs within the caps of the policy. The policy keeps this as a new revision.",
+      "confirmOffTitle": "Turn the Loop off?",
+      "confirmOffText": "{count, plural, =0 {The Loop has no unfinished work item.} one {Its # unfinished work item is cancelled.} other {Its # unfinished work items are cancelled.}} Runs already handed out go on.",
+      "confirmOffAgain": "Turned on again, it starts from the project's newest event. The policy keeps this as a new revision.",
+      "onDone": "The Loop is on",
+      "onDoneText": "Its next tick reads the project's events.",
+      "offDone": "The Loop is off",
+      "offDoneText": "It makes no work item and hands out no run.",
+      "noteOn": "Loop turned on from the Loop page",
+      "noteOff": "Loop turned off from the Loop page",
+      "forbidden": "Only an admin of the project turns the Loop on or off.",
+      "conflict": "Another admin changed the policy meanwhile. Reload the page and try again."
+    },
+    "breaker": {
+      "title": "The Loop stopped itself: it made too many work items in an hour",
+      "since": "Stopped {since}",
+      "adminResets": "An admin of the project resets it.",
+      "reset": "Reset breaker",
+      "resetting": "Resetting",
+      "cancel": "Cancel",
+      "confirmTitle": "Reset the Loop's breaker?",
+      "confirmText": "The Loop reads the project's events again and hands out runs from its next tick. The work items of the hour are counted from now.",
+      "resetDone": "The Loop's breaker is reset",
+      "resetDoneText": "Its next tick hands out runs again.",
+      "forbidden": "Only an admin of the project resets the breaker.",
+      "notTripped": "The breaker has not tripped, so there is nothing to reset."
+    },
+    "page": {
+      "title": "Loop",
+      "meta": "Loop of {project}",
+      "on": "On",
+      "off": "Off",
+      "stopped": "Stopped by its breaker",
+      "emptyTitle": "The Loop is off",
+      "emptyText": "Turned on, the Loop turns each change of the project into work items toward its goals and hands them to agents, within the caps of the policy. People decide on the Decisions page.",
+      "goals": "See the goals",
+      "offTitle": "The Loop is off",
+      "offText": "It makes no work item and hands out no run. Its work items stay as they ended.",
+      "readOnlyTitle": "You read this page",
+      "readOnlyText": "An admin of the project turns the Loop on or off and resets its breaker."
+    },
+    "metrics": {
+      "label": "Work items by state",
+      "running": "Running",
+      "runningMeta": "An agent works on it",
+      "waiting_human": "Waiting for a person",
+      "waitingMeta": "Decided on the Decisions page",
+      "queued": "Queued",
+      "queuedMeta": "Waits for a cap or a worker",
+      "watching": "Watching",
+      "watchingMeta": "Waits for the hub",
+      "done": "Done",
+      "cancelled": "and {count} cancelled"
+    },
+    "items": {
+      "heading": "Work items",
+      "search": "Work items of the Loop",
+      "caption": "Work items of the Loop of {project}",
+      "count": "{count, plural, one {# work item} other {# work items}}",
+      "more": "The newest {count} work items are listed.",
+      "none": "No work item matches.",
+      "all": "All",
+      "stateLabel": "State",
+      "kindLabel": "Kind",
+      "allKinds": "Every kind",
+      "goalLabel": "Goal",
+      "allGoals": "Every goal",
+      "viewLabel": "Show work items",
+      "byState": "By state",
+      "byChain": "By chain",
+      "tries": "{attempts, plural, one {# run} other {# runs}}{failures, plural, =0 {} other {, # failed}}",
+      "columns": {
+        "item": "Work item",
+        "goal": "Goal",
+        "state": "State",
+        "tries": "Runs",
+        "updated": "Changed"
+      }
+    },
+    "chains": {
+      "label": "Chain of {title}",
+      "title": "Chain of {title}",
+      "count": "{count, plural, one {# work item} other {# work items}}"
+    },
+    "metric": {
+      "text": "{key}, {aggregate} over {days} days, {comparator} {target}",
+      "tenant": "{text}, for tenant {tenant}",
+      "target": "target {target}",
+      "reached": "Reached",
+      "notReached": "Not reached",
+      "noValue": "No signal",
+      "noSignal": "No signal",
+      "none": "No metric",
+      "meter": "Progress toward the target",
+      "meterText": "{value} against a target of {target}"
+    },
+    "goals": {
+      "title": "Goals",
+      "meta": "Goals of {project}",
+      "caption": "Goals of {project}",
+      "decide": "Decisions",
+      "emptyTitle": "No goal yet",
+      "emptyText": "A goal says what the project is for and how to tell it is reached: a signal, a window and a target. The Loop works toward its active goals. An admin sets one from the command line.",
+      "noMetric": "No metric: the Curator reads it, the Loop does nothing for it",
+      "noSignal": "no signal yet",
+      "now": "now {value, number}",
+      "noneOpen": "None open",
+      "openLabel": "Open work items",
+      "columns": {
+        "goal": "Goal",
+        "now": "Now",
+        "status": "Status",
+        "items": "Open work items",
+        "deadline": "Deadline",
+        "owner": "Owner"
+      }
+    },
+    "goal": {
+      "meta": "{code} of {project}",
+      "back": "Goals",
+      "metricTitle": "Metric",
+      "series": "Its signals",
+      "noMetricText": "This goal has no metric: the Curator reads it, and the Loop makes no work item for it.",
+      "factsTitle": "Details",
+      "deadline": "Deadline",
+      "noDeadline": "None",
+      "owner": "Owner",
+      "canvas": "Canvas",
+      "noCanvas": "None",
+      "rank": "Rank",
+      "revision": "Revision",
+      "revisionText": "{revision}, by {by}",
+      "changed": "Changed",
+      "note": "Note",
+      "itemsTitle": "Work items",
+      "itemsSearch": "Work items of {goal}",
+      "itemsCaption": "Work items of {goal}",
+      "notFoundTitle": "No goal {code}",
+      "notFoundText": "The project has no goal of that code or alias."
+    },
+    "chain": {
+      "meta": "Work item {id} of {project}",
+      "back": "Loop",
+      "standsFor": "stands for {owner}",
+      "railTitle": "Chain",
+      "railLabel": "Stages of the chain, from the goal to the release",
+      "step": "Stage {index} of {total}:",
+      "stage": {
+        "goal": "Goal",
+        "claim": "Claim",
+        "use_case": "Use case",
+        "task": "Task",
+        "plan": "Plan",
+        "merges": "Merge requests",
+        "release": "Release"
+      },
+      "notYet": "Not yet",
+      "hidden": "Not visible to you",
+      "claimDetail": "{canvas}, {status}",
+      "proposals": "{count, plural, =0 {No claim proposed} one {# claim proposed} other {# claims proposed}}",
+      "useCaseDetail": "{document} v{version}, {state}",
+      "runs": "Runs",
+      "runLabel": "Open run #{id}",
+      "runWords": "{kind} run, {state}",
+      "runsHidden": "and runs of plans you do not read",
+      "waits": {
+        "queued": "Queued",
+        "watching": "Watching",
+        "waiting_human": "Waiting for a person"
+      },
+      "decide": "Decisions",
+      "itemsTitle": "Work items of the chain ({count})",
+      "historyTitle": "History",
+      "noHistory": "Nothing happened to it yet.",
+      "notFoundTitle": "No work item {id}",
+      "notFoundText": "The project's Loop has no work item of that number."
+    },
+    "decide": {
+      "title": "Decisions",
+      "meta": "Decisions of {project}",
+      "summary": "What waits for a person, by group",
+      "emptyTitle": "Nothing waits for a person",
+      "emptyText": "The month's review of the goals, the canvas baselines, the policy proposals and tripped breakers show here, then what the Loop's chain waits on: its exceptions and the SRS versions to review.",
+      "group": {
+        "goal": "Goals",
+        "canvas": "Canvas",
+        "policy": "Policy",
+        "exception": "Exceptions",
+        "srs": "SRS"
+      },
+      "groupNote": {
+        "goal": "Gate 1",
+        "canvas": "Gate 2",
+        "policy": "Gate 3",
+        "exception": "What the Loop could not settle",
+        "srs": "Reviews in the Loop's chain"
+      },
+      "waiting": "{count, plural, =0 {nothing waits} one {# waits} other {# wait}}",
+      "nothing": "Nothing waits here.",
+      "loopOff": "The Loop is off, so nothing of its chain waits.",
+      "since": "Since",
+      "deciders": "{rule}: {logins}",
+      "nobody": "{rule}: no member may decide it now",
+      "yours": "Yours to decide",
+      "chain": "Work item #{id}",
+      "open": "Open",
+      "openLabel": "Open: {title}"
+    },
+    "boardKind": {
+      "goal_review": "Monthly goal review",
+      "goal_overdue": "Goal past its deadline",
+      "baseline": "Baseline",
+      "claim_proposal": "Claim proposal",
+      "policy_proposal": "Policy proposal",
+      "goal_proposal": "Goal proposal",
+      "merge_breaker": "Merge breaker",
+      "loop_breaker": "Loop breaker",
+      "loop_decision": "Loop decision",
+      "run_decision": "Run decision",
+      "author_question": "Author's question",
+      "merge_held": "Merge held",
+      "merge_manual": "Merge by hand",
+      "merge_sample": "Audit sample",
+      "srs_review": "SRS review",
+      "srs_finding": "SRS finding"
+    },
+    "decidedBy": {
+      "admin": "An admin",
+      "writer": "A writer",
+      "run_owner": "The run's owner",
+      "srs_reviewer": "An SRS reviewer",
+      "chat_member": "A member of the chat"
     }
   }
 }

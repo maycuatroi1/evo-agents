@@ -304,7 +304,11 @@ def test_the_job_runs_every_minute_queued_at_most_once_and_takes_the_hubs_pool(c
     worker, run = started(client, hub)
     notice(client, worker, run["id"])
     context = SimpleNamespace(
-        additional_context={"hub": SimpleNamespace(engine=client.app.state.engine, config=client.app.state.config)}
+        additional_context={
+            "hub": SimpleNamespace(
+                engine=client.app.state.engine, config=client.app.state.config, blobs=client.app.state.blobs
+            )
+        }
     )
     report = client.portal.call(queue.tasks[jobs.DELIVER_NOTIFICATIONS].func, context)
     assert report == {"delivered": 1, "retried": 0, "failed": 0}

@@ -5,6 +5,10 @@ install from git), and the uv that can install it again.
 An install can be updated when uv installed it as a tool, from this repository by git or from an index (PyPI), with
 nothing else beside it (no ``--with``, constraints or overrides an update would drop), and its receipt names the
 ``evo-agents`` command. Anything else has a ``reason``, which the daemon reports as its state ``unsupported``.
+
+An update installs the extras of the receipt and always the worker extra the daemon runs on: a receipt can lack it
+(evo-ak installed again without it, by a person or a tool, under a daemon that still runs), and nightly installed with
+the receipt's extras alone has no aiohttp, so its ``worker run`` does not start.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ COMMIT = re.compile(r"^([0-9a-f]{40}|[0-9a-f]{64})$")  # OBJECT_NAME of the hub
 UV_PLACES = ("~/.local/bin", "~/.cargo/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
 UPDATABLE = ("git", "pypi")
 DROPPED_KEYS = ("constraints", "overrides", "build-constraint-dependencies")
+WORKER_EXTRA = "worker"  # aiohttp and the runtimes' SDKs, without which `evo-agents worker run` does not start
 
 
 @dataclass(frozen=True)
@@ -46,14 +51,16 @@ class Install:
     reason: str | None = None  # why it cannot be updated; None when it can
     version: str | None = None
     commit: str | None = None
-    extras: tuple[str, ...] = ()
+    extras: tuple[str, ...] = ()  # as the receipt lists them
     entrypoint: Path | None = None  # the evo-agents command uv put on the PATH
     python: str | None = None  # the interpreter the environment was made from, which an update keeps
     commands: tuple[Path, ...] = ()  # every command of the receipt, the entrypoint among them
 
     @property
     def requirement_extras(self) -> str:
-        return f"[{','.join(self.extras)}]" if self.extras else ""
+        """The extras of the requirement an update installs: the receipt's, and the worker extra whether it lists it
+        or not."""
+        return f"[{','.join(sorted({*self.extras, WORKER_EXTRA}))}]"
 
     def identity(self) -> Identity:
         return read_identity(self.prefix)

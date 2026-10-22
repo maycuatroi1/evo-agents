@@ -4,7 +4,8 @@ granted it ``plans:read`` (``evo_agents.hub.plugin_events``).
 When a step turns done, every task of the project linked to it gets a row in its history: the hub (no actor) saw plan
 X step N go from its old status to done. When the config sets ``on_steps_done`` and every plan step a task links is
 done now, the task moves to that status, unless it is finished already (a status of group done or cancelled); the
-row of that move names the step that was the last. The plan is never changed.
+row of that move names the step that was the last, and the move emits ``tasks.status`` (cause ``steps_done``, the hub
+its actor; ``evo_agents.hub.task_status``). The plan is never changed.
 
 The hub delivers an event at least once, with the same delivery id on every try: a row written for a delivery names
 it, and a task that has its row already is passed over, so a second try writes nothing.
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.tasks.links import DONE, step_states
 from evo_agents.core_plugins.tasks.settings import Settings, TasksError, settings
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_status
 from evo_agents.hub.plugin_calls import CoreContext
 
 STEP = "plan_step"  # the field of a step's row in a task's history
@@ -52,13 +53,20 @@ async def _all_done(conn: AsyncConnection, project_id: int, task_id: int) -> boo
     return bool(pairs) and all(state.status == DONE for state in states.values())
 
 
-async def _move(conn: AsyncConnection, row, config: Settings, cause: str, delivery: int | None) -> None:
+async def _move(
+    conn: AsyncConnection, project_id: int, row, config: Settings, step: dict, cause: str, delivery: int | None
+) -> None:
     target = config.on_steps_done
     if target is None or row.status == target or config.finished(row.status):
         return
     t = tables.tasks.items
     if await _written(conn, row.id, "status", row.status, target, cause, delivery):
         await conn.execute(update(t).where(t.c.id == row.id).values(status=target, updated_at=func.now()))
+        groups = config.group(row.status), config.group(target)
+        moved = task_status.StatusChange(
+            row.id, row.status, target, *groups, task_status.STEPS_DONE, config.prefix, source=step
+        )
+        await task_status.emit(conn, project_id, moved)
 
 
 async def steps_done(conn: AsyncConnection, project_id: int, project: str, payload: dict, delivery: int | None) -> int:
@@ -78,9 +86,8 @@ async def steps_done(conn: AsyncConnection, project_id: int, project: str, paylo
             continue
         written += 1
         if config is not None and config.on_steps_done and await _all_done(conn, project_id, row.id):
-            await _move(
-                conn, row, config, f"every plan step it links is done, plan {plan_id} step {step} last", delivery
-            )
+            last = f"every plan step it links is done, plan {plan_id} step {step} last"
+            await _move(conn, project_id, row, config, {"plan_id": plan_id, "step": str(step)}, last, delivery)
     return written
 
 

@@ -6,8 +6,8 @@ and its evidence, the diff of two revs, what judging runs of @strategist had for
 the proposals, and the export. Writers make a canvas, edit its claims (each
 named with the rev it was read at, else a 409 that holds what changed), undo a claim's current rev, add evidence and
 withdraw it, confirm evidence an agent added, accept or reject a proposal, hand @strategist a brainstorm, import
-``evo-canvas/1``, read the baselines and decide their items (never one they changed the status of), and open a
-baseline of one claim at once. The agent of a run gets none of these routes: it works through the plugin's tools
+``evo-canvas/1``, read the baselines and decide their items (never one they changed the status of, unless the
+config's ``self_approval`` is on), and open a baseline of one claim at once. The agent of a run gets none of these routes: it works through the plugin's tools
 (``agent``), and a run's token is refused on every decision. Admins give a new canvas a label of its own, and
 archive a canvas or unarchive it. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal
 is the hub's error body, with the claims of a conflict or the problems of an import in ``detail``; nothing is written.
@@ -544,8 +544,11 @@ def _no_run(user, what: str) -> None:
         raise CanvasError(403, f"the agent of a run never {what}: a member of the project does")
 
 
-def _may_decide(access: ProjectAccess, user_id: int, row: baselines.BaselineRow, item: baselines.ItemRow) -> list[str]:
-    if row.status != "proposed" or not item.waiting or user_id in item.proposers:
+def _may_decide(
+    access: ProjectAccess, user_id: int, row: baselines.BaselineRow, item: baselines.ItemRow, barred: list[int]
+) -> list[str]:
+    """What ``user_id`` may decide of ``item`` now: nothing once it is decided, nor while the member is ``barred``."""
+    if row.status != "proposed" or not item.waiting or user_id in barred:
         return []
     return list(baselines.DECIDES[item.kind]) if has_role(access.role, "writer") else []
 
@@ -553,14 +556,16 @@ def _may_decide(access: ProjectAccess, user_id: int, row: baselines.BaselineRow,
 async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, row, sink) -> CanvasBaseline:
     found = await baselines.items(conn, row.id)
     evidence = await store.evidence(conn, [item.claim_id for item in found])
-    names = await baselines.logins(conn, [user_id for item in found for user_id in item.proposers])
+    anyone = await baselines.self_approval(conn, access.project_id)
+    barred = {item.id: item.barred(anyone) for item in found}
+    names = await baselines.logins(conn, [user_id for item in found for user_id in barred[item.id]])
     models = []
     for item in found:
         wanted = set(item.evidence_ids) | {piece.id for piece in evidence[item.claim_id] if piece.withdrawn_at is None}
         pieces = [piece for piece in evidence[item.claim_id] if piece.id in wanted]
         shown = [piece for piece in pieces if store.visible(access, piece.label, sink)]
-        decides = _may_decide(access, user.user_id, row, item) if user.scope is None else []
-        models.append(item_model(item, shown, len(pieces) - len(shown), names, decides))
+        decides = _may_decide(access, user.user_id, row, item, barred[item.id]) if user.scope is None else []
+        models.append(item_model(item, shown, len(pieces) - len(shown), names, decides, barred[item.id]))
     snapshot = [CanvasSnapshotClaim(**entry) for entry in row.snapshot] if row.snapshot is not None else None
     approved_by = sorted({item.decided_by for item in found if item.decided_by}) if row.status == "approved" else []
     return CanvasBaseline(
@@ -604,8 +609,9 @@ async def open_baseline(
     request: Request, project: ProjectName, slug: Slug, body: CanvasBaselineOpenIn, user: CurrentUser, sink: Sink = None
 ):
     """Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's
-    proposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the
-    claim asks nothing of a baseline, or a baseline still proposed holds it."""
+    proposal or its overdue test card. Another writer decides it (the caller too, with the config's self_approval on);
+    the project's writers get the notice. 409 when the claim asks nothing of a baseline, or a baseline still proposed
+    holds it."""
 
     async def work(conn):
         _no_run(user, "opens a baseline")
@@ -633,8 +639,9 @@ async def decide_item(
 ):
     """Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend
     (with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller
-    changed or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind
-    baseline. Once no item waits, the baseline is approved and its snapshot taken."""
+    changed or whose proposal they accepted, nor in a baseline they opened, unless the config's self_approval is on;
+    a rev it writes is the caller's, of kind baseline. Once no item waits, the baseline is approved and its snapshot
+    taken."""
 
     async def work(conn):
         _no_run(user, "decides an item of a baseline")

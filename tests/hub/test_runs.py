@@ -1165,10 +1165,11 @@ def test_dispatch_and_rerun_of_a_step_whose_repo_has_no_origin_are_409_naming_th
     refused = dispatch(client, hub["owner"], [2])
     assert refused.status_code == 409, refused.text
     message = refused.json()["message"]
-    assert "step 2 of plan rollout needs evo-agents" in message and f"project {PROJECT} lists no origin" in message
+    assert "step 2 of plan rollout needs evo-agents" in message
+    assert f"neither project {PROJECT} nor another project you hold a grant on lists an origin" in message
     assert message.endswith("nothing was dispatched")
     again = control(client, hub["owner"], old["id"], "rerun")
-    assert again.status_code == 409 and "lists no origin" in again.json()["message"]
+    assert again.status_code == 409 and "lists an origin" in again.json()["message"]
     assert count_runs(hub_db) == [(1,)]
     # a repo the project does not list at all is refused the same way
     body = registration()
@@ -1328,10 +1329,11 @@ def beat_as_0_9_0(client, worker: dict, held=(), slots: int = 2) -> dict:
 
 def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "laptop", slots=2)
-    # the settings the hub holds (schema 0026, plugins 0039, version_locked 0048), the runtimes of plugins (0039) and
-    # the graphs to keep fresh (0053) come as more keys, which its daemon leaves alone; a daemon that does not say
-    # plugin_runtimes or kg_sync gets none of those
+    # the settings the hub holds (schema 0026, plugins 0039, version_locked 0048, projects in evo-ak 0.31.2), the
+    # runtimes of plugins (0039) and the graphs to keep fresh (0053) come as more keys, which its daemon leaves alone; a
+    # daemon that does not say plugin_runtimes or kg_sync gets none of those
     settings = {"slots": 2, "name": "laptop", "labels": [], "plugins": [], "version_locked": False}
+    settings["projects"] = [PROJECT]
     answer = {"drain": False, "runs": [], "settings": settings, "plugin_runtimes": [], "kg_sync": []}
     assert beat_as_0_9_0(client, worker) == answer
     w = tables.workers
@@ -1519,10 +1521,12 @@ def test_events_of_runs_that_ended_long_ago_are_pruned(client, hub, hub_db):
     running = dispatched(client, hub["owner"], [2])[0]["id"]
     claim(client, worker)
     state = client.app.state
-    found = SimpleNamespace(engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app)
+    found = SimpleNamespace(
+        engine=state.engine, config=state.config, sealer=state.sealer, github_app=state.github_app, blobs=state.blobs
+    )
     context = SimpleNamespace(additional_context={"hub": found})
     report_ = client.portal.call(queue.tasks[jobs.PRUNE_RUN_EVENTS].func, context)
-    assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0}
+    assert report_ == {"deleted": 1, "days": 30, "tokens_dropped": 0, "tool_outputs": 0, "tool_output_bytes": 0}
     events = tables.run_events
     left = dict(sql(hub_db, select(events.c.run_id, func.count()).group_by(events.c.run_id)))
     assert left == {recent: 1, running: 1}

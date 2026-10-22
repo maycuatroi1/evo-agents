@@ -408,6 +408,8 @@ class RunCredentials:
         self.agent_vars: dict[str, str] = {}
         self.git_vars: dict[str, str] = {}
         self.origins: dict[str, list[str]] = {}  # repo -> the URLs of its checkout's origin, as take was given them
+        # repo -> {origin, path, project} as the hub's answer names where it comes from, which a clone starts from
+        self.sources: dict[str, dict] = {}
         self.asked = False  # the hub may hold leases of the run for this worker: give them back at the end
         self._server: asyncio.AbstractServer | None = None
         self._lock = asyncio.Lock()
@@ -497,6 +499,10 @@ class RunCredentials:
         self.leases = leases
         missing = answer.get("missing") if isinstance(answer, dict) else None
         self.missing = [item for item in missing or [] if isinstance(item, dict)]
+        repos = answer.get("repos") if isinstance(answer, dict) else None  # a hub older than 0.32 sends none
+        for item in repos if isinstance(repos, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("repo"), str) and item["repo"]:
+                self.sources[item["repo"]] = {key: item.get(key) for key in ("origin", "path", "project")}
 
     @property
     def unleased(self) -> dict[str, str]:
@@ -801,6 +807,12 @@ class RunCredentials:
             await self._serve_leases()
             log.info("credentials swapped", extra={"run_id": self.run_id, "leases": len(self.leases)})
             return True
+
+    def reach(self, repo: str, urls: Sequence[str]) -> None:
+        """Hand the run's git the leases for ``repo`` at ``urls`` too, the origin of a checkout of it made since the
+        leases were taken (``evo_agents.worker.runner.clones``): the hub leased for every repo of the run already."""
+        self.origins[repo] = list(urls)
+        self._hand_over(self.origins)
 
     async def add(self, repo: str, urls: Sequence[str]) -> None:
         """Take the run's leases again once the hub added ``repo`` to the run (a repo a chat run's agent opened),

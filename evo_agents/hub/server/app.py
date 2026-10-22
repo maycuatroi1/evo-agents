@@ -46,11 +46,14 @@ from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, 
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
+from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
+
+# The hub worker runs the tick of a project's Loop and the release pass, but evo_agents.hub.worker imports no server
+# module beyond its job list (docs/structure.md, section Package boundaries): the hub worker command takes both from
+# here and hands them down.
+from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
-
-# The hub worker runs the release pass, but evo_agents.hub.worker imports no server module beyond its job list
-# (docs/structure.md, section Package boundaries): the hub worker command takes it from here and hands it down.
 from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
@@ -262,10 +265,13 @@ def create_app(config: HubConfig) -> FastAPI:
         kg_worker,
         local_runs,
         notifications,
+        output_content,
+        output_notices,
         overview,
         proposals,
         release_claims,
         releases,
+        run_outputs,
     )
 
     for routes in (
@@ -276,12 +282,17 @@ def create_app(config: HubConfig) -> FastAPI:
         local_runs.batch_router,
         notifications.router,
         notifications.worker_router,
+        output_notices.router,  # the notices a member turned off
         overview.router,
         curator.router,
         proposals.router,
         proposals.worker_router,
         releases.router,  # the daily release of a project (evo_agents.hub.releases)
         release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
+        run_outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
+        run_outputs.worker_router,
+        output_content.router,  # their bytes
+        output_content.chat_router,
     ):
         app.include_router(routes)
 
@@ -292,6 +303,7 @@ def create_app(config: HubConfig) -> FastAPI:
         history_search,
         kg_health,
         ledger,
+        org,
         playbook,
         proposal_plans,
         protection,
@@ -316,6 +328,7 @@ def create_app(config: HubConfig) -> FastAPI:
         earlier.router,
         playbook.router,
         playbook.worker_router,
+        org.router,  # the org chart (plan org-chart)
     ):
         app.include_router(routes)
 
@@ -348,9 +361,11 @@ def create_app(config: HubConfig) -> FastAPI:
         chats,
         credentials,
         features,
+        goals,
         merge_judge,
         merge_view,
         plugin_host,
+        plugin_notify,
         plugin_ui,
         plugins,
         project_plugins,
@@ -376,6 +391,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_packs.router,
         agent_types.router,
         task_dispatch.router,
+        plugin_notify.router,
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
@@ -400,6 +416,8 @@ def create_app(config: HubConfig) -> FastAPI:
         signals.router,
         signal_keys.router,
         autonomy_policies.router,
+        goals.router,
+        loop_routes.router,
         merge_view.router,
         merge_judge.worker_router,
     ):

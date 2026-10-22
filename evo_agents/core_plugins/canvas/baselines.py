@@ -16,7 +16,9 @@ What a baseline asks (``items_for``). One item per claim not archived, the first
 Each item keeps the status in effect (``from``), the status the claim was at (``at``), the one asked (``to``), the
 claim's rev and evidence, and who may not decide it (``proposers``): every member who wrote a rev that changed the
 claim's status since the status in effect (a rev an earlier baseline's decision wrote aside), and the writer who opened
-it at once. What the value check or an overdue card asks, the hub proposed: any other writer decides it.
+it at once. What the value check or an overdue card asks, the hub proposed: any other writer decides it. With the
+config's ``self_approval`` on (read by ``self_approval``), the proposers are kept as they are but bar nobody
+(``ItemRow.barred``): any writer decides the item, a proposer too.
 
 A baseline is proposed by the plugin's job each week (``schedule``), or opened at once by a writer for one claim
 (``open_now``); the job's proposal expires every proposal before it that is still open, whose undecided claims it asks
@@ -36,10 +38,13 @@ from datetime import date, datetime
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import events, rules, store
+from evo_agents.core_plugins.canvas import MANIFEST, events, rules, store
 from evo_agents.core_plugins.canvas.content import CanvasError, code
 from evo_agents.core_plugins.canvas.store import CanvasRow, ClaimRow, EvidenceRow
 from evo_agents.hub import tables
+from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.plugins import config as plugin_config
 
 DEFAULT_STATUS = "assumption"  # in effect for a claim no snapshot holds yet
 OVERDUE_STATUSES = ("assumption", "testing")  # what a past deadline without real evidence asks a reviewer about
@@ -51,6 +56,8 @@ DECIDES = {  # kind of item -> what a member decides of it
     "new": (),
 }
 MAX_LISTED = 100  # baselines one read lists
+PLUGIN = MANIFEST["id"]  # acting.PLUGIN, not imported here: it loads the server's agent types
+SELF_APPROVAL = "self_approval"  # the config's field that lets a proposer decide the item too
 
 
 @dataclass(frozen=True)
@@ -101,6 +108,10 @@ class ItemRow:
     def waiting(self) -> bool:
         """Whether a member has still to decide it."""
         return self.decision is None and bool(DECIDES[self.kind])
+
+    def barred(self, self_approval: bool) -> list[int]:
+        """The members who may not decide it: its proposers, or nobody while the config's self_approval is on."""
+        return [] if self_approval else list(self.proposers)
 
 
 @dataclass(frozen=True)
@@ -214,6 +225,23 @@ async def effective(conn: AsyncConnection, canvas_id: int) -> dict[int, dict]:
 async def today(conn: AsyncConnection) -> date:
     """The day it is in UTC by Postgres's clock: a test card's deadline passes after it."""
     return (await conn.scalar(select(func.timezone("UTC", func.now())))).date()
+
+
+async def config_value(conn: AsyncConnection, project_id: int, name: str):
+    """The effective value of field ``name`` of the plugin's config in project ``project_id``, as its layers set it;
+    None when canvas is not enabled there."""
+    row = await enabled_in(conn, PLUGIN, project_id)
+    if row is None:
+        return None
+    stacks = await stored_stacks(conn, [row.id], project_id, None)
+    found = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, [])).fields.get(name)
+    return None if found is None else found.value
+
+
+async def self_approval(conn: AsyncConnection, project_id: int) -> bool:
+    """Whether the config's ``self_approval`` lets a proposer decide an item in project ``project_id``: off unless an
+    admin of the project turned it on."""
+    return await config_value(conn, project_id, SELF_APPROVAL) is True
 
 
 # What a baseline asks
@@ -480,6 +508,7 @@ __all__ = [
     "approve",
     "baseline",
     "baselines",
+    "config_value",
     "content_sha256",
     "effective",
     "expire_open",
@@ -491,5 +520,6 @@ __all__ = [
     "propose",
     "proposers",
     "result",
+    "self_approval",
     "today",
 ]

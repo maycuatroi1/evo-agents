@@ -135,6 +135,15 @@ project answers it, through the Inbox or `hub decision answer`, with one of thos
 and one for a cycle no longer stopped 409. The hub does the option and says so in the cycle's thread of the triage
 chat. No run waits on the answer.
 
+### A decision of the Loop
+
+The hub itself asks decisions of category `loop` too (plan loop-engine): when a work item of a project's Loop fails a
+third time, the person its last run stands for (the run_as of a task run's agent type, the owner of `loop.worker` for
+an author or a plan run) gets one on that run, with the three options `retry` (the Loop hands it out again, its
+failures counted from 0), `drop` and `manual` (the work item cancelled, its chain left to a person). That person
+answers it, through the Inbox or `hub decision answer`, with one of those options; any other answer is 422. The hub
+does the option; an answer for a work item that moved on since does nothing. No run waits on the answer.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):
@@ -149,13 +158,21 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 | `release` | a cycle of a project's daily release published its version: its tag's `release.yml` passed, its job `publish` included (`details.event` `published`), or the hub cannot read the CI of its tag because the GitHub App's installation grants no Actions (`actions_permission`); `docs/releases.md` | the cycle, the tag, the version, the workflow run and the version's page on PyPI; or the problem and how a member grants the permission |
 | `merge_paused` | the breaker of a repo of the hub's merge queue on GitLab tripped, to each admin of the project: the queue of that repo waits until an admin resets it (`docs/merge-queue.md`, The breaker) | the repo, its target branch, the cause and its reason, the merge requests it paused, how to reset it, and a link to the project's merge queue |
+| `pm_daily` | a working morning's digest of a project that enables the core plugin pm, to its PM (the config's `pm`, else the project's admins), when the project grants the plugin `notifications:send` (`docs/pm-plugin.md`, The morning job) | counts of what was done, late, in review, stale, blocked and to escalate, as the member may see them, the codes of the late, stale and escalated tasks, and a link to the project's pm page; never a title |
+| `pm_escalation` | a blocker of an open task that has lasted longer than `escalate_after_days` working days, once a day, to the PM and to whom it waits on (the member, the assignees of the task it waits on, the owner of the run whose decision is open) | the task's code, the kind of blocker, its age in working days and a link to the project's pm page; never the reason or a title |
+| `loop_paused` | the breaker of a project's Loop tripped: it made more work items in an hour than `loop.max_items_per_hour`, to each admin of the project; the Loop reads no event and hands out no run until an admin resets it (`evo-agents hub loop resume`) | the work items of the hour, the cap, how to reset it, and a link to the project's Loop page |
+| `goal_review` | the first day of a month in the Loop's zone (`loop.timezone`, else the charter's, else UTC), or the first pass of `hub.loop_notices` within its first week: each admin of a project whose Loop is on, and each owner of one of its active goals, once that month (gate 1 of the decision board, `docs/hub.md`, "The decision board") | the active goals with their metric, whether it meets its target, and their deadline; a link to the decision board |
+| `plugin_notice` | an isolated plugin sent it through `POST /v1/plugin-api/projects/{project}/notifications` (`docs/plugins.md`, Notifications from a plugin), to the logins and roles it named that hold a grant on the project, when the project granted it `notifications:send`; no rate limit | the title and body the plugin wrote, and in the details the plugin, its version, the topic and the key; a link inside the plugin's pages or the project |
+| `loop_brief` | 07:00 in the Loop's zone, within three hours, once a day: the Loop's part of the morning brief, for a project whose Loop is on and whose Curator sends no `curator_brief` (no night shift, or the feature `curator` off), to each owner of one of its active goals | the runs the Loop handed out and the work items it finished in the last 24 hours, and those waiting for a person by reason; a link to the decision board |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
+| `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused`, `release`, `merge_paused`, `author_waiting`, `chat_mention` and `chat_added`, and the
-`merge_default_branch` of its merge queue. A release run that fails sends no
+`curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `plugin_notice`, `author_waiting`, `pm_daily`,
+`pm_escalation`, `chat_mention`, `chat_added` and `run_outputs`, and the `merge_default_branch` of its merge queue. A
+release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting
 it; a chat without agents keeps it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
@@ -166,6 +183,33 @@ The hub sends no `author_waiting` when an author run moves to `waiting` with a d
 decision's notification told the owner already, and Home lists the run in Needs you through its decision, not again
 among the author runs waiting for a reply. An author run that waits with no decision open sends `author_waiting` as
 before.
+
+### The files of a run
+
+The hub sends `run_outputs` itself (`evo_agents/hub/server/output_notices.py`), in the transaction that records a
+run's outputs, to the member who dispatched the run, for the files of source `sent` and `outputs`; an image taken out
+of a tool's result (source `tool`) never makes or joins one. It gathers a minute a run (`runs.OUTPUT_NOTICE_SECONDS`):
+
+- the first files store the notification, with every delivery of it due a minute later, so the Inbox shows it at once
+  and the channels wait for more;
+- the files that come before any channel tried it join it: its `details.outputs`, title (`Run #N sent report.md`,
+  `Local run #N sent 3 files`) and body (each file's name, size and caption, 20 at most, then how many more) are
+  written again, and it is unread again;
+- once a channel took it, or is sending it (its delivery is locked by the job's pass), the next files start a new
+  notice, due a minute after they came. So no channel gets two notices of one run within a minute, a delivery that
+  failed and is tried again aside.
+
+A file that a question carries goes with the question: once a decision names it in `output_ids`, it leaves the run's
+notice no channel has tried yet, and a notice left with no file goes, its deliveries with it. A chat run sends no
+`run_outputs`: its files go under its messages in the thread. The Inbox lists the files a notification carries in
+`outputs` (`RunOutput`, as `docs/hub.md` describes it): the files of a `run_outputs` still there, with the run's URLs
+of their bytes, and the files of a decision, with the decision's.
+
+A member turns `run_outputs` off for themselves (`runs.MUTABLE_NOTICE_KINDS`, schema 0090's `notification_mutes`):
+the hub then stores no such notice for them, on any channel, and their decisions and every other notice still come.
+`GET /v1/me/notification-settings` answers each kind a member may turn off with whether it is on, and `PUT` with
+`{"notices": [{"kind": "run_outputs", "on": false}]}` sets the kinds it names, audited `notification.settings` with
+the kinds and no text.
 
 ## Notifications, channels and deliveries
 
@@ -246,6 +290,8 @@ For members, with a web session or a machine token:
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
+| `GET /v1/me/notification-settings` | the member | each kind of notice they may turn off (`run_outputs`), and whether it is on |
+| `PUT /v1/me/notification-settings` | the member | `{"notices": [{"kind": "run_outputs", "on": false}]}`; turns the kinds it names on or off, the others stay |
 
 The answer takes the plan's dispatch lock (for a decision with a plan) and the run's row, then: the decision is `answered`, its notification read,
 and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
@@ -262,7 +308,9 @@ A notification links to a page of the hub's web: a decision to `/inbox?decision=
 `/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
 `curator_paused` to the project's Curator page (`/p/{p}/curator`), `release` to the project's Releases page
 (`/p/{p}/releases`), `merge_paused` and a notice of the merge queue to the project's Merge queue page
-(`/p/{p}/merge-queue`), and a chat's notice to the chat (`/chats/{id}`,
+(`/p/{p}/merge-queue`), `pm_daily` and `pm_escalation` to the project's pm page (`/p/{p}/x/pm`), `loop_paused` to
+the project's Loop page (`/p/{p}/loop`), `goal_review` and `loop_brief` to the project's decision board
+(`/p/{p}/decide`), `plugin_notice` to the link its plugin gave (default: the plugin's page, else the project), and a chat's notice to the chat (`/chats/{id}`,
 with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 
@@ -326,6 +374,16 @@ title and body as plain text and the web's button. A decision or proposal that n
 time its message goes out (answered on the web meanwhile, say) goes out as the project, its number, that it no longer
 waits and the link, never with its question or summary.
 
+The files of a decision and of a `run_outputs` notice reach the channel in what the hub prepares for it
+(`core_plugin_api.prepare`, `docs/plugins.md`): `extra.outputs`, at most 10 files (a media group of Telegram holds 10),
+oldest first, each with its id, name, media type, viewer, size, caption and `url`, a presigned GET of its bytes that
+works 5 minutes and is made at each try, and `extra.outputs_count`, how many files there are; both keys are left out
+when there is no file to send. A file of source `tool` is never among them, not even one a question carries. The
+channel sends them from evo-agents-core-plugins 1.1.0 on: one photo album when every file is a photo, otherwise one
+group of documents, with the run's link in the caption; a decision sends its files first and then its question with
+its buttons as a reply to the first file. Files past 10, past 20 MiB in all or past Telegram's own limits stay on the
+hub, and the message says how many. 1.0.0 did not read `extra.outputs` and sent text only.
+
 A message is HTML within Telegram's 4,096 characters. A part that may run long is cut before it is escaped, or between
 the tags and entities of its HTML, never inside one; the question of a decision gives way first, and the link, and the
 outcome of an answered message, stay whole.
@@ -377,9 +435,13 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
 - for a project whose hub sink is cleared at or above the level `customer` or the location `domestic-only` on the
   project's own ladder, read as `evo_agents.kg.policy` reads a clearance (a sink that names no location may receive
   any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
-  else: no question, title, option, context, diff or file name, and no answer button. It fails closed: a project with no
-  hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
+  else: no question, title, option, context, diff, file or file name, and no answer button. Its channel's `extra` is
+  `{"restricted": true}` alone, so a `run_outputs` notice goes out as the project, the words of its kind (the hub's
+  and those of the core plugin telegram from 1.1.0 are `Files from a run`) and the link. It fails closed: a project with
+  no hub sink, a clearance without a level, a level or location the ladder lacks, or a ladder without `customer` (or
   `domestic-only`) and a clearance above its lowest rung, is restricted too;
+- no image taken out of a tool's result (an output of source `tool`), whatever the project, even when a question
+  carries it: the web shows it;
 - no token, pairing code or link code, ever;
 - no command beyond answering a decision or a proposal: cancelling, approving, dispatching and messages to the agent stay
   on the web and the command line.

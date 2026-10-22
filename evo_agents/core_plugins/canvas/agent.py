@@ -14,7 +14,9 @@ written.
 - ``propose`` and ``evidence`` answer the agent of a chat or task run of @strategist: a proposal changes nothing until
   a writer accepts it, so a task run (a brainstorm) changes no claim; a new claim proposed carries a test card with a
   hypothesis and a test. Evidence an agent adds counts toward validated only once a writer confirms it; a simulation
-  is always synthetic.
+  is always synthetic. ``propose`` also answers the agent of the Curator's review run on a night of the lens product
+  (``acting.proposing_run``; plan loop-engine, criterion a9), for the night shift's owner; every other tool that
+  writes refuses it.
 - ``judge`` answers the agent of a judging run alone, the task run the value check hands @strategist (``judging``):
   the items of its run, and a verdict with why on each. A judging run calls no other tool of the plugin: each refuses
   it, so it reads nothing but its items and changes, proposes and adds nothing.
@@ -33,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.canvas import judging, proposals, rules, store, writes
-from evo_agents.core_plugins.canvas.acting import STRATEGIST, Acting, acting, canvas, strategist_run
+from evo_agents.core_plugins.canvas.acting import STRATEGIST, Acting, acting, canvas, proposing_run, strategist_run
 from evo_agents.core_plugins.canvas.commands import undo_command, undone_text
 from evo_agents.core_plugins.canvas.content import CanvasError, code, number_of
 from evo_agents.core_plugins.canvas.tools import AGENT_EVIDENCE_KINDS
@@ -342,7 +344,7 @@ def _cards(changes: list[writes.Change]) -> None:
 
 
 async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
-    strategist_run(who, "propose", ("chat", "task"))
+    await proposing_run(conn, who)
     store.writer(who.access, "proposing claims")
     row = await canvas(conn, who, args["canvas"], lock=True)
     changes = [_change(item) for item in args["proposals"]]

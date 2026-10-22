@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, PanelRight } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { percent, stepLabel } from "@/lib/plans";
 import { useRuntimeName } from "@/lib/runtimes";
@@ -151,3 +152,23 @@ const STATE_TONE: Partial<Record<Run["state"], string>> = {
   failed: "text-danger",
   lost: "text-danger",
 };
+
+/** The Details toggle at the end of the head: it opens the plan's steps and the run's details beside the trace. */
+export function DetailsToggle({ open, controls, onToggle }: { open: boolean; controls: string; onToggle: () => void }) {
+  const t = useTranslations("runs.detail");
+  return (
+    <Button
+      type="button"
+      variant={open ? "secondary" : "ghost"}
+      size="sm"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      className="max-md:h-11 max-md:min-w-11"
+      data-testid="run-details-open"
+    >
+      <PanelRight aria-hidden="true" />
+      <span className="max-md:sr-only">{t("detailsToggle")}</span>
+    </Button>
+  );
+}

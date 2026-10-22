@@ -24,6 +24,8 @@ from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.agent_profiles import icon_url
 from evo_agents.hub.server.chat_access import ChatAccess, LabelReader
+from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.output_views import by_message as outputs_by_message
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
 
 HUB_NAME = "hub"
@@ -125,6 +127,10 @@ class GroupMessage(BaseModel):
             "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; "
             "a stream asked for progress keeps it current. Empty in what the worker's routes answer"
         ),
+    )
+    outputs: list[RunOutput] = Field(
+        default_factory=list,
+        description="the files of its run it carries, oldest first, each with the chat's URL of its bytes",
     )
 
 
@@ -430,6 +436,7 @@ async def messages_view(
     mentions = await _mentions(conn, ids)
     reactions = await _reactions(conn, ids, reader.user_id)
     replies = await _reply_counts(conn, ids)
+    files = await _outputs(conn, shown)
     return [
         GroupMessage(
             id=row.id,
@@ -445,9 +452,22 @@ async def messages_view(
             label=row.label,
             created_at=row.created_at,
             progress=(progress or {}).get(row.id, []),
+            outputs=files.get(row.id, []),
         )
         for row in shown
     ]
+
+
+async def _outputs(conn: AsyncConnection, rows) -> dict[int, list[RunOutput]]:
+    """The outputs the messages of ``rows`` that a run wrote carry, by message id."""
+    found: dict[int, list[RunOutput]] = {}
+    by_chat: dict[int, list[int]] = defaultdict(list)
+    for row in rows:
+        if row.run_id is not None:
+            by_chat[row.chat_id].append(row.id)
+    for chat_id, ids in by_chat.items():
+        found.update(await outputs_by_message(conn, chat_id, ids))
+    return found
 
 
 async def message_rows(conn: AsyncConnection, chat_id: int, ids: list[int]) -> list:

@@ -38,6 +38,7 @@ import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
+import { dayFromNow, seatByApi, seatOf, unitByApi } from "./support/org";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import {
   askDecision,
@@ -67,6 +68,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { decidePath, goalsPath, itemPath as loopItemPath, loopPath, seedLoop, seedLoopProject } from "./support/loop";
 import { gitlabRepos, mergeQueuePath, seedMergeQueue, seedPolicy } from "./support/merge-queue";
 import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -86,6 +88,7 @@ import {
   USE_CASE,
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
+import { pmPath, seedPm } from "./support/pm";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -198,6 +201,17 @@ async function seedSecrets(me: Member) {
     expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     value: secretValue("a11y"),
   });
+}
+
+/** Accounts of `me`: a Claude subscription and an API key, two Lark variables for one line, a GitLab token. */
+async function seedAccounts(me: Member) {
+  const projects = [me.projects[0]];
+  const env = (name: string, env_var: string) => putSecretByApi(me, name, { kind: "env", env_var, projects, value: secretValue("a11y") });
+  await env("claude-sub", "CLAUDE_CODE_OAUTH_TOKEN");
+  await env("anthropic-key", "ANTHROPIC_API_KEY");
+  await env("lark-id", "LARK_APP_ID");
+  await env("lark-secret", "LARK_APP_SECRET");
+  await env("gitlab-token", "GITLAB_TOKEN");
 }
 
 /**
@@ -818,6 +832,52 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/secrets");
       await expect(page.locator("#main").getByTestId("secrets-table")).toBeVisible();
+    },
+  },
+  {
+    name: "org chart read by a member, a seat ending soon",
+    open: async ({ page, me }) => {
+      const slug = await unitByApi("a11y-org");
+      await seatByApi({ unit: slug, role: "member", login: me.login, ends_on: dayFromNow(2) });
+      await page.goto("/org");
+      await expect(seatOf(page, me.login, slug).getByTestId("org-seat-ends-soon")).toBeVisible();
+    },
+  },
+  {
+    name: "org chart on a small screen",
+    open: async ({ page, me }) => {
+      const slug = await unitByApi("a11y-org");
+      await seatByApi({ unit: slug, role: "member", login: me.login });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/org");
+      await expect(seatOf(page, me.login, slug)).toBeVisible();
+    },
+  },
+  {
+    name: "accounts with no account yet",
+    open: async ({ page }) => {
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("state-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts in two groups with a merged line open",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.goto("/accounts");
+      const services = page.locator("#main").getByTestId("accounts-group-service");
+      await expect(page.locator("#main").getByTestId("accounts-group-model")).toBeVisible();
+      await services.getByTestId("service-group-toggle").click();
+      await expect(services.getByTestId("service-variables")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts on a small screen",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("accounts-group-service")).toBeVisible();
     },
   },
   {
@@ -1475,6 +1535,84 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "the Loop stopped by its breaker with its work items by state and by chain, and the switch's dialog, for an admin",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project, { tripped: true });
+      await open(page, loopPath(project));
+      await expect(page.locator("#main").getByTestId("loop-breaker-banner")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("loop-items-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "the Loop by state");
+      await open(page, loopPath(project, "?view=chain"));
+      await expect(page.locator("#main").getByTestId("loop-chain").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "the Loop by chain");
+      await page.locator("#main").getByTestId("loop-turn-off").click();
+      await expect(page.getByTestId("loop-switch-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "a work item's chain from its goal to its release, and one that waits for a person",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      const seeded = await seedLoop(project);
+      await open(page, loopItemPath(project, seeded.items.build));
+      await expect(page.locator("#main").getByTestId("chain-rail")).toBeVisible();
+      await expectNoSeriousViolations(page, "a released chain");
+      await open(page, loopItemPath(project, seeded.items.held));
+      await expect(page.locator("#main").getByTestId("chain-waiting")).toBeVisible();
+    },
+  },
+  {
+    name: "the goals with their metric against the target, then a goal's page",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project);
+      await open(page, goalsPath(project));
+      await expect(page.locator("#main").getByTestId("goals-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "goals");
+      await open(page, goalsPath(project, "G-1"));
+      await expect(page.locator("#main").getByTestId("goal-items-table")).toBeVisible();
+    },
+  },
+  {
+    name: "the Decisions page with each gate and the Loop's exceptions",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      await seedLoop(project, { tripped: true });
+      await open(page, decidePath(project));
+      await expect(page.locator("#main").locator('[data-testid="board-item"][data-kind="loop_breaker"]')).toBeVisible();
+    },
+  },
+  {
+    name: "the Loop, a chain, the goals and the Decisions page on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedLoopProject(me, project);
+      const seeded = await seedLoop(project, { tripped: true });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, loopPath(project));
+      await expect(page.locator("#main").getByTestId("loop-items-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "the Loop at 375 px");
+      await open(page, loopItemPath(project, seeded.items.build));
+      await expect(page.locator("#main").getByTestId("chain-rail")).toBeVisible();
+      await expectNoSeriousViolations(page, "a chain at 375 px");
+      await open(page, goalsPath(project));
+      await expect(page.locator("#main").getByTestId("goals-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "goals at 375 px");
+      await open(page, decidePath(project));
+      await expect(page.locator("#main").getByTestId("board-summary")).toBeVisible();
+    },
+  },
+  {
     name: "merge queue and policy on a small screen",
     open: async ({ page, me }) => {
       const project = await mergeQueueProject(me);
@@ -1654,7 +1792,7 @@ const PAGES: Entry[] = [
       const card = page.locator("#main").getByTestId("srs-findings");
       await expect(card.getByTestId("srs-findings-decide").getByTestId("srs-finding")).toHaveAttribute("data-finding", String(seeded.decide));
       await expect(card.getByTestId("srs-findings-settled").getByTestId("srs-finding-settled")).toBeVisible();
-      await expect(page.locator("#main").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
+      await expect(page.getByTestId("srs-review-form").getByTestId("srs-review-lock-chat")).toHaveAttribute("href", seeded.chat);
     },
   },
   {
@@ -1698,6 +1836,19 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "Tasks backlog");
       await page.locator("#main").getByTestId("sprint-new").click();
       await expect(page.getByTestId("sprint-new-form")).toBeVisible();
+    },
+  },
+  {
+    name: "the PM daily report with its eight sections, and at 375 px",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedPm(me, project);
+      await open(page, pmPath(project));
+      await expect(page.locator("#main").getByTestId("pm-report")).toBeVisible();
+      await expectNoSeriousViolations(page, "PM daily");
+      await page.setViewportSize({ width: 375, height: 812 });
+      await expectNoSeriousViolations(page, "PM daily at 375 px");
     },
   },
   {
@@ -1849,6 +2000,20 @@ const PAGES: Entry[] = [
 
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
 const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
+    open: async (page) => {
+      const slug = await unitByApi("a11y-org");
+      await page.goto("/org");
+      await expect(page.locator("#main").getByTestId("org-unplaced")).toBeVisible();
+      await expectNoSeriousViolations(page, "org chart as a hub admin");
+      await page.locator("#main").locator(`[data-testid="org-unit"][data-slug="${slug}"] > div`).first().getByTestId("org-unit-menu").click();
+      await page.getByTestId("org-action-add-seat").click();
+      const dialog = page.getByTestId("org-seat-dialog");
+      await dialog.getByTestId("org-seat-dialog-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("org-seat-login")).toHaveAttribute("aria-invalid", "true");
+    },
+  },
   {
     name: "admin diagnostics",
     open: async (page) => {

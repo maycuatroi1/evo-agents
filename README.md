@@ -159,7 +159,9 @@ the sources whose interval has passed since their last ok run; `--all` does that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
 removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
-gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
+gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand). To drop from
+knowledge.yaml a source the hub holds runs of, take them off first with `evo-agents hub kg forget-source --project
+demo --source old-repo`, then push; the other way round the push is refused (`docs/hub.md`, Dropping a source).
 
 Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
 with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
@@ -224,9 +226,10 @@ fields of the result, and how the text of every tool is written.
 
 Hooks:
 
-- SessionStart prints a short note: the bound project, the snapshot age, and the commit each git source
-  read with how far behind its remote's default branch that is now (`commits read: app 1550c7a (3 behind
-  origin/main)`), counted from the checkout without the network.
+- SessionStart prints a short note: the bound project, the snapshot age, and how many git sources read a
+  commit that is current with its remote's default branch, naming only the others with the commit read and
+  how far behind it is now (`commits read: 16 sources, 13 current; behind: app 1550c7a (3 behind
+  origin/main)`, or `commits read: 16 sources, all current`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
   label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
   `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
@@ -237,10 +240,14 @@ Hooks:
   add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
   matched line.
 
-The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
-`plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version
-on first start. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so they never wait on the network;
-they stay silent when `uvx` is missing or until the server has cached the package.
+The plugin needs [uv](https://docs.astral.sh/uv/) or `evo-agents` on `PATH`, and a POSIX `sh` (on Windows, Git for
+Windows' `sh` on `PATH`). It pins the release it runs, the version in its `plugin.json`. The server's `.mcp.json` runs
+`sh -c`: `uvx --from evo-ak==<version> evo-agents --version` first, which downloads and caches that version on first
+start, then the server itself from uv's cache. The hooks run `uvx --offline --from evo-ak==<version> evo-agents`, so
+they never wait on the network. When uvx cannot run that release (uvx missing, the version not in uv's cache yet, or
+never published: the plugins follow `main`, and a release reaches PyPI only once its tag's CI passes), the server and
+each hook run `evo-agents` from the PATH with the same arguments and say so in one line on stderr. With no
+`evo-agents` there either, the server exits 1 and a hook exits 0, each with a line on stderr saying it did not run.
 
 ### The team hub
 
@@ -273,7 +280,9 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-t
   (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
   below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
   replaced on the machine first. A digest the hub did not take waits for a later Stop
-  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
+  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none. Claude Code runs no Stop for a turn
+  you interrupt, so SessionEnd pushes the digest too, and SessionStart finds the sessions of the last 7 days that
+  neither hook reached (Claude Code killed, the machine off) and queues their digests for the next Stop.
 - PostToolUse writes a result of Bash, Grep, WebFetch or an MCP tool longer than 10,000 characters
   (`EVO_SPOOL_THRESHOLD`), and a Read longer than 40,000 (`EVO_SPOOL_READ_THRESHOLD`), to
   `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
@@ -498,7 +507,8 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
               retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
               hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks;
-              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab
+              merge-queue.md: the autonomy policy and the hub's merge queue on GitLab; loop.md: goals and
+              the Loop of a project
 ```
 
 ## License

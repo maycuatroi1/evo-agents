@@ -15,10 +15,11 @@ approved versions of the documents not archived. Readers read the conflicts @ba 
 .../documents/{slug}/findings, ``status`` to keep one status), and an admin waives an open one (POST
 .../findings/{id}/waive) with a reason. Approving a version answers 409 while the document has an open finding of level
 decide, or @ba's review of the version's round is queued or running (``findings.approval_hold``); a request for changes
-is never held. A version approved in a project that enables the plugin tasks keeps its tasks in step, in the same
-transaction (``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use
-cases, comments and cancellations, and @ba's split run. Reads go through the sink X-Evo-Sink names, else the project's
-hub sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in
+is never held. Approving a version emits ``srs.version.approved`` in the same transaction (``events``); in a project
+that enables the plugin tasks, the plugin's handler of that event keeps its tasks in step when the hub delivers it
+(``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use cases,
+comments and cancellations, and @ba's split run. Reads go through the sink X-Evo-Sink names, else the project's hub
+sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in
 ``detail``.
 """
 
@@ -30,7 +31,16 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import auto_tasks, checks, edits, findings, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs import (
+    checks,
+    edits,
+    findings,
+    imports,
+    markdown,
+    reviews,
+    store,
+    use_case_reviews,
+)
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
@@ -50,9 +60,11 @@ from evo_agents.core_plugins.srs.models import (
     SrsReviewIn,
     SrsSave,
     SrsVersion,
+    SrsVersionCases,
     SrsVersionDetail,
     SrsWaiveIn,
     SrsWithdrawIn,
+    cases_model,
     comment_model,
     detail_model,
     diff_model,
@@ -101,7 +113,9 @@ async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.Docum
     row = await store.version(conn, doc, number)
     snap = await store.snapshot(conn, row)
     settings = await store.settings(conn, access)
-    return detail_model(doc.slug, row, snap.doc, checks.problems(snap.doc, settings.template))
+    wide = use_case_reviews.round_approvals(row)
+    cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
+    return detail_model(doc.slug, row, snap.doc, checks.problems(snap.doc, settings.template), cases)
 
 
 # Reading
@@ -367,10 +381,10 @@ async def review_version(
 ):
     """Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
-    decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
-    approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
-    use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
-    child tasks, in the same transaction."""
+    decide, naming each, or while @ba's review of the version's round is queued or running. An approval emits the
+    event srs.version.approved; once the hub delivers it, in a project that enables the plugin tasks, each use case new
+    in the version gets a frame task, the open tasks of a use case that changed a comment and those of one it dropped
+    are cancelled, and @ba splits the frame tasks into child tasks."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -379,9 +393,41 @@ async def review_version(
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
         decided = await reviews.review(conn, access, user, doc, number, asked, settings)
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
-            await auto_tasks.approved(conn, doc.id, number, doc.approved_version, user.user_id)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
         return version_model(decided)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews", response_model=SrsVersionCases)
+async def review_use_case(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    number: Number,
+    ref: Annotated[str, Path(min_length=1, max_length=100, description="the use case's code, an alias or its key")],
+    body: SrsReviewIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Approve one use case of a version in review or ask for changes on it, under the conditions of a review of the
+    version; a later review of the same member on the use case replaces the earlier one when they are counted. 422 for
+    an item that is no use case the version needs reviewed (one it adds, changes or drops since the version approved
+    last) and for a request for changes with no note. An approval goes through the gate of a version's (409 while a
+    finding of level decide is open or @ba's review runs); a request for changes leaves the version in review and
+    blocks every approval of it. The version is approved by the review that makes every use case to review approved,
+    as its version-wide reviews do: it emits srs.version.approved as any approval. Answers the version with its use
+    cases."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        settings = await store.settings(conn, access)
+        asked = reviews.ReviewRequest(body.decision, body.role, body.body)
+        decided, cases = await reviews.review_use_case(conn, access, user, doc, number, ref, asked, settings)
+        if decided.state == "approved":
+            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+        return cases_model(decided, cases)
 
     return await _answer(request, work)
 

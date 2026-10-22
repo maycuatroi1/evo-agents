@@ -29,7 +29,9 @@ not clear, a full chat, a database error) rolls back to it and leaves the run fa
 
 ``project_thread`` is the hub's thread of something that is no failed run, a release cycle that stopped
 (``release_cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
-since the owner decides.
+since the owner decides. ``asking_thread`` is the same thread with the project's default agent mentioned, and
+``tell_thread`` adds the hub's message to the thread a failed run opened: the triage of a work item of the Loop that
+failed twice (``loop.stall``).
 """
 
 from __future__ import annotations
@@ -270,6 +272,38 @@ async def project_thread(
     return _thread(chat.chat_id, message_id)
 
 
+async def asking_thread(
+    conn: AsyncConnection, project_id: int, project: str, owner_id: int, body: str
+) -> tuple[Thread, int | None] | None:
+    """``project_thread`` with the project's default agent mentioned, as the thread of a failed run has it: (the
+    thread, the chat run it starts for the owner at hop 1, None when that is refused, which the thread says); None
+    while the project's triage, or the hub's chats, are off. The Loop's triage of a work item whose run opened no
+    thread of its own (``loop.stall``). The caller holds a savepoint."""
+    if not await _due(conn, project_id):
+        return None
+    owner = await _person(conn, owner_id)
+    await conn.execute(_lock(project_id))
+    profile = await ensure_default(conn, project_id)
+    chat = await _joined(conn, About(project_id, project), owner, profile, None)
+    text = runs.clip(body, chats.MAX_MESSAGE_BYTES - 200) + f"\n\n@{profile.handle}"
+    message_id, _ = await insert_message(conn, chat, text, thread_root_id=None)
+    agent_run = await _ask_agent(conn, None, chat, profile, owner, message_id, text)
+    log.info("triage thread opened", extra={"project": project, "chat_id": chat.chat_id, "agent_run_id": agent_run})
+    return _thread(chat.chat_id, message_id), agent_run
+
+
+async def tell_thread(conn: AsyncConnection, run_id: int, body: str) -> tuple[Thread, int | None] | None:
+    """A message of the hub in the thread failed run ``run_id`` opened: (the thread, the chat run of its agent); None
+    when the run opened none. The caller holds a savepoint."""
+    thread = await thread_of(conn, run_id)
+    if thread is None:
+        return None
+    t = tables.run_triage
+    agent_run = (await conn.execute(select(t.c.agent_run_id).where(t.c.run_id == run_id))).scalar_one_or_none()
+    await hub_reply(conn, thread.chat_id, thread.root_id, runs.clip(body, chats.MAX_MESSAGE_BYTES - 200))
+    return thread, agent_run
+
+
 async def _chat(conn: AsyncConnection, found: RunStep, owner: Principal):
     """(the triage chat of the run as ``owner`` sees it, the project's default agent): the project's (``plan_id``
     NULL), the owner and the agent put in it. A run of a plan kept apart (``_apart``) goes to the chat of its plan
@@ -422,20 +456,22 @@ async def chain_of(conn: AsyncConnection, run_id: int) -> tuple[int, list[str]]:
 
 async def _ask_agent(
     conn: AsyncConnection,
-    found: RunStep,
+    found: RunStep | None,
     chat,
     profile,
     owner: Principal,
     message_id: int,
     body: str,
 ) -> int | None:
-    """Hand the first message of the thread to ``profile`` for the owner (hop 1); the chat run it made, if any. A
-    refusal (the writer role, a worker) is said in the thread."""
+    """Hand the first message of the thread to ``profile`` for the owner (hop 1), with the credential failed run
+    ``found`` was dispatched with (a machine's without one); the chat run it made, if any. A refusal (the writer role,
+    a worker) is said in the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
-    via = (
-        await conn.execute(select(func.coalesce(r.c.dispatched_via, MACHINE)).where(r.c.id == found.run_id))
-    ).scalar_one()
+    via = MACHINE
+    if found is not None:
+        query = select(func.coalesce(r.c.dispatched_via, MACHINE)).where(r.c.id == found.run_id)
+        via = (await conn.execute(query)).scalar_one()
     hand = Hand(chat, message_id, message_id, profile, owner.user_id, owner.login, via, 1, "the hub", body)
     await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)

@@ -65,6 +65,18 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
   string that looks like a secret replaced on this machine first. A worker run's session sends none.
 - Not signed in, the hooks send nothing; `evo-agents hub login --url URL` signs in.
 
+## Files for the person
+
+- In a session of a hub project, the session is also a run on the hub, and the files you show the person become its
+  outputs there: what SendUserFile sends, the page the Artifact tool publishes, and the images in tool results
+  (screenshots, a Read of an image). A question you ask with AskUserQuestion carries the files you sent since the
+  person's last message.
+- A CLI session has no SendUserFile: send a screenshot, a report or a video with
+  `evo-agents hub send FILE... --caption TEXT`, run inside the session. It prints each output it recorded, or that it
+  queued the file for later when the hub did not answer.
+- Text files and captions are redacted on this machine before they leave it; images and videos are not. Never send or
+  screenshot a page that shows a secret.
+
 ## Tools
 
 | Tool | Use |

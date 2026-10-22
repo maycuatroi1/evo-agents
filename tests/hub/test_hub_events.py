@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 
 import pytest
 
@@ -105,7 +106,9 @@ def test_hub_events_keep_each_rev_and_batch_of_a_project_in_order_read_by_cursor
         1,
     )
     text = json.dumps([payload for _, _, payload in found])
-    assert "Corner shops" not in text and "0.4" not in text and "hello" not in text, "ids and states, never a text"
+    # a measured value would show as a JSON number; a timestamp such as 15:43:00.471832 holds "0.4" too
+    value = re.search(r"(?<![\d.:])0\.4(?!\d)", text)
+    assert "Corner shops" not in text and value is None and "hello" not in text, "ids and states, never a text"
 
     # the Loop reads one project's events past its cursor, oldest first
     app, pid = client.app, project_id(hub_db)

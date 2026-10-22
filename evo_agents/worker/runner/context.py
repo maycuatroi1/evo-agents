@@ -18,18 +18,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from evo_agents.hub import curator, releases
-from evo_agents.worker import credentials
-from evo_agents.worker.adapter import Outcome
+from evo_agents.worker import credentials, verify_jobs
+from evo_agents.worker.adapter import AgentEvent, Outcome
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runner.common import RunFailed, RunGone, Stopped, log, now
 from evo_agents.worker.runner.inbox import Inbox
 from evo_agents.worker.runner.kinds import kind_class
+from evo_agents.worker.runner.outputs import CLOSE_GRACE, Outputs
 from evo_agents.worker.runner.reports import LOG_LIMIT, Reports
 from evo_agents.worker.runner.sender import Sender
 from evo_agents.worker.runner.transitions import failure_ending, run_record, stop_ending
@@ -60,6 +62,13 @@ class RunKind(Protocol):
 
     async def release_branch(self) -> None:
         """Leave the plan's branches once the run is over, so they can be checked out elsewhere."""
+
+
+def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None]:
+    """The judge, replay and history keys of a run of the Curator, taken out of its spec (None for another run)."""
+    if curator is None:
+        return None, None, None
+    return tuple(curator.pop(f"{kind}_key", None) for kind in ("judge", "replay", "history"))  # type: ignore[return-value]
 
 
 class Run:
@@ -100,9 +109,7 @@ class Run:
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
         # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
         # and records see.
-        self.judge_key: str | None = self.curator.pop("judge_key", None) if self.curator is not None else None
-        self.replay_key: str | None = self.curator.pop("replay_key", None) if self.curator is not None else None
-        self.history_key: str | None = self.curator.pop("history_key", None) if self.curator is not None else None
+        self.judge_key, self.replay_key, self.history_key = _own_keys(self.curator)
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()
@@ -146,6 +153,16 @@ class Run:
             with contextlib.suppress(OSError), open(self.log_path, "ab") as handle:
                 handle.write(line)
             self.log_bytes += len(line)
+
+    def agent_event(self, event: AgentEvent) -> None:
+        """An event of the run's agent, headless or in a terminal: the files the adapter took out of it go to the
+        run's outputs (``Outputs.take``), and its body, which links to them, to the run's log."""
+        self.event(event.kind, self.outputs.take(event), event.at)
+
+    @functools.cached_property
+    def outputs(self) -> Outputs:
+        """The run's outputs on their way to the hub (``runner.outputs``)."""
+        return Outputs(self)
 
     def note(self, text: str, **extra) -> None:
         """A ``system`` event: what the daemon does with the run."""
@@ -253,6 +270,7 @@ class Run:
 
     async def main(self) -> None:
         sender = asyncio.create_task(self.sender.run())
+        self.outputs.start()
         try:
             await self._go()
             if self.ended:
@@ -301,6 +319,9 @@ class Run:
         for task in list(self._background):
             task.cancel()
         await self.agent.terminal.close_web()
+        await self.outputs.close(
+            0 if self.daemon.hard_stop.is_set() else CLOSE_GRACE
+        )  # its text redacted with the leases
         try:
             await self.credentials.release(stop=self.daemon.hard_stop)
         except Exception:
@@ -315,6 +336,9 @@ class Run:
                 await sender
         if self.sender.settled:
             self.spool.remove()
+        # A verify job of `worker step` that still runs goes with the run (verify_jobs).
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(verify_jobs.stop_all, self.daemon.home.run_dir(self.id) / verify_jobs.JOBS_DIR)
         # The agent is over: before the run counts as ended here, so a daemon that dies in between leaves an
         # abandoned run rather than an orphan whose worktree the next one would remove.
         with contextlib.suppress(OSError):

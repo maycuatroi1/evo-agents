@@ -92,6 +92,16 @@ HUB_TABLES |= pg.POLICY_TABLES  # migration 0079
 HUB_TABLES |= pg.MERGE_TABLES  # migration 0081
 HUB_TABLES |= pg.SAMPLE_TABLES  # migration 0083
 HUB_TABLES |= pg.BREAKER_TABLES  # migration 0084
+HUB_TABLES |= pg.TASKS_BLOCKER_TABLES  # migration 0085
+HUB_TABLES |= pg.PM_TABLES  # migration 0086
+HUB_TABLES |= pg.OUTPUT_TABLES  # migration 0089
+HUB_TABLES |= pg.MUTE_TABLES  # migration 0090
+HUB_TABLES |= pg.GOAL_TABLES  # migration 0091
+HUB_TABLES |= pg.LOOP_TABLES  # migration 0093
+HUB_TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
+HUB_TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
+HUB_TABLES |= pg.ORG_TABLES  # migration 0099
+HUB_TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
 
 
 @pytest.fixture

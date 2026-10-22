@@ -38,7 +38,8 @@ stdio and http MCP servers and their instructions: each pack's ``skills/`` is an
 (``skills/extraRoots/set``, before the thread starts), each server an entry of ``mcp_servers`` in the thread's
 ``config``, and the instructions follow the profile's in the developer instructions. A pack with subagents, hooks or an
 SSE server fails the run before its agent starts (``pack_refusal``). A run of the Curator gets the hub's MCP server in
-``mcp_servers`` too, unless the owner's codex config names one (``hub_tools``).
+``mcp_servers`` too, and so does a task run of an agent type, unless the owner's codex config names one
+(``hub_tools``).
 
 The thread compacts its history as it nears ``model_auto_compact_token_limit`` and keeps ``tool_output_token_limit``
 tokens of each tool output in it: the thread's ``config`` gets both from ``compact_config``, the daemon's
@@ -379,7 +380,7 @@ class CodexAdapter(QueueAdapter):
 
     async def add_packs(self, config: dict) -> None:
         """Give the thread the run's agent packs: their MCP servers in its ``config``, their skill directories as extra
-        roots of the app-server's skills; and to a run of the Curator the hub's MCP server (``hub_tools``)."""
+        roots of the app-server's skills; and to a run of the Curator or a task run the hub's MCP server (``hub_tools``)."""
         profile = profiles.profile_of(self.context)
         hub = hub_tools.codex_servers(self.context, self.mcp_servers(), profile)
         servers = {**hub, **packs.codex_servers(self.context.packs)}

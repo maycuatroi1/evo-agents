@@ -312,7 +312,7 @@ class RunStreams:
 # The worker's side
 
 
-async def _claimed(conn: AsyncConnection, user: Principal, run_id: int):
+async def claimed_run(conn: AsyncConnection, user: Principal, run_id: int):
     """(worker name, state, event_seq, events_acked, project) of run ``run_id``, its row locked, when the worker of
     ``user`` claimed it; 403 for a token of no live worker, 404 for another worker's run or none."""
     w, r, p = tables.workers, tables.runs, tables.projects
@@ -393,7 +393,7 @@ async def store_events(
 async def post_events(request: Request, run_id: RunId, body: EventBatch, user: CurrentUser):
     """Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go."""
     async with request.app.state.engine.begin() as conn:
-        _, state, last_seq, acked, _ = await _claimed(conn, user, run_id)
+        _, state, last_seq, acked, _ = await claimed_run(conn, user, run_id)
         return await store_events(request, conn, run_id, state, last_seq, acked, body.events)
 
 
@@ -431,7 +431,7 @@ async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: I
     """Mark the messages up to ``ack`` delivered, and hand out the ones that still wait, for a run the worker holds."""
     ack = (body or InboxAck()).ack
     async with request.app.state.engine.begin() as conn:
-        _, state, *_ = await _claimed(conn, user, run_id)
+        _, state, *_ = await claimed_run(conn, user, run_id)
         if state not in runs.HELD_STATES:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         if ack is not None:
@@ -452,7 +452,7 @@ async def request_run_uploads(request: Request, run_id: RunId, body: RunUploadRe
     if len(set(kinds)) != len(kinds):
         raise HTTPException(422, "a run has one log and one diff: name each kind once")
     async with request.app.state.engine.begin() as conn:
-        project = (await _claimed(conn, user, run_id))[4]
+        project = (await claimed_run(conn, user, run_id))[4]
     return await issue_uploads(request, user, project, list(body.items))
 
 
@@ -465,7 +465,7 @@ async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit,
     """Commit the uploads of a run's log and diff, and record them on the run."""
     ids = sorted({str(upload_id) for upload_id in body.upload_ids})
     async with request.app.state.engine.begin() as conn:
-        project = (await _claimed(conn, user, run_id))[4]
+        project = (await claimed_run(conn, user, run_id))[4]
         uploads = tables.blob_uploads
         query = select(uploads.c.kind).where(uploads.c.upload_id.in_([UUID(upload_id) for upload_id in ids]))
         kinds = (await conn.execute(query)).scalars().all()
@@ -491,7 +491,7 @@ async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit,
         .returning(r.c.log_sha256, r.c.diff_sha256)
     )
     async with request.app.state.engine.begin() as conn:
-        await _claimed(conn, user, run_id)  # the worker may have been revoked while the bytes were read
+        await claimed_run(conn, user, run_id)  # the worker may have been revoked while the bytes were read
         row = (await conn.execute(record)).one()
     log.info("run blobs recorded", extra={"run_id": run_id, "kinds": sorted(blob.kind for blob in committed.blobs)})
     return RunBlobs(**row._mapping)

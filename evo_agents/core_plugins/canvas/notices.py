@@ -3,7 +3,7 @@ plan living-lean-canvas).
 
 The hub sends it into the Inbox of each writer and admin of the project who may read the canvas's label through the
 project's hub sink and may decide at least one waiting item of the baseline (one who changed the status of every item
-may not). Telegram, a members' channel like the web, forwards it as it forwards every notice; the link opens the
+may not, unless the config's ``self_approval`` is on). Telegram, a members' channel like the web, forwards it as it forwards every notice; the link opens the
 baseline's page on the hub's web (``web/src/app/(app)/p/[project]/x/canvas``), where each item is decided. A decision
 needs no run, so the baseline is no decision of the hub (``decisions.run_id`` is NOT NULL); it is a notice, as
 @builder's proposals are.
@@ -16,7 +16,7 @@ from urllib.parse import quote
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.canvas import store
+from evo_agents.core_plugins.canvas import baselines, store
 from evo_agents.core_plugins.canvas.baselines import BaselineRow, ItemRow
 from evo_agents.core_plugins.canvas.store import CanvasRow
 from evo_agents.hub import signals, tables
@@ -41,6 +41,7 @@ async def tell_writers(
     if not waiting:
         return []
     rules = await signals.project_rules(conn, project_id)
+    anyone = await baselines.self_approval(conn, project_id)
     g = tables.grants
     grants = await conn.execute(
         select(g.c.user_id, g.c.role, g.c.max_level).where(g.c.project_id == project_id).order_by(g.c.user_id)
@@ -50,7 +51,7 @@ async def tell_writers(
         access = ProjectAccess(project_id, rules, role, max_level)
         if not has_role(role, "writer") or not store.visible(access, canvas.label, None):
             continue
-        if all(user_id in item.proposers for item in waiting):
+        if all(user_id in item.barred(anyone) for item in waiting):
             continue
         await notify(
             conn,

@@ -13,9 +13,9 @@ from evo_agents.hub.server.tool_stats import ToolFigures, summarize, tool_name
 START = datetime(2026, 10, 8, 1, 0, tzinfo=UTC)
 
 
-def event(second: float, kind: str, call: str | None, status: str | None, title=None, tool_kind=None):
+def event(second: float, kind: str, call: str | None, status: str | None, title=None, tool_kind=None, skill=None):
     at = START + timedelta(seconds=second)
-    return SimpleNamespace(at=at, kind=kind, call_id=call, title=title, tool_kind=tool_kind, status=status)
+    return SimpleNamespace(at=at, kind=kind, call_id=call, title=title, tool_kind=tool_kind, status=status, skill=skill)
 
 
 @pytest.mark.parametrize(
@@ -68,3 +68,23 @@ def test_tool_stats_of_codex_go_under_the_call_kind():
         event(5.5, "tool_call_update", "exec-2", "failed"),
     ]
     assert summarize("codex", events) == [ToolFigures("execute", calls=2, errors=1, duration_ms=4500)]
+
+
+def test_tool_stats_name_the_skills_the_skill_tool_loaded():
+    events = [
+        event(0, "tool_call", "s1", "pending", "Skill", "other", skill="execute-plan"),
+        event(1, "tool_call_update", "s1", "completed"),
+        event(2, "tool_call", "s2", "pending", "Skill", "other", skill="stop-slop"),
+        event(2.5, "tool_call_update", "s2", "failed"),
+        event(3, "tool_call", "s3", "pending", "Skill", "other", skill="execute-plan"),
+        event(3.2, "tool_call_update", "s3", "completed"),
+        event(4, "tool_call", "s4", "pending", "Skill", "other"),  # no skill in its input: a call, no skill
+        event(5, "tool_call", "b1", "pending", "Bash", "execute", skill="not-a-skill"),  # only the Skill tool's
+    ]
+    loaded = [{"skill": "execute-plan", "calls": 2, "errors": 0}, {"skill": "stop-slop", "calls": 1, "errors": 1}]
+    assert summarize("claude-code", events) == [
+        ToolFigures("Skill", calls=4, errors=1, duration_ms=1700, skills=loaded),
+        ToolFigures("Bash", calls=1, errors=0, duration_ms=0),
+    ]
+    codex = summarize("codex", events)  # a Codex call titled Skill is not Claude Code's Skill tool
+    assert all(figures.skills == [] for figures in codex)

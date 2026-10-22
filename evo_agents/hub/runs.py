@@ -26,7 +26,8 @@ member's own machine, which no worker runs and the hub only watches and asks dec
 ``evo_agents.hub.server.local_runs``). A worker takes a kind of run only once its heartbeat says its daemon runs that
 kind (``run_kinds``): a daemon older than the review run reads every run as a step or plan run. Likewise it takes a plan
 run with a session per step only once its heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon
-would run it in one session.
+would run it in one session. A worker whose heartbeat lists CLONES_CHECKOUTS takes a run whatever checkouts it has,
+cloning those it lacks before the run starts; an older one takes only the runs of the repos it has a checkout of.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -71,7 +72,9 @@ import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
+from evo_agents.hub.record_rule import record_rule
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
 PROTOCOL_VERSION = "1"
@@ -112,6 +115,8 @@ FAILURE_CAUSES = (
     # the remote declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset),
     # not for its credential nor because the branch moved on: the run's commits are still in its worktree
     "push_declined",
+    "no_worker",  # the hub: no worker claimed a question run in time (question_runs.QUEUE_SECONDS)
+    "no_answer",  # the agent of a question run wrote no answer
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
@@ -126,13 +131,11 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
-# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
-# branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
-# sessions and runs with a cheap model (``evo_agents.hub.history``); a cut or a fix of a project's release cycle
-# (``evo_agents.hub.releases``); a Claude Code session on a member's own machine, which no worker runs (LOCAL_KIND,
-# besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a claim hands
-# out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release")
+# plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
+# runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
+# an agent type of its own (``hub.question_runs``). A session on a member's own machine, which no worker runs, is
+# LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
@@ -169,6 +172,9 @@ UPDATE_NOW = "update_now"
 # a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
 # (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
 MERGE_JUDGE = "merge_judge"
+# a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
+# the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
+CLONES_CHECKOUTS = "clones_checkouts"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -182,6 +188,7 @@ WORKER_FEATURES = (
     LAZY_CHAT_REPOS,
     UPDATE_NOW,
     MERGE_JUDGE,
+    CLONES_CHECKOUTS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -281,7 +288,11 @@ CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run as
 ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
 # what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
 RELEASE_DECISION_CATEGORY = "release"
-SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, RELEASE_DECISION_CATEGORY)
+# what the hub alone asks the person a work item of the Loop stands for after its third failure, on its last run
+# (``server.loop.stall``)
+LOOP_DECISION_CATEGORY = "loop"
+HUB_DECISION_CATEGORIES = (RELEASE_DECISION_CATEGORY, LOOP_DECISION_CATEGORY)  # the hub does what the answer chooses
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY, *HUB_DECISION_CATEGORIES)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -300,7 +311,14 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
 # merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
+# loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
+# goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
+# loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
+# run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
+# sends to the run's owner (``server.output_notices``)
+OUTPUT_NOTICE = "run_outputs"
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -313,7 +331,16 @@ NOTICE_KINDS = (
     "canvas_baseline",
     "merge_paused",
     "release",
+    "pm_daily",
+    "pm_escalation",
+    OUTPUT_NOTICE,
+    "loop_paused",
+    "goal_review",
+    "loop_brief",
+    "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
 )
+MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
+OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5
@@ -364,6 +391,16 @@ MAX_CUT_PASSES = 64  # strings of one body fit_event_body cuts before it keeps t
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
+
+OUTPUT_COMMAND = "evo-agents worker output"  # the agent of any run sends files to the run's outputs
+# Said to the agent of a run of one step, a plan run, a step's session, a chat run and a review run.
+OUTPUTS_RULE = (
+    "- To show the people who read this run a file you made (a screenshot, a video, a report), send it with "
+    f"`{OUTPUT_COMMAND} FILE --caption TEXT` (several files at once if you like), or leave it in {OUTPUTS_DIR}/ "
+    "under the current directory, which the worker sends at each step you report and when the run ends. The run's "
+    "page on the hub shows them; the images of your tools' results may get there by themselves."
+)
+ATTACH_RULE = "  Add `--attach FILE` for a screenshot or a file the owner should see with the question."
 
 TRUNCATION_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; the plan on the hub has the full text]"
 SHORT_BYTES = 200  # a plan id, step key, title, repo or branch in the prompt
@@ -666,6 +703,7 @@ def _rules(branch: str) -> list[str]:
         '  "summary": what you changed, how you checked it, and anything left undone.',
         "  The worker runs every verify command again in this directory, and the step counts as verified only when "
         "each one exits 0.",
+        OUTPUTS_RULE,
     ]
 
 
@@ -765,23 +803,20 @@ def _plan_rules() -> list[str]:
         "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
         "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
         "yours too, with no question to the owner.",
-        "- Record progress only with `evo-agents worker step`: `evo-agents worker step KEY in_progress --repo REPO` "
-        "when you start a step, and `evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND` "
-        "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "
-        "worktree and refuses done when one exits other than 0; then it commits what is left there and pushes the "
-        "repo's branch. `evo-agents worker step KEY pending --evidence TEXT` hands a step back with what is done of "
-        "it. Do not call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
+        record_rule("KEY", "a step"),
         *_decision_lines("its step"),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step KEY`, with {fewest} to {most} options. It prints "
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        ATTACH_RULE,
         "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
         "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
         "what the owner must do, with a way around the block among the options when there is one, and end your "
         "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
         "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
         f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
@@ -902,20 +937,16 @@ def _step_session_rules(key: str) -> list[str]:
         f"- {PLAN_FILE} holds the whole plan as this run was claimed, and `evo-agents worker plan` prints it as the "
         "hub holds it now. The handoff at the end of this prompt says what the sessions and runs before this one did; "
         "read the plan for what it left out.",
-        "- Record progress only with `evo-agents worker step`: "
-        f"`evo-agents worker step {key} in_progress --repo REPO` when you start, and "
-        f"`evo-agents worker step {key} done --repo REPO --evidence TEXT --verify COMMAND` (--verify once for each "
-        "command) when it is done. The worker runs each verify command again in that repo's worktree and refuses done "
-        "when one exits other than 0; then it commits what is left there and pushes the repo's branch. "
-        f"`evo-agents worker step {key} pending --evidence TEXT` hands the step back with what is done of it. Do not "
-        "call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
+        record_rule(key, "the step"),
         *_decision_lines("the step"),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step {key}`, with {fewest} to {most} options. It "
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
         "left, end your turn. The answer comes back in this session as a message naming the decision's id, and the "
         "time you wait does not count toward the run's timeout.",
+        ATTACH_RULE,
         _PUSH_RULE,
+        OUTPUTS_RULE,
         f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because the step is done or because you cannot go "
         f'on, write {RESULT_FILE} as a JSON object whose "summary" says what you did of step {key}, what you decided '
         "yourself, and what is left and why. The worker runs no verify command at the end of the session: "

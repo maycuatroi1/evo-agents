@@ -66,7 +66,15 @@ from datetime import datetime
 
 from evo_agents.hub.chats import DIRECT as DIRECT_KIND
 from evo_agents.hub.chats import SETTLE as SETTLE_KIND
-from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip, step_title
+from evo_agents.hub.runs import (
+    MAX_MESSAGE_BYTES,
+    MAX_PROMPT_BYTES,
+    OUTPUTS_RULE,
+    RESULT_DIR,
+    RESULT_FILE,
+    clip,
+    step_title,
+)
 
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
 MAX_HOPS = 3  # a person's mention is hop 1, each agent's mention one more
@@ -345,7 +353,8 @@ def _rules(
         f"puts an emoji on a message; `{CREATE_COMMAND} --title TEXT [--person LOGIN]` makes a new chat with you and "
         f"{login}. `{MENTION_COMMAND} HANDLE TEXT` hands work to another agent of this chat: its run goes on for "
         f"{login}, at hop {hop + 1} of at most {MAX_HOPS}, never to yourself (@{handle}). An @ in your reply or in "
-        "`post` hands work to nobody.",
+        f"`post` hands work to nobody. `{POST_COMMAND} TEXT --attach FILE` puts a file you made under the message.",
+        OUTPUTS_RULE + " A file you send so goes under your next message in this thread.",
         f"- Keep {RESULT_DIR}/ out of your commits. Before you end each turn, write {RESULT_FILE} as a JSON object "
         'whose "summary" says what you did, what you changed and what is left.',
     ]

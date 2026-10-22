@@ -4,7 +4,8 @@ computes it from its rows, with no model: the worker rules are the ones a chat r
 and the run's own needs on top of them, a checkout of each of its repos and an account its owner may use there.
 
 A worker is fit when it is online, not draining, takes the run's kind, takes the way it was dispatched, has a free slot
-(the runs queued for it count), has a checkout of every repo of the run, has a runtime and a model of the run's
+(the runs queued for it count), has a checkout of every repo of the run or a daemon that clones the ones it lacks
+(runs.CLONES_CHECKOUTS), has a runtime and a model of the run's
 profile, is one the profile allows, and, when its owner bound any account to the project, has one ready there (not
 expired, paused or cooling). The fit ones are ranked by what the run failed of (``failure_cause``): the worker of the
 run first for a missing program, checkout or branch, last for a worker that stopped, a lost lease or a runtime; a
@@ -23,7 +24,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import profiles, tables, triage_rules
+from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import account_state
 from evo_agents.hub.chats import chat_link
@@ -179,7 +180,8 @@ def _worker_view(row, profile, run, repos, project, accounts, cause):
     found, ready, used = accounts
     reasons = worker_problems(row, profile, run.dispatched_via or "machine", run.kind)
     missing = [name for name in repos if f"{project}/{name}" not in (row.checkouts or {})]
-    if missing:
+    clones = runs.CLONES_CHECKOUTS in (row.features or ())
+    if missing and not clones:
         reasons.append(f"has no checkout of {', '.join(missing)}")
     mine = _ready_on(row.id, ready, found)
     if found and not mine:
@@ -203,11 +205,13 @@ def _worker_view(row, profile, run, repos, project, accounts, cause):
     elif cause in NEW_ACCOUNT_FIRST:
         bias = 0 if other else 1
     if fit:
-        reasons = [
-            "online with a free slot",
-            f"has a checkout of {', '.join(repos) or 'the project'}",
-            f"runs {', '.join(runtimes)}",
-        ]
+        has = [name for name in repos if name not in missing]
+        reasons = ["online with a free slot"]
+        if has or not repos:
+            reasons.append(f"has a checkout of {', '.join(has) or 'the project'}")
+        if missing:
+            reasons.append(f"clones {', '.join(missing)} before the run starts")
+        reasons.append(f"runs {', '.join(runtimes)}")
         if old:
             reasons.append("the worker the run failed on")
         if other and cause in NEW_ACCOUNT_FIRST:

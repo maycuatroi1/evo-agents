@@ -219,7 +219,7 @@ test("a use case's page traces the task that implements it through the project's
   await call(
     api.POST("/v1/x/tasks/{project}/tasks", {
       params: { path: { project } },
-      body: { title, description_md: "", priority: "medium", links: { use_cases: [USE_CASE.code] } },
+      body: { title, description_md: "", outcome_md: "", priority: "medium", links: { use_cases: [USE_CASE.code] } },
     }),
   );
   // The approval and the task each queued a build; the stack runs the one that waits, as the worker would.

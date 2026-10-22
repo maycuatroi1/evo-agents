@@ -17,11 +17,17 @@ included, through the outbox (``notifications.notify``). The brief holds:
   keeps it as the change's reason);
 - the decisions of the project that wait for the owner's answer, and the proposals that wait for an admin's, with how
   many of them are in the owner's Inbox;
-- the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning.
+- the worker on duty: its last heartbeat, and whether it is online, so a machine that stopped shows up in the morning;
+- for a project whose Loop is on (plan loop-engine), the Loop's part: the runs it handed out and the work items it
+  finished in the 24 hours before the brief, and those waiting for a person by reason (``loop.notices.facts``); a
+  project whose Loop is off has none.
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
 /v1/projects/{p}/curator (``last_brief``). A schedule whose owner lost every grant on the project gets no brief.
+
+``send_loop_notices`` is the job ``hub.loop_notices`` (``loop.notices.send``): the month's review of the goals of each
+project whose Loop is on, and the Loop's part of the brief, at 07:00, for a project whose Curator sends none.
 """
 
 from __future__ import annotations
@@ -31,13 +37,14 @@ import logging
 from collections import Counter
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.curator import _due, _owner_access, curator_state, night_figures
+from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.notifications import notify, one_line
 from evo_agents.hub.server.projects import ProjectAccess
 
@@ -359,6 +366,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
                 f"- proposal #{item['id']} (tier {item['tier']}): {item['title']}" for item in proposals["listed"]
             )
         )
+    blocks.extend(loop_notices.blocks(project, facts.get("loop")))
     blocks.append(_worker_words(worker, zone))
     return title, "\n\n".join(blocks)
 
@@ -376,7 +384,9 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
     paused = (
         await conn.execute(select(tables.schedules.c.paused_at.is_not(None)).where(tables.schedules.c.id == due.id))
     ).scalar_one()
-    return {
+    moment = await conn.scalar(select(func.timezone(body["window"]["timezone"], literal(due.local_now))))
+    loop = await loop_notices.facts(conn, due.project_id, moment)  # None while the project's Loop is off
+    found = {
         "night": night.isoformat(),
         "in_window": inside,
         "window": body["window"],
@@ -400,12 +410,13 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
         "proposals": {"open": proposals_total, "in_inbox": in_inbox, "listed": proposals},
         "worker": await _worker(conn, due.worker_id, body["window"]["timezone"]),
     }
+    return found if loop is None else {**found, "loop": loop}
 
 
 def _details(facts: dict) -> dict:
     """The facts a brief's notification carries for the web, the counts without the lists."""
-    worker = facts["worker"]
-    return {
+    worker, loop = facts["worker"], facts.get("loop")
+    found = {
         "night": facts["night"],
         "runs": facts["runs"]["total"],
         "cost_usd": facts["cost_usd"],
@@ -419,6 +430,10 @@ def _details(facts: dict) -> dict:
         "worker_online": worker["online"],
         "worker_last_heartbeat_at": worker["last_heartbeat_at"],
     }
+    if loop is not None:
+        handed, done, waiting = loop_notices.totals(loop)
+        found["loop"] = {"handed_out": handed, "done": done, "waiting": waiting}
+    return found
 
 
 async def _send(conn: AsyncConnection, due) -> str:
@@ -487,3 +502,8 @@ async def send_briefs(engine: AsyncEngine, *, now: datetime | None = None) -> di
             log.exception("a morning brief failed", extra={"project": due.project, "schedule_id": due.id})
             outcomes["failed"] += 1
     return dict(sorted(outcomes.items()))
+
+
+async def send_loop_notices(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
+    """One pass of ``hub.loop_notices`` (``loop.notices.send``) at ``now`` (the database's now when None)."""
+    return await loop_notices.send(engine, now=now)

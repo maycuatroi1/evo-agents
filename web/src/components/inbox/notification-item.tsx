@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { type MouseEvent, useId, useState } from "react";
 
 import { TierTag } from "@/components/curator/badges";
+import { OutputStrip } from "@/components/data/output-strip";
 import { proposalHref } from "@/components/curator/queries";
 import { Prose } from "@/components/plans/prose";
 import { runHref } from "@/components/runs/queries";
@@ -17,7 +18,7 @@ import { Ago } from "@/components/workers/ago";
 import { cn } from "@/lib/utils";
 
 import { NOTICE_LOOK, NoticeKindBadge } from "./badges";
-import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, mergeAsk, noticeFacts, shortCommit } from "./model";
+import { COMMITS_SHOWN, isBranchNotice, isOpenProposal, isWaiting, mergeAsk, noticeFacts, pluginFacts, shortCommit } from "./model";
 import type { Notification } from "./queries";
 
 /** The answer a notice of the merge queue asks of an admin: loaded only with such a notice, so the Inbox stays light. */
@@ -111,6 +112,33 @@ function BranchFacts({ notification }: { notification: Notification }) {
   );
 }
 
+/** The plugin that sent a notice and its topic. */
+function PluginNoticeFacts({ notification }: { notification: Notification }) {
+  const t = useTranslations("inbox.item");
+  const { plugin, topic } = pluginFacts(notification.details);
+  if (!plugin && !topic) return null;
+  return (
+    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs" data-testid="notice-plugin-facts">
+      {plugin ? (
+        <>
+          <dt className="text-muted-foreground">{t("plugin")}</dt>
+          <dd className="font-mono [overflow-wrap:anywhere]" data-testid="notice-plugin">
+            {plugin}
+          </dd>
+        </>
+      ) : null}
+      {topic ? (
+        <>
+          <dt className="text-muted-foreground">{t("topic")}</dt>
+          <dd className="font-mono [overflow-wrap:anywhere]" data-testid="notice-topic">
+            {topic}
+          </dd>
+        </>
+      ) : null}
+    </dl>
+  );
+}
+
 /** The triage thread a `run_failed` notice links to (the hub's /chats/ID?message=ID), or null: the run's page is its target. */
 function triageThread(notification: Notification): Route | null {
   const link = notification.link ?? "";
@@ -152,6 +180,7 @@ export function NotificationItem({
   reading: boolean;
 }) {
   const t = useTranslations("inbox.item");
+  const tFiles = useTranslations("outputs.strip");
   const unread = notification.read_at === null;
   const decision = notification.kind === "decision";
   const proposal = notification.kind === "proposal" && notification.proposal_id != null;
@@ -241,7 +270,9 @@ export function NotificationItem({
           </p>
         )}
         {!asked && isBranchNotice(notification) ? <BranchFacts notification={notification} /> : null}
+        {!asked && notification.notice_kind === "plugin_notice" ? <PluginNoticeFacts notification={notification} /> : null}
         {!decision && notification.body ? <FoldedText text={notification.body} /> : null}
+        <OutputStrip outputs={notification.outputs ?? []} label={tFiles(decision ? "question" : "notice")} testId="notification-files" />
         {!asked && mergeAsk(notification) !== null ? <MergeNoticeActions notification={notification} onRead={onRead} /> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-0.5">
           {decision && href && notification.decision_id !== null ? (
@@ -288,7 +319,7 @@ export function NotificationItem({
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}
-          {target && notification.run_id === null && notification.notice_kind === "canvas_baseline" ? (
+          {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice") ? (
             <Link
               href={target}
               onClick={() => {
@@ -297,7 +328,7 @@ export function NotificationItem({
               className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
               data-testid="notification-link"
             >
-              {t("openBaseline")}
+              {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : t("openBaseline")}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}

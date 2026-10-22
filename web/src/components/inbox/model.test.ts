@@ -16,6 +16,7 @@ import {
   notificationOfDecision,
   parkTiming,
   readInboxFilters,
+  runLinkWords,
   notificationOfProposal,
   splitInbox,
   unreadIds,
@@ -122,6 +123,9 @@ describe("answers", () => {
     expect(answerProblem("deploy", "")).toBeNull();
     expect(answerProblem(null, "Wait for the backup")).toBeNull();
     expect(answerProblem(null, "ệ".repeat(MAX_ANSWER_BYTES / 3 + 1))).toBe("long");
+    // The hub does what an option of its own decisions says: words alone are not an answer to one.
+    expect(answerProblem(null, "close it", true)).toBe("option");
+    expect(answerProblem("close", "", true)).toBeNull();
   });
 
   it("sends the option and the trimmed words, leaving out what is empty", () => {
@@ -131,7 +135,7 @@ describe("answers", () => {
   });
 
   it("lets only the run's owner answer an open decision whose run can still take it", () => {
-    const open = { state: "open", owner: "octo", run_state: "waiting" } as const;
+    const open = { state: "open", owner: "octo", run_state: "waiting", category: "deploy" } as const;
     expect(answerAccess(open, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "parked" }, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "queued" }, "octo")).toBe("answer");
@@ -143,6 +147,23 @@ describe("answers", () => {
     expect(answerAccess({ ...open, run_state: "review" }, "octo")).toBe("runGone");
     expect(answerAccess({ ...open, state: "answered" }, "octo")).toBe("closed");
     expect(answerAccess({ ...open, state: "expired" }, "mona")).toBe("closed");
+  });
+
+  it("names the run a decision names by what it is", () => {
+    expect(runLinkWords({ category: "triage", plan_id: null })).toBe("triageRunLink");
+    expect(runLinkWords({ category: "release", plan_id: null })).toBe("releaseRunLink");
+    expect(runLinkWords({ category: "scope", plan_id: null })).toBe("authorRunLink");
+    expect(runLinkWords({ category: "deploy", plan_id: "lumen-sso" })).toBe("runLink");
+  });
+
+  it("lets the owner answer a decision of the hub's own whatever its run is", () => {
+    // A stopped release cycle asks on its last run, done by then: the hub, not an agent, takes the answer.
+    const stopped = { state: "open", owner: "octo", run_state: "done", category: "release" } as const;
+    expect(answerAccess(stopped, "octo")).toBe("answer");
+    expect(answerAccess({ ...stopped, category: "loop", run_state: "failed" }, "octo")).toBe("answer");
+    expect(answerAccess(stopped, "mona")).toBe("notOwner");
+    expect(answerAccess({ ...stopped, state: "cancelled" }, "octo")).toBe("closed");
+    expect(answerAccess({ ...stopped, category: "deploy" }, "octo")).toBe("runGone");
   });
 
   it("names the option an answer chose", () => {

@@ -8,6 +8,7 @@ import { seedInsights } from "./support/insights";
 import { grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
+import { seatByApi, unitByApi } from "./support/org";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import {
   askDecision,
@@ -28,6 +29,7 @@ import {
   startRun,
   uploadDiff,
 } from "./support/runs";
+import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
@@ -37,7 +39,7 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), Insights with its charts and a wide table,
+ * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), the org chart three units deep, Insights with its charts and a wide table,
  * Home, the Monitor, chats and an SRS version's review with @ba's findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
@@ -119,6 +121,15 @@ for (const width of WIDTHS) {
 }
 
 for (const width of WIDTHS) {
+  test(`PM daily never scrolls sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedPm(me, project, { long: LONG });
+    await noSidewaysScroll(page, [width], [{ path: pmPath(project), ready: shown("pm-report") }]);
+  });
+}
+
+for (const width of WIDTHS) {
   test(`knowledge graph pages never scroll sideways at ${width} px`, async ({ page, member }) => {
     const me = await member();
     const kg = await sharedKg();
@@ -173,6 +184,17 @@ test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", as
   });
   await putSecretByApi(me, `${LONG}-env`, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("secrets-table") }]);
+});
+
+test("the org chart never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "reader", maxLevel: "internal" }]);
+  // Units three deep, the deepest with a long unbroken slug and a seat in it.
+  const top = await unitByApi("wide-org");
+  const middle = await unitByApi("wide-org", top);
+  const deep = await unitByApi(LONG.slice(0, 40), middle);
+  await seatByApi({ unit: deep, role: "member", login: me.login, ends_on: "2099-12-31" });
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/org", ready: shown("org-tree") }]);
 });
 
 for (const width of WIDTHS) {

@@ -3,8 +3,8 @@ it goes to, the session it goes on in, the agent's messages in the thread and th
 
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
-writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), or
-when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
+writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
+their primary seat in the org chart ended, or when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
 its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
 allows, with the most of the project's repos checked out first, on the branch ``chat/<run>``, in the repos of the
@@ -17,7 +17,8 @@ row is dispatched by them; the person stays the origin the hub's chat code acts 
 
 A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) wake the chat's streams, whose progress of the
 run under its messages changed (``chat_progress``), and put the agent's reaction on the message that started it by
-rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
+rule (``chat_store.status_reaction``); once it ended, the files it sent after its last message go under that message
+(``output_store.attach_leftovers``); a run that failed says why in the thread, and one that ended
 done with messages of its inbox untaken goes on in its session at once, with them. Its prompt is built when it is
 claimed (``chat_prompt``); on a daemon of ``runs.LAZY_CHAT_REPOS`` it lists every repo of the project, those open and
 those the message or the thread names first (``rules.ranked_repos``). The agent's reply at the end of each turn, and
@@ -41,7 +42,10 @@ from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
+from evo_agents.hub.server.org_store import ended_refusal
+from evo_agents.hub.server.output_store import attach_leftovers, link_message
 from evo_agents.hub.server.profile_store import Profile, by_id
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
@@ -328,15 +332,17 @@ async def go_on_parked(
 async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
     project the worker has a checkout of: of them, the project's harness alone on a daemon of
-    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``)."""
+    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``). A daemon that clones
+    what it lacks (``runs.CLONES_CHECKOUTS``) starts with the harness without a checkout of it too, when a project of
+    the owner's lists an origin to clone it from (``repo_origins``)."""
     profile = hand.profile
-    names = [
-        name
-        for name in await project_repos(conn, profile.project_id)
-        if f"{profile.project}/{name}" in (worker.checkouts or {})
-    ]
+    listed = await project_repos(conn, profile.project_id)
+    names = [name for name in listed if f"{profile.project}/{name}" in (worker.checkouts or {})]
     if runs.LAZY_CHAT_REPOS in (worker.features or ()):
         harness = await project_harness(conn, profile.project_id)
+        if harness is not None and harness not in names and runs.CLONES_CHECKOUTS in (worker.features or ()):
+            if harness in await repo_origins(conn, profile.project_id, hand.owner_id, [harness]):
+                names.append(harness)
         names = [name for name in names if name == harness]
     allow = profiles.allowed(profile.permissions, "model")
     title = rules.turn_title(profile.handle, hand.chat.title, hand.body)
@@ -427,17 +433,22 @@ async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     )
 
 
+async def _seat_refusal(conn: AsyncConnection, user_id: int, login: str) -> str | None:
+    """Why a chat run of ``login`` is refused: their primary seat in the org chart ended (plan org-chart, a5)."""
+    return await ended_refusal(conn, user_id, login, what="a chat run")
+
+
 async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str | None]:
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
     run that is queued or held takes the message in its inbox; one that ended done, or failed because the remote
     declined its push, is gone on from; else a new session starts on a worker of the dispatcher, or of the run_as of
     the agent's type when it routes its chat runs there (see the module's docstring)."""
-    refusal = await _writer_refusal(conn, hand)
+    refusal = await _writer_refusal(conn, hand) or await _seat_refusal(conn, hand.dispatcher_id, hand.dispatcher)
     if refusal is not None:
         return None, refusal
     hand = replace(hand, route=await route_of(conn, hand.profile.id))
     if hand.route is not None:
-        refusal = await _run_as_refusal(conn, hand)
+        refusal = await _run_as_refusal(conn, hand) or await _seat_refusal(conn, hand.route.user_id, hand.route.login)
         if refusal is not None:
             return None, refusal
     session = await _session(conn, hand)
@@ -559,11 +570,14 @@ async def post_agent(
     *,
     hand: Hand | None = None,
     target: str | None = None,
+    output_ids: list[int] | None = None,
 ) -> tuple[int, list[dict]]:
     """Store a message of agent ``profile`` of run ``run_id`` in ``chat``, in the thread of ``root_id``; (its id, its
     mentions). A person it mentions gets the notice. The agent ``target`` names gets the work ``hand`` asks
     (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL). The agent naming itself ("I am
-    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing."""
+    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing. The message
+    carries the outputs of the run ``output_ids`` names and, for a chat run, those no message carries yet
+    (``output_store.link_message``)."""
     from evo_agents.hub.server.chats import resolve_mentions  # its routes hand work through this module
 
     origin = await _principal(conn, chat.user_id)
@@ -582,6 +596,7 @@ async def post_agent(
         asked = replace(hand, message_id=message_id, root_id=root_id or message_id)
         mention["run_id"], mention["refusal"] = await _hand_on(conn, asked, mention["profile_id"])
     await insert_mentions(conn, message_id, kept)
+    await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
         await notice_mention(conn, chat, user_id, message_id, body)
     return message_id, kept
@@ -623,8 +638,9 @@ async def _run_profile(conn: AsyncConnection, run_id: int) -> Profile:
     return await by_id(conn, profile_id)
 
 
-async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int, text: str) -> int:
-    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``; its id."""
+async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, text: str) -> int:
+    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``, or, with no root, one that
+    starts none; its id."""
     projects = await agent_projects(conn, chat_id)
     c, u = tables.chats, tables.users
     row = (
@@ -663,6 +679,8 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         return None
     await wake(conn, found.chat_id)
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
+    if new in runs.TERMINAL_STATES:  # what it sent after its last message goes under that one
+        await attach_leftovers(conn, run_id)
     if new == "failed":
         profile = await _run_profile(conn, run_id)
         why = found.error or "its worker gave no reason"

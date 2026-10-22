@@ -16,6 +16,7 @@ Core plugins), and it does nothing in a project until an admin of the project en
 evo-agents hub plugin enable canvas --project northwind
 evo-agents hub plugin config canvas --project northwind \
   --set 'baseline={"weekday": "friday", "time": "16:00", "timezone": "Asia/Ho_Chi_Minh"}'
+evo-agents hub plugin config canvas --project northwind --set self_approval=true   # a proposer may decide the item
 evo-agents hub plugin config canvas --project northwind --effective
 ```
 
@@ -26,8 +27,10 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `baseline.weekday` | the day of the week the hub proposes each canvas's baseline | `friday` |
 | `baseline.time` | the time of day, `HH:MM` on 24 hours | `16:00` |
 | `baseline.timezone` | an IANA time zone, such as `Asia/Ho_Chi_Minh` | the time zone of the project's Curator charter, else UTC |
+| `self_approval` | `true` lets a member who proposed an item of a baseline decide it, as any writer of the project (section Baselines, Who decides) | `false`: another writer decides it |
 
-A zone Postgres does not know is logged and the next one in that order is used. Turning the plugin off deletes
+A zone Postgres does not know is logged and the next one in that order is used. Only an admin of the project writes
+the config; `--unset self_approval` turns self-approval off again, back to its default. Turning the plugin off deletes
 nothing: its tables and rows stay for when it is on again, and its routes answer 404 while it is off. A project that
 never enabled it has no Lean Canvas entry in its menu.
 
@@ -106,8 +109,9 @@ the status in effect for the Loop changes only through a baseline (section Basel
 It names the rev it takes back, which must still be the claim's current rev. Undoing a claim's first rev archives the
 claim. An undo restores links without checking them again, since they were checked once.
 
-**A run nobody commanded only proposes.** A task run of @strategist (a brainstorm), the value check and, later, the
-Loop make proposals instead of revs: a new claim, which starts as an assumption, or a change of a claim at the rev it
+**A run nobody commanded only proposes.** A task run of @strategist (a brainstorm), the value check, the Curator's
+review run on a night of the lens `product` (`docs/curator.md`, The lens product) and, later, the Loop make proposals
+instead of revs: a new claim, which starts as an assumption, or a change of a claim at the rev it
 was read at. A writer accepts a proposal, which writes the rev as that writer's own (kind `proposal`), or rejects it
 with a reason. The rules of status hold when a proposal is made and again when it is accepted. Once its claim gets a
 new rev, an open proposal goes stale and can no longer be accepted.
@@ -145,6 +149,11 @@ A baseline asks one item per claim that is not archived, the first of these that
 **Who decides.** A writer of the project, never the agent of a run, and never one of the item's proposers: a member who
 changed the claim's status since the status in effect, or accepted the proposal that did, or opened the baseline. An
 admin is no exception. What the value check or an overdue card asks, the hub proposed, so any writer may decide it.
+With the config's `self_approval` on, the rule on proposers alone goes: a proposer decides the item as any writer
+does, so a project with a single writer can approve its baselines. Every other rule holds either way: writers only,
+one decision per item, never a run. The item still records who decided it, and the baseline who approved it. The
+review page then lists no member who may not decide an item, and every writer gets the notice. Turning it off bars
+the proposers again from the items still waiting.
 
 **What a decision does**, in the transaction that records it:
 
@@ -165,7 +174,7 @@ baseline's review page, `/p/<project>/x/canvas/canvases/<slug>/baselines/<number
 evidence. A baseline is a notice, not a decision of the hub, since hub decisions belong to a run.
 
 **Opening one now.** A writer may open a baseline of one claim at once (`POST .../baselines {"claim": "CL-3"}`) for
-another writer to approve; it is refused with 409 while a proposed baseline already holds the claim or when the claim
+another writer to approve, or to approve it themselves with `self_approval` on; it is refused with 409 while a proposed baseline already holds the claim or when the claim
 asks nothing.
 
 ## Events
@@ -206,7 +215,7 @@ caps what its task runs (brainstorms and judging runs together) cost in 24 hours
 | `canvas__signals` | the registry of signal keys with the latest value of each, or one key's recent values | anyone with a grant |
 | `canvas__edit` | changes claims at the rev read, applied at once as an agent's rev for the member who asked | the agent of a chat run of @strategist, for a writer |
 | `canvas__undo` | takes back a claim's rev, or without claims the member's last command | the agent of a chat run of @strategist, for a writer |
-| `canvas__propose` | new claims (each an assumption with a test card) or changes at the rev read, for a writer to accept | the agent of a chat or task run of @strategist |
+| `canvas__propose` | new claims (each an assumption with a test card) or changes at the rev read, for a writer to accept | the agent of a chat or task run of @strategist, or of the Curator's review run on a night of the lens `product` |
 | `canvas__evidence` | adds evidence, which counts toward `validated` only once a writer confirms it | the agent of a chat or task run of @strategist |
 | `canvas__judge` | the items of a judging run and a verdict with why on each | the agent of a judging run alone |
 | `srs__read`, `srs__search` | the project's SRS documents, when it enables srs | as the plugin srs says |

@@ -29,7 +29,9 @@ status. Turning the plugin off deletes nothing.
 
 ## The model
 
-- **A task** has a number in the project, shown after the prefix (`T-42`), a type, a title, a Markdown description, a
+- **A task** has a number in the project, shown after the prefix (`T-42`), a type, a title, a Markdown description, an
+  outcome (`outcome_md`, Markdown, empty until someone states what the task came to; the pm daily report reads it before
+  the section `## Kết quả` or `## Outcome` of the description, which it falls back to while the field is empty), a
   status, a priority (`urgent`, `high`, `medium` or `low`), a due date, a sprint, a parent task and a label, the
   project's unless an admin gives it another. A parent is another task of the project, never one below it.
 - **Its people**: its assignees, and its BA, QA and Dev, each a list of members with a grant on the project.
@@ -57,7 +59,28 @@ A target the member cannot see (a document or a plan whose label is above the cl
 linked, and an existing link to one shows `hidden` and nothing of it.
 
 Migration 0047 adds the six tables, each with the plugin's prefix: `tasks_sprints`, `tasks_items`, `tasks_people`,
-`tasks_links`, `tasks_events` and `tasks_comments`. Going back to 0046 drops them.
+`tasks_links`, `tasks_events` and `tasks_comments`. Going back to 0046 drops them. Migration 0085 adds `tasks_blockers`
+and the column `tasks_sprints.activated_at` (see Blockers); going back to 0084 drops both.
+
+## Blockers
+
+A blocker is a flag on a task, never a status: a task keeps its status while it is blocked, and it may have many open
+blockers. A manual blocker is a row of `tasks_blockers`: the task, a reason (1 to 1,000 characters), who it waits on,
+`since`, `cleared_at`, `cleared_by` and `created_by`. The waiter is in exactly one of three forms: a member with a
+grant on the project, another task of the same project (never the task itself), or free text (at most 300
+characters). A member without a grant, a task of another project or the task itself is refused with 422.
+
+An open decision of a run linked to the task is a blocker read at read time, never a row: the run is linked by a `run`
+link, or because it has a `plan_id` and `step_key` that match a `plan_step` link of the task. The waiter is the member
+who dispatched the run (`runs.dispatched_by`), `since` is when the decision was asked, and the entry names the
+decision. Answering the decision ends it.
+
+`GET tasks/{ref}` lists all open blockers of both kinds (`blockers`), `GET tasks` gives each task a `blocked` flag, and
+`?blocked=true` keeps the blocked ones. Each set and each clear writes a `tasks_events` row under the field `blocker`.
+Setting, changing or clearing needs the writer role (readers get 403).
+
+`tasks_sprints.activated_at` records when the sprint turned active; the sprints routes write it when the state becomes
+`active`. A sprint that was already active before 0085 has it empty.
 
 ## Who does what
 
@@ -80,8 +103,8 @@ more, so a second try writes nothing.
 ## Tasks of an approved SRS version
 
 When a version of a document of the plugin srs is approved in a project that enables both plugins, srs keeps the
-project's tasks in step with the version's use cases, comparing it with the version approved before
-(`docs/srs-plugin.md`, Tasks when a version is approved):
+project's tasks in step with the version's use cases once the hub delivers it the event `srs.version.approved`,
+comparing the version with the one approved before (`docs/srs-plugin.md`, Tasks when a version is approved):
 
 - a use case new in the version gets a frame task, `UC ORD-1: Place an order`, linked to it, of type `story` when the
   project has it (its first type otherwise), in the first status, made by the approver; its history names the hub
@@ -97,6 +120,26 @@ tasks__create), for the approver. An approval of the same version again, such as
 task, comment or run, and a frame task is found by its `external_key`. srs writes these rows through the hub's tables,
 as this plugin reads srs's items: neither imports the other.
 
+## The event tasks.status
+
+Every status a task takes emits the event `tasks.status`, in the transaction that set it
+(`evo_agents/hub/task_status.py`, plan loop-engine):
+
+| Cause | When | Who |
+| --- | --- | --- |
+| `create` | a task made on the web, with the CLI or with `tasks__create` (`from` is null) | the member, or the member an agent works for |
+| `edit` | an edit that changes the status; an edit that leaves it emits nothing | the member |
+| `import` | each task of an import, once the import has set the parents (`from` is null) | the member who imported |
+| `srs_approval` | a frame task srs makes for a new use case (`from` is null), or a task srs cancels because the version dropped its use case | the hub |
+| `steps_done` | `on_steps_done` moving a task once every plan step it links is done | the hub |
+
+Its payload, `v: 1`: the task's id, number and ref (`T-42`), `from` and `to` with their groups (`from_group`,
+`to_group`), `actor` (`person` or `hub`) with the member's id and login, `cause`, `source` (the SRS document and
+version for `srs_approval`, the plan and step for `steps_done`, else null), the parent's id and ref, the SRS items it
+links (id and code each) and the plan steps it links (plan and step each). It carries ids, codes and states, never a
+title, a description or the text of the task's history. Plugins the project granted `tasks:read` get it, at least
+once, and the hub keeps it in `hub_events`, where the Loop reads it (`docs/plugins.md`, section Extension points).
+
 ## Commands
 
 `evo-agents hub task` is the client of the routes below (`evo_agents/hub/cli_tasks.py`). `--json` prints what the hub
@@ -111,11 +154,16 @@ evo-agents hub task create --project evo-agents --title "Place an order with a c
   --use-case "UC ORD-1" --step rollout#2 --assignee alice --role qa=bao
 evo-agents hub task edit T-42 --project evo-agents --status in_review --pull https://github.com/acme/shop/pull/88
 evo-agents hub task edit T-42 --project evo-agents --role qa= --unlink 7
+evo-agents hub task edit T-42 --project evo-agents --outcome -    # the outcome from stdin; --outcome '' clears it
 evo-agents hub task import notion-tasks.json --project evo-agents --dry-run
+evo-agents hub task block T-42 --project evo-agents --waiting-on alice --reason "needs the API key"
+evo-agents hub task unblock T-42 --project evo-agents [--blocker 3]
+evo-agents hub task list --project evo-agents --blocked
 ```
 
 `--assignee` gives the whole list of assignees, and `--role ROLE=LOGIN` the whole list of each role it names (`--role
-qa=` empties it). `--use-case`, `--step`, `--run` and `--pull` add links, `--unlink` drops one by the id `show` prints.
+qa=` empties it). `block --waiting-on` takes a login, a task ref (`T-7`) or text (`--text` forces text). `unblock`
+without `--blocker` clears every open manual blocker; decision blockers end when the decision is answered. `--use-case`, `--step`, `--run` and `--pull` add links, `--unlink` drops one by the id `show` prints.
 
 ## Routes
 
@@ -124,11 +172,12 @@ Under `/v1/x/tasks/{project}/`:
 | Route | What |
 | --- | --- |
 | `GET settings` | the prefix, the statuses with their groups, the types, `on_steps_done`, and whether the project enables srs |
-| `GET tasks` (`?status=`, `?sprint=`, `?backlog=true`, `?mine=true`, `?assignee=`, `?limit=`) | the tasks the caller sees that the filters keep, by number |
+| `GET tasks` (`?status=`, `?sprint=`, `?backlog=true`, `?mine=true`, `?assignee=`, `?blocked=true`, `?limit=`) | the tasks the caller sees that the filters keep, by number |
 | `GET tasks/{ref}` | a task whole: its links as they are now, its history and comments |
 | `POST tasks` | a new task with its people and links (201) |
 | `PATCH tasks/{ref}` | a change of its fields, people and links; `unlink` drops links by id |
 | `POST tasks/{ref}/comments` | a comment (201) |
+| `POST tasks/{ref}/blockers`, `PATCH tasks/{ref}/blockers/{id}` | set a blocker (201); change or clear one |
 | `GET sprints`, `POST sprints`, `PATCH sprints/{name}` | the sprints; closing one takes `move_to` |
 | `GET people` | the members a task may name, by login, with their role |
 | `POST import` | `{"data": <evo-tasks/1>, "dry_run": true \| false}` |

@@ -17,7 +17,7 @@ from evo_agents.hub import runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
-from evo_agents.worker.runner import origin, parallel, push
+from evo_agents.worker.runner import access, origin, parallel, push
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cause, wait_or
 
 if TYPE_CHECKING:
@@ -51,33 +51,33 @@ class BranchWork:
         self.branch = branch
         self.kind = kind
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
+        self.no_origin: list[str] = []  # repos of the run the project lists no origin for
         # the step of the setup a fetch's note starts: the thread of a chat run shows the repo it opens
         self.setup = "opening" if kind.name == CHAT.name else None
 
     def held_repos(self, repos: list[dict]) -> list[dict]:
-        """The repos of the run this worker has a checkout of; the others are noted, and left out."""
+        """The repos of the run this worker has a checkout of and the project lists an origin for; the others are
+        best-effort repos the run goes on without (``access.leaves_out``), noted and left out."""
         run = self.run
         held = []
         for entry in repos:
             name = entry.get("repo")
-            if isinstance(name, str) and name and run.daemon.checkout_for(run.project, name) is not None:
+            why = access.leaves_out(run, name) if isinstance(name, str) and name else "checkout"
+            if why is None:
                 held.append(entry)
             else:
-                self.left_out.append(str(name))
-        if self.left_out:
-            run.note(f"No checkout of {', '.join(self.left_out)} on this worker: the agent works without them.")
+                (self.no_origin if why == "origin" else self.left_out).append(str(name))
+        access.left_out_notes(run, self.left_out, self.no_origin)
         return held
 
     def where(self) -> list[str]:
         """What the prompt adds: where each repo's worktree is when a folder is not named as its repo, and the repos
-        this worker has no checkout of."""
+        the run goes on without (``access.left_out_lines``)."""
         moved = self.directory.moved()
         extra = []
         if moved:
             extra += ["", "Worktree folders that are not named as their repo:", *moved]
-        if self.left_out:
-            extra += ["", f"Repos of the project this worker has no checkout of: {', '.join(self.left_out)}."]
-        return extra
+        return extra + access.left_out_lines(self.left_out, self.no_origin)
 
     def adopted(self, names: list[str]) -> list[str]:
         """The repos of ``names`` whose worktree the run goes on in, adopted from the run before it in its session."""

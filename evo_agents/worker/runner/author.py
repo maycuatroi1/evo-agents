@@ -67,6 +67,7 @@ class AuthorRun:
             prompt_for=author.reply_prompt,
         )
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
+        self.no_origin: list[str] = []  # repos of the run, but its harness, the project lists no origin for
         self.last_said: str | None = None  # the agent's last message in the chat
 
     async def steps(self) -> None:
@@ -96,10 +97,11 @@ class AuthorRun:
         if resume_of is not None:  # the parked run's directory, worktrees and skills, when they are still here
             self.conversation.adopt()
         bundles = await self.fetch_skills() if self.directory.path is None else []
+        named = [entry.get("repo") for entry in repos]
+        await access.take_credentials(run, named, clone=named[:1])  # the harness is cloned when this worker lacks it
+        run.check()
         held = self.held_repos(repos)
         names = [entry.get("repo") for entry in held]
-        await access.take_credentials(run, names)
-        run.check()
         await access.check(run, names, path=access.run_path(run))
         run.check()
         await self.prepare(held, bundles)
@@ -178,23 +180,25 @@ class AuthorRun:
     # The repos and the skills
 
     def held_repos(self, repos: list[dict]) -> list[dict]:
-        """The repos of the run this worker has a checkout of; RunFailed without one of the first, the harness."""
+        """The repos of the run this worker has a checkout of; RunFailed without one of the first, the harness. The
+        others are best effort: one without a checkout here, or that the project lists no origin for, is noted and left
+        out (``access.leaves_out``), while the harness goes on to the preflight, which fails on it without an origin."""
         run = self.run
         harness = repos[0].get("repo")
         if not isinstance(harness, str) or run.daemon.checkout_for(run.project, harness) is None:
             raise RunFailed(
                 f"this worker has no checkout of {run.project}/{harness}, the project's harness, which an author run "
-                "reads the project's plans in: clone it where the harness registry places it, then dispatch again"
+                "reads the project's plans in, and could not clone it"
             )
-        held = []
-        for entry in repos:
+        held = [repos[0]]  # the harness, which the preflight fails on when the project lists no origin for it
+        for entry in repos[1:]:
             name = entry.get("repo")
-            if isinstance(name, str) and run.daemon.checkout_for(run.project, name) is not None:
+            why = access.leaves_out(run, name) if isinstance(name, str) and name else "checkout"
+            if why is None:
                 held.append(entry)
             else:
-                self.left_out.append(str(name))
-        if self.left_out:
-            run.note(f"No checkout of {', '.join(self.left_out)} on this worker: the agent works without them.")
+                (self.no_origin if why == "origin" else self.left_out).append(str(name))
+        access.left_out_notes(run, self.left_out, self.no_origin)
         return held
 
     async def fetch_skills(self) -> list[tuple[dict, skills.Contents]]:
@@ -261,8 +265,7 @@ class AuthorRun:
         extra = []
         if moved:
             extra += ["", "Worktree folders that are not named as their repo:", *moved]
-        if self.left_out:
-            extra += ["", f"Repos of the project this worker has no checkout of: {', '.join(self.left_out)}."]
+        extra += access.left_out_lines(self.left_out, self.no_origin)
         return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
 
     # What the parts every kind shares ask of it

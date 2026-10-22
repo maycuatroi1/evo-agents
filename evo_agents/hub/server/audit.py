@@ -38,6 +38,8 @@ KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older gr
 # An admin deleted old graphs and source blobs of a project that hold a secret (evo_agents.hub.server.kg_scrub); the
 # target counts them, "<project> artifacts=<n> blobs=<n>", never a hash or a value.
 KG_SCRUB = "kg.scrub"
+# A member took every run of a source off the hub (evo_agents.hub.server.kg): "<project> source=<id> runs=<n>".
+KG_FORGET = "kg.forget"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
@@ -67,6 +69,9 @@ RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another p
 RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
+# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
+# run's target, then " output:<id>", never its name or its bytes.
+RUN_OUTPUT_DELETE = "run.output_delete"
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
 RUN_FINISH = "run.finish"  # the owner ended the chat of an author run: "<project>/author run:<id>"
@@ -76,6 +81,8 @@ RUN_OPEN_REPO = "run.open_repo"
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
 NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
+# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.output_notices).
+NOTIFICATION_SETTINGS = "notification.settings"
 # The web terminal of a run; the target names the run as above, and on close the bytes relayed each way and how it
 # ended ("... to_worker=<n> to_browser=<n> end=<idle|timeout|browser|worker|protocol|shutdown>"), never the bytes.
 TERMINAL_OPEN = "terminal.open"  # the owner opened the run's terminal in a browser
@@ -127,6 +134,9 @@ PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for th
 # enable, or " run:<id>" for a task, whose actor is the member it runs as, with no token: the plugin's token handed it.
 AGENT_TYPE_ENABLE = "agent-type.enable"  # an admin of the project enabled it, or changed how; its profile on the first
 AGENT_TYPE_DISABLE = "agent-type.disable"  # an admin turned it off: the plugin's tasks are refused
+PLUGIN_NOTIFY = (
+    "plugin.notify"  # the plugin, granted notifications:send, sent members a notice: who and how many, no text
+)
 TASK_DISPATCH = "task.dispatch"  # the plugin, granted runs:dispatch, handed it a task: a run of kind task
 # A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
 # instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
@@ -137,10 +147,29 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
+# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.run_outputs):
+# "<project>/outputs tool_images=on|off".
+SETTINGS_OUTPUTS = "settings.outputs"
 # A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
 # "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
 # approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
 POLICY_SET = "policy.set"
+# A new revision of a goal of a project (evo_agents.hub.server.goals), in the project: "<project>/goal G-<n>
+# revision=<n> fields=<the fields whose value changed>", then " proposal=<id>" when an admin approved or rolled back a
+# proposal of @builder, " copy-of=<n>" for a rollback, and " charter=<revision>" with no actor when the hub made the
+# goal from a goal of the Curator's charter; never a value.
+GOAL_SET = "goal.set"
+# The org chart belongs to no project (evo_agents.hub.server.org_store). A target names the unit by slug and the seat
+# by id with its holder, then each field that changed as "<field>=<was>-><is>" and the unit's revision after it:
+# "unit:<slug> parent=<slug> kind=<kind> revision=1", "seat:<id> unit=<slug> login=<l> role=<role> primary=true->false
+# revision=<n>", "ceiling unit:<slug> level=A5->A1 revision=<n>"; never a ceiling's note.
+ORG_UNIT_CREATE = "org.unit_create"
+ORG_UNIT_EDIT = "org.unit_edit"
+ORG_UNIT_ARCHIVE = "org.unit_archive"
+ORG_SEAT_ADD = "org.seat_add"
+ORG_SEAT_EDIT = "org.seat_edit"
+ORG_SEAT_END = "org.seat_end"
+ORG_CEILING_SET = "org.ceiling_set"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a
@@ -148,6 +177,9 @@ POLICY_SET = "policy.set"
 MERGE_OPEN = "merge.open"
 MERGE_JUDGE = "merge.judge"
 MERGE_MERGE = "merge.merge"
+# An admin passed the hold of a merge request at a gate that holds it for a person (evo_agents.hub.server.merge_pass),
+# in the project: "<project>/<repo> !<iid> gate=<n> sha=<the head it holds> reason=<the admin's reason, cut>".
+MERGE_PASS = "merge.pass"
 # What follows a merge of the queue (evo_agents.hub.server.post_merge), in the project: the hub ran the PROD deploy job,
 # "<project>/<repo> !<iid> job=<name> sha=<commit>[ carries=<!iid,...>]", or the rollback job, "... job=<name>
 # to=<commit>", or opened a revert, "<project>/<repo> !<iid> revert=!<iid> branch=<branch>"; an admin approved a PROD

@@ -24,9 +24,9 @@ function main(page: Page) {
   return page.locator("#main");
 }
 
-/** An account's row with the usage limits under it: the two are one group (a tbody) of the table. */
+/** An account's row with what is under it (usage limits, the variables of a merged line): one group (a tbody) of its table. */
 function row(page: Page, name: string) {
-  return main(page).getByTestId("accounts-table").locator("tbody").filter({ has: page.locator(`[data-account-name="${name}"]`) });
+  return main(page).locator("tbody").filter({ has: page.locator(`[data-account-name="${name}"]`) });
 }
 
 function policyRow(page: Page, project: string) {
@@ -115,7 +115,11 @@ test("Add Claude account writes a token the list then shows without it, and Rene
   await expect(dialog).toBeHidden();
   await expect(toast(page, "Account claude-web added")).toBeVisible();
   const added = row(page, "claude-web");
+  // A ready account has no pill: its state is only text for a screen reader.
   await expect(added.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+  await expect(added.getByTestId("account-state")).toHaveClass(/sr-only/);
+  await expect(added.getByTestId("account-held-by")).toHaveCount(0);
+  await expect(added.getByTestId("account-target")).not.toContainText("weight");
   await expect(added.getByTestId("account-target")).toContainText(VAR);
   await expect(added).toContainText(project);
   expect((await secretsOf(me)).map(({ name, kind, env_var, projects }) => ({ name, kind, env_var, projects }))).toEqual([
@@ -208,7 +212,11 @@ test("each account shows its state, usage limits, runs and holder without a valu
   await expect(held.getByTestId("account-cost")).toContainText("$0.00");
   await expect(held.getByRole("link", { name: `Open run #${run.id} of ${project}` })).toHaveAttribute("href", runPath(project, run.id));
   const other = row(page, "claude-b");
-  await expect(other).toContainText("No run");
+  await expect(other.getByTestId("account-held-by")).toHaveCount(0);
+  await expect(other).not.toContainText("No run");
+  // Two accounts for the variable: weight and priority show, and the provider is named.
+  await expect(other.getByTestId("account-target")).toContainText("Claude");
+  await expect(other.getByTestId("account-target")).toContainText("weight 1, priority 0");
   await expect(other.getByTestId("account-usage")).toHaveText("No usage reported yet");
   await expect(other.getByRole("progressbar")).toHaveCount(0);
   await expectNoSeriousViolations(page, "/accounts with usage limits");
@@ -316,4 +324,75 @@ test("the run page names the account a run took and the usage limit it moved on 
   await expect(row(page, "claude-b").getByRole("link", { name: `Open run #${run.id} of ${project}` })).toBeVisible();
   const bodies = (await received()).join("\n");
   for (const value of values) expect(bodies).not.toContain(value);
+});
+
+/** Pixels the page is wider than the window: zero when it does not scroll sideways. */
+async function overflow(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
+test("accounts are listed in two groups by provider, with the cost of the model accounts alone", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await putSecretByApi(me, "claude-sub", { kind: "env", env_var: VAR, projects: [project], value: secretValue("sub") });
+  await putSecretByApi(me, "anthropic-key", { kind: "env", env_var: "ANTHROPIC_API_KEY", projects: [project], value: secretValue("key") });
+  await putSecretByApi(me, "lark-id", { kind: "env", env_var: "LARK_APP_ID", projects: [project], value: secretValue("id") });
+  await putSecretByApi(me, "lark-secret", { kind: "env", env_var: "LARK_APP_SECRET", projects: [project], value: secretValue("secret") });
+  await putSecretByApi(me, "gitlab-token", { kind: "env", env_var: "GITLAB_TOKEN", projects: [project], value: secretValue("gl") });
+
+  await page.goto("/accounts");
+  const models = main(page).getByTestId("accounts-group-model");
+  const services = main(page).getByTestId("accounts-group-service");
+  await expect(models.getByRole("heading", { level: 2, name: "Model accounts" })).toBeVisible();
+  await expect(models.getByTestId("accounts-group-model-count")).toHaveText("2");
+  await expect(services.getByRole("heading", { level: 2, name: "Service credentials" })).toBeVisible();
+  await expect(services.getByTestId("accounts-group-service-count")).toHaveText("3");
+
+  // Model accounts: the provider's name as text with its logo, and a cost, or an API value for the subscription.
+  await expect(row(page, "claude-sub").getByTestId("account-target")).toContainText("Claude");
+  await expect(row(page, "claude-sub").locator('[data-provider="claude"]')).toBeVisible();
+  await expect(row(page, "claude-sub").getByTestId("account-cost-label")).toHaveText("API value");
+  await row(page, "claude-sub").getByTestId("account-cost-label").hover();
+  await expect(page.getByRole("tooltip")).toContainText("not billed per run");
+  await expect(row(page, "anthropic-key").getByTestId("account-cost-label")).toHaveText("Cost");
+  await expect(models.getByRole("columnheader", { name: "Runs 24 h / 7 d" })).toBeVisible();
+  await expect(models.getByTestId("account-renew")).toHaveCount(1);
+  // "weight N, priority M" is for a variable with two accounts: here there is none.
+  await expect(models.getByTestId("account-target").filter({ hasText: "weight" })).toHaveCount(0);
+
+  // Service credentials: no cost, no usage bars; the two Lark variables are one line that opens.
+  await expect(services.getByTestId("account-cost")).toHaveCount(0);
+  await expect(services.getByTestId("account-usage-window")).toHaveCount(0);
+  await expect(services.getByRole("columnheader", { name: "Last used" })).toBeVisible();
+  await expect(row(page, "gitlab-token").getByTestId("account-target")).toContainText("GitLab");
+  const toggle = services.getByTestId("service-group-toggle");
+  await expect(toggle).toHaveText("Lark, 2 variables");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(services.getByTestId("service-variables")).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const variables = services.getByTestId("service-variables");
+  await expect(variables.getByTestId("account-edit")).toHaveCount(2);
+
+  // Pause one variable alone: its own pill, the other stays without one.
+  await variables.getByRole("button", { name: "Pause account lark-secret" }).click();
+  await expect(toast(page, "Account lark-secret paused")).toBeVisible();
+  await expect(variables.locator("li").filter({ hasText: "lark-secret" }).getByTestId("account-state")).toHaveAttribute("data-state", "paused");
+  await expect(variables.locator("li").filter({ hasText: "lark-id" }).getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+  expect(await overflow(page)).toBe(0);
+});
+
+test("a hub with model accounts only says there is no service credential, and the page does not scroll sideways", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  await putSecretByApi(me, "claude-a", { kind: "env", env_var: VAR, projects: [me.projects[0]], value: secretValue("a") });
+  await putSecretByApi(me, "claude-b", { kind: "env", env_var: VAR, projects: [me.projects[0]], value: secretValue("b") });
+  for (const width of [375, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/accounts");
+    await expect(main(page).getByTestId("accounts-group-model-count")).toHaveText("2");
+    await expect(main(page).getByTestId("accounts-group-service-empty")).toBeVisible();
+    // Two accounts for one variable: only then do weight and priority show.
+    await expect(row(page, "claude-a").getByTestId("account-target")).toContainText("weight 1, priority 0");
+    expect(await overflow(page)).toBe(0);
+  }
 });

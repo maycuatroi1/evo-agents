@@ -55,6 +55,7 @@ import asyncio
 import contextlib
 import os
 import re
+import secrets
 import shutil
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
@@ -64,6 +65,7 @@ from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESUL
 
 TIMEOUT = 120.0
 NETWORK_TIMEOUT = 600.0  # fetch and push
+CLONE_TIMEOUT = 1800.0  # a clone of a repo a run needs and the worker has no checkout of
 MAX_MESSAGE = 2000
 PROTECTED = ("main", "master")  # never pushed, whatever the remote's default branch is
 SIDE_BRANCH = "evo-run/{id}"  # the remote branch a plan run's commits go to when they do not go on top of its default
@@ -296,6 +298,19 @@ async def fetch(cwd: Path, remote: str = "origin", *, env: Mapping[str, str] | N
     await git(cwd, "fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT, env=env)
 
 
+async def clone(origin: str, path: Path, *, env: Mapping[str, str] | None = None) -> None:
+    """Clone ``origin`` into ``path``, which must not exist yet; its parent is made. The clone is made beside it first
+    and moved into place once whole, so a clone cut off midway never leaves a checkout that looks whole behind."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.parent / f".{path.name}.clone-{os.getpid()}-{secrets.token_hex(4)}"
+    try:
+        await git(path.parent, "clone", "--quiet", "--", origin, partial.name, timeout=CLONE_TIMEOUT, env=env)
+        partial.rename(path)
+    finally:
+        if partial.exists():
+            shutil.rmtree(partial, ignore_errors=True)
+
+
 async def remote_urls(cwd: Path, remote: str = "origin") -> list[str]:
     """The URLs of the remote as its configuration writes them (``url``, then ``pushurl``), before any ``insteadOf``
     rewrites them; empty when it has none."""
@@ -506,11 +521,11 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
-    a judge run, an author run, a replay run and a history run push nothing at all, a Builder of the Curator (``kind`` curator) only a
+    a judge run, an author run, a replay run, a history run and a question run push nothing at all, a Builder of the Curator (``kind`` curator) only a
     branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
     task run (``kind`` task) only its branch ``task/<run>``, and a release run (``kind`` release) only a branch
     ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
-    if kind in ("review", "judge", "author", "replay", "history"):
+    if kind in ("review", "judge", "author", "replay", "history", "question"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
     own = _own_branches(kind)
     if own is not None:

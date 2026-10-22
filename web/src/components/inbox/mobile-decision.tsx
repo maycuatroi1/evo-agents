@@ -39,18 +39,17 @@ import {
   AnswerHint,
   AnswerSummary,
   AskedTiming,
-  ClosedNote,
   DecisionStatePill,
   DecisionWhere,
   FoldedContext,
-  NoFormNote,
   TakeOverButton,
   useAnswerForm,
 } from "./decision-view";
+import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
 import { OptionList } from "./decision-options";
 import { useInboxViewer, useParksAt } from "./hooks";
 import { InboxBell } from "./inbox-bell";
-import { type AnswerAccess, answerAccess } from "./model";
+import { type AnswerAccess, answerAccess, runLinkWords } from "./model";
 import { type Decision, decisionQuery } from "./queries";
 import { type DecisionTarget, useTargetDecision } from "./target-decision";
 
@@ -83,7 +82,7 @@ function ScreenTop({ decision }: { decision: Decision | null }) {
           className="block min-w-0 truncate rounded-xs px-1 text-base leading-11 font-semibold text-foreground tabular-nums"
           data-testid="decision-screen-run"
         >
-          {tDecision(decision.category === "triage" ? "triageRunLink" : decision.plan_id === null ? "authorRunLink" : "runLink", { id: decision.run_id })}
+          {tDecision(runLinkWords(decision), { id: decision.run_id })}
         </Link>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center">
@@ -155,6 +154,7 @@ function ScreenLead({
         </h1>
       </SheetTitle>
       {open && decision.context ? <FoldedContext text={decision.context} screen /> : null}
+      <DecisionFiles decision={decision} />
     </>
   );
 }

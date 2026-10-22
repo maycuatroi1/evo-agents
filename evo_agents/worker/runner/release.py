@@ -72,10 +72,10 @@ class ReleaseRun:
             raise RunFailed("a release run runs headless only")
         if not repo or not releases.OBJECT_NAME.fullmatch(start):
             raise RunFailed("the claim names no repo or no commit to start the release from")
+        await access.take_credentials(run, [repo])  # cloning the repo first when this worker has no checkout of it
+        run.check()
         if run.daemon.checkout_for(run.project, repo) is None:
             raise RunFailed(f"this worker has no checkout of {run.project}/{repo}")
-        await access.take_credentials(run, [repo])
-        run.check()
         await access.check(run, [repo], path=access.run_path(run), pushes=[repo])
         run.check()
         await self.prepare(repo, start)

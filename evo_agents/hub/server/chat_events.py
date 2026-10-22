@@ -2,8 +2,9 @@
 /v1/chats/{id}/stream.
 
 Each change of a chat is an event numbered by the chat (``chat_store``): a message, a reaction put or taken off, a
-member added or removed, its image set or taken off. A message event carries the message as it reads now
-(``chat_views.GroupMessage``); a reaction event the emoji, who put it or took it off and how many put it after the
+member added or removed, its image set or taken off, a message that reads otherwise now (``message_changed``: outputs
+of its run went under it, ``output_store``). A message event and a message_changed event carry the message as it reads
+now (``chat_views.GroupMessage``); a reaction event the emoji, who put it or took it off and how many put it after the
 change; a member event who was added or removed and by whom; an image event the image's URL now and who changed it. A
 person in an event shows with their GitHub avatar as the hub knows it when the event is read. A member reads the events of messages whose label they clear, and the reaction events of those
 messages; the others are left out, and the numbers go on past them.
@@ -58,7 +59,7 @@ from evo_agents.hub.server.security import CurrentUser, Principal
 STREAM_POLL_SECONDS = 5.0  # a stream looks again this often, notification or not
 STREAM_BATCH = 200  # events a stream reads at a time
 MAX_EVENTS_PAGE = 500
-MESSAGE_EVENTS = ("message",)
+MESSAGE_EVENTS = ("message", chats.MESSAGE_CHANGED)  # each carries its message as it reads now
 REACTION_EVENTS = ("reaction_added", "reaction_removed")
 MEMBER_EVENTS = ("member_added", "member_removed")
 PROGRESS_PARAM = "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
@@ -189,7 +190,9 @@ async def stream(
     chat_id, user = followed
     streams: ChatStreams = request.app.state.chat_streams
     streams.start()
-    engine = request.app.state.engine
+    # one snapshot per look: under read committed, a reader who left between the check of access and the read of the
+    # events would get the event of their leaving before the end
+    engine = request.app.state.engine.execution_options(isolation_level="REPEATABLE READ")
     seen = last_event_id if last_event_id is not None else after
     sent: list[ChatProgress] | None = None  # the progress this stream sent last
     with streams.subscribe(chat_id) as wakeup:

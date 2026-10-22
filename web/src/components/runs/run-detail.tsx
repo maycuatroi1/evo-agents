@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, PanelRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -24,27 +25,33 @@ import { chatHref } from "@/lib/chat-keys";
 import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-import { AgentTrace, type TraceContext } from "./agent-trace";
+import { AgentTrace, type TraceContext, type TraceReveal } from "./agent-trace";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
-import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
+import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions } from "./run-actions";
 import { RunNotices } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { LocalRunDetails } from "./local-run-details";
 import { RunDecisions } from "./run-decisions";
-import { RunHeader } from "./run-header";
+import { DetailsToggle, RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
 import { taskBranch } from "./model";
 import { runControls } from "./run-model";
-import { useDescribeMove, useSessionTab, useTraceScreen } from "./run-page-state";
+import { useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
+import { RunTasksPanel } from "./run-tasks-panel";
 import { RunTimeline } from "./run-timeline";
 import { TracePreview } from "./trace-preview";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
 import { logSignal, useRunLog } from "./use-run-log";
+import { OutputsPreview } from "./run-outputs-preview";
+import { TraceOutputsContext, useRunOutputs } from "./use-run-outputs";
+
+/** The Outputs tab's grid, loaded once a run has files. */
+const RunOutputsPanel = dynamic(() => import("./run-outputs").then((module) => module.RunOutputsPanel));
 
 /** The plan and step under the head: `brand` links with a quiet underline, told apart from the line's words without
  * colour (the kit draws them bare; axe's link-in-text-block asks for more than a colour). */
@@ -87,20 +94,21 @@ function RunPage({ run }: { run: Run }) {
   const firstTab: SessionTab = authoring ? "chat" : "trace";
   const params = useSearchParams();
   const [screenOpen, openScreen, closeScreen] = useTraceScreen(setSessionTab, firstTab);
-  /** Shows a tab of the session card, scrolls the card into view and focuses the tab; on a phone, opens its screen. */
-  const showSession = (tab: SessionTab) => {
-    if (mobile) {
-      openScreen(tab);
-      return;
-    }
-    setSessionTab(tab);
-    const card = document.getElementById(logId);
-    card?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    card?.querySelector<HTMLElement>(`[data-testid="run-tab-${tab}"]`)?.focus({ preventScroll: true });
-  };
+  const showSession = useShowSession(logId, mobile, setSessionTab, openScreen);
   const takeOver = terminal?.open ? () => showSession("terminal") : undefined;
   const describe = useDescribeMove();
   const log = useRunLog({ project: run.project, runId: run.id, knownLastSeq: run.last_seq, describe });
+  // The run's files (the Outputs tab, the strips of the Trace and the viewer) and the subagents and background commands
+  // over the trace: Show in trace reveals the row of a file's call or of the call that started a task.
+  const [reveal, setReveal] = useState<TraceReveal | null>(null);
+  const showInTrace = (target: Omit<TraceReveal, "nonce">) => {
+    setReveal({ ...target, nonce: Date.now() });
+    showSession("trace");
+  };
+  const outputs = useRunOutputs({ run, viewer, events: log.events, onShowInTrace: showInTrace });
+  const traceOutputs = useMemo(() => ({ index: outputs.index, open: outputs.open }), [outputs.index, outputs.open]);
+  const working = run.state === "running" && log.status !== "ended";
+  const tasks = <RunTasksPanel events={log.events} working={working} onShow={(call) => showInTrace({ call, seq: null })} />;
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   // While the stream (or its fallback) carries the run, it is what the top bar's LiveIndicator follows; before it opens
   // and once it ended, the run's own query (every 5 seconds while active) does.
@@ -134,20 +142,7 @@ function RunPage({ run }: { run: Run }) {
     },
     [webOf, repo, repos],
   );
-  // An author run's decisions are cards in its Chat: "Asked you" shows the tab, then the card, once it is drawn.
-  const showDecision = useCallback(
-    (id: number) => {
-      setSessionTab("chat");
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          const card = document.getElementById(decisionAnchor(id));
-          card?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-          card?.focus({ preventScroll: true });
-        }),
-      );
-    },
-    [setSessionTab],
-  );
+  const showDecision = useShowDecision(setSessionTab);
   const traceContext = useMemo<TraceContext>(
     () => ({
       runId: run.id,
@@ -155,12 +150,12 @@ function RunPage({ run }: { run: Run }) {
       viewer: viewer?.login ?? null,
       describe,
       openDecisions: new Set(openIds ? openIds.split(",").map(Number) : []),
-      working: run.state === "running" && log.status !== "ended",
+      working,
       active,
       webOfBranch,
       showDecision: authoring ? showDecision : undefined,
     }),
-    [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active, webOfBranch, authoring, showDecision],
+    [run.id, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
@@ -247,21 +242,7 @@ function RunPage({ run }: { run: Run }) {
   // them beside the trace (under it below xl).
   const [details, setDetails] = useState(false);
   const detailsId = useId();
-  const detailsToggle = (
-    <Button
-      type="button"
-      variant={details ? "secondary" : "ghost"}
-      size="sm"
-      aria-expanded={details}
-      aria-controls={detailsId}
-      onClick={() => setDetails((open) => !open)}
-      className="max-md:h-11 max-md:min-w-11"
-      data-testid="run-details-open"
-    >
-      <PanelRight aria-hidden="true" />
-      <span className="max-md:sr-only">{t("detailsToggle")}</span>
-    </Button>
-  );
+  const detailsToggle = <DetailsToggle open={details} controls={detailsId} onToggle={() => setDetails((open) => !open)} />;
   // On a phone the session is a screen of its own: opened from the preview, on a tab other than the first, or asked for
   // by the address (`?view=`, an author run's `?tab=chat`) until the person leaves it.
   const [asked, setAsked] = useState(() => params.has(RUN_VIEW_PARAM) || params.get("tab") === CHAT_TAB);
@@ -286,7 +267,13 @@ function RunPage({ run }: { run: Run }) {
         chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} fill /> : null}
         tab={sessionTab}
         onTabChange={setSessionTab}
-        trace={(shown) => <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill={fill} />}
+        trace={(shown) => (
+          <TraceOutputsContext value={traceOutputs}>
+            {tasks}
+            <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill={fill} reveal={reveal} />
+          </TraceOutputsContext>
+        )}
+        outputs={outputs.data?.count ? { count: outputs.data.count, panel: () => <RunOutputsPanel state={outputs} runId={run.id} fill={fill} /> } : null}
         terminal={
           terminal
             ? (shown) => <RunTerminalPanel run={run} open={terminal.open} active={shown} sessionCreatedAt={terminal.sessionCreatedAt} fill />
@@ -340,9 +327,11 @@ function RunPage({ run }: { run: Run }) {
       )}
       {screen || local ? null : <RunNotices run={run} controls={controls} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
-      {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
+      {/* Under 768 px: the decision, the subagents and background commands running, the trace's latest rows, then the details. */}
       {overview ? decisionCard : null}
+      {overview ? tasks : null}
       {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
+      {overview ? <OutputsPreview state={outputs} onOpenAll={() => openScreen("outputs")} /> : null}
       {overview && details ? <div id={detailsId}>{side}</div> : null}
       {overview ? null : (
         /* From xl, two regions that scroll on their own, side by side and as tall as each other once Details is open:
@@ -375,6 +364,7 @@ function RunPage({ run }: { run: Run }) {
           {session}
         </div>
       )}
+      {outputs.viewer}
     </div>
   );
 }

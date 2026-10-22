@@ -81,6 +81,11 @@ def hub(client, github, hub_db) -> dict:
     """The project of ``test_credentials_api`` (evo-agents on GitHub and three more repos), owner its admin,
     someone-else a writer and reader a reader, stranger signed in without a grant; plugin triage installed with its
     agent type triager and enabled there with runs:dispatch granted. The headers of each, and the plugin's id."""
+    return set_up(client, github, hub_db)
+
+
+def set_up(client, github, hub_db, contributes: dict = CONTRIBUTES) -> dict:
+    """What ``hub`` sets up, triage contributing ``contributes``."""
     headers = {
         "admin": bearer(live.sign_in(client, github, ADMIN, credentials_api.ADMIN_ID)["token"]),
         "owner": bearer(live.sign_in(client, github, OWNER, credentials_api.OWNER_ID)["token"]),
@@ -93,7 +98,7 @@ def hub(client, github, hub_db) -> dict:
     for login, grant in ((OWNER, ADMIN_GRANT), (OTHER, credentials_api.WRITER), (READER, READ_ONLY)):
         response = client.put(f"/v1/admin/projects/{PROJECT}/grants/{login}", json=grant, headers=headers["admin"])
         assert response.status_code == 200, response.text
-    plugin_id = install(hub_db, name=PLUGIN, contributes=CONTRIBUTES, permissions=[DISPATCH])
+    plugin_id = install(hub_db, name=PLUGIN, contributes=contributes, permissions=[DISPATCH])
     enable_plugin(client, headers["owner"], PLUGIN, [DISPATCH])
     return {**headers, "plugin_id": plugin_id}
 

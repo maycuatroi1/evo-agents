@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode, Ref } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
+import { OutputStrip } from "@/components/data/output-strip";
 import { Button } from "@/components/ui/button";
 import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,8 @@ const ACTIONS = {
 /**
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
- * that run on. The text is Markdown that is never HTML; under the bubble, where it leads (the agent's run, the runs
+ * that run on. The text is Markdown that is never HTML; under the bubble, the files of its run it carries (an agent's,
+ * as chips that open the viewer, the bytes served to who reads the message), where it leads (the agent's run, the runs
  * its mentions handed work to, its pull requests), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
  * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React and
@@ -72,6 +74,7 @@ const ACTIONS = {
 export function MessageItem(props: Props) {
   const { message, chat, me, thread, runOn = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
   const t = useTranslations("chats.message");
+  const tFiles = useTranslations("outputs.strip");
   const format = useFormatter();
   const mine = isMine(message.author, me);
   const side = mine ? "mine" : "theirs";
@@ -123,6 +126,7 @@ export function MessageItem(props: Props) {
             {message.body}
           </SafeMarkdown>
         </div>
+        <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <MessageLinks message={message} chat={chat} />
         <MessageProgress progress={message.progress} />
         {under?.(message)}

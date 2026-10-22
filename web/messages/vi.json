@@ -20,6 +20,9 @@
     "hub": "Hub",
     "project": "Dự án",
     "overview": "Tổng quan",
+    "decide": "Quyết định",
+    "goals": "Goal",
+    "loop": "Loop",
     "plans": "Plans",
     "runs": "Run",
     "insights": "Thống kê",
@@ -63,7 +66,8 @@
     "plugins": "Plugin",
     "mergeQueue": "Hàng đợi merge",
     "mergeQueueFigures": "Số liệu",
-    "mergeQueuePolicy": "Policy"
+    "mergeQueuePolicy": "Policy",
+    "org": "Sơ đồ tổ chức"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -449,6 +453,18 @@
       "path": "Thư mục harness",
       "created": "Đăng ký lúc",
       "updated": "Cập nhật lúc"
+    },
+    "outputs": {
+      "title": "Output của run",
+      "description": "File mà agent của các run trong dự án này tạo ra: file nó gửi, file nó để trong .evo-run/outputs/ và ảnh trong kết quả tool.",
+      "toolImages": "Giữ ảnh trong kết quả tool",
+      "toolImagesHint": "Screenshot và ảnh một tool trả về thành file của run, và bị xoá cùng log của run. Khi tắt, máy không gửi và hub từ chối các ảnh đó.",
+      "adminOnly": "Admin của dự án bật hay tắt mục này.",
+      "limits": "Tối đa {file} mỗi file, {count, number} file và {run} mỗi run.",
+      "loadFailed": "Không đọc được cài đặt output của dự án.",
+      "turnedOn": "Đã bật giữ ảnh trong kết quả tool",
+      "turnedOff": "Đã tắt giữ ảnh trong kết quả tool",
+      "failed": "Không đổi được việc giữ ảnh trong kết quả tool"
     }
   },
   "admin": {
@@ -1910,6 +1926,10 @@
       "pluginsHint": "Không bắt buộc. Các plugin mà worker này chạy runtime của chúng, theo id, ngăn cách bằng dấu phẩy hoặc khoảng trắng. Worker báo runtime của plugin khi chương trình có trên PATH của máy, và không nhận run của plugin không có ở đây.",
       "pluginsInvalid": "Không phải id plugin: {plugins}. Id bắt đầu bằng chữ thường và chỉ gồm chữ thường, số và gạch ngang, tổng cộng tối đa 63 ký tự.",
       "pluginsTooMany": "Tối đa {max} plugin.",
+      "projects": "Dự án",
+      "projectsHint": "Các dự án worker nhận run. Bạn thêm được dự án mình có quyền ghi; dự án worker đang phục vụ thì được giữ dù giờ bạn chỉ có quyền đọc. Không bỏ được một dự án khi run của nó đang chạy trên worker này hoặc ca đêm của nó đang trực ở đây.",
+      "projectsRequired": "Chọn ít nhất một dự án.",
+      "projectsStillNeeded": "Hub giữ nguyên các dự án như cũ: {message}",
       "save": "Lưu",
       "saving": "Đang lưu",
       "discard": "Bỏ thay đổi",
@@ -2140,6 +2160,183 @@
     },
     "forgeTarget": "<code>{prefix}</code>, chỉ hub dùng",
     "hubOnly": "Chỉ hub"
+  },
+  "org": {
+    "title": "Sơ đồ tổ chức",
+    "cancel": "Hủy",
+    "saving": "Đang lưu…",
+    "newUnit": "Đơn vị mới",
+    "showAll": "Hiện vị trí đã kết thúc và đơn vị đã lưu trữ",
+    "yourLevel": "Cấp của bạn: {level}",
+    "summary": "{units, plural, other {# đơn vị}}, {seats, plural, other {# vị trí}}",
+    "treeTitle": "Đơn vị và vị trí",
+    "archived": "Đã lưu trữ",
+    "endsOn": "Kết thúc {day}",
+    "hidden": "{count, plural, other {Ẩn # mục}}",
+    "seatsOf": "Vị trí của {name}",
+    "unitsBelow": "Đơn vị thuộc {name}",
+    "noSeats": "Chưa có vị trí.",
+    "primary": "Chính",
+    "ended": "Đã kết thúc",
+    "endsToday": "Kết thúc hôm nay",
+    "endsIn": "{count, plural, other {Kết thúc sau # ngày}}",
+    "reportsTo": "Báo cáo cho {login}",
+    "sponsor": "Người bảo trợ {login}",
+    "running": "{count, plural, other {# lượt chạy đang làm}} trong {project}",
+    "runningMany": "{count, plural, other {# lượt chạy đang làm}} trong {projects} dự án",
+    "runsOf": "Lượt chạy của {login}",
+    "runningIn": "{project}: {count, plural, other {# lượt chạy}}",
+    "effective": "Cấp {level}",
+    "ceiling": "trần {level}",
+    "noCeiling": "không đặt trần riêng",
+    "fromThisSeat": "từ vị trí này",
+    "fromSeat": "từ vị trí #{id}",
+    "fromUnit": "từ {name}",
+    "empty": {
+      "title": "Chưa có đơn vị",
+      "description": "Sơ đồ tổ chức gồm các nhóm và khóa của hub, ai ngồi ở đâu và mỗi vị trí làm việc ở cấp nào. Hãy tạo đơn vị đầu tiên dưới gốc để bắt đầu."
+    },
+    "errors": {
+      "forbidden": "Hub từ chối thay đổi này.",
+      "notFound": "Đơn vị hoặc vị trí này không còn nữa.",
+      "conflict": "Sơ đồ đã thay đổi hoặc mục này đã có.",
+      "invalid": "Hub không nhận các giá trị này.",
+      "hubReason": "Hub: {message}"
+    },
+    "problems": {
+      "slug": "Dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số, tối đa 63 ký tự.",
+      "slugTaken": "Đã có đơn vị dùng slug này.",
+      "name": "Đặt tên tối đa 200 ký tự.",
+      "login": "Nhập login của người đó: chữ, số, gạch ngang hoặc gạch dưới.",
+      "handle": "Nhập handle của agent: chữ thường, số và gạch ngang.",
+      "project": "Nhập tên dự án: chữ thường, số và gạch ngang.",
+      "reportsTo": "Nhập một login: chữ, số, gạch ngang hoặc gạch dưới.",
+      "internReportsTo": "Thực tập sinh phải báo cáo cho ai đó: nhập login của họ.",
+      "sponsor": "Nhập một login: chữ, số, gạch ngang hoặc gạch dưới.",
+      "agentSponsor": "Vị trí của agent cần người bảo trợ: nhập login của họ.",
+      "dates": "Ngày kết thúc phải từ ngày bắt đầu trở đi.",
+      "note": "Ghi chú tối đa 1000 ký tự.",
+      "level": "Chọn một cấp."
+    },
+    "levels": {
+      "A0": "A0",
+      "A1": "A1",
+      "A2": "A2",
+      "A3": "A3",
+      "A4": "A4",
+      "A5": "A5"
+    },
+    "roles": {
+      "lead": "Trưởng",
+      "member": "Thành viên",
+      "intern": "Thực tập",
+      "agent": "Agent"
+    },
+    "kinds": {
+      "org": "Tổ chức",
+      "team": "Nhóm",
+      "cohort": "Khóa"
+    },
+    "actions": {
+      "createUnit": "Đơn vị mới bên dưới",
+      "addSeat": "Thêm vị trí",
+      "editUnit": "Sửa đơn vị",
+      "setCeiling": "Đặt trần",
+      "archiveUnit": "Lưu trữ đơn vị",
+      "editSeat": "Sửa vị trí",
+      "endSeat": "Kết thúc vị trí",
+      "seatMenu": "Thao tác cho vị trí của {who}",
+      "unitMenu": "Thao tác cho {name}"
+    },
+    "unitDialog": {
+      "createTitle": "Đơn vị mới",
+      "editTitle": "Sửa {name}",
+      "createDescription": "Đơn vị nằm dưới {parent}.",
+      "editDescription": "Đổi tên đơn vị, nơi nó thuộc về hoặc ngày khóa kết thúc.",
+      "save": "Lưu",
+      "create": "Tạo đơn vị",
+      "saved": "Đã lưu {name}",
+      "created": "Đã tạo {slug}",
+      "slug": "Slug",
+      "slugHint": "Mã của đơn vị trong hub và trong liên kết; không đổi được về sau.",
+      "name": "Tên",
+      "nameHint": "Để trống thì tên là slug.",
+      "kind": "Loại",
+      "team": "Nhóm",
+      "cohort": "Khóa",
+      "teamHint": "Nhóm tồn tại cho đến khi được lưu trữ.",
+      "cohortHint": "Khóa có ngày kết thúc; các vị trí kết thúc cùng nó.",
+      "parent": "Thuộc",
+      "endsOn": "Kết thúc ngày",
+      "endsOnHint": "Ngày cuối của khóa, theo UTC.",
+      "level": "Trần",
+      "levelHint": "Cấp cao nhất các vị trí được làm. Để trống thì theo đơn vị bên trên.",
+      "levelCohortHint": "Cấp cao nhất các vị trí được làm. Để trống thì khóa nhận A1.",
+      "levelNone": "Không đặt riêng",
+      "levelCohortNone": "A1, mặc định của khóa",
+      "note": "Lý do đặt trần"
+    },
+    "seatDialog": {
+      "saved": "Đã lưu vị trí của {who}",
+      "added": "Đã xếp {who} vào {unit}",
+      "editTitle": "Sửa vị trí của {who}",
+      "addTitle": "Thêm vị trí",
+      "editDescription": "Một vị trí trong {unit}.",
+      "addDescription": "Xếp một người hoặc một agent vào đơn vị.",
+      "save": "Lưu",
+      "add": "Thêm vị trí",
+      "unit": "Đơn vị",
+      "who": "Vị trí cho",
+      "person": "Một người",
+      "agent": "Một agent",
+      "login": "Login",
+      "agentHandle": "Agent",
+      "project": "Dự án",
+      "role": "Vai trò",
+      "reportsTo": "Báo cáo cho",
+      "reportsToIntern": "Người hướng dẫn thực tập sinh: login mà họ báo cáo.",
+      "reportsToHint": "Không bắt buộc: login mà người này báo cáo.",
+      "sponsor": "Người bảo trợ",
+      "sponsorHint": "Người chịu trách nhiệm cho vị trí này.",
+      "startsOn": "Bắt đầu ngày",
+      "startsOnHint": "Để trống thì vị trí bắt đầu hôm nay.",
+      "endsOn": "Kết thúc ngày",
+      "primary": "Vị trí chính",
+      "primaryHint": "Vị trí quyết định cấp làm việc của người đó khi không vị trí nào khác áp dụng."
+    },
+    "ceilingDialog": {
+      "saved": "Đã đặt trần của {name} là {level}",
+      "title": "Trần của {name}",
+      "current": "Trần hiện tại: {level}.",
+      "noCurrent": "Hiện không đặt trần riêng.",
+      "save": "Đặt trần",
+      "level": "Cấp",
+      "levelHint": "Tối đa bằng cấp của bạn.",
+      "choose": "Chọn một cấp",
+      "note": "Lý do",
+      "noteHint": "Lưu cùng lịch sử của trần."
+    },
+    "confirm": {
+      "seatEnded": "Đã kết thúc vị trí của {name}",
+      "unitArchived": "Đã lưu trữ {name}",
+      "endSeatTitle": "Kết thúc vị trí của {name}?",
+      "archiveTitle": "Lưu trữ {name}?",
+      "endSeatText": "Vị trí kết thúc hôm nay và cấp của nó không còn áp dụng. Sơ đồ vẫn giữ nó trong lịch sử.",
+      "archiveText": "Đơn vị rời khỏi sơ đồ. Các vị trí phải kết thúc trước; hub sẽ báo nếu còn.",
+      "endSeat": "Kết thúc vị trí",
+      "archive": "Lưu trữ",
+      "ending": "Đang kết thúc…",
+      "archiving": "Đang lưu trữ…",
+      "cancel": "Hủy"
+    },
+    "unplaced": {
+      "title": "Chưa xếp chỗ",
+      "summary": "{count, plural, other {# người có quyền dự án nhưng chưa có vị trí dưới gốc}}",
+      "none": "Mọi người có quyền đều đã có vị trí dưới gốc.",
+      "grants": "{count, plural, other {# quyền}}",
+      "placeLabel": "Thêm vị trí cho {login}",
+      "place": "Thêm vị trí"
+    }
   },
   "agents": {
     "title": "Agent",
@@ -2749,7 +2946,7 @@
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
     "caption": "Tài khoản của bạn",
-    "listSummary": "Các env secret của bạn mà các run lần lượt dùng cho cùng một biến. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
+    "listSummary": "Các env secret của bạn, theo nơi chúng đăng nhập. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
     "secrets": "Secret",
     "add": "Thêm tài khoản Claude",
     "columns": {
@@ -2760,7 +2957,8 @@
       "runs": "Run 24 giờ / 7 ngày",
       "cost": "Chi phí 24 giờ / 7 ngày",
       "heldBy": "Đang dùng bởi",
-      "actions": "Thao tác"
+      "actions": "Thao tác",
+      "lastUsed": "Dùng lần cuối"
     },
     "anyWorker": "Mọi worker của bạn",
     "state": {
@@ -2809,7 +3007,6 @@
     },
     "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
     "costTitle": "Ước tính từ mức dùng của các run: {day} trong 24 giờ, {week} trong 7 ngày",
-    "notHeld": "Không run nào",
     "heldLabel": "Mở run #{id} của {project}",
     "edit": "Sửa",
     "editLabel": "Sửa trọng số và ưu tiên của {name}",
@@ -2992,7 +3189,35 @@
       "saved": "Đã lưu policy cho {project}",
       "savedText": "Các run được giao từ giờ sẽ theo policy này.",
       "failed": "Không lưu được policy cho {project}"
-    }
+    },
+    "providers": {
+      "claude": "Claude",
+      "anthropic": "Anthropic",
+      "openai": "OpenAI",
+      "gitlab": "GitLab",
+      "github": "GitHub",
+      "notion": "Notion",
+      "lark": "Lark",
+      "ssh": "SSH",
+      "other": "Khác"
+    },
+    "groups": {
+      "model": {
+        "title": "Tài khoản model",
+        "description": "Đăng nhập của model mà run nói chuyện cùng. Các run lần lượt dùng chúng, và chi phí được tính ở đây.",
+        "none": "Chưa có tài khoản model. Thêm tài khoản Claude để run có model."
+      },
+      "service": {
+        "title": "Thông tin đăng nhập dịch vụ",
+        "description": "Token và key mà run dùng cho việc khác: một repository, một workspace, một máy chủ. Chúng không có chi phí.",
+        "none": "Chưa có thông tin đăng nhập dịch vụ. Thêm một secret gắn với dự án."
+      }
+    },
+    "variables": "{provider}, {count, plural, other {# biến}}",
+    "variablesLabel": "Các biến của {provider}",
+    "apiValue": "Giá trị API",
+    "costLabel": "Chi phí",
+    "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run."
   },
   "runs": {
     "title": "Run",
@@ -3166,7 +3391,8 @@
         "pinnedNow": "{name} nhận được {subject, select, plan {plan run này} author {author run này} other {các run này}} ngay.",
         "pinnedBusy": "{subject, select, plan {Plan run nằm} author {Author run nằm} other {Run nằm}} trong queue tới khi {name} có slot trống.",
         "pinnedOffline": "{name} đang offline; {subject, select, plan {plan run nằm} author {author run nằm} other {run nằm}} trong queue tới khi worker quay lại.",
-        "pinnedNo": "{name} chưa nhận được {subject, select, plan {plan run này} author {author run này} other {các run này}} ({problem}). {subject, select, plan {Plan run nằm} author {Author run nằm} other {Run nằm}} trong queue.",
+        "pinnedDraining": "{name} đang drain; {subject, select, plan {plan run nằm} author {author run nằm} other {run nằm}} trong queue tới khi worker nhận run trở lại.",
+        "pinnedNo": "{name} chưa nhận được {subject, select, plan {plan run này} author {author run này} other {các run này}} ({problem}), và hub không xếp vào queue run ghim vào worker không nhận được nó: chọn worker khác{subject, select, author {} other { hoặc worker bất kỳ phù hợp}}.",
         "free": "{name} ({count, plural, other {còn # slot trống}})",
         "busy": "{name} (hết slot)",
         "offline": "{name} (offline)",
@@ -3440,6 +3666,25 @@
           "failed": "{count} lỗi"
         }
       },
+      "tasks": {
+        "title": "Đang chạy",
+        "agents": "{count, plural, other {# sub-agent}}",
+        "commands": "{count, plural, other {# lệnh}}",
+        "runningLabel": "Sub-agent và lệnh nền đang chạy",
+        "background": "chạy nền",
+        "calls": "{count, plural, other {# lần gọi công cụ}}",
+        "tokens": "{tokens} token",
+        "commandsOf": "Lệnh của {name}",
+        "show": ", xem trong trace",
+        "finished": "{count, plural, other {# đã xong}}",
+        "finishedLabel": "Sub-agent và lệnh nền đã kết thúc",
+        "showAll": "Xem cả {count}",
+        "status": {
+          "completed": "Hoàn tất:",
+          "failed": "Thất bại:",
+          "stopped": "Đã dừng:"
+        }
+      },
       "usage": {
         "title": "Mức dùng",
         "soFar": "đến giờ",
@@ -3569,7 +3814,8 @@
           "trace": "Trace",
           "log": "Log thô",
           "terminal": "Terminal",
-          "chat": "Chat"
+          "chat": "Chat",
+          "outputs": "Output"
         },
         "where": "TUI của agent trên {worker}, chuyển tiếp qua hub.",
         "connect": "Kết nối terminal",
@@ -3977,6 +4223,37 @@
         "unknown": "không rõ",
         "plan": "Plan",
         "step": "Bước"
+      },
+      "outputs": {
+        "count": "{count, plural, other {# file}}",
+        "label": "Output của run #{id}",
+        "filter": "Nguồn",
+        "all": "Tất cả",
+        "sources": {
+          "sent": "Gửi",
+          "tool": "Tool",
+          "outputs": "Thư mục output"
+        },
+        "summary": "{count, plural, other {# file}}, {size}",
+        "toolImagesOff": "Dự án này đang tắt ảnh từ kết quả tool.",
+        "noMatch": "Không có file nào của nguồn này.",
+        "none": "Run này chưa có file nào.",
+        "loading": "Đang tải các file",
+        "failed": "Không đọc được các file.",
+        "retry": "Thử lại",
+        "arrived": "{count, plural, other {# file mới}}",
+        "showInTrace": "Xem trong trace",
+        "delete": "Xoá",
+        "deleteTitle": "Xoá {name}?",
+        "deleteDescription": "File bị gỡ khỏi run, khỏi các câu hỏi và tin nhắn chat có nó; bytes bị xoá khi không còn gì tham chiếu. Không hoàn tác được.",
+        "deleteConfirm": "Xoá file",
+        "deleting": "Đang xoá",
+        "keep": "Giữ lại",
+        "deleted": "Đã xoá {name}",
+        "deleteFailed": "Không xoá được {name}",
+        "deleteForbidden": "Chỉ người dispatch run, hoặc admin của dự án, xoá được file của nó.",
+        "preview": "Output",
+        "previewOpen": "Mở tất cả output"
       }
     },
     "diff": {
@@ -4833,7 +5110,8 @@
       "scope": "Phạm vi",
       "question": "Câu hỏi",
       "triage": "Run lỗi",
-      "release": "Phát hành"
+      "release": "Phát hành",
+      "loop": "Loop"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -4849,7 +5127,14 @@
       "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt",
       "canvas_baseline": "Một baseline của Lean Canvas chờ bạn duyệt",
       "merge_paused": "Hàng đợi merge của một repo đã dừng",
-      "release": "Phát hành hằng ngày"
+      "release": "Phát hành hằng ngày",
+      "pm_daily": "Bản tin buổi sáng của dự án",
+      "pm_escalation": "Một task bị chặn cần được báo lên",
+      "run_outputs": "File từ một run",
+      "loop_paused": "Loop đã tự dừng",
+      "goal_review": "Rà goal của tháng",
+      "loop_brief": "Bản tin sáng của Loop",
+      "plugin_notice": "Thông báo từ một plugin"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -4859,6 +5144,7 @@
       "viewLabel": "Xem quyết định #{id}",
       "openRun": "Mở run #{id}",
       "openBaseline": "Duyệt baseline",
+      "openPluginNotice": "Mở",
       "markRead": "Đánh dấu đã đọc",
       "markReadLabel": "Đánh dấu đã đọc: {title}",
       "showMore": "Xem toàn bộ",
@@ -4867,6 +5153,8 @@
       "branch": "Nhánh",
       "commits": "{count, plural, other {# commit}}",
       "commitFull": "commit {sha}",
+      "plugin": "Plugin",
+      "topic": "Chủ đề",
       "moreCommits": "và {count} commit nữa",
       "fewerCommits": "Thu gọn",
       "answerProposalLabel": "Trả lời đề xuất #{id}",
@@ -4901,6 +5189,7 @@
       "answerText": "Lời nhắn kèm:",
       "delivered": "Agent đã nhận câu trả lời",
       "notDelivered": "Đang chờ worker chuyển câu trả lời cho agent ở lượt kế tiếp.",
+      "hubTook": "Hub đã làm điều câu trả lời chọn.",
       "resumed": "Run #{run} đang tạm gác: câu trả lời đã cho run chạy tiếp thành <link>run #{next}</link>.",
       "onlyOwner": "Chỉ {owner}, người đã giao run #{run}, mới trả lời được quyết định này.",
       "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",
@@ -4916,7 +5205,9 @@
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Run xử lý lỗi #{id}",
-      "triageRun": "run xử lý lỗi #{id}"
+      "releaseRunLink": "Run release #{id}",
+      "triageRun": "run xử lý lỗi #{id}",
+      "releaseRun": "run release #{id}"
     },
     "answer": {
       "title": "Trả lời quyết định #{id}",
@@ -4924,21 +5215,27 @@
       "text": "Câu trả lời của bạn",
       "bytes": "{count} trên {max} byte",
       "empty": "Hãy chọn một phương án hoặc viết câu trả lời trước.",
+      "option": "Hãy chọn một phương án: hub làm đúng điều phương án đó nói.",
       "long": "Lời trả lời tối đa {max} byte UTF-8. Hãy rút ngắn lại.",
       "send": "Gửi câu trả lời",
       "sending": "Đang gửi…",
       "sentResumed": "Run #{run} đang tạm gác nên chạy tiếp thành run #{next} trên cùng worker.",
       "sentTitle": "Đã gửi câu trả lời tới run #{run}",
       "sentText": "Worker chuyển cho agent ở lượt kế tiếp.",
+      "sentHubTitle": "Đã nhận câu trả lời",
+      "sentHubText": "Hub đã làm điều phương án được chọn nói.",
       "sentResumedTitle": "Đã gửi câu trả lời",
       "openRun": "Mở run #{id}",
       "failed": "Không gửi được câu trả lời",
       "legend": "Câu trả lời của bạn",
       "note": "Ghi chú cho agent (không bắt buộc)",
+      "hubNote": "Ghi chú (không bắt buộc)",
       "notePlaceholder": "Thêm ghi chú cho agent",
       "textPlaceholder": "Viết câu trả lời cho agent",
+      "hubPlaceholder": "Lưu kèm câu trả lời",
       "foot": "Agent làm tiếp ngay khi bạn trả lời.",
       "footParked": "Run chạy tiếp trên cùng worker ngay khi bạn trả lời.",
+      "footHub": "Hub làm điều phương án nói ngay khi bạn trả lời.",
       "takeOver": "Tiếp quản",
       "takeOverLabel": "Tiếp quản run #{run} trong terminal"
     },
@@ -5035,6 +5332,22 @@
       "resumeConflict": "Cầu dao này không còn ở trạng thái nhảy.",
       "resumeGone": "{login} đã đặt lại cầu dao.",
       "resumed": "Đã đặt lại cầu dao của {repo}"
+    },
+    "settings": {
+      "button": "Thông báo",
+      "title": "Thông báo",
+      "description": "Những thông báo đến với bạn, trong Inbox và trên Telegram. Câu hỏi của các run của bạn luôn đến với bạn.",
+      "loadFailed": "Không đọc được cài đặt thông báo của bạn từ hub.",
+      "retry": "Thử lại",
+      "close": "Đóng",
+      "kind": {
+        "run_outputs": {
+          "label": "File từ các run của bạn",
+          "hint": "File mà agent gửi trong khi làm một run bạn đã dispatch, gom theo từng phút."
+        }
+      },
+      "saved": "{on, select, true {Bạn sẽ nhận lại thông báo} other {Bạn sẽ không nhận thông báo nữa}}: {kind}",
+      "failed": "Không đổi được thông báo"
     }
   },
   "toast": {
@@ -5280,6 +5593,7 @@
       "cost": "Chi phí",
       "security": "Bảo mật",
       "product_goals": "Mục tiêu sản phẩm",
+      "product": "Sản phẩm",
       "kg_health": "Sức khoẻ graph"
     },
     "kinds": {
@@ -6975,7 +7289,18 @@
       "compare": "So sánh",
       "missingTitle": "Không có mục {ref}",
       "missingText": "Version {version} của tài liệu này không có mục nào mang mã, mã phụ hay khoá đó.",
-      "createTask": "Tạo task"
+      "createTask": "Tạo task",
+      "review": {
+        "title": "Duyệt use case này ở v{version}",
+        "draft": "v{version} đang là bản nháp: use case chỉ được duyệt sau khi version gửi duyệt.",
+        "reviewers": "Các lượt duyệt đang tính",
+        "open": "Mở trang duyệt v{version}",
+        "state": {
+          "pending": "Đang chờ đủ lượt duyệt theo chính sách.",
+          "approved": "Đã duyệt. v{version} được duyệt khi mọi use case cần duyệt của nó đều được duyệt.",
+          "changes_requested": "Có người yêu cầu sửa: chưa duyệt được v{version} cho tới khi xử lý xong."
+        }
+      }
     },
     "versions": {
       "oneVersion": "Mới có một version: chưa có gì để so.",
@@ -7112,6 +7437,36 @@
         "openChat": "Mở chat chốt",
         "reviewTitle": "Duyệt chờ @ba rà soát xong vòng {round}",
         "reviewText": "Duyệt mở lại khi run kết thúc. Bạn vẫn yêu cầu sửa được."
+      },
+      "cases": {
+        "title": "Use case cần duyệt",
+        "summary": "Đã duyệt {approved} trên {total}",
+        "summaryAsked": "Đã duyệt {approved} trên {total}, {asked} đang bị yêu cầu sửa",
+        "auto": "Khi mọi use case dưới đây đủ lượt duyệt theo chính sách, v{version} được duyệt cùng chúng, kèm các thay đổi ngoài use case: mục, màn hình, yêu cầu và phần còn lại. Duyệt hoặc yêu cầu sửa từng use case ngay tại đây.",
+        "empty": "v{version} không đổi use case nào, nên không use case nào cần lượt duyệt riêng: duyệt cả version là version được duyệt.",
+        "holdsTitle": "Chưa duyệt được v{version}",
+        "holdsText": "Có use case đang bị yêu cầu sửa. Cho tới khi người duyệt duyệt lại nó, mọi lượt duyệt version đều không đi qua, kể cả lượt duyệt cả version.",
+        "listLabel": "Các use case của v{version} cần duyệt",
+        "state": {
+          "pending": "Chờ duyệt",
+          "approved": "Đã duyệt",
+          "changes_requested": "Yêu cầu sửa"
+        },
+        "reviewsLabel": "Các lượt duyệt đang tính cho {name}",
+        "noReviews": "Chưa có lượt duyệt nào được tính.",
+        "fromVersion": "giữ từ v{version}, use case vẫn như cũ",
+        "you": "bạn",
+        "approveFor": "Duyệt {name}",
+        "requestFor": "Yêu cầu sửa {name}",
+        "approving": "Đang duyệt",
+        "noteLabel": "Cần sửa gì ở {name} (bắt buộc)",
+        "send": "Gửi yêu cầu",
+        "cancel": "Hủy",
+        "roleLabel": "Lượt duyệt use case của bạn tính cho",
+        "roleAuto": "Để hub chọn",
+        "approvedToast": "Đã duyệt {name}",
+        "versionApprovedToast": "Đã duyệt {name}; v{version} đã được duyệt",
+        "requestedToast": "Đã yêu cầu sửa {name}"
       }
     },
     "findings": {
@@ -7453,6 +7808,10 @@
       "bodyHint": "Markdown. Một mã như UC ORD-3 trong đó được nối trong knowledge graph.",
       "cancel": "Huỷ",
       "save": "Lưu",
+      "outcomeHeading": "Kết quả",
+      "outcomeNone": "Chưa nêu kết quả: báo cáo hằng ngày dùng mục Kết quả hay Outcome trong mô tả.",
+      "outcome": "Kết quả",
+      "outcomeHint": "Markdown. Task đi tới đâu; báo cáo hằng ngày đọc mục này trước mô tả.",
       "saved": "Đã lưu {ref}"
     },
     "links": {
@@ -7482,6 +7841,33 @@
       "hint": "Mã SRS, plan#step, run dạng #431, hay URL của pull request; nhiều mục thì cách nhau bằng dấu phẩy.",
       "bad": "Không phải liên kết: {refs}",
       "added": "{count, plural, other {Đã nối # mục}} vào {ref}"
+    },
+    "blockers": {
+      "blocked": "Bị chặn",
+      "heading": "Blocker",
+      "none": "Không gì đang chặn task này.",
+      "waitingMember": "Chờ",
+      "waitingTask": "Chờ task",
+      "waitingText": "Chờ",
+      "since": "từ",
+      "setBy": "do {login} đặt",
+      "openDecision": "Mở decision #{id}",
+      "decisionHint": "Blocker hết khi decision được trả lời.",
+      "clearButton": "Gỡ",
+      "clear": "Gỡ blocker: {reason}",
+      "cleared": "Đã gỡ một blocker của {ref}",
+      "clearFailed": "Không gỡ được blocker của {ref}",
+      "added": "Đã chặn {ref}",
+      "reason": "Lý do bị chặn",
+      "reasonPlaceholder": "Chờ sandbox thanh toán",
+      "waitsOn": "Chờ ai",
+      "kindText": "Người hoặc việc khác",
+      "kindMember": "Một thành viên",
+      "kindTask": "Task khác",
+      "memberPlaceholder": "Chọn thành viên",
+      "taskPlaceholder": "T-12",
+      "textPlaceholder": "Nhà cung cấp thanh toán",
+      "addButton": "Chặn task này"
     },
     "details": {
       "heading": "Chi tiết",
@@ -7516,6 +7902,7 @@
       "hub": "Evo Agent Hub",
       "created": "đã tạo task",
       "description": "đã sửa mô tả",
+      "outcome": "đã sửa kết quả",
       "status": "đã chuyển từ {from} sang {to}",
       "statusSet": "đã đặt trạng thái {to}",
       "changed": "đã đổi {field} từ {from} sang {to}",
@@ -7594,6 +7981,78 @@
       "noPreviewText": "Dán hay đọc một file, rồi bấm Xem trước: hub đọc nó theo dự án và không ghi gì.",
       "readerTitle": "Nhập task vào {project} cần vai trò ghi",
       "backToBoard": "Quay lại bảng"
+    }
+  },
+  "pm": {
+    "meta": {
+      "daily": "PM daily của {project}"
+    },
+    "sub": "Báo cáo ngày {date}. Việc đã xong tính theo ngày làm việc trước đó: {previous}.",
+    "day": "Ngày",
+    "today": "Hôm nay",
+    "count": "{count, plural, other {# mục}}",
+    "hidden": "{count, plural, other {Còn # mục bạn không được xem, chỉ tính vào số đếm.}}",
+    "bareTitle": "Dự án chưa có task nào để báo cáo",
+    "bareText": "Báo cáo sẽ có nội dung khi dự án có task và có sprint đang chạy. Thêm task hoặc bắt đầu sprint trên bảng.",
+    "openBoard": "Mở bảng task",
+    "notReady": {
+      "title": "Báo cáo daily chưa sẵn sàng",
+      "text": "Báo cáo đọc task của dự án và cấu hình pm. Hãy bật plugin Tasks, hoặc sửa cấu hình pm nêu dưới đây.",
+      "tasks": "Plugin Tasks",
+      "config": "Cấu hình pm"
+    },
+    "done": {
+      "title": "Đã xong ngày {day}",
+      "empty": "Không có gì chuyển sang xong trong ngày đó."
+    },
+    "sprint": {
+      "title": "Sprint đang chạy",
+      "empty": "Chưa có sprint nào đang chạy.",
+      "done": "Đã xong",
+      "time": "Thời gian đã qua",
+      "scope": "Task lúc mở",
+      "changed": "Từ lúc mở",
+      "changedValue": "thêm {added}, bớt {removed}",
+      "useCases": "Use case của sprint",
+      "ratio": "xong {done} trên {total}"
+    },
+    "late": {
+      "title": "Trễ và nguy cơ trễ",
+      "empty": "Không có task nào trễ.",
+      "overdue": "Hạn {due}, trễ {days} ngày làm việc",
+      "atRisk": "Hạn {due}, còn {days} ngày làm việc"
+    },
+    "review": {
+      "title": "Đang review",
+      "empty": "Không có task nào chờ review.",
+      "age": "{days, plural, =0 {từ hôm nay} other {đã review # ngày làm việc}}",
+      "qa": "QA {who}"
+    },
+    "stale": {
+      "title": "Im lặng quá lâu",
+      "empty": "Không có task đang làm nào im lặng.",
+      "idle": "Không có hoạt động {days} ngày làm việc"
+    },
+    "blocked": {
+      "title": "Bị chặn",
+      "empty": "Không có gì bị chặn.",
+      "byDecision": "Decision đang mở",
+      "byHand": "Đặt bằng tay",
+      "waitingMember": "Đang chờ",
+      "waitingTask": "Đang chờ task",
+      "waitingText": "Đang chờ",
+      "age": "{days, plural, =0 {từ hôm nay} other {# ngày làm việc}}"
+    },
+    "escalate": {
+      "title": "Cần escalate",
+      "empty": "Chưa có blocker nào đủ lâu để escalate."
+    },
+    "load": {
+      "title": "Tải theo thành viên",
+      "empty": "Chưa có thành viên nào có quyền ghi.",
+      "overloaded": "Quá tải",
+      "free": "Trống",
+      "counts": "đang làm {doing} trên {limit}, review với vai QA {review}, trễ {late}"
     }
   },
   "canvas": {
@@ -8077,6 +8536,384 @@
       "emptyTitle": "Không có tín hiệu trong khoảng này",
       "empty": "Không có số đo nào trong {days} ngày qua.",
       "emptyTenant": "Không có số đo nào cho {tenant} trong {days} ngày qua."
+    }
+  },
+  "outputs": {
+    "open": "Mở {name}, {kind}, {size}",
+    "more": "{count, plural, other {thêm # file}}",
+    "source": {
+      "sent": "Agent gửi",
+      "tool": "Từ kết quả tool",
+      "outputs": "Thư mục output"
+    },
+    "strip": {
+      "question": "File của câu hỏi này",
+      "message": "File của tin nhắn này",
+      "notice": "File của thông báo này",
+      "calls": "File của các lệnh gọi này",
+      "recorded": "File hub đã ghi nhận"
+    },
+    "viewer": {
+      "kind": {
+        "image": "Ảnh",
+        "video": "Video",
+        "audio": "Âm thanh",
+        "pdf": "PDF",
+        "text": "Văn bản",
+        "html": "Trang web",
+        "none": "File"
+      },
+      "kindSize": "{kind}, {size}",
+      "navigation": "Các file",
+      "previous": "File trước",
+      "next": "File sau",
+      "position": "{index} trên {total}",
+      "zoom": "Thu phóng",
+      "zoomIn": "Phóng to",
+      "zoomOut": "Thu nhỏ",
+      "fit": "Vừa khung",
+      "download": "Tải về",
+      "close": "Đóng trình xem",
+      "frameTitle": "Xem trước {name}",
+      "pdfNote": "Nếu trình duyệt không hiện PDF ở đây, hãy mở nó trong một tab riêng.",
+      "openTab": "Mở trong tab mới",
+      "sandboxNote": "Hiện trong sandbox: script của trang vẫn chạy nhưng không với tới hub hay phiên đăng nhập của bạn.",
+      "noPreview": "Loại file này không có bản xem trước. Tải về để mở.",
+      "imageFailed": "Trình duyệt không hiện được ảnh này.",
+      "loading": "Đang đọc file",
+      "readFailed": "Không đọc được file.",
+      "retry": "Thử lại",
+      "emptyFile": "File trống.",
+      "tableLabel": "Các dòng của file",
+      "textLabel": "Nội dung file",
+      "csvMore": "Đang hiện {count, number} dòng đầu.",
+      "textCut": "Đang hiện {size} đầu. Tải file về để xem phần còn lại."
+    }
+  },
+  "loop": {
+    "state": {
+      "queued": "Đang xếp hàng",
+      "running": "Đang chạy",
+      "watching": "Đang theo dõi",
+      "waiting_human": "Chờ người",
+      "done": "Xong",
+      "cancelled": "Đã huỷ"
+    },
+    "openState": {
+      "running": "{count} đang chạy",
+      "waiting_human": "{count} chờ người",
+      "queued": "{count} xếp hàng",
+      "watching": "{count} theo dõi"
+    },
+    "kind": {
+      "brainstorm": "Brainstorm",
+      "use_case": "Use case",
+      "build": "Build",
+      "deliver": "Deliver"
+    },
+    "title": {
+      "brainstorm": "Brainstorm cho {subject}",
+      "use_case": "Use case cho {subject}",
+      "build": "Build {subject}",
+      "deliver": "Deliver {subject}"
+    },
+    "cycle": {
+      "business": "Business cycle",
+      "development": "Development cycle"
+    },
+    "reason": {
+      "breaker": "Cầu dao của Loop đã nhảy: không giao việc tới khi admin đặt lại",
+      "concurrency": "{running} trên {max} run của {cycle} đang chạy",
+      "concurrencyRepos": "Repo đã đủ trần {max} lần giao: {repos}",
+      "rate": "{dispatched} trên {max} lần giao trong giờ này",
+      "worker": "Worker {worker}: {why}",
+      "workerNone": "Không worker nào nhận được: {why}",
+      "type_refused": "Agent type từ chối run: {why}",
+      "stable": "Chờ tới {at} để baseline ổn định",
+      "stableSoon": "Chờ baseline ổn định",
+      "auto_tasks": "Chờ task khung của use case",
+      "split": "Chờ tách task {task}",
+      "merge_queue": "Trong hàng đợi merge",
+      "triage": "Đang triage sau {failures} lần thất bại",
+      "srs_review": "Version SRS của nó chờ duyệt",
+      "srs_finding": "{findings} finding cần chốt trong chat",
+      "srs_changes": "Version SRS của nó được yêu cầu sửa",
+      "author_question": "Run soạn plan đang hỏi chủ trong chat",
+      "run_decision": "Run của nó chờ một quyết định",
+      "loop_decision": "Hỏi người sau {failures} lần thất bại",
+      "merge_blocked": "{merges} merge request chờ người",
+      "merge_manual": "Merge tay rồi đánh dấu merged trong plan: {repos}",
+      "merge_manualAny": "Merge tay các repo rồi đánh dấu merged trong plan",
+      "claim_invalidated": "Claim của nó bị bác bỏ",
+      "claim_retired": "Claim của nó đã được cho nghỉ",
+      "goal_paused": "Goal của nó đang tạm dừng",
+      "goal_closed": "Goal của nó đã đóng",
+      "loop_off": "Loop đã tắt",
+      "task_closed": "Task khung của nó đã đóng",
+      "no_frame_task": "Lần duyệt không tạo task khung cho nó",
+      "person": "Có người đã huỷ run của nó",
+      "dropped": "Có người đã bỏ nó",
+      "manual": "Có người đã nhận làm tay"
+    },
+    "event": {
+      "created": "Tạo",
+      "ready": "Sẵn sàng",
+      "admitted": "Được nhận",
+      "dispatched": "Đã giao run",
+      "waiting": "Chờ",
+      "failed": "Thất bại",
+      "triaged": "Mở triage",
+      "asked": "Hỏi người",
+      "done": "Xong",
+      "cancelled": "Đã huỷ",
+      "noted": "Ghi kết quả"
+    },
+    "goalStatus": {
+      "active": "Đang chạy",
+      "paused": "Tạm dừng",
+      "achieved": "Đã đạt",
+      "dropped": "Đã bỏ",
+      "expired": "Hết hạn"
+    },
+    "switch": {
+      "turnOn": "Bật",
+      "turnOff": "Tắt",
+      "turningOn": "Đang bật",
+      "turningOff": "Đang tắt",
+      "cancel": "Huỷ",
+      "confirmOnTitle": "Bật Loop?",
+      "confirmOnText": "Từ giờ Loop đọc sự kiện của dự án, tạo work item cho các goal đang chạy và giao run trong trần của policy. Policy giữ việc này thành một revision mới.",
+      "confirmOffTitle": "Tắt Loop?",
+      "confirmOffText": "{count, plural, =0 {Loop không có work item nào dở.} other {# work item dở của nó bị huỷ.}} Run đã giao vẫn chạy tiếp.",
+      "confirmOffAgain": "Khi bật lại, nó bắt đầu từ sự kiện mới nhất của dự án. Policy giữ việc này thành một revision mới.",
+      "onDone": "Loop đã bật",
+      "onDoneText": "Lượt tick tới sẽ đọc sự kiện của dự án.",
+      "offDone": "Loop đã tắt",
+      "offDoneText": "Nó không tạo work item và không giao run.",
+      "noteOn": "Bật Loop từ trang Loop",
+      "noteOff": "Tắt Loop từ trang Loop",
+      "forbidden": "Chỉ admin của dự án mới bật hay tắt Loop.",
+      "conflict": "Một admin khác vừa đổi policy. Tải lại trang rồi thử lại."
+    },
+    "breaker": {
+      "title": "Loop đã tự dừng: nó tạo quá nhiều work item trong một giờ",
+      "since": "Dừng lúc {since}",
+      "adminResets": "Admin của dự án sẽ đặt lại.",
+      "reset": "Đặt lại cầu dao",
+      "resetting": "Đang đặt lại",
+      "cancel": "Huỷ",
+      "confirmTitle": "Đặt lại cầu dao của Loop?",
+      "confirmText": "Từ lượt tick tới, Loop đọc lại sự kiện của dự án và giao run. Work item trong giờ được đếm lại từ lúc này.",
+      "resetDone": "Đã đặt lại cầu dao của Loop",
+      "resetDoneText": "Lượt tick tới sẽ giao run lại.",
+      "forbidden": "Chỉ admin của dự án mới đặt lại cầu dao.",
+      "notTripped": "Cầu dao chưa nhảy nên không có gì để đặt lại."
+    },
+    "page": {
+      "title": "Loop",
+      "meta": "Loop của {project}",
+      "on": "Đang bật",
+      "off": "Đang tắt",
+      "stopped": "Cầu dao đã dừng",
+      "emptyTitle": "Loop đang tắt",
+      "emptyText": "Khi bật, Loop biến mỗi thay đổi của dự án thành work item hướng tới goal và giao cho agent, trong trần của policy. Người quyết ở trang Quyết định.",
+      "goals": "Xem các goal",
+      "offTitle": "Loop đang tắt",
+      "offText": "Nó không tạo work item và không giao run. Các work item giữ nguyên như lúc kết thúc.",
+      "readOnlyTitle": "Bạn chỉ xem trang này",
+      "readOnlyText": "Admin của dự án bật hay tắt Loop và đặt lại cầu dao của nó."
+    },
+    "metrics": {
+      "label": "Work item theo trạng thái",
+      "running": "Đang chạy",
+      "runningMeta": "Có agent đang làm",
+      "waiting_human": "Chờ người",
+      "waitingMeta": "Quyết ở trang Quyết định",
+      "queued": "Đang xếp hàng",
+      "queuedMeta": "Chờ trần hoặc worker",
+      "watching": "Đang theo dõi",
+      "watchingMeta": "Chờ hub",
+      "done": "Xong",
+      "cancelled": "và {count} đã huỷ"
+    },
+    "items": {
+      "heading": "Work item",
+      "search": "Work item của Loop",
+      "caption": "Work item của Loop dự án {project}",
+      "count": "{count} work item",
+      "more": "Đang liệt kê {count} work item mới nhất.",
+      "none": "Không có work item nào khớp.",
+      "all": "Tất cả",
+      "stateLabel": "Trạng thái",
+      "kindLabel": "Loại",
+      "allKinds": "Mọi loại",
+      "goalLabel": "Goal",
+      "allGoals": "Mọi goal",
+      "viewLabel": "Cách hiện work item",
+      "byState": "Theo trạng thái",
+      "byChain": "Theo chuỗi",
+      "tries": "{attempts} run{failures, plural, =0 {} other {, # lỗi}}",
+      "columns": {
+        "item": "Work item",
+        "goal": "Goal",
+        "state": "Trạng thái",
+        "tries": "Run",
+        "updated": "Đổi lúc"
+      }
+    },
+    "chains": {
+      "label": "Chuỗi của {title}",
+      "title": "Chuỗi của {title}",
+      "count": "{count} work item"
+    },
+    "metric": {
+      "text": "{key}, {aggregate} trong {days} ngày, {comparator} {target}",
+      "tenant": "{text}, cho tenant {tenant}",
+      "target": "đích {target}",
+      "reached": "Đã đạt",
+      "notReached": "Chưa đạt",
+      "noValue": "Chưa có signal",
+      "noSignal": "Chưa có signal",
+      "none": "Không có chỉ số",
+      "meter": "Tiến độ tới đích",
+      "meterText": "{value} so với đích {target}"
+    },
+    "goals": {
+      "title": "Goal",
+      "meta": "Goal của {project}",
+      "caption": "Goal của dự án {project}",
+      "decide": "Quyết định",
+      "emptyTitle": "Chưa có goal",
+      "emptyText": "Goal nói dự án để làm gì và cách biết đã đạt: một signal, một khoảng thời gian và một đích. Loop làm việc cho các goal đang chạy. Admin đặt goal từ dòng lệnh.",
+      "noMetric": "Không có chỉ số: Curator đọc nó, Loop không làm gì cho nó",
+      "noSignal": "chưa có signal",
+      "now": "hiện {value, number}",
+      "noneOpen": "Không có việc dở",
+      "openLabel": "Work item đang dở",
+      "columns": {
+        "goal": "Goal",
+        "now": "Hiện tại",
+        "status": "Trạng thái",
+        "items": "Work item đang dở",
+        "deadline": "Hạn",
+        "owner": "Chủ"
+      }
+    },
+    "goal": {
+      "meta": "{code} của {project}",
+      "back": "Goal",
+      "metricTitle": "Chỉ số",
+      "series": "Signal của nó",
+      "noMetricText": "Goal này không có chỉ số: Curator đọc nó, còn Loop không tạo work item nào cho nó.",
+      "factsTitle": "Chi tiết",
+      "deadline": "Hạn",
+      "noDeadline": "Không có",
+      "owner": "Chủ",
+      "canvas": "Canvas",
+      "noCanvas": "Không có",
+      "rank": "Thứ hạng",
+      "revision": "Revision",
+      "revisionText": "{revision}, bởi {by}",
+      "changed": "Đổi lúc",
+      "note": "Ghi chú",
+      "itemsTitle": "Work item",
+      "itemsSearch": "Work item của {goal}",
+      "itemsCaption": "Work item của {goal}",
+      "notFoundTitle": "Không có goal {code}",
+      "notFoundText": "Dự án không có goal nào mang mã hay bí danh đó."
+    },
+    "chain": {
+      "meta": "Work item {id} của {project}",
+      "back": "Loop",
+      "standsFor": "đứng tên {owner}",
+      "railTitle": "Chuỗi",
+      "railLabel": "Các chặng của chuỗi, từ goal tới phát hành",
+      "step": "Chặng {index} trên {total}:",
+      "stage": {
+        "goal": "Goal",
+        "claim": "Claim",
+        "use_case": "Use case",
+        "task": "Task",
+        "plan": "Plan",
+        "merges": "Merge request",
+        "release": "Phát hành"
+      },
+      "notYet": "Chưa tới",
+      "hidden": "Bạn không xem được",
+      "claimDetail": "{canvas}, {status}",
+      "proposals": "{count, plural, =0 {Chưa đề xuất claim nào} other {Đã đề xuất # claim}}",
+      "useCaseDetail": "{document} v{version}, {state}",
+      "runs": "Run",
+      "runLabel": "Mở run #{id}",
+      "runWords": "run {kind}, {state}",
+      "runsHidden": "và các run của plan bạn không xem được",
+      "waits": {
+        "queued": "Đang xếp hàng",
+        "watching": "Đang theo dõi",
+        "waiting_human": "Chờ người"
+      },
+      "decide": "Quyết định",
+      "itemsTitle": "Work item của chuỗi ({count})",
+      "historyTitle": "Lịch sử",
+      "noHistory": "Chưa có gì xảy ra với nó.",
+      "notFoundTitle": "Không có work item {id}",
+      "notFoundText": "Loop của dự án không có work item mang số đó."
+    },
+    "decide": {
+      "title": "Quyết định",
+      "meta": "Quyết định của {project}",
+      "summary": "Những việc chờ người, theo nhóm",
+      "emptyTitle": "Không có gì chờ người",
+      "emptyText": "Việc rà goal hằng tháng, baseline của canvas, đề xuất đổi policy và cầu dao đã nhảy hiện ở đây, rồi tới những gì chuỗi của Loop đang chờ: ngoại lệ của nó và version SRS cần duyệt.",
+      "group": {
+        "goal": "Goal",
+        "canvas": "Canvas",
+        "policy": "Policy",
+        "exception": "Ngoại lệ",
+        "srs": "SRS"
+      },
+      "groupNote": {
+        "goal": "Cổng 1",
+        "canvas": "Cổng 2",
+        "policy": "Cổng 3",
+        "exception": "Những gì Loop không tự giải được",
+        "srs": "Việc duyệt trong chuỗi của Loop"
+      },
+      "waiting": "{count, plural, =0 {không có gì chờ} other {# việc chờ}}",
+      "nothing": "Không có gì chờ ở đây.",
+      "loopOff": "Loop đang tắt nên chuỗi của nó không chờ gì.",
+      "since": "Từ",
+      "deciders": "{rule}: {logins}",
+      "nobody": "{rule}: hiện chưa thành viên nào quyết được",
+      "yours": "Bạn quyết",
+      "chain": "Work item #{id}",
+      "open": "Mở",
+      "openLabel": "Mở: {title}"
+    },
+    "boardKind": {
+      "goal_review": "Rà goal hằng tháng",
+      "goal_overdue": "Goal quá hạn",
+      "baseline": "Baseline",
+      "claim_proposal": "Đề xuất claim",
+      "policy_proposal": "Đề xuất policy",
+      "goal_proposal": "Đề xuất goal",
+      "merge_breaker": "Cầu dao merge",
+      "loop_breaker": "Cầu dao Loop",
+      "loop_decision": "Quyết định của Loop",
+      "run_decision": "Quyết định của run",
+      "author_question": "Câu hỏi của run soạn plan",
+      "merge_held": "Merge bị giữ",
+      "merge_manual": "Merge tay",
+      "merge_sample": "Mẫu kiểm",
+      "srs_review": "Duyệt SRS",
+      "srs_finding": "Finding SRS"
+    },
+    "decidedBy": {
+      "admin": "Admin",
+      "writer": "Người ghi",
+      "run_owner": "Chủ của run",
+      "srs_reviewer": "Người duyệt SRS",
+      "chat_member": "Thành viên của chat"
     }
   }
 }

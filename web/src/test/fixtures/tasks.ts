@@ -33,6 +33,7 @@ export function task(number: number, patch: Partial<Task> = {}): Task {
     steps_done: 0,
     steps_total: 0,
     codes: [],
+    blocked: false,
     label: { level: "internal" },
     created_by: "alice",
     created_at: "2026-10-13T02:00:00Z",
@@ -51,6 +52,7 @@ export function sprint(name: string, patch: Partial<Sprint> = {}): Sprint {
     created_by: "alice",
     created_at: "2026-10-01T02:00:00Z",
     closed_at: null,
+    activated_at: null,
     tasks: 0,
     ...patch,
   };
@@ -71,5 +73,5 @@ export const TASKS: Task[] = [
 ];
 
 export function detailOf(base: Task, patch: Partial<TaskDetail> = {}): TaskDetail {
-  return { ...base, description_md: "", external_ref: null, links: [], events: [], comments: [], ...patch };
+  return { ...base, description_md: "", outcome_md: "", external_ref: null, links: [], blockers: [], events: [], comments: [], ...patch };
 }

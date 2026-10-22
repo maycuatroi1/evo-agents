@@ -18,6 +18,8 @@ it, and the parts every kind of run shares. The run's kind is composed into it, 
   branch of each repo it changed pushed for a draft pull request.
 - ``runner.release``, ``ReleaseRun``: the cut, or the fix forward, of a cycle of a project's daily release: one
   headless turn, HEAD pushed to release/<version> for the hub to merge and tag.
+- ``runner.question``, ``QuestionRun``: one headless turn of a core plugin's agent type on a question from outside the
+  hub, in worktrees detached at origin's default branch, reading only; its answer goes with the report of done.
 
 The parts they share, each a module of ``runner``: ``sender`` (the events on their way to the hub), ``reports`` (the
 moves of the run and the blobs of its log and diff), ``agent`` and ``terminal`` (the agent, headless or in its
@@ -40,6 +42,7 @@ from evo_agents.worker.runner.conversation import ANSWER_PROMPT, RESUME_PROMPT, 
 from evo_agents.worker.runner.judge import JudgeRun
 from evo_agents.worker.runner.kinds import KINDS, kind_class
 from evo_agents.worker.runner.plan import PlanRun
+from evo_agents.worker.runner.question import QuestionRun
 from evo_agents.worker.runner.release import ReleaseRun
 from evo_agents.worker.runner.review import WORKTREE_FIGURES, ReviewRun
 from evo_agents.worker.runner.sender import Sender
@@ -57,6 +60,7 @@ __all__ = [
     "JudgeRun",
     "Parked",
     "PlanRun",
+    "QuestionRun",
     "ReleaseRun",
     "ReportRefused",
     "ReviewRun",

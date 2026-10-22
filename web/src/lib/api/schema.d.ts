@@ -1069,6 +1069,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/sources/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Source
+         * @description Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the
+         *     hub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before).
+         */
+        delete: operations["forget_source_v1_kg__project__sources__source__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/tools/{tool}": {
         parameters: {
             query?: never;
@@ -1335,8 +1356,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a
-         *     web session or with their machine token.
+         * @description Change the worker's slots, labels, name, plugins, projects, version lock or whether it is shared: its owner
+         *     only, from a web session or with their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -2536,6 +2557,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Notification Settings
+         * @description The kinds of notice the caller may turn off, and whether each is on.
+         */
+        get: operations["show_notification_settings_v1_me_notification_settings_get"];
+        /**
+         * Set Notification Settings
+         * @description Turn kinds of notice on or off for the caller; decisions and the other notices always come.
+         */
+        put: operations["set_notification_settings_v1_me_notification_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/overview": {
         parameters: {
             query?: never;
@@ -2970,6 +3015,272 @@ export interface paths {
          *     run is done.
          */
         post: operations["pushed_v1_worker_runs__run_id__release_branch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/output-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Settings
+         * @description The project's switch of tool images and the limits of outputs, for any member of it.
+         */
+        get: operations["show_settings_v1_projects__project__output_settings_get"];
+        /**
+         * Put Settings
+         * @description Switch the images taken out of tools' results on or off for the project; an admin of it only.
+         */
+        put: operations["put_settings_v1_projects__project__output_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Outputs
+         * @description The run's outputs, oldest first, each with the URL of its bytes.
+         */
+        get: operations["list_outputs_v1_projects__project__runs__run_id__outputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Output */
+        get: operations["show_output_v1_projects__project__runs__run_id__outputs__output_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Output
+         * @description Delete an output of the run, from the questions and chat messages that carry it too, and its bytes when
+         *     nothing else refers to them; the run's dispatcher or an admin of the project only. The answer is what it was.
+         */
+        delete: operations["delete_output_v1_projects__project__runs__run_id__outputs__output_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/output-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local Settings
+         * @description The switch of tool images of the project, the limits, and what the member's local run holds.
+         */
+        get: operations["local_settings_v1_projects__project__local_runs__run_id__output_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/output-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Local Uploads
+         * @description Presigned PUTs for the bytes of outputs of the member's local run, those the project does not hold yet.
+         */
+        post: operations["local_uploads_v1_projects__project__local_runs__run_id__output_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Local Outputs
+         * @description Commit the uploads of outputs of the member's local run and record the outputs.
+         */
+        post: operations["local_outputs_v1_projects__project__local_runs__run_id__outputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/output-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Settings
+         * @description The switch of tool images of the run's project, the limits, and what the run holds, for its worker.
+         */
+        get: operations["worker_settings_v1_worker_runs__run_id__output_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/output-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Worker Uploads
+         * @description Presigned PUTs for the bytes of outputs of a run this worker claimed, those its project does not hold yet.
+         */
+        post: operations["worker_uploads_v1_worker_runs__run_id__output_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Worker Outputs
+         * @description Commit the uploads of outputs of a run this worker claimed and record the outputs.
+         */
+        post: operations["worker_outputs_v1_worker_runs__run_id__outputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Content
+         * @description The bytes of an output of the run, for its readers.
+         */
+        get: operations["run_content_v1_projects__project__runs__run_id__outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/outputs/{output_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Link
+         * @description A presigned GET of the bytes of an output of the run, as an attachment, for its readers.
+         */
+        get: operations["run_link_v1_projects__project__runs__run_id__outputs__output_id__link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/decisions/{decision_id}/outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decision Content
+         * @description The bytes of an output the decision carries, for the decision's readers.
+         */
+        get: operations["decision_content_v1_projects__project__decisions__decision_id__outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Content
+         * @description The bytes of an output a message of the chat carries, for a member who reads that message.
+         */
+        get: operations["chat_content_v1_chats__chat_id__outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3556,6 +3867,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Org
+         * @description The whole org chart, with every ceiling and effective level, and the viewer's own.
+         */
+        get: operations["show_org_v1_org_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org Runs
+         * @description Each member's runs at work now, by project, over the projects the viewer holds a grant on.
+         */
+        get: operations["org_runs_v1_org_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Unit
+         * @description Create a team or a cohort below a unit; a cohort without a level gets a ceiling of A1.
+         */
+        post: operations["create_unit_v1_org_units_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Unit
+         * @description Change a unit's name, parent or end date; a field left out keeps its value.
+         */
+        patch: operations["edit_unit_v1_org_units__slug__patch"];
+        trace?: never;
+    };
+    "/v1/org/units/{slug}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Unit
+         * @description Archive a unit with no unit below it left and no live seat.
+         */
+        post: operations["archive_unit_v1_org_units__slug__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/seats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Seat
+         * @description Add a seat of a person or an agent profile to a unit.
+         */
+        post: operations["add_seat_v1_org_seats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/seats/{seat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Seat
+         * @description Change a live seat's role, reports_to, sponsor or dates, or make it the person's primary seat.
+         */
+        patch: operations["edit_seat_v1_org_seats__seat_id__patch"];
+        trace?: never;
+    };
+    "/v1/org/seats/{seat_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Seat
+         * @description End a seat now.
+         */
+        post: operations["end_seat_v1_org_seats__seat_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/ceilings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Ceiling
+         * @description Write the next ceiling revision of a unit, of a person's primary seat or of a seat.
+         */
+        put: operations["set_ceiling_v1_org_ceilings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -4030,8 +4521,9 @@ export interface paths {
         /**
          * Open Baseline
          * @description Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's
-         *     proposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the
-         *     claim asks nothing of a baseline, or a baseline still proposed holds it.
+         *     proposal or its overdue test card. Another writer decides it (the caller too, with the config's self_approval on);
+         *     the project's writers get the notice. 409 when the claim asks nothing of a baseline, or a baseline still proposed
+         *     holds it.
          */
         post: operations["open_baseline_v1_x_canvas__project__canvases__slug__baselines_post"];
         delete?: never;
@@ -4075,10 +4567,32 @@ export interface paths {
          * Decide Item
          * @description Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend
          *     (with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller
-         *     changed or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind
-         *     baseline. Once no item waits, the baseline is approved and its snapshot taken.
+         *     changed or whose proposal they accepted, nor in a baseline they opened, unless the config's self_approval is on;
+         *     a rev it writes is the caller's, of kind baseline. Once no item waits, the baseline is approved and its snapshot
+         *     taken.
          */
         post: operations["decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/pm/{project}/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily
+         * @description The daily report: what was done on the working day before ``date``, the sprint, what is late, in review,
+         *     stale or blocked, what to escalate, and the load of each member.
+         */
+        get: operations["daily_v1_x_pm__project__daily_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4311,12 +4825,39 @@ export interface paths {
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
          *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
-         *     decide, naming each, or while @ba's review of the version's round is queued or running. Once a version is
-         *     approved in a project that enables the plugin tasks, each use case new in it gets a frame task, the open tasks of a
-         *     use case that changed a comment and those of one it dropped are cancelled, and @ba splits the frame tasks into
-         *     child tasks, in the same transaction.
+         *     decide, naming each, or while @ba's review of the version's round is queued or running. An approval emits the
+         *     event srs.version.approved; once the hub delivers it, in a project that enables the plugin tasks, each use case new
+         *     in the version gets a frame task, the open tasks of a use case that changed a comment and those of one it dropped
+         *     are cancelled, and @ba splits the frame tasks into child tasks.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Use Case
+         * @description Approve one use case of a version in review or ask for changes on it, under the conditions of a review of the
+         *     version; a later review of the same member on the use case replaces the earlier one when they are counted. 422 for
+         *     an item that is no use case the version needs reviewed (one it adds, changes or drops since the version approved
+         *     last) and for a request for changes with no note. An approval goes through the gate of a version's (409 while a
+         *     finding of level decide is open or @ba's review runs); a request for changes leaves the version in review and
+         *     blocks every approval of it. The version is approved by the review that makes every use case to review approved,
+         *     as its version-wide reviews do: it emits srs.version.approved as any approval. Answers the version with its use
+         *     cases.
+         */
+        post: operations["review_use_case_v1_x_srs__project__documents__slug__versions__number__items__ref__reviews_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4603,6 +5144,46 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Blocker
+         * @description Block a task: why, and what it waits on (a member, another task of the project, or a text).
+         */
+        post: operations["add_blocker_v1_x_tasks__project__tasks__ref__blockers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/tasks/{project}/tasks/{ref}/blockers/{blocker_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Blocker
+         * @description Change a blocker set by hand: its reason, what it waits on, or clear it (``cleared``).
+         */
+        patch: operations["edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch"];
         trace?: never;
     };
     "/v1/x/tasks/{project}/sprints/{name}": {
@@ -5194,6 +5775,26 @@ export interface paths {
         get: operations["show_task_v1_plugin_api_projects__project__tasks__task__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Notice
+         * @description Send a notice to members of the project, as the plugin whose token the request carries.
+         */
+        post: operations["send_notice_v1_plugin_api_projects__project__notifications_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6599,6 +7200,213 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Goals
+         * @description The project's goals as they are now, by rank, then by code.
+         */
+        get: operations["list_goals_v1_projects__project__goals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Goal
+         * @description One goal of the project, at its newest revision or at ``revision``.
+         */
+        get: operations["show_goal_v1_projects__project__goals__ref__get"];
+        /**
+         * Write Goal
+         * @description Write a goal whole as its next revision, made when the project has none of code ``ref``; an admin of the
+         *     project alone may.
+         */
+        put: operations["write_goal_v1_projects__project__goals__ref__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Goal Revisions
+         * @description Every revision of a goal, the newest first, each with the fields whose value it changed.
+         */
+        get: operations["goal_revisions_v1_projects__project__goals__ref__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/goals/{ref}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Goal
+         * @description Close a goal for a reason, as its next revision; an admin of the project alone may.
+         */
+        post: operations["close_goal_v1_projects__project__goals__ref__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Loop
+         * @description The project's Loop: on or off, its breaker, its cursor and its work items by state.
+         */
+        get: operations["show_loop_v1_projects__project__loop_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Loop
+         * @description Reset the tripped breaker of the project's Loop (the admin role on the project).
+         */
+        post: operations["resume_loop_v1_projects__project__loop_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Items
+         * @description The work items of the project's Loop, the newest first: where each stands and why, and its ancestors.
+         */
+        get: operations["loop_items_v1_projects__project__loop_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Item
+         * @description A work item of the project's Loop with its chain from the goal to the release, and what happened to it.
+         */
+        get: operations["loop_item_v1_projects__project__loop_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/loop/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Goals
+         * @description Each goal of the project with its metric measured now against its target, and its work items by state.
+         */
+        get: operations["loop_goals_v1_projects__project__loop_goals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/decision-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decision Board
+         * @description Everything of the project that waits for a person: the goals, the canvases and the policy (the three gates),
+         *     then the Loop's exceptions and the SRS versions and settle chats its chain waits on; each with since when, who may
+         *     decide it and the page where it is decided.
+         */
+        get: operations["decision_board_v1_projects__project__decision_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/merge-queue": {
         parameters: {
             query?: never;
@@ -6703,6 +7511,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/merge-queue/{queue_id}/pass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pass Hold
+         * @description An admin of the project passes the hold of a merge request at a gate that holds it for a person (gate 3, score
+         *     hacking), with a reason: it is gated again at the same head, and the queue goes on from that gate; the later gates,
+         *     the Judges, its turn and its pipeline still apply, and a new push takes the pass back.
+         */
+        post: operations["pass_hold_v1_projects__project__merge_queue__queue_id__pass_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
         parameters: {
             query?: never;
@@ -6781,6 +7611,18 @@ export interface components {
              */
             env_var: string;
             /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
              * Projects
              * @description the projects whose runs may take it
              */
@@ -6853,14 +7695,14 @@ export interface components {
             runs_7d: number;
             /**
              * Cost 24H Usd
-             * @description what those runs cost in the last 24 hours, in USD, from their usage
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
              */
-            cost_24h_usd: number;
+            cost_24h_usd: number | null;
             /**
              * Cost 7D Usd
-             * @description what those runs cost in the last 7 days, in USD, an estimate
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
              */
-            cost_7d_usd: number;
+            cost_7d_usd: number | null;
             /**
              * Held By
              * @description the runs a worker holds now with it
@@ -7265,6 +8107,11 @@ export interface components {
              */
             reply_to?: number | null;
             /**
+             * Output Ids
+             * @description outputs of the run the message carries (POST .../runs/{id}/outputs), none of source tool
+             */
+            output_ids?: number[];
+            /**
              * Handle
              * @description the agent of the chat the message hands work to, @ left out
              */
@@ -7287,6 +8134,11 @@ export interface components {
              * @description a message whose thread it goes in; null: the run's thread
              */
             reply_to?: number | null;
+            /**
+             * Output Ids
+             * @description outputs of the run the message carries (POST .../runs/{id}/outputs), none of source tool
+             */
+            output_ids?: number[];
         };
         /**
          * AgentPack
@@ -7772,6 +8624,61 @@ export interface components {
             sha256: string[];
         };
         /**
+         * BoardItem
+         * @description One thing of the project that waits for a person.
+         */
+        BoardItem: {
+            /**
+             * Group
+             * @description goal, canvas and policy are the three gates; exception and srs what the Loop's chain waits on
+             * @enum {string}
+             */
+            group: "goal" | "canvas" | "policy" | "exception" | "srs";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "goal_review" | "goal_overdue" | "baseline" | "claim_proposal" | "policy_proposal" | "goal_proposal" | "merge_breaker" | "loop_breaker" | "loop_decision" | "run_decision" | "author_question" | "merge_held" | "merge_manual" | "merge_sample" | "srs_review" | "srs_finding";
+            /**
+             * Title
+             * @description what waits, in one line
+             */
+            title: string;
+            /**
+             * Since
+             * @description when it began to wait
+             */
+            since: string | null;
+            /**
+             * Decided By
+             * @description who may decide it, as a rule
+             * @enum {string}
+             */
+            decided_by: "admin" | "writer" | "run_owner" | "srs_reviewer" | "chat_member";
+            /**
+             * Deciders
+             * @description the logins of the members who may decide it now
+             */
+            deciders: string[];
+            /**
+             * Link
+             * @description the page of the hub's web where it is decided
+             */
+            link: string | null;
+            /**
+             * Work Item
+             * @description the Loop's work item that waits on it
+             */
+            work_item?: number | null;
+            /**
+             * Refs
+             * @description the ids of what waits: decision, run, proposal, baseline, plan, goal...
+             */
+            refs?: {
+                [key: string]: number | string;
+            };
+        };
+        /**
          * Branding
          * @description The branding as the web applies it; what is unset is null or empty, and the web keeps its own there.
          */
@@ -7983,10 +8890,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "goal";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), goal (goal: its code, which the hub picks for a new one); nothing for policy
              */
             target: {
                 [key: string]: string;
@@ -8018,7 +8925,7 @@ export interface components {
             approver: "hub_admin" | "project_admin";
             /**
              * Proposed By
-             * @description the admin who asked @builder, the run's dispatcher
+             * @description the member the run proposed for: the admin who asked @builder, or the owner of the Curator's night shift for a proposal of its review run
              */
             proposed_by: string;
             /**
@@ -8045,11 +8952,14 @@ export interface components {
              * @description why the hub could not apply it, for a failed one
              */
             error: string | null;
-            /** Run Id */
+            /**
+             * Run Id
+             * @description the chat run of @builder, or the Curator's review run, it came from
+             */
             run_id: number | null;
             /**
              * Link
-             * @description the hub's message that shows it in its thread
+             * @description the hub's message that shows it in its thread; none for a review run's
              */
             link: string | null;
         };
@@ -8241,7 +9151,7 @@ export interface components {
             hidden_evidence: number;
             /**
              * Proposers
-             * @description the members who may not decide it: they changed the status, or opened it
+             * @description the members who may not decide it: they changed the status, or opened it; none while the plugin's config turns self_approval on
              */
             proposers: string[];
             /** Decision */
@@ -9327,6 +10237,52 @@ export interface components {
             reason: string;
         };
         /**
+         * CeilingSet
+         * @description The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat).
+         */
+        CeilingSet: {
+            /** Unit */
+            unit?: string | null;
+            /** Login */
+            login?: string | null;
+            /** Seat */
+            seat?: number | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Note */
+            note?: string | null;
+        };
+        /** CeilingWritten */
+        CeilingWritten: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "unit" | "seat";
+            /**
+             * Target
+             * @description unit:<slug> or seat:<id>
+             */
+            target: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Previous
+             * @description the level of the revision before; null for the first
+             */
+            previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /** Note */
+            note: string | null;
+        };
+        /**
          * Change
          * @description What an accepted proposal of tier 0 to 2 became, and where it stands.
          */
@@ -9837,7 +10793,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "message" | "reaction_added" | "reaction_removed" | "member_added" | "member_removed" | "image_changed";
+            kind: "message" | "reaction_added" | "reaction_removed" | "member_added" | "member_removed" | "image_changed" | "message_changed";
             /**
              * Created At
              * Format: date-time
@@ -10385,6 +11341,34 @@ export interface components {
              */
             added: number;
         };
+        /** CompoundBash */
+        CompoundBash: {
+            /**
+             * Calls
+             * @description Bash commands that ran several programs
+             */
+            calls: number;
+            /**
+             * Errors
+             * @description their failures whose output named none of their programs
+             */
+            errors: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+        };
         /** ConfigField */
         ConfigField: {
             /** Name */
@@ -10477,6 +11461,11 @@ export interface components {
             leases: components["schemas"]["CredentialLease"][];
             /** Missing */
             missing: components["schemas"]["MissingOrigin"][];
+            /**
+             * Repos
+             * @description each repo of the run, in the run's order
+             */
+            repos?: components["schemas"]["RunRepoSource"][];
         };
         /** Csrf */
         Csrf: {
@@ -10652,7 +11641,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
             /** Question */
             question: string;
             /**
@@ -10700,6 +11689,11 @@ export interface components {
              * @description when the worker handed the answer to the agent
              */
             delivered_at: string | null;
+            /**
+             * Outputs
+             * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
+             */
+            outputs?: components["schemas"]["RunOutput"][];
         };
         /** DecisionAsk */
         DecisionAsk: {
@@ -10728,6 +11722,33 @@ export interface components {
              * @description the step of the plan it is about
              */
             step_key?: string | null;
+            /**
+             * Output Ids
+             * @description outputs of the run the question carries, such as the screenshot it is about
+             */
+            output_ids?: number[];
+        };
+        /**
+         * DecisionBoard
+         * @description Everything of a project that waits for a person, the three gates first, the oldest first in each group.
+         */
+        DecisionBoard: {
+            /** Project */
+            project: string;
+            /**
+             * Loop
+             * @description the policy's loop.enabled: the Loop makes work items
+             */
+            loop: boolean;
+            /**
+             * Counts
+             * @description the items of each group
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["BoardItem"][];
         };
         /** DecisionList */
         DecisionList: {
@@ -11195,7 +12216,7 @@ export interface components {
              * Field
              * @description session: the list of the digest
              */
-            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash") | null;
+            field?: ("user_turns" | "commands" | "repeated_commands" | "errors" | "files_edited" | "tools" | "bash" | "skills") | null;
             /**
              * Index
              * @description session: the entry of that list, from 0
@@ -11390,7 +12411,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
             /**
              * Severity
              * @default medium
@@ -11495,6 +12516,64 @@ export interface components {
             id: string;
             /** What */
             what: string;
+        };
+        /**
+         * GoalMetric
+         * @description How to tell a goal is reached: a key of the project's signals summed up over a window, compared with a target,
+         *     as a test card of the plugin canvas compares one.
+         */
+        GoalMetric: {
+            /**
+             * Key
+             * @description a key of kind number of the project's registry of signals
+             */
+            key: string;
+            /**
+             * Aggregate
+             * @enum {string}
+             */
+            aggregate: "last" | "mean" | "sum" | "count" | "p50" | "p90";
+            /**
+             * Window Days
+             * @description null: 90
+             */
+            window_days?: number | null;
+            /**
+             * Comparator
+             * @enum {string}
+             */
+            comparator: ">=" | ">" | "<=" | "<";
+            /** Target */
+            target: number;
+            /**
+             * Tenant
+             * @description one tenant's alone
+             */
+            tenant?: string | null;
+        };
+        /** GoalRevision */
+        GoalRevision: {
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /** Note */
+            note: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description the fields whose value differs from the revision before
+             */
+            changed: string[];
         };
         /** Grant */
         Grant: {
@@ -11666,6 +12745,11 @@ export interface components {
              * @description the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer
              */
             progress?: components["schemas"]["ChatProgress"][];
+            /**
+             * Outputs
+             * @description the files of its run it carries, oldest first, each with the chat's URL of its bytes
+             */
+            outputs?: components["schemas"]["RunOutput"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -12256,6 +13340,14 @@ export interface components {
              */
             hidden: number;
         };
+        /** HoldPass */
+        HoldPass: {
+            /**
+             * Reason
+             * @description why the hold may go on: the ledger and the audit keep it with the admin's login
+             */
+            reason: string;
+        };
         /** Inbox */
         Inbox: {
             /**
@@ -12814,6 +13906,11 @@ export interface components {
              * @description the step of the plan it is about
              */
             step_key?: string | null;
+            /**
+             * Output Ids
+             * @description outputs of the run the question carries, such as the screenshot it is about
+             */
+            output_ids?: number[];
         };
         /** LocalRegister */
         LocalRegister: {
@@ -12863,6 +13960,352 @@ export interface components {
             step_key?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** LoopChainClaim */
+        LoopChainClaim: {
+            /** Canvas */
+            canvas: string;
+            /** Code */
+            code: string;
+            /**
+             * Status
+             * @description the claim's status now
+             */
+            status: string;
+        };
+        /** LoopChainGoal */
+        LoopChainGoal: {
+            /** Code */
+            code: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+        };
+        /** LoopChainMerge */
+        LoopChainMerge: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /** Iid */
+            iid: number | null;
+            /** State */
+            state: string;
+            /** Web Url */
+            web_url: string | null;
+            /** Merged At */
+            merged_at: string | null;
+        };
+        /** LoopChainPlan */
+        LoopChainPlan: {
+            /** Id */
+            id: string;
+            /**
+             * Goal
+             * @description the plan's goal, on one line
+             */
+            goal: string | null;
+        };
+        /** LoopChainRun */
+        LoopChainRun: {
+            /**
+             * Id
+             * @description the newest run that goes on from the one handed out (resumed, retried)
+             */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+            /** Work Item */
+            work_item: number;
+        };
+        /**
+         * LoopChainStages
+         * @description The path of a chain from its goal to its release.
+         */
+        LoopChainStages: {
+            goal: components["schemas"]["LoopChainGoal"] | null;
+            /**
+             * Proposals
+             * @description the claims a brainstorm proposed
+             */
+            proposals: number | null;
+            claim: components["schemas"]["LoopChainClaim"] | null;
+            use_case: components["schemas"]["LoopChainUseCase"] | null;
+            task: components["schemas"]["LoopChainTask"] | null;
+            plan: components["schemas"]["LoopChainPlan"] | null;
+            /** Runs */
+            runs: components["schemas"]["LoopChainRun"][];
+            /** Merges */
+            merges: components["schemas"]["LoopChainMerge"][];
+            /**
+             * Released At
+             * @description when the last merge request of the delivered plan merged
+             */
+            released_at: string | null;
+            /**
+             * After Sha
+             * @description the commits the release merged
+             */
+            after_sha: string[];
+            /**
+             * Hidden
+             * @description the stages the reader may not read
+             */
+            hidden: ("claim" | "use_case" | "task" | "plan" | "runs" | "merges")[];
+        };
+        /** LoopChainTask */
+        LoopChainTask: {
+            /** Number */
+            number: number;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @description the task's status, a key of the plugin tasks' config
+             */
+            status: string;
+            /**
+             * Group
+             * @description its group: todo, doing, done or cancelled
+             */
+            group: string | null;
+        };
+        /** LoopChainUseCase */
+        LoopChainUseCase: {
+            /** Document */
+            document: string;
+            /** Code */
+            code: string | null;
+            /** Version */
+            version: number | null;
+            /**
+             * State
+             * @description the state of that version of the document
+             */
+            state: string | null;
+        };
+        /** LoopClaimRef */
+        LoopClaimRef: {
+            /**
+             * Canvas
+             * @description the slug of the claim's canvas
+             */
+            canvas: string;
+            /**
+             * Code
+             * @description CL-<number>
+             */
+            code: string;
+        };
+        /**
+         * LoopGoal
+         * @description A goal as the Loop measures it now.
+         */
+        LoopGoal: {
+            /** Code */
+            code: string;
+            /**
+             * Value
+             * @description its metric's value now; null without a metric or a signal in its window
+             */
+            value: number | null;
+            /**
+             * Reached
+             * @description whether that value meets its target; null without a value
+             */
+            reached: boolean | null;
+            /**
+             * Items
+             * @description its work items by state
+             */
+            items: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * LoopItem
+         * @description A work item of the Loop, as a member of the project reads it.
+         */
+        LoopItem: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "brainstorm" | "use_case" | "build" | "deliver";
+            /**
+             * Cycle
+             * @enum {string}
+             */
+            cycle: "business" | "development";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled";
+            /**
+             * Reason
+             * @description why it stands where it does; done has none
+             */
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            /**
+             * Waiting
+             * @description the figures of its reason: the cap and the count for concurrency or rate, the worker and why...
+             */
+            waiting: {
+                [key: string]: number | string | string[];
+            };
+            /**
+             * Attempts
+             * @description how often a run was handed out for it
+             */
+            attempts: number;
+            /**
+             * Failures
+             * @description its failures since a person last let it go on
+             */
+            failures: number;
+            /**
+             * Owner
+             * @description the agent type or the member it stands for
+             */
+            owner: string | null;
+            /**
+             * Goal
+             * @description the code of its goal
+             */
+            goal: string | null;
+            claim: components["schemas"]["LoopClaimRef"] | null;
+            use_case: components["schemas"]["LoopUseCaseRef"] | null;
+            /**
+             * Task
+             * @description the number of its frame task in the plugin tasks
+             */
+            task: number | null;
+            /** Plan */
+            plan: string | null;
+            /**
+             * Run
+             * @description the run handed out for it last
+             */
+            run: number | null;
+            /**
+             * Parent
+             * @description the work item it came of
+             */
+            parent: number | null;
+            /**
+             * Root
+             * @description the first work item of its chain: itself when it came of none
+             */
+            root: number;
+            /**
+             * Hidden
+             * @description the ancestors it has that the reader may not read
+             */
+            hidden: ("claim" | "use_case" | "task" | "plan" | "run")[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** LoopItemChain */
+        LoopItemChain: {
+            /** Project */
+            project: string;
+            item: components["schemas"]["LoopItem"];
+            /**
+             * Chain
+             * @description every work item of its chain, each after the one it came of
+             */
+            chain: components["schemas"]["LoopItem"][];
+            /**
+             * Path
+             * @description the ids of the chain's work items from its first to the end of this one's
+             */
+            path: number[];
+            stages: components["schemas"]["LoopChainStages"];
+            /**
+             * Events
+             * @description what happened to this work item, oldest first
+             */
+            events: components["schemas"]["LoopItemEvent"][];
+        };
+        /** LoopItemEvent */
+        LoopItemEvent: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "ready" | "admitted" | "dispatched" | "waiting" | "failed" | "triaged" | "asked" | "done" | "cancelled" | "noted";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled";
+            /** Reason */
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            /** Run */
+            run: number | null;
+            /** Figures */
+            figures: {
+                [key: string]: number | string | string[];
+            };
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** LoopItems */
+        LoopItems: {
+            /** Project */
+            project: string;
+            /**
+             * Items
+             * @description the newest first
+             */
+            items: components["schemas"]["LoopItem"][];
+            /**
+             * More
+             * @description true when more work items match than were listed
+             */
+            more: boolean;
+        };
+        /** LoopUseCaseRef */
+        LoopUseCaseRef: {
+            /**
+             * Document
+             * @description the slug of the SRS document
+             */
+            document: string;
+            /**
+             * Code
+             * @description the use case's code; null before the document has one for it
+             */
+            code: string | null;
+            /**
+             * Version
+             * @description the version of the document it was read from
+             */
+            version: number | null;
         };
         /** MemberCounts */
         MemberCounts: {
@@ -13649,6 +15092,20 @@ export interface components {
              */
             commits?: string[];
         };
+        /** NoticeSetting */
+        NoticeSetting: {
+            /**
+             * Kind
+             * @description a kind of notice a member may turn off
+             * @constant
+             */
+            kind: "run_outputs";
+            /**
+             * On
+             * @description false: the member gets no notice of this kind, on any channel
+             */
+            on: boolean;
+        };
         /** Notification */
         Notification: {
             /** Id */
@@ -13662,7 +15119,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -13707,6 +15164,11 @@ export interface components {
             created_at: string;
             /** Read At */
             read_at: string | null;
+            /**
+             * Outputs
+             * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
+             */
+            outputs?: components["schemas"]["RunOutput"][];
         };
         /** NotificationCount */
         NotificationCount: {
@@ -13743,6 +15205,22 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /** NotificationSettings */
+        NotificationSettings: {
+            /**
+             * Notices
+             * @description each kind of notice a member may turn off, and whether it is on
+             */
+            notices: components["schemas"]["NoticeSetting"][];
+        };
+        /** NotificationSettingsIn */
+        NotificationSettingsIn: {
+            /**
+             * Notices
+             * @description the kinds to set; the others stay
+             */
+            notices: components["schemas"]["NoticeSetting"][];
         };
         /**
          * OAuthTokens
@@ -13793,6 +15271,180 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /** OrgChartView */
+        OrgChartView: {
+            /**
+             * Units
+             * @description every unit, the root first, then by slug
+             */
+            units: components["schemas"]["OrgUnitView"][];
+            /**
+             * Seats
+             * @description every seat, live and ended, by unit and id
+             */
+            seats: components["schemas"]["OrgSeatView"][];
+            viewer: components["schemas"]["OrgViewer"];
+        };
+        /** OrgRunCount */
+        OrgRunCount: {
+            /**
+             * Login
+             * @description the member who dispatched the runs, their owner
+             */
+            login: string;
+            /** Project */
+            project: string;
+            /**
+             * Running
+             * @description their runs in that project whose agent works now
+             */
+            running: number;
+        };
+        /** OrgRuns */
+        OrgRuns: {
+            /**
+             * Running
+             * @description the runs at work the viewer sees, over the projects they hold a grant on, by login and project
+             */
+            running: components["schemas"]["OrgRunCount"][];
+        };
+        /** OrgSeatView */
+        OrgSeatView: {
+            /** Id */
+            id: number;
+            /**
+             * Unit
+             * @description the slug of its unit
+             */
+            unit: string;
+            /**
+             * Login
+             * @description the person holding it; null for an agent's seat
+             */
+            login: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile holding it; null for a person's seat
+             */
+            agent: string | null;
+            /**
+             * Project
+             * @description the project of the agent profile; null for a person's seat
+             */
+            project: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "lead" | "member" | "intern" | "agent";
+            /**
+             * Primary
+             * @description whether it decides the person's ceiling; an agent's seat always does
+             */
+            primary: boolean;
+            /**
+             * Reports To
+             * @description the login holding the seat it reports to
+             */
+            reports_to: string | null;
+            /** Reports To Seat */
+            reports_to_seat: number | null;
+            /**
+             * Sponsor
+             * @description the login answering for an agent's seat
+             */
+            sponsor: string | null;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Ceiling */
+            ceiling: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Effective
+             * @description A0 once the seat ended, else the lowest ceiling of it and its units
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Source
+             * @description unit:<slug> or seat:<id> that sets the effective level
+             */
+            source: string;
+        };
+        /** OrgUnitView */
+        OrgUnitView: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "org" | "team" | "cohort";
+            /**
+             * Parent
+             * @description the slug of the unit above it; null for the root
+             */
+            parent: string | null;
+            /**
+             * Ends On
+             * @description the day a cohort ends; null for a team and the root
+             */
+            ends_on: string | null;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Revision
+             * @description 1 and up; every change of the unit or of a seat in it raises it
+             */
+            revision: number;
+            /**
+             * Ceiling
+             * @description the level its newest ceiling revision sets; null without one
+             */
+            ceiling: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Effective
+             * @description the lowest ceiling of the unit and every unit above it
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Source
+             * @description unit:<slug> that sets the effective level
+             */
+            source: string;
+        };
+        /** OrgViewer */
+        OrgViewer: {
+            /** Login */
+            login: string;
+            /**
+             * Admin
+             * @description a hub admin, who may change everything
+             */
+            admin: boolean;
+            /**
+             * Leads
+             * @description the slugs of the units the viewer leads
+             */
+            leads: string[];
+            /**
+             * Effective
+             * @description the viewer's own effective ceiling
+             * @enum {string}
+             */
+            effective: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /** Source */
+            source: string;
+        };
         /** OtherProject */
         OtherProject: {
             /** Project */
@@ -13814,6 +15466,129 @@ export interface components {
             fit: boolean;
             /** Reasons */
             reasons: string[];
+        };
+        /** OutputBatch */
+        OutputBatch: {
+            /** Outputs */
+            outputs: components["schemas"]["OutputIn"][];
+        };
+        /** OutputIn */
+        OutputIn: {
+            /**
+             * Sha256
+             * @description hex SHA-256 of the bytes
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes, at most 209715200
+             */
+            size: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "sent" | "tool" | "outputs";
+            /**
+             * Name
+             * @description the file's name, or its path
+             */
+            name: string;
+            /**
+             * Media Type
+             * @description type/subtype, no parameters
+             */
+            media_type: string;
+            /** Caption */
+            caption?: string | null;
+            /**
+             * Tool Call Id
+             * @description the tool call of the run's trace it came from
+             */
+            tool_call_id?: string | null;
+            /**
+             * Upload Id
+             * @description the upload of its bytes (POST .../output-uploads); null when the project holds them already
+             */
+            upload_id?: string | null;
+        };
+        /** OutputLink */
+        OutputLink: {
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Name
+             * @description the output's own name, which a download keeps
+             */
+            name: string;
+            /**
+             * Url
+             * @description a presigned GET of the bytes, working until expires_at
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** OutputSettings */
+        OutputSettings: {
+            /** Project */
+            project: string;
+            /**
+             * Tool Images
+             * @description the project takes images out of tools' results (outputs of source tool)
+             */
+            tool_images: boolean;
+            /**
+             * Max File Bytes
+             * @description the most bytes one output has
+             */
+            max_file_bytes: number;
+            /**
+             * Max Outputs
+             * @description the most outputs a run holds
+             */
+            max_outputs: number;
+            /**
+             * Max Run Bytes
+             * @description the most bytes of outputs a run holds, a SHA-256 counted once
+             */
+            max_run_bytes: number;
+        };
+        /** OutputSettingsIn */
+        OutputSettingsIn: {
+            /**
+             * Tool Images
+             * @description take images out of tools' results: false refuses outputs of source tool
+             */
+            tool_images: boolean;
+        };
+        /** OutputUploadItem */
+        OutputUploadItem: {
+            /**
+             * Sha256
+             * @description hex SHA-256 of the bytes
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes, at most 209715200
+             */
+            size: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "sent" | "tool" | "outputs";
+        };
+        /** OutputUploadRequest */
+        OutputUploadRequest: {
+            /** Items */
+            items: components["schemas"]["OutputUploadItem"][];
         };
         /** Overview */
         Overview: {
@@ -13962,7 +15737,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage" | "release" | "loop";
             /** Question */
             question: string;
             /**
@@ -14026,7 +15801,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -14707,7 +16482,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
             /**
              * Text
              * @description add: the lesson
@@ -14985,6 +16760,62 @@ export interface components {
              */
             version?: string | null;
         };
+        /** PluginNoticeIn */
+        PluginNoticeIn: {
+            /**
+             * To
+             * @description logins and/or the roles admins, writers (writers and admins) and members (everyone with a grant)
+             */
+            to: string[];
+            /**
+             * Title
+             * @description one line
+             */
+            title: string;
+            /**
+             * Body
+             * @description at most 16384 bytes in UTF-8
+             */
+            body?: string | null;
+            /**
+             * Link
+             * @description a path under /p/{project}/x/{plugin}/, or /p/{project}; default: the plugin's page, else the project
+             */
+            link?: string | null;
+            /**
+             * Topic
+             * @description a short slug the plugin chooses
+             */
+            topic: string;
+            /**
+             * Key
+             * @description a second call of the plugin in the project with the same key creates nothing
+             */
+            key?: string | null;
+        };
+        /** PluginNoticeSent */
+        PluginNoticeSent: {
+            /**
+             * Sent
+             * @description the members who got a notice: the number of recipients
+             */
+            sent: number;
+            /**
+             * Recipients
+             * @description their logins
+             */
+            recipients: string[];
+            /**
+             * Skipped
+             * @description the logins in `to` that hold no grant on the project, who got none
+             */
+            skipped: string[];
+            /**
+             * Duplicate
+             * @description the key was used already: nothing new was created and this is the first answer
+             */
+            duplicate: boolean;
+        };
         /**
          * PluginPage
          * @description A page a plugin adds to a project's part of the web.
@@ -15167,6 +16998,379 @@ export interface components {
              */
             published_at: string;
         };
+        /** PmBlocked */
+        PmBlocked: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /**
+         * PmDaily
+         * @description What the project did on the working day before ``date``, and what needs the PM today.
+         */
+        PmDaily: {
+            /** Project */
+            project: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Previous Working Day
+             * Format: date
+             */
+            previous_working_day: string;
+            /** Done Use Cases */
+            done_use_cases: components["schemas"]["PmDoneUseCase"][];
+            /** Done Tasks */
+            done_tasks: components["schemas"]["PmDoneTask"][];
+            sprint: components["schemas"]["PmSprint"] | null;
+            /** Late */
+            late: components["schemas"]["PmLate"][];
+            /** Review */
+            review: components["schemas"]["PmReview"][];
+            /** Stale */
+            stale: components["schemas"]["PmStale"][];
+            /** Blocked */
+            blocked: components["schemas"]["PmBlocked"][];
+            /** Escalate */
+            escalate: components["schemas"]["PmEscalate"][];
+            /** Load */
+            load: components["schemas"]["PmLoad"][];
+            /** @description what each list leaves out because the reader may not see it */
+            hidden: components["schemas"]["PmHidden"];
+        };
+        /** PmDoneTask */
+        PmDoneTask: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Done At
+             * Format: date-time
+             * @description when it moved to a status of group done, inside the window
+             */
+            done_at: string;
+        };
+        /** PmDoneUseCase */
+        PmDoneUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /**
+             * Task
+             * @description the task whose state is the use case's: its frame task, else the task opened last
+             */
+            task: string;
+            /**
+             * Done At
+             * Format: date-time
+             */
+            done_at: string;
+            /**
+             * Outcome
+             * @description its outcome_md, else the section `## Kết quả` or `## Outcome` that ends its description
+             */
+            outcome: string | null;
+        };
+        /** PmEscalate */
+        PmEscalate: {
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /** Waiting On */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Set By */
+            set_by: string | null;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+            /** Decision Id */
+            decision_id: number | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Escalate To
+             * @description the config's pm: whom the escalation is for
+             */
+            escalate_to: string | null;
+        };
+        /** PmHidden */
+        PmHidden: {
+            /**
+             * Done Use Cases
+             * @default 0
+             */
+            done_use_cases: number;
+            /**
+             * Done Tasks
+             * @default 0
+             */
+            done_tasks: number;
+            /**
+             * Sprint
+             * @default 0
+             */
+            sprint: number;
+            /**
+             * Late
+             * @default 0
+             */
+            late: number;
+            /**
+             * Review
+             * @default 0
+             */
+            review: number;
+            /**
+             * Stale
+             * @default 0
+             */
+            stale: number;
+            /**
+             * Blocked
+             * @default 0
+             */
+            blocked: number;
+            /**
+             * Escalate
+             * @default 0
+             */
+            escalate: number;
+        };
+        /** PmLate */
+        PmLate: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "overdue" | "at_risk";
+            /**
+             * Days Late
+             * @description working days past due_on; overdue only
+             */
+            days_late: number | null;
+            /**
+             * Days Left
+             * @description working days left to due_on, today's included; at risk only
+             */
+            days_left: number | null;
+        };
+        /** PmLoad */
+        PmLoad: {
+            /** Login */
+            login: string;
+            /** Role */
+            role: string;
+            /** Doing */
+            doing: number;
+            /** Wip Limit */
+            wip_limit: number;
+            /**
+             * Overloaded
+             * @description doing is above wip_limit
+             */
+            overloaded: boolean;
+            /**
+             * Empty
+             * @description no task doing
+             */
+            empty: boolean;
+            /** Review As Qa */
+            review_as_qa: number;
+            /** Late */
+            late: number;
+            /** Doing Tasks */
+            doing_tasks: string[];
+        };
+        /** PmReview */
+        PmReview: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /** Qa */
+            qa: string[];
+            /**
+             * Since
+             * Format: date-time
+             * @description when it moved to a status of group review
+             */
+            since: string;
+            /**
+             * Age Days
+             * @description working days since
+             */
+            age_days: number;
+        };
+        /** PmSprint */
+        PmSprint: {
+            /** Name */
+            name: string;
+            /** Starts On */
+            starts_on: string | null;
+            /** Ends On */
+            ends_on: string | null;
+            /**
+             * Opened At
+             * Format: date-time
+             * @description when it turned active, else its first day, else when it was made
+             */
+            opened_at: string;
+            /**
+             * Scope
+             * @description the tasks it held when it opened
+             */
+            scope: number;
+            /**
+             * Done Percent
+             * @description of that scope, done now; cancelled tasks leave the whole
+             */
+            done_percent: number | null;
+            /**
+             * Added
+             * @description tasks in it now that were not in it when it opened
+             */
+            added: number;
+            /**
+             * Removed
+             * @description tasks that were in it when it opened and are not now
+             */
+            removed: number;
+            /**
+             * Working Days
+             * @description in the sprint, from its opening to ends_on
+             */
+            working_days: number | null;
+            /**
+             * Working Days Gone
+             * @description before the date of the report
+             */
+            working_days_gone: number | null;
+            /**
+             * Time Percent
+             * @description working_days_gone over working_days
+             */
+            time_percent: number | null;
+            /** Use Cases */
+            use_cases: components["schemas"]["PmSprintUseCase"][];
+        };
+        /** PmSprintUseCase */
+        PmSprintUseCase: {
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Done */
+            done: number;
+            /**
+             * Total
+             * @description the tasks of the sprint that link it, not cancelled
+             */
+            total: number;
+        };
+        /** PmStale */
+        PmStale: {
+            /**
+             * Ref
+             * @description the task's number as shown, T-42
+             */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Assignees */
+            assignees: string[];
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /**
+             * Source
+             * @description history, comment, run, plan_step or created
+             */
+            source: string;
+            /** Idle Days */
+            idle_days: number;
+        };
         /** PolicyChange */
         PolicyChange: {
             /**
@@ -15219,7 +17423,7 @@ export interface components {
         PolicyWrite: {
             /**
              * Policy
-             * @description sections repos, merge, judge, breaker, audit; a key left out reads as its default
+             * @description sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default
              */
             policy: {
                 [key: string]: unknown;
@@ -15291,6 +17495,23 @@ export interface components {
             calls: number;
             /** Errors */
             errors: number;
+        };
+        /** ProgramKinds */
+        ProgramKinds: {
+            /** Program */
+            program: string;
+            /**
+             * Usage Errors
+             * @description failures of a wrong call: a usage line, an unknown option or choice
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @description failures the environment caused: the hub or the network, a timeout, a block
+             */
+            env_errors: number;
+            /** Other Errors */
+            other_errors: number;
         };
         /** Project */
         Project: {
@@ -15367,6 +17588,203 @@ export interface components {
                 [key: string]: boolean;
             };
         };
+        /**
+         * ProjectGoal
+         * @description A goal of a project at one revision.
+         */
+        ProjectGoal: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description G-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Alias
+             * @description the id of the charter's goal the hub made it from, which names it too
+             */
+            alias: string | null;
+            /** Revision */
+            revision: number;
+            /** Statement */
+            statement: string;
+            /** @description null: no metric, so the Curator reads it and nothing else is done */
+            metric: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Canvas
+             * @description the slug of the canvas whose product it drives
+             */
+            canvas: string | null;
+            /**
+             * Rank
+             * @description its place among the project's goals, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description why it is closed; null unless it is
+             */
+            close_reason: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ProjectGoalClose */
+        ProjectGoalClose: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "achieved" | "dropped" | "expired";
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the goal is at this revision now
+             */
+            if_revision?: number | null;
+        };
+        /**
+         * ProjectGoalWrite
+         * @description The next revision of a goal: the whole of it, as its writer wants it.
+         */
+        ProjectGoalWrite: {
+            /** Statement */
+            statement: string;
+            metric?: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline?: string | null;
+            /**
+             * Canvas
+             * @description the slug of a canvas of the project
+             */
+            canvas?: string | null;
+            /**
+             * Rank
+             * @description null: kept, or after the project's other goals for a new one
+             */
+            rank?: number | null;
+            /**
+             * Owner
+             * @description a member with the writer role or above; null: kept, or the writer for a new goal
+             */
+            owner?: string | null;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description for a closed goal, and only for one
+             */
+            close_reason?: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description why, for the history
+             */
+            note?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the goal is at this revision now; 0: new only
+             */
+            if_revision?: number | null;
+        };
+        /** ProjectGoalWritten */
+        ProjectGoalWritten: {
+            /** Project */
+            project: string;
+            /**
+             * Code
+             * @description G-<number>, unique in the project and never given again
+             */
+            code: string;
+            /** Number */
+            number: number;
+            /**
+             * Alias
+             * @description the id of the charter's goal the hub made it from, which names it too
+             */
+            alias: string | null;
+            /** Revision */
+            revision: number;
+            /** Statement */
+            statement: string;
+            /** @description null: no metric, so the Curator reads it and nothing else is done */
+            metric: components["schemas"]["GoalMetric"] | null;
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Canvas
+             * @description the slug of the canvas whose product it drives
+             */
+            canvas: string | null;
+            /**
+             * Rank
+             * @description its place among the project's goals, 1 first
+             */
+            rank: number;
+            /** Owner */
+            owner: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "closed";
+            /**
+             * Close Reason
+             * @description why it is closed; null unless it is
+             */
+            close_reason: ("achieved" | "dropped" | "expired") | null;
+            /**
+             * Note
+             * @description what the writer said of this revision
+             */
+            note: string | null;
+            /**
+             * Created By
+             * @description who wrote this revision
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Changed
+             * @description false when the newest revision is this goal already: nothing was written
+             */
+            changed: boolean;
+        };
         /** ProjectGrantCounts */
         ProjectGrantCounts: {
             /** Project */
@@ -15377,6 +17795,53 @@ export interface components {
             writers: number;
             /** Readers */
             readers: number;
+        };
+        /**
+         * ProjectLoop
+         * @description A project's Loop as it stands.
+         */
+        ProjectLoop: {
+            /** Project */
+            project: string;
+            /**
+             * Enabled
+             * @description the policy's loop.enabled: the Loop ticks and makes work items
+             */
+            enabled: boolean;
+            /**
+             * Breaker
+             * @description tripped: too many work items in an hour; the Loop reads no event and hands out no run
+             * @enum {string}
+             */
+            breaker: "armed" | "tripped";
+            /** Breaker Reason */
+            breaker_reason: string | null;
+            /** Tripped At */
+            tripped_at: string | null;
+            /**
+             * Resumed By
+             * @description the admin who reset the breaker last
+             */
+            resumed_by: string | null;
+            /**
+             * Resumed At
+             * @description the work items of the hour are counted from then
+             */
+            resumed_at: string | null;
+            /**
+             * Cursor
+             * @description the last row of the project's hub_events the Loop read
+             */
+            cursor: number;
+            /** Ticked At */
+            ticked_at: string | null;
+            /**
+             * Items
+             * @description its work items by state
+             */
+            items: {
+                [key: string]: number;
+            };
         };
         /**
          * ProjectPlugin
@@ -15500,6 +17965,11 @@ export interface components {
              * @description per tool and runtime, the most called first
              */
             tools: components["schemas"]["RuntimeToolStat"][];
+            /**
+             * Skills
+             * @description per skill the Skill tool loaded, the most called first
+             */
+            skills?: components["schemas"]["RuntimeSkillStat"][];
         };
         /** Proposal */
         Proposal: {
@@ -15640,7 +18110,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -16084,6 +18554,19 @@ export interface components {
              * @description every step of the plan, in plan order
              */
             steps: components["schemas"]["StepReadiness"][];
+        };
+        /** RecordedOutputs */
+        RecordedOutputs: {
+            /**
+             * Outputs
+             * @description in the order of the request; a file the run held is the one it is
+             */
+            outputs: components["schemas"]["RunOutput"][];
+            /**
+             * Added
+             * @description outputs new to the run
+             */
+            added: number;
         };
         /** Registered */
         Registered: {
@@ -17085,7 +19568,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local";
             /** Project */
             project: string;
             /**
@@ -17956,6 +20439,121 @@ export interface components {
              */
             size_mb?: number | null;
         };
+        /** RunOutput */
+        RunOutput: {
+            /** Id */
+            id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Source
+             * @description sent: a file the agent sent; tool: an image taken out of a tool's result; outputs: a file of the run's .evo-run/outputs/
+             * @enum {string}
+             */
+            source: "sent" | "tool" | "outputs";
+            /**
+             * Name
+             * @description the file's name, or its path below .evo-run/outputs/
+             */
+            name: string;
+            /**
+             * Media Type
+             * @description type/subtype, as the machine that sent it named it
+             */
+            media_type: string;
+            /**
+             * Viewer
+             * @description what the web opens it with; none offers a download only
+             * @enum {string}
+             */
+            viewer: "image" | "video" | "audio" | "pdf" | "text" | "html" | "none";
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /** Caption */
+            caption: string | null;
+            /**
+             * Tool Call Id
+             * @description the tool call of the run's trace it came from, when one
+             */
+            tool_call_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Url
+             * @description where this hub answers its bytes to the reader of what listed it; ?download=true for a download
+             */
+            url: string;
+        };
+        /** RunOutputSettings */
+        RunOutputSettings: {
+            /** Project */
+            project: string;
+            /**
+             * Tool Images
+             * @description the project takes images out of tools' results (outputs of source tool)
+             */
+            tool_images: boolean;
+            /**
+             * Max File Bytes
+             * @description the most bytes one output has
+             */
+            max_file_bytes: number;
+            /**
+             * Max Outputs
+             * @description the most outputs a run holds
+             */
+            max_outputs: number;
+            /**
+             * Max Run Bytes
+             * @description the most bytes of outputs a run holds, a SHA-256 counted once
+             */
+            max_run_bytes: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Outputs
+             * @description outputs the run holds
+             */
+            outputs: number;
+            /**
+             * Bytes
+             * @description their bytes
+             */
+            bytes: number;
+        };
+        /** RunOutputs */
+        RunOutputs: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Outputs
+             * @description oldest first, those the filters keep
+             */
+            outputs: components["schemas"]["RunOutput"][];
+            /**
+             * Count
+             * @description every output the run holds
+             */
+            count: number;
+            /**
+             * Bytes
+             * @description their bytes
+             */
+            bytes: number;
+            /**
+             * Tool Images
+             * @description the project takes images out of tools' results
+             */
+            tool_images: boolean;
+        };
         /**
          * RunPack
          * @description An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of
@@ -18072,6 +20670,29 @@ export interface components {
             branch?: string | null;
         };
         /**
+         * RunRepoSource
+         * @description A repo of the run and where it comes from (``repo_origins``), so a worker without a checkout of it clones it.
+         */
+        RunRepoSource: {
+            /** Repo */
+            repo: string;
+            /**
+             * Origin
+             * @description as a project registered it; null when none did
+             */
+            origin: string | null;
+            /**
+             * Path
+             * @description as that project registered it: relative to its workspace, ~/..., or absolute
+             */
+            path: string | null;
+            /**
+             * Project
+             * @description the project that registered it: the run's, or another of its owner's
+             */
+            project: string | null;
+        };
+        /**
          * RunSkill
          * @description A skill the worker writes for the run's agent, as the hub holds it when the run is claimed: an author run's
          *     create-exec-plan, global, at its latest version.
@@ -18113,7 +20734,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question";
             /** Project */
             project: string;
             /**
@@ -18295,6 +20916,11 @@ export interface components {
              * @description the most called first; empty for a run that has not ended
              */
             tools: components["schemas"]["ToolStat"][];
+            /**
+             * Skills
+             * @description what the Skill tool loaded, the most called first; empty before schema 0087
+             */
+            skills?: components["schemas"]["SkillStat"][];
         };
         /** RunUploadRequest */
         RunUploadRequest: {
@@ -18339,6 +20965,26 @@ export interface components {
              * @description the models the runtime lists on the machine, for a dispatch to suggest; null when it lists none
              */
             models?: string[] | null;
+        };
+        /** RuntimeSkillStat */
+        RuntimeSkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+            /**
+             * Runs
+             * @description runs that loaded the skill
+             */
+            runs: number;
         };
         /** RuntimeToolStat */
         RuntimeToolStat: {
@@ -18525,6 +21171,68 @@ export interface components {
              * @default 200
              */
             limit: number;
+        };
+        /**
+         * SeatAdd
+         * @description A seat for a person (login) or for an agent profile (agent and project).
+         */
+        SeatAdd: {
+            /** Unit */
+            unit: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "lead" | "member" | "intern" | "agent";
+            /** Login */
+            login?: string | null;
+            /** Agent */
+            agent?: string | null;
+            /** Project */
+            project?: string | null;
+            /**
+             * Reports To
+             * @description the person the seat reports to; an intern's needs one
+             */
+            reports_to?: string | null;
+            /**
+             * Sponsor
+             * @description the person answering for an agent's seat; it needs one
+             */
+            sponsor?: string | null;
+            /**
+             * Primary
+             * @description whether the seat decides the person's ceiling; when left out it does if their primary seat now is at the root or they hold none
+             */
+            primary?: boolean | null;
+            /**
+             * Starts On
+             * @description today when left out
+             */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+        };
+        /**
+         * SeatEdit
+         * @description The fields to change; a field left out keeps its value, reports_to or ends_on null clears it.
+         */
+        SeatEdit: {
+            /** Role */
+            role?: ("lead" | "member" | "intern" | "agent") | null;
+            /**
+             * Primary
+             * @description make it the person's primary seat
+             */
+            primary?: true | null;
+            /** Reports To */
+            reports_to?: string | null;
+            /** Sponsor */
+            sponsor?: string | null;
+            /** Starts On */
+            starts_on?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
         };
         /**
          * Secret
@@ -18776,6 +21484,28 @@ export interface components {
              * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
              */
             tool_result_chars?: components["schemas"]["ToolChars"][] | null;
+            /**
+             * Bash Kinds
+             * @description per program with failures, how many of each kind; null when an older client pushed the digest
+             */
+            bash_kinds?: components["schemas"]["ProgramKinds"][] | null;
+            /** @description Bash commands that ran several programs; null when a client that did not count them pushed */
+            bash_compound?: components["schemas"]["CompoundBash"] | null;
+            /**
+             * Skills
+             * @description per skill loaded, its loads and the friction after them, the most loaded first; null when a client that did not count them pushed the digest
+             */
+            skills?: components["schemas"]["SkillCount"][] | null;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent
+             */
+            interrupts?: number | null;
+            /**
+             * Turns
+             * @description turns of the person, the commands they typed among them
+             */
+            turns?: number | null;
             /**
              * Spool Results
              * @description results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest
@@ -19229,6 +21959,63 @@ export interface components {
              */
             published_at: string;
         };
+        /** SkillCount */
+        SkillCount: {
+            /**
+             * Skill
+             * @description the skill, as the Skill tool or the person's /name named it
+             */
+            skill: string;
+            /**
+             * Calls
+             * @description loads: through the Skill tool, and typed by the person
+             */
+            calls: number;
+            /**
+             * Typed
+             * @description loads the person typed as /name (Codex: named with $name)
+             */
+            typed: number;
+            /**
+             * Failed
+             * @description calls of the Skill tool that answered an error
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Bash
+             * @description Bash commands from each load to the person's next turn
+             * @default 0
+             */
+            bash: number;
+            /**
+             * Usage Errors
+             * @default 0
+             */
+            usage_errors: number;
+            /**
+             * Env Errors
+             * @default 0
+             */
+            env_errors: number;
+            /**
+             * Other Errors
+             * @default 0
+             */
+            other_errors: number;
+            /**
+             * Interrupts
+             * @description times the person interrupted the agent in those windows
+             * @default 0
+             */
+            interrupts: number;
+            /**
+             * Corrections
+             * @description turns that closed a window and read as a correction of the agent
+             * @default 0
+             */
+            corrections: number;
+        };
         /** SkillHistory */
         SkillHistory: {
             /**
@@ -19250,6 +22037,52 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+        };
+        /** SkillStat */
+        SkillStat: {
+            /**
+             * Skill
+             * @description the skill a call of the Skill tool loaded
+             */
+            skill: string;
+            /** Calls */
+            calls: number;
+            /**
+             * Errors
+             * @description calls an update of which said failed
+             */
+            errors: number;
+        };
+        /** SourceForgotten */
+        SourceForgotten: {
+            build: components["schemas"]["Build"] | null;
+            /**
+             * Queued
+             * @description false when a build of the project was waiting already, which counts as queued
+             */
+            queued: boolean;
+            /** Source */
+            source: string;
+            /**
+             * Ingested
+             * @description runs of the source taken out of the project's corpus
+             */
+            ingested: number;
+            /**
+             * Pending
+             * @description runs of the source that waited for their blobs, dropped
+             */
+            pending: number;
+            /**
+             * Logs
+             * @description their logs nothing else refers to, deleted from the blob store by the next prune
+             */
+            logs: number;
+            /**
+             * Declared
+             * @description whether the knowledge config on the hub still declares the source: a machine holding its runs then pushes them again
+             */
+            declared: boolean;
         };
         /** SourceRead */
         SourceRead: {
@@ -19966,6 +22799,61 @@ export interface components {
             changes: components["schemas"]["SrsChange"][];
         };
         /**
+         * SrsUseCase
+         * @description A use case a version needs reviewed, with its state and the reviews that count.
+         */
+        SrsUseCase: {
+            /** Key */
+            key: string;
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Change
+             * @description what the version does to it since the version approved last
+             * @enum {string}
+             */
+            change: "added" | "changed" | "removed";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "changes_requested";
+            /** Reviews */
+            reviews: components["schemas"]["SrsUseCaseReview"][];
+        };
+        /**
+         * SrsUseCaseReview
+         * @description A review of a use case that counts for the version, with the version it was recorded on.
+         */
+        SrsUseCaseReview: {
+            /** Reviewer */
+            reviewer: string;
+            /**
+             * Role
+             * @description the role the review counts for
+             */
+            role: ("ba" | "qa" | "dev") | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Body */
+            body: string;
+            /**
+             * Version
+             * @description the version it was recorded on: an earlier one when the use case reads the same
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * SrsVersion
          * @description A version of a document, never changed after it was saved, and the reviews of each round.
          */
@@ -20011,6 +22899,55 @@ export interface components {
             reviews: components["schemas"]["SrsReview"][];
         };
         /**
+         * SrsVersionCases
+         * @description A version with the use cases it needs reviewed: those it adds, changes (the use case, or a business rule under
+         *     it) or drops since the version approved last, every use case while none was approved; empty for a version that is
+         *     neither a draft nor in review.
+         */
+        SrsVersionCases: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
+        };
+        /**
          * SrsVersionDetail
          * @description A version with its content and what is wrong with it.
          */
@@ -20054,6 +22991,8 @@ export interface components {
             review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
             /** Document */
             document: string;
             /** Preamble */
@@ -20194,6 +23133,11 @@ export interface components {
              * @description the agent's summary, for the evidence
              */
             summary?: string | null;
+            /**
+             * Answer
+             * @description with done of a question run, and only then (422 otherwise): the agent's answer, which goes to the core plugin that asked
+             */
+            answer?: string | null;
         };
         /**
          * SteadyWait
@@ -20501,6 +23445,107 @@ export interface components {
              * @description the agent type's cap, which the project's admins set
              */
             daily_usd: number;
+        };
+        /**
+         * TasksBlocker
+         * @description What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task.
+         */
+        TasksBlocker: {
+            /**
+             * Id
+             * @description the blocker's id for PATCH; None for an open decision
+             */
+            id: number | null;
+            /**
+             * Kind
+             * @description manual: set with POST blockers; decision: an open decision of a run
+             * @enum {string}
+             */
+            kind: "manual" | "decision";
+            /**
+             * Reason
+             * @description why; a decision's question
+             */
+            reason: string;
+            /**
+             * Waiting Kind
+             * @description who or what it waits on: a member, a task or a text
+             * @enum {string}
+             */
+            waiting_kind: "member" | "task" | "text";
+            /**
+             * Waiting On
+             * @description the member's login, the task's ref, or the text
+             */
+            waiting_on: string;
+            /**
+             * Since
+             * Format: date-time
+             * @description when it was set; when a decision was asked
+             */
+            since: string;
+            /**
+             * Set By
+             * @description who set it; None for a decision
+             */
+            set_by: string | null;
+            /** Cleared At */
+            cleared_at: string | null;
+            /** Cleared By */
+            cleared_by: string | null;
+            /**
+             * Decision Id
+             * @description decision: the decision to answer
+             */
+            decision_id: number | null;
+            /**
+             * Run Id
+             * @description decision: the run that asked it
+             */
+            run_id: number | null;
+        };
+        /**
+         * TasksBlockerEdit
+         * @description A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``.
+         */
+        TasksBlockerEdit: {
+            /** Reason */
+            reason?: string | null;
+            /** Waiting Member */
+            waiting_member?: string | null;
+            /** Waiting Task */
+            waiting_task?: string | null;
+            /** Waiting Text */
+            waiting_text?: string | null;
+            /**
+             * Cleared
+             * @description true clears the blocker
+             * @default false
+             */
+            cleared: boolean;
+        };
+        /**
+         * TasksBlockerIn
+         * @description A new blocker: why, and exactly one of the three things it waits on.
+         */
+        TasksBlockerIn: {
+            /** Reason */
+            reason: string;
+            /**
+             * Waiting Member
+             * @description the login of a member with a grant
+             */
+            waiting_member?: string | null;
+            /**
+             * Waiting Task
+             * @description the ref of another task of the project
+             */
+            waiting_task?: string | null;
+            /**
+             * Waiting Text
+             * @description someone outside, in words
+             */
+            waiting_text?: string | null;
         };
         /** TasksComment */
         TasksComment: {
@@ -20813,6 +23858,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -20828,7 +23878,7 @@ export interface components {
         };
         /**
          * TasksItemDetail
-         * @description A task whole: its description, links, history and comments.
+         * @description A task whole: its description, links, blockers, history and comments.
          */
         TasksItemDetail: {
             /** Number */
@@ -20888,6 +23938,11 @@ export interface components {
             label: {
                 [key: string]: unknown;
             };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
             /** Created By */
             created_by: string;
             /**
@@ -20903,6 +23958,11 @@ export interface components {
             /** Description Md */
             description_md: string;
             /**
+             * Outcome Md
+             * @description what the task came to, markdown; pm reads it before the description's outcome section
+             */
+            outcome_md: string;
+            /**
              * External Ref
              * @description where an import took it from, and what it named it could not link
              */
@@ -20911,6 +23971,11 @@ export interface components {
             } | null;
             /** Links */
             links: components["schemas"]["TasksLink"][];
+            /**
+             * Blockers
+             * @description every open blocker, those set by hand first
+             */
+            blockers: components["schemas"]["TasksBlocker"][];
             /** Events */
             events: components["schemas"]["TasksEvent"][];
             /** Comments */
@@ -20926,6 +23991,8 @@ export interface components {
             title?: string | null;
             /** Description Md */
             description_md?: string | null;
+            /** Outcome Md */
+            outcome_md?: string | null;
             /** Type */
             type?: string | null;
             /** Status */
@@ -20960,6 +24027,11 @@ export interface components {
              * @default
              */
             description_md: string;
+            /**
+             * Outcome Md
+             * @default
+             */
+            outcome_md: string;
             /** Type */
             type?: string | null;
             /** Status */
@@ -21182,6 +24254,11 @@ export interface components {
             created_at: string;
             /** Closed At */
             closed_at: string | null;
+            /**
+             * Activated At
+             * @description when it turned active; empty for a sprint that was active before the hub kept this
+             */
+            activated_at: string | null;
             /**
              * Tasks
              * @description how many tasks it holds
@@ -21974,6 +25051,52 @@ export interface components {
              */
             link: string;
         };
+        /** UnitCreate */
+        UnitCreate: {
+            /** Slug */
+            slug: string;
+            /** Parent */
+            parent: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "team" | "cohort";
+            /**
+             * Name
+             * @description the slug when left out
+             */
+            name?: string | null;
+            /**
+             * Ends On
+             * @description a cohort's last day
+             */
+            ends_on?: string | null;
+            /**
+             * Level
+             * @description its ceiling; a cohort gets A1 when left out, a team none
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * UnitEdit
+         * @description The fields to change; a field left out keeps its value, ends_on null clears it.
+         */
+        UnitEdit: {
+            /** Name */
+            name?: string | null;
+            /** Parent */
+            parent?: string | null;
+            /** Ends On */
+            ends_on?: string | null;
+            /**
+             * If Revision
+             * @description 409 unless the unit is at this revision now
+             */
+            if_revision?: number | null;
+        };
         /**
          * UpdateNowReport
          * @description Where the daemon stands with its owner's Update now (update_now of the heartbeat answer).
@@ -22019,7 +25142,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -22545,6 +25668,11 @@ export interface components {
              * @description its owner locked its version: the daemon stays on the evo-agents it runs and does not update itself; a hub before 0048 sends none, and a daemon that got none does not update itself either
              */
             version_locked: boolean;
+            /**
+             * Projects
+             * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
+             */
+            projects?: string[];
         };
         /**
          * WorkerUpdate
@@ -22578,6 +25706,11 @@ export interface components {
              * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
              */
             shared?: boolean | null;
+            /**
+             * Projects
+             * @description every project it takes runs of, the whole list: the writer role on each one added; one dropped must have no active run on the worker and no night shift on duty there
+             */
+            projects?: string[] | null;
         };
         /**
          * WorkerUpdateNow
@@ -26488,6 +29621,84 @@ export interface operations {
             };
         };
     };
+    forget_source_v1_kg__project__sources__source__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description a source's id */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceForgotten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     call_tool_v1_kg__project__tools__tool__post: {
         parameters: {
             query?: never;
@@ -28096,7 +31307,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "release" | "question" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -31692,6 +34903,77 @@ export interface operations {
             };
         };
     };
+    show_notification_settings_v1_me_notification_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_notification_settings_v1_me_notification_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     overview_v1_me_overview_get: {
         parameters: {
             query?: never;
@@ -32169,7 +35451,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -32298,7 +35580,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -33154,6 +36436,1163 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_settings_v1_projects__project__output_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_settings_v1_projects__project__output_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutputSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outputs_v1_projects__project__runs__run_id__outputs_get: {
+        parameters: {
+            query?: {
+                /** @description only these sources; repeat it */
+                source?: ("sent" | "tool" | "outputs")[];
+                /** @description only the outputs after this id */
+                after?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOutputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_output_v1_projects__project__runs__run_id__outputs__output_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOutput"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_output_v1_projects__project__runs__run_id__outputs__output_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOutput"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_settings_v1_projects__project__local_runs__run_id__output_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOutputSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_uploads_v1_projects__project__local_runs__run_id__output_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutputUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Uploads"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    local_outputs_v1_projects__project__local_runs__run_id__outputs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutputBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordedOutputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    worker_settings_v1_worker_runs__run_id__output_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOutputSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_uploads_v1_worker_runs__run_id__output_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutputUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Uploads"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    worker_outputs_v1_worker_runs__run_id__outputs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutputBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordedOutputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_content_v1_projects__project__runs__run_id__outputs__output_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_link_v1_projects__project__runs__run_id__outputs__output_id__link_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decision_content_v1_projects__project__decisions__decision_id__outputs__output_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                decision_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    chat_content_v1_chats__chat_id__outputs__output_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -35107,7 +39546,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -35172,7 +39611,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "kg_health") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };
@@ -35255,6 +39694,547 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookEntry"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_org_v1_org_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgChartView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    org_runs_v1_org_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRuns"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_unit_v1_org_units_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_unit_v1_org_units__slug__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_unit_v1_org_units__slug__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgUnitView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_seat_v1_org_seats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_seat_v1_org_seats__seat_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeatEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    end_seat_v1_org_seats__seat_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSeatView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_ceiling_v1_org_ceilings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CeilingSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CeilingWritten"];
                 };
             };
             /** @description Unauthorized */
@@ -37464,6 +42444,78 @@ export interface operations {
             };
         };
     };
+    daily_v1_x_pm__project__daily_get: {
+        parameters: {
+            query?: {
+                /** @description the day of the report; today when left out */
+                date?: string | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PmDaily"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_documents_v1_x_srs__project__documents_get: {
         parameters: {
             query?: {
@@ -38448,6 +43500,92 @@ export interface operations {
             };
         };
     };
+    review_use_case_v1_x_srs__project__documents__slug__versions__number__items__ref__reviews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+                /** @description the use case's code, an alias or its key */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersionCases"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post: {
         parameters: {
             query?: never;
@@ -39187,6 +44325,8 @@ export interface operations {
                 mine?: boolean;
                 /** @description an assignee's login */
                 assignee?: string | null;
+                /** @description the tasks that are blocked */
+                blocked?: boolean;
                 limit?: number;
             };
             header?: {
@@ -39768,6 +44908,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TasksComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_blocker_v1_x_tasks__project__tasks__ref__blockers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_blocker_v1_x_tasks__project__tasks__ref__blockers__blocker_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+                blocker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksBlockerEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksBlocker"];
                 };
             };
             /** @description Unauthorized */
@@ -42172,6 +47481,59 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_notice_v1_plugin_api_projects__project__notifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginNoticeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginNoticeSent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -47462,6 +52824,708 @@ export interface operations {
             };
         };
     };
+    list_goals_v1_projects__project__goals_get: {
+        parameters: {
+            query?: {
+                /** @description those of this status alone */
+                status?: ("active" | "paused" | "closed") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_goal_v1_projects__project__goals__ref__get: {
+        parameters: {
+            query?: {
+                /** @description an older revision */
+                revision?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_goal_v1_projects__project__goals__ref__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectGoalWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoalWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    goal_revisions_v1_projects__project__goals__ref__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_goal_v1_projects__project__goals__ref__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description G-<number>, or the alias of a goal made from the charter */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectGoalClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGoalWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_loop_v1_projects__project__loop_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLoop"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_loop_v1_projects__project__loop_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLoop"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_items_v1_projects__project__loop_items_get: {
+        parameters: {
+            query?: {
+                state?: ("queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled") | null;
+                kind?: ("brainstorm" | "use_case" | "build" | "deliver") | null;
+                /** @description a goal's code or alias */
+                goal?: string | null;
+                /** @description only the work items not done or cancelled */
+                open?: boolean;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopItems"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_item_v1_projects__project__loop_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopItemChain"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_goals_v1_projects__project__loop_goals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopGoal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decision_board_v1_projects__project__decision_board_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionBoard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     show_queue_v1_projects__project__merge_queue_get: {
         parameters: {
             query?: {
@@ -47735,6 +53799,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedMergeRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pass_hold_v1_projects__project__merge_queue__queue_id__pass_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                queue_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldPass"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
