@@ -525,6 +525,11 @@ class RunSpec(BaseModel):
         description="a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET "
         "/v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run",
     )
+    chat_message_id: int | None = Field(
+        None,
+        description="a chat run's: the chat message that opened it, whose files the worker saves under "
+        ".evo-run/inbox/chat-<id>/; null for any other run",
+    )
 
 
 class Claim(BaseModel):

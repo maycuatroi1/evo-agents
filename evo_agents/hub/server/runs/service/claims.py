@@ -705,6 +705,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
         attachments=await _opening_files(conn, view),
+        chat_message_id=view.chat_message_id if view.kind == "chat" else None,
     )
 
 
