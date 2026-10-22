@@ -20,6 +20,7 @@ pipeline of GitLab Premium is used.
 | the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
 | after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
+| an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
 | the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli_merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
 | the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`) |
@@ -148,6 +149,18 @@ a new push moves. The hub comments on the merge request once for each reason tha
 | 6, the risk | computed, not judged: high when a changed path matches the risk paths (migrations, SQL, auth, security, permissions, deploy files, Docker, Kubernetes, Helm, Terraform, `.env`, secrets, dependency manifests and lockfiles) or `merge.risk_paths`, when the path rules of the Curator's tiers give it level 2 or more, or when the knowledge graph says the diff reaches such a path; a graph that cannot tell is named in the reasons, and the risk then comes from the paths alone |
 | 7, the second Judge | for a high risk alone: Opus, on `migration`, `auth`, `deploy`, `dependencies` and `rollback` |
 
+**A hold for a person.** Gate 3 is the one gate that holds a merge request for a person: the signs of score hacking
+may be the work the plan asked for, such as a plan run that adds its tests to `.gitlab-ci.yml`. An admin of the project
+reads the diff and passes the hold with a reason (`evo-agents hub merge pass REPO IID --reason ...`, or `POST
+.../merge-queue/{id}/pass`). The merge request is gated again at the same head and the queue goes on from that gate:
+the risk, the checks, the Judges (unless their verdict holds for the patch), its turn, the pipeline at its rebased head
+and the merge all still apply, and at the rebased head gate 3 lets the signs through while the patch is the one the
+gates passed. A new push, or a rebase that changes the patch, takes the pass back, and the hold it comes to again needs
+a new pass. The ledger has the pass as a line of gate 3 passed that names the admin and the reason, and the gate's
+line at the next pass names the pass; the audit says `merge.pass`. Any other block moves only with a new push, and a
+revert's gate 3 (its diff undoing the merge) is passed by no person. The hub's comment on a merge request held at gate
+3 says that an admin may pass it, and the decision board's item of a held merge request says how it goes on.
+
 A judge run of the queue is a run of kind `judge` on no plan and no schedule, dispatched as the admin who wrote the
 policy's newest revision. A project has one judge run active at a time, the Curator's included. A judge run that ends
 without a verdict is queued again, three times in all, then the merge request is blocked. A verdict holds for a patch,
@@ -275,6 +288,7 @@ pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https
 evo-agents hub merge list --project demo                 # each repo's breaker, then the merge requests, newest first
 evo-agents hub merge list --repo lumen-api --limit 20 --project demo
 evo-agents hub merge resume lumen-api --project demo     # an admin resets the repo's breaker
+evo-agents hub merge pass lumen-api 11 --reason "its goal is this CI job" --project demo  # an admin passes a hold
 ```
 
 | Route | Who |
@@ -282,7 +296,7 @@ evo-agents hub merge resume lumen-api --project demo     # an admin resets the r
 | `GET /v1/projects/{project}/policy`, `GET .../policy/revisions`, `GET .../policy/revisions/{revision}`, `GET .../policy/compare?from=N&to=M` | a member with a grant |
 | `PUT /v1/projects/{project}/policy` | an admin of the project |
 | `GET /v1/projects/{project}/merge-queue` (`?repo=`, `?limit=`), `GET .../merge-queue/figures` (`?repo=`, `?days=`) | a member with a grant |
-| `POST .../merge-queue/samples/{id}`, `POST .../merge-queue/{id}/release`, `POST .../merge-queue/{id}/revert`, `POST .../merge-queue/repos/{repo}/resume` | an admin of the project |
+| `POST .../merge-queue/samples/{id}`, `POST .../merge-queue/{id}/release`, `POST .../merge-queue/{id}/revert`, `POST .../merge-queue/{id}/pass` (`{"reason": ...}`), `POST .../merge-queue/repos/{repo}/resume` | an admin of the project |
 | `GET /v1/worker/runs/{id}/merge-judge`, `POST /v1/worker/runs/{id}/merge-verdict` | the worker holding the judge run, with the run's key |
 
 The web's Merge queue entry of a project, after Runs, has three tabs: Queue (`/p/{project}/merge-queue`: the merge
@@ -290,4 +304,5 @@ requests waiting, in their turn and after their merge, why each waits or is bloc
 repo's breaker, and the samples waiting for an answer), Figures (`.../merge-queue/figures`) and Policy
 (`.../merge-queue/policy`: the policy now, its form, its revisions and the comparison of two). A reader sees them all;
 an admin also edits the policy, answers samples, approves a manual release, asks for a revert and resets a breaker,
-the last two behind a confirmation.
+the last two behind a confirmation. The page shows a hold at gate 3 and why; passing it is the command's and the
+route's for now.

@@ -268,7 +268,7 @@ def test_decisions_page_lists_what_the_loops_chain_waits_on_and_who_answers_it(c
         "source_branch": "evo/reorder-button",
         "plan_id": "reorder-button",
         "state": "blocked",
-        "reason": "gate 2: tests failed",
+        "reason": "gate 3 (score hacking): the diff shows signs of score hacking (ci_changed), first at .gitlab-ci.yml",
     }
     ((merge_id,),) = sql(hub_db, insert(q).values(request).returning(q.c.id))
     held = waiting(
@@ -313,7 +313,11 @@ def test_decisions_page_lists_what_the_loops_chain_waits_on_and_who_answers_it(c
     (chat,) = of_kind(found, "author_question")
     assert chat["link"] == f"/p/{PROJECT}/runs/{chatting}?tab=chat" and chat["work_item"] == question
     (blocked,) = of_kind(found, "merge_held")
-    assert blocked["title"] == f"Merge request !7 of {REPO} blocked, plan reorder-button: gate 2: tests failed"
+    assert blocked["title"] == (  # a hold for a person says how an admin passes it
+        f"Merge request !7 of {REPO} blocked at gate 3 (score hacking): the diff shows signs of score hacking "
+        f"(ci_changed), firs...; an admin passes it: `evo-agents hub merge pass {REPO} 7 --reason ...`"
+    )
+    assert blocked["refs"] == {"merge_request": merge_id, "repo": REPO, "plan": "reorder-button", "goal": "G-1"}
     assert (blocked["decided_by"], blocked["work_item"]) == ("admin", held)
     (manual,) = of_kind(found, "merge_manual")
     assert manual["title"].startswith(f"Plan reorder-button: merge {REPO} by hand") and manual["work_item"] == by_hand
