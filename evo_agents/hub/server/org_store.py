@@ -27,6 +27,12 @@ async def lock(conn: AsyncConnection) -> None:
     await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(LOCK_NAME, 0))))
 
 
+async def lock_shared(conn: AsyncConnection) -> None:
+    """Hold, until the transaction ends, the chart's lock shared: no write of the chart runs meanwhile, and the readers
+    holding it do not wait for one another."""
+    await conn.execute(select(func.pg_advisory_xact_lock_shared(func.hashtextextended(LOCK_NAME, 0))))
+
+
 def _newest_ceilings():
     """The newest revision of each scope's ceiling."""
     c = tables.autonomy_ceilings
@@ -196,6 +202,17 @@ async def chart_view(conn: AsyncConnection, actor: org.Actor) -> OrgChartView:
         seats=[seat_view(chart, seat, known, day) for seat in seats],
         viewer=viewer,
     )
+
+
+async def ended_refusal(
+    conn: AsyncConnection, user_id: int, login: str, *, what: str, lock: bool = False
+) -> str | None:
+    """Why ``login`` may not start ``what`` now: their primary seat ended (``org.ended_refusal``); None while it is
+    live. With ``lock`` the chart's lock is held shared until the transaction ends, so a seat ended meanwhile waits for
+    what this one does, and takes it back."""
+    if lock:
+        await lock_shared(conn)
+    return org.ended_refusal(await load(conn), user_id, login, await today(conn), what=what)
 
 
 async def effective_for_user(conn: AsyncConnection, user_id: int) -> org.Effective:

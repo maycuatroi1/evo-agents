@@ -3,8 +3,8 @@ it goes to, the session it goes on in, the agent's messages in the thread and th
 
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
-writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), or
-when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
+writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
+their primary seat in the org chart ended, or when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
 its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
 allows, with the most of the project's repos checked out first, on the branch ``chat/<run>``, in the repos of the
@@ -42,6 +42,7 @@ from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.output_store import attach_leftovers, link_message
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.repo_origins import repo_origins
@@ -432,17 +433,22 @@ async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     )
 
 
+async def _seat_refusal(conn: AsyncConnection, user_id: int, login: str) -> str | None:
+    """Why a chat run of ``login`` is refused: their primary seat in the org chart ended (plan org-chart, a5)."""
+    return await ended_refusal(conn, user_id, login, what="a chat run")
+
+
 async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str | None]:
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
     run that is queued or held takes the message in its inbox; one that ended done, or failed because the remote
     declined its push, is gone on from; else a new session starts on a worker of the dispatcher, or of the run_as of
     the agent's type when it routes its chat runs there (see the module's docstring)."""
-    refusal = await _writer_refusal(conn, hand)
+    refusal = await _writer_refusal(conn, hand) or await _seat_refusal(conn, hand.dispatcher_id, hand.dispatcher)
     if refusal is not None:
         return None, refusal
     hand = replace(hand, route=await route_of(conn, hand.profile.id))
     if hand.route is not None:
-        refusal = await _run_as_refusal(conn, hand)
+        refusal = await _run_as_refusal(conn, hand) or await _seat_refusal(conn, hand.route.user_id, hand.route.login)
         if refusal is not None:
             return None, refusal
     session = await _session(conn, hand)

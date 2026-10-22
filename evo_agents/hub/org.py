@@ -194,6 +194,53 @@ def profile_effective(chart: Chart, profile_id: int, today: date) -> Effective |
     return None
 
 
+# Seats that ended (criterion a5)
+
+
+def end_day(chart: Chart, seat: Seat, today: date) -> date | None:
+    """The day the seat ended: the earliest of the day of its ended_at and of the end dates, its own and those of the
+    cohorts holding it, that passed; None while it is live."""
+    days = [seat.ends_on] if seat.ends_on is not None and seat.ends_on < today else []
+    days += [
+        unit.ends_on
+        for unit in chart.ancestors(seat.unit_id)
+        if unit.kind == COHORT and unit.ends_on is not None and unit.ends_on < today
+    ]
+    if seat.ended_at is not None:
+        days.append(seat.ended_at.date())
+    return min(days, default=None)
+
+
+def overdue(chart: Chart, today: date) -> list[Seat]:
+    """The seats past their end date or that of a cohort holding them whose ended_at is not set yet."""
+    return [seat for seat in chart.seats.values() if seat.ended_at is None and chart.ended(seat, today)]
+
+
+def ended_primary(chart: Chart, user_id: int, today: date) -> Seat | None:
+    """The person's primary seat when it ended, which puts them at A0; None while they hold a live one or none."""
+    seat = chart.primary_seat(user_id, today)
+    return seat if seat is not None and chart.ended(seat, today) else None
+
+
+def out_of_office(chart: Chart, today: date) -> list[int]:
+    """The people whose primary seat ended."""
+    people = {seat.user_id for seat in chart.seats.values() if seat.user_id is not None}
+    return sorted(user_id for user_id in people if ended_primary(chart, user_id, today) is not None)
+
+
+def ended_refusal(chart: Chart, user_id: int, login: str, today: date, *, what: str) -> str | None:
+    """Why ``login`` may not start ``what`` (a run they dispatch or ask of an agent): their primary seat ended, naming
+    its unit and the day it ended; None while it is live, or they hold none."""
+    seat = ended_primary(chart, user_id, today)
+    if seat is None:
+        return None
+    unit = chart.units[seat.unit_id].slug
+    return (
+        f"the primary seat of {login} in unit {unit} ended on {end_day(chart, seat, today)}, which leaves them at "
+        f"level {LOWEST}: {what} is refused"
+    )
+
+
 # Who may change what
 
 
