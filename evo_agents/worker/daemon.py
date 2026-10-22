@@ -81,7 +81,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans
+from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans, verify_jobs
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
@@ -799,6 +799,8 @@ class Daemon:
         (it keeps its session and worktree for the run that resumes it) or still holds it for this worker (its lease
         runs out, and its worktree ages)."""
         stopped = await orphans.stop(orphan["agent"])
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(verify_jobs.stop_all, self.home.run_dir(run_id) / verify_jobs.JOBS_DIR)
         record = self.home.load_run(run_id) or orphan.get("record")  # as _close_abandoned_runs left it
         if control.get("held"):
             what = "kept: the hub still holds the run for this worker, which cannot go on with it; its lease runs out"

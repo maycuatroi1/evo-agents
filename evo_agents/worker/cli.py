@@ -60,13 +60,10 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, triage_cli
+from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
 from evo_agents.worker.agent_input import decision_option, evidence_items, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
-from evo_agents.worker.step_verify import push_conflict as _push_conflict
-from evo_agents.worker.step_verify import verify as _verify
-from evo_agents.worker.step_verify import verify_env as _verify_env
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -582,13 +579,13 @@ def _step_repo(body: dict, step: dict | None, workspaces: dict) -> str | None:
 def _step_verify_commands(args) -> list[str]:
     """The verify commands of ``worker step``, once the status and the commands agree."""
     verify = list(args.verify or [])
-    if args.status == "done" and not verify:
+    if args.status in ("done", "verify") and not verify:
         raise WorkerStateError(
-            "a step is done only with the commands that check it: give --verify COMMAND once for each; the worker "
-            "runs each again in the repo's worktree"
+            f"{'a step is done' if args.status == 'done' else 'verify runs'} only with the commands that check it: "
+            "give --verify COMMAND once for each; the worker runs them in the repo's worktree"
         )
-    if args.status != "done" and verify:
-        raise WorkerStateError("--verify goes with done only: the worker runs the verify commands of a done step")
+    if args.status not in ("done", "verify") and (verify or args.wait is not None):
+        raise WorkerStateError("--verify and --wait go with done and verify only")
     if len(verify) > MAX_VERIFY_COMMANDS or any(not c.strip() or len(c) > MAX_VERIFY_CHARS for c in verify):
         raise WorkerStateError(
             f"give 1 to {MAX_VERIFY_COMMANDS} verify commands, each 1 to {MAX_VERIFY_CHARS} characters"
@@ -641,12 +638,16 @@ def cmd_step(args) -> int:
     output_cli.request_scan(agent.home, agent.run_id)  # the run's .evo-run/outputs/ goes to the hub with each report
     workspaces = _step_workspaces(agent, args.repo)
     _refuse_done_after_conflict(agent, args.status)
-    from evo_agents.worker import gitops
 
     async def work(hub) -> int:
         body = (await hub.plan(agent.run_id)).get("body") or {}
         step = _plan_step(body, args.key)
         name = args.repo or _step_repo(body, step, workspaces)
+        if name is None and args.status in ("done", "verify"):
+            raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
+        wait = step_verify.verify_jobs.WAIT if args.wait is None else None if args.wait < 0 else args.wait
+        if args.status == "verify":
+            return await step_verify.verify_step(agent, args.key, name, workspaces[name].worktree, verify, wait)
         report: dict = {"status": args.status}
         if name is not None:
             report["repo"] = name
@@ -654,105 +655,13 @@ def cmd_step(args) -> int:
             report["evidence"] = args.evidence
         pushed = None
         if args.status == "done":
-            if name is None:
-                raise WorkerStateError(f"name the repo of step {args.key} with --repo: one of {', '.join(workspaces)}")
-            workspace = workspaces[name]
-            results = await _verify(workspace.worktree, verify, await _verify_env(agent, name, workspace.worktree))
-            failed = [item for item in results if item["exit_code"] != 0]
-            if failed:
-                print(
-                    f"Step {args.key} is not done: {len(failed)} verify command(s) exited other than 0. Nothing was "
-                    f"committed or pushed, and nothing was reported; fix it and run `evo-agents worker step "
-                    f"{args.key} done` again, or hand the step back with pending.",
-                    file=sys.stderr,
-                )
-                return EXIT_FAILED
-            title = step.get("title") if isinstance(step, dict) and isinstance(step.get("title"), str) else None
-            message = f"run #{agent.run_id} step {args.key}" + (f": {' '.join(title.split())}" if title else "")
-            path = workspace.worktree
-            if await gitops.commit_all(path, message):
-                print(f"Committed what was left in {name} as {message!r}.")
-            branch = await gitops.current_branch(path)
-            if branch is None:
-                raise WorkerStateError(f"HEAD is detached in {path}: the worker does not push a detached HEAD")
-            if branch != workspace.local_branch:
-                raise WorkerStateError(
-                    f"{path} is on {branch}, not {workspace.local_branch}: switch back; the worker pushes only the "
-                    "run's branch"
-                )
-            plan_branch = gitops.plan_branches(body).get(name) if "repos" in body else workspace.plan_branch
-            curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
-            if curator is not None and curator.get("role") == "builder":
-                # A Builder of the Curator holds no credential: the daemon pushes the run's branch for it.
-                from evo_agents.worker import credential_commands
-
-                answer = await asyncio.to_thread(credential_commands.ask_push, agent.home, agent.run_id, name, title)
-                if answer.get("error") or not isinstance(answer.get("head"), str):
-                    why = answer.get("error") or "the daemon did not say what it pushed"
-                    raise WorkerStateError(f"{name}: {why}; step {args.key} is not reported done")
-                pushed = gitops.Pushed(
-                    str(answer.get("branch") or workspace.branch),
-                    answer["head"],
-                    bool(answer.get("default")),
-                    bool(answer.get("changed")),
-                    tuple(answer.get("commits") or ()),
-                )
-            else:
-                again: list[dict] = []
-
-                async def verify_again(head: str) -> str | None:
-                    """The step's verify commands again, in the worktree at the commits replayed on top of the
-                    remote's tip; how they failed, or None."""
-                    print(
-                        f"{workspace.branch} of {name} moved on at origin: the run's commits were put on top of it, "
-                        f"and the verify of step {args.key} runs again at {head[:12]}."
-                    )
-                    try:
-                        env = await _verify_env(agent, name, path)
-                    except WorkerStateError as exc:
-                        return str(exc)
-                    again[:] = await _verify(path, verify, env)
-                    failed = [item for item in again if item["exit_code"] != 0]
-                    return "; ".join(f"`{item['command']}` exited {item['exit_code']}" for item in failed) or None
-
-                replay = gitops.Replay(
-                    scratch=path.parent / runs.RESULT_DIR / f"replay-{path.name}",
-                    side_branch=gitops.SIDE_BRANCH.format(id=agent.run_id),
-                    pushed=agent.home.pushed(agent.run_id, name, workspace.branch),
-                    verify=verify_again,
-                )
-                try:
-                    pushed = await gitops.push(
-                        path,
-                        workspace.branch,
-                        protected=workspace.protected,
-                        kind="plan",
-                        plan_branch=plan_branch,
-                        replay=replay,
-                    )
-                except gitops.PushRefused as exc:
-                    raise WorkerStateError(f"{name}: {exc}; step {args.key} is not reported done") from None
-                except gitops.PushConflict as exc:
-                    await _push_conflict(hub, agent, name, exc)
-                    raise WorkerStateError(
-                        f"{name}: {exc}. Step {args.key} is not reported done, and run {agent.run_id} ends failed "
-                        "(push_conflict) once this turn ends: end your turn now"
-                    ) from None
-                except gitops.GitError as exc:
-                    raise WorkerStateError(
-                        f"git push of {name} to {workspace.branch} failed: {exc}; step {args.key} is not reported done"
-                    ) from None
-                if pushed.default:
-                    agent.home.note_push(agent.run_id, name, pushed.branch, pushed.head)
-                if pushed.onto is not None:
-                    print(
-                        f"{pushed.branch} of {name} on origin had moved on to {pushed.onto[:12]}: the run's commits "
-                        f"since then are on top of it at {pushed.head[:12]}, and their verify passed there."
-                    )
-                    results = again or results
+            done = await step_verify.done_step(hub, agent, args.key, step, body, name, workspaces[name], verify, wait)
+            if isinstance(done, int):
+                return done
+            pushed, report["verify"], line = done
             await _notify_push(hub, agent, name, pushed)
-            report["verify"] = results
             report["commit_sha"] = pushed.head
+            report["evidence"] = step_verify.with_line(args.evidence, line, MAX_EVIDENCE_CHARS)
         answer = await hub.step(agent.run_id, args.key, report)
         where = f" ({name}@{pushed.head[:12]}, pushed to {pushed.branch})" if pushed is not None else ""
         kept = "" if answer.get("written", True) else ", as the plan had it already"
@@ -1014,6 +923,35 @@ def _slots(value: str) -> int:
     return number
 
 
+def _register_step(wsub) -> None:
+    """The parser of `evo-agents worker step`."""
+    step = wsub.add_parser(
+        "step", help="inside a plan run: report a step of the plan; done runs its verify commands again and pushes"
+    )
+    step.add_argument("key", help="the step's id, or its order")
+    step.add_argument(
+        "status",
+        choices=(*AGENT_STEP_STATUSES, "verify"),
+        help="in_progress, done, pending to hand it back, or verify to run the verify as a job of the worker alone",
+    )
+    step.add_argument("--repo", help="the run's repo the step is in (default: the plan's repo of the step)")
+    step.add_argument("--evidence", help="what was done and how it was checked; a line per decision taken")
+    step.add_argument(
+        "--verify",
+        action="append",
+        metavar="COMMAND",
+        help="a command that checks the step, run in the repo's worktree; repeat it; done and verify need one",
+    )
+    step.add_argument(
+        "--wait",
+        type=float,
+        metavar="SECONDS",
+        help=f"how long done and verify wait on the verify (default {step_verify.verify_jobs.WAIT:g}; -1: until it "
+        f"ends); it goes on after, and they exit {step_verify.verify_jobs.EXIT_RUNNING}",
+    )
+    step.set_defaults(func=cmd_step)
+
+
 def register(sub) -> None:
     worker = sub.add_parser(
         "worker",
@@ -1095,20 +1033,7 @@ def register(sub) -> None:
     env.set_defaults(func=cmd_env)
 
     # The agent of a plan run runs these, and of an author run ask and plan; outside one they refuse.
-    step = wsub.add_parser(
-        "step", help="inside a plan run: report a step of the plan; done runs its verify commands again and pushes"
-    )
-    step.add_argument("key", help="the step's id, or its order")
-    step.add_argument("status", choices=AGENT_STEP_STATUSES, help="in_progress, done, or pending to hand it back")
-    step.add_argument("--repo", help="the run's repo the step is in (default: the plan's repo of the step)")
-    step.add_argument("--evidence", help="what was done and how it was checked; a line per decision taken")
-    step.add_argument(
-        "--verify",
-        action="append",
-        metavar="COMMAND",
-        help="a command that checks the step, run again in the repo's worktree; repeat it; done needs one",
-    )
-    step.set_defaults(func=cmd_step)
+    _register_step(wsub)
 
     ask = wsub.add_parser(
         "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
