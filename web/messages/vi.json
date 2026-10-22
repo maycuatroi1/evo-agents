@@ -4935,7 +4935,8 @@
       "run_outputs": "File từ một run",
       "loop_paused": "Loop đã tự dừng",
       "goal_review": "Rà goal của tháng",
-      "loop_brief": "Bản tin sáng của Loop"
+      "loop_brief": "Bản tin sáng của Loop",
+      "plugin_notice": "Thông báo từ một plugin"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -4945,6 +4946,7 @@
       "viewLabel": "Xem quyết định #{id}",
       "openRun": "Mở run #{id}",
       "openBaseline": "Duyệt baseline",
+      "openPluginNotice": "Mở",
       "markRead": "Đánh dấu đã đọc",
       "markReadLabel": "Đánh dấu đã đọc: {title}",
       "showMore": "Xem toàn bộ",
@@ -4953,6 +4955,8 @@
       "branch": "Nhánh",
       "commits": "{count, plural, other {# commit}}",
       "commitFull": "commit {sha}",
+      "plugin": "Plugin",
+      "topic": "Chủ đề",
       "moreCommits": "và {count} commit nữa",
       "fewerCommits": "Thu gọn",
       "answerProposalLabel": "Trả lời đề xuất #{id}",

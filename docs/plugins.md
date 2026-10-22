@@ -220,7 +220,7 @@ project is what the project granted that its installed version still asks for, c
 | `plans:read` | read the project's plans | the `plan.step` events; the bridge's `plans.list` and `plans.get` |
 | `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API) |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
-| `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
+| `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications; `POST /v1/plugin-api/projects/{project}/notifications`, which sends a notice to members (section Notifications from a plugin) |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
@@ -453,6 +453,48 @@ time zone. It reads the tables of tasks, srs, plans, runs and decisions and writ
 `GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
 `chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
 plugin.
+
+### Notifications from a plugin
+
+A backend granted `notifications:send` sends a notice to members of the project through the hub's API for plugins, with
+the token of its backend (`Authorization: Bearer evp_...`) and no other credential:
+
+```http
+POST /v1/plugin-api/projects/evo-agents/notifications
+Authorization: Bearer evp_...
+Content-Type: application/json
+
+{"to": ["alice", "writers"], "title": "Tomorrow's report is due", "body": "Two tasks are still open.",
+ "topic": "reminder", "key": "reminder-2026-10-23"}
+```
+
+- **Body.** `to` holds logins and/or the roles `admins`, `writers` (writers and admins) and `members` (everyone with a
+  grant), at least one. `title` is one line of at most 200 characters. `body` is optional, at most 16 KiB. `link` is
+  optional, a path under `/p/{project}/x/{plugin}/` or `/p/{project}`; left out, it is the plugin's page, else the
+  project's. `topic` is a short slug the plugin chooses. `key` is optional.
+- **Who gets it.** Each member of `to` with a grant on the project gets one notification of kind `notice`, notice kind
+  `plugin_notice`, whose details name the plugin, its version, the topic and the key. It goes to the outbox in the
+  transaction of the call, so the Inbox and the member's channels get it as any notice. A login with no grant gets
+  nothing and is named in `skipped` of the answer, next to `sent` (the number of recipients) and `recipients`.
+- **Codes.** 401: no live token, or the plugin was removed or turned off. 403: the project did not enable the plugin or
+  grant `notifications:send` (checked at each call, against what the installed version still asks for). 422: a wrong
+  body, or a `link` outside the plugin's pages and the project.
+- **Once per key.** The same `key` of the same plugin in the same project, sent again, creates nothing and answers the
+  first call's result with `duplicate: true`. Without a `key` every call sends. There is no rate limit.
+- **Audit and Telegram.** The audit row `plugin.notify` names the plugin, the project and the number of recipients,
+  never the title or body. A Telegram chat of a restricted project gets only the project's name and a link, as for any
+  notice (`docs/notifications.md`).
+
+The core plugins of `evo_agents` call `notifications.notify` directly and do not use this route. A job that reminds
+the evening before is a plugin job with cron `0 13 * * *` (20:00 in Vietnam, UTC+7) that sends tomorrow's tasks with a
+key per day, so that a retry or a second run of the job notifies once:
+
+```json
+{"jobs": [{"name": "remind", "cron": "0 13 * * *"}], "permissions": ["notifications:send"]}
+```
+
+The `remind` job computes tomorrow's date, `2026-10-23` for a run on the 22nd, and posts the body
+`{"to": ["members"], "title": "Tomorrow, 2026-10-23", "topic": "reminder", "key": "reminder-2026-10-23"}` to the route.
 
 ### Lean Canvas
 

@@ -23,6 +23,7 @@ report itself uses neither. Its config, in the project's layer (`docs/hub.md`, P
 | `pm` | the login of the project manager, named in `escalate_to` | none |
 | `timezone` | the IANA time zone whose days the report counts | `Asia/Ho_Chi_Minh` |
 | `working_days` | the ISO weekdays that count, 1 (Monday) to 7 (Sunday) | `[1, 2, 3, 4, 5]` |
+| `digest_at` | the local time (`HH:MM`, in `timezone`) from which the job sends the day's digest and escalations | `08:00` |
 | `stale_days` | working days without activity after which a task being worked on is stale | 2 |
 | `escalate_after_days` | working days a blocker is open after which it is to escalate | 1 |
 | `at_risk_days` | a task still to do whose due date is this many working days away or less is at risk | 2 |
@@ -80,9 +81,11 @@ The command speaks HTTP only (`evo_agents/hub/cli_pm.py`).
 
 ## The morning job
 
-The job `daily` runs at 01:00 UTC on weekdays (`0 1 * * 1-5`, `hub.plugin_jobs`). For each project that enables pm it takes
-today's date in the project's `timezone`; on a day outside `working_days`, or when the pm or tasks config cannot be used,
-it does nothing. On a working day:
+The job `daily` runs every 15 minutes (`*/15 * * * *`, UTC, `hub.plugin_jobs`). For each project that enables pm it takes
+the date and time now in the project's `timezone`; on a day outside `working_days` (Saturday, 6, and Sunday, 7, count when
+the config lists them), before `digest_at`, or when the pm or tasks config cannot be used, it does nothing. On a working
+day, the first pass from `digest_at` on sends, and later passes send nothing more (see Once). A project left at the defaults
+(Asia/Ho_Chi_Minh, Monday to Friday, 08:00) gets its digest at 08:00 in Vietnam; a config with no `digest_at` stays valid.
 
 - **The digest.** The report of the day, computed as the route computes it, goes as the notice `pm_daily` to the PM (the
   config's `pm`; the project's admins when it is empty or names a member with no grant) when the project granted the

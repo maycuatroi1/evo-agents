@@ -4935,7 +4935,8 @@
       "run_outputs": "Files from a run",
       "loop_paused": "The Loop stopped itself",
       "goal_review": "The month's review of the goals",
-      "loop_brief": "The Loop's morning brief"
+      "loop_brief": "The Loop's morning brief",
+      "plugin_notice": "A notice from a plugin"
     },
     "item": {
       "unread": "Unread",
@@ -4945,6 +4946,7 @@
       "viewLabel": "View decision #{id}",
       "openRun": "Open run #{id}",
       "openBaseline": "Review the baseline",
+      "openPluginNotice": "Open",
       "markRead": "Mark as read",
       "markReadLabel": "Mark as read: {title}",
       "showMore": "Show all",
@@ -4953,6 +4955,8 @@
       "branch": "Branch",
       "commits": "{count, plural, one {# commit} other {# commits}}",
       "commitFull": "commit {sha}",
+      "plugin": "Plugin",
+      "topic": "Topic",
       "moreCommits": "and {count} more",
       "fewerCommits": "Show fewer",
       "answerProposalLabel": "Answer proposal #{id}",

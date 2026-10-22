@@ -45383,6 +45383,80 @@
           }
         }
       },
+      "/v1/plugin-api/projects/{project}/notifications": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Send Notice",
+          "description": "Send a notice to members of the project, as the plugin whose token the request carries.",
+          "operationId": "send_notice_v1_plugin_api_projects__project__notifications_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginNoticeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginNoticeSent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/task/pulls": {
         "post": {
           "tags": [
@@ -72306,7 +72380,8 @@
                     "run_outputs",
                     "loop_paused",
                     "goal_review",
-                    "loop_brief"
+                    "loop_brief",
+                    "plugin_notice"
                   ]
                 },
                 {
@@ -75625,6 +75700,118 @@
           },
           "type": "object",
           "title": "PluginInstallIn"
+        },
+        "PluginNoticeIn": {
+          "properties": {
+            "to": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "To",
+              "description": "logins and/or the roles admins, writers (writers and admins) and members (everyone with a grant)"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Title",
+              "description": "one line"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body",
+              "description": "at most 16384 bytes in UTF-8"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link",
+              "description": "a path under /p/{project}/x/{plugin}/, or /p/{project}; default: the plugin's page, else the project"
+            },
+            "topic": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "title": "Topic",
+              "description": "a short slug the plugin chooses"
+            },
+            "key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key",
+              "description": "a second call of the plugin in the project with the same key creates nothing"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "to",
+            "title",
+            "topic"
+          ],
+          "title": "PluginNoticeIn"
+        },
+        "PluginNoticeSent": {
+          "properties": {
+            "sent": {
+              "type": "integer",
+              "title": "Sent",
+              "description": "the members who got a notice: the number of recipients"
+            },
+            "recipients": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Recipients",
+              "description": "their logins"
+            },
+            "skipped": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Skipped",
+              "description": "the logins in `to` that hold no grant on the project, who got none"
+            },
+            "duplicate": {
+              "type": "boolean",
+              "title": "Duplicate",
+              "description": "the key was used already: nothing new was created and this is the first answer"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sent",
+            "recipients",
+            "skipped",
+            "duplicate"
+          ],
+          "title": "PluginNoticeSent"
         },
         "PluginPage": {
           "properties": {

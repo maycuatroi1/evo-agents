@@ -105,6 +105,7 @@ def test_pm_daily_manifest_asks_for_notifications_and_chats_and_the_config_has_t
         "pm",
         "timezone",
         "working_days",
+        "digest_at",
         "stale_days",
         "escalate_after_days",
         "at_risk_days",
@@ -112,6 +113,7 @@ def test_pm_daily_manifest_asks_for_notifications_and_chats_and_the_config_has_t
         "digest_chat",
     }
     assert config["timezone"]["default"] == "Asia/Ho_Chi_Minh" and config["working_days"]["default"] == [1, 2, 3, 4, 5]
+    assert config["digest_at"]["default"] == "08:00"
     assert (config["stale_days"]["default"], config["escalate_after_days"]["default"]) == (2, 1)
     assert (config["at_risk_days"]["default"], config["wip_limit"]["default"]) == (2, 2)
     assert {tool["name"] for tool in MANIFEST["contributes"]["mcp_tools"]} == {"daily", "member"}

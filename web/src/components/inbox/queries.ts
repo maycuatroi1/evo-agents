@@ -44,6 +44,10 @@ export const NOTICE_KINDS = [
   "pm_daily",
   "pm_escalation",
   "run_outputs",
+  "loop_paused",
+  "goal_review",
+  "loop_brief",
+  "plugin_notice",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

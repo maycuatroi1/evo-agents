@@ -1,9 +1,11 @@
 """The job ``daily`` of the plugin pm (criteria a6 and a8 of plan pm-daily-tracking): each working morning, the digest
 of every project that enables pm, and the escalation of each blocker that has lasted too long, each sent once a day.
 
-When. The manifest's cron is ``0 1 * * 1-5``, in UTC. For each project that enables pm the job takes today's date in
-the project's time zone (``timezone``); a day that is not one of its ``working_days`` ends the pass with nothing done,
-as does a project whose pm or tasks config cannot be used (logged).
+When. The manifest's cron is ``*/15 * * * *``, in UTC: every 15 minutes. For each project that enables pm the job takes
+the local moment in the project's time zone (``timezone``); a day that is not one of its ``working_days`` (6 and 7
+count when listed), or a local time before ``digest_at`` ("HH:MM", 08:00 by default), ends the pass with nothing done,
+as does a project whose pm or tasks config cannot be used (logged). From ``digest_at`` on, the first pass of the day
+sends and the later ones find ``pm_sends`` already claimed, so a day sends once however often the job runs.
 
 What. The report of the day is computed as the route computes it (``report``). The digest goes to the PM (``pm``, else
 the project's admins) as the notice ``pm_daily`` when the project grants the plugin ``notifications:send``, and into
@@ -45,7 +47,7 @@ log = logging.getLogger(__name__)
 
 PLUGIN = settings.PLUGIN
 JOB = "daily"
-CRON = "0 1 * * 1-5"
+CRON = "*/15 * * * *"
 DIGEST, ESCALATION = "digest", "escalation"  # evo_agents.hub.tables_pm.KINDS
 NOTICE_DAILY, NOTICE_ESCALATION = "pm_daily", "pm_escalation"  # evo_agents.hub.runs.NOTICE_KINDS
 SEND, WRITE = "notifications:send", "chats:write"
@@ -229,9 +231,12 @@ async def run_project(engine: AsyncEngine, project: str, *, now: datetime | None
         except settings.PmError as exc:
             log.warning("pm cannot run for the project", extra={"project": project, "why": exc.message})
             return {"skipped": exc.message}
-        day = (now or datetime.now(UTC)).astimezone(config.calendar.zone).date()
+        local = (now or datetime.now(UTC)).astimezone(config.calendar.zone)
+        day = local.date()
         if not config.calendar.working(day):
             return {"skipped": "not a working day", "date": day.isoformat()}
+        if local.time().replace(tzinfo=None) < config.digest_at:
+            return {"skipped": "before digest_at", "date": day.isoformat()}
         granted = effective_grant(row)
         sending, posting = SEND in granted, WRITE in granted
         grants = await _grants(conn, project_id)

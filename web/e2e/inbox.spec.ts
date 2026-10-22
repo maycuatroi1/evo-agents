@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { signIn } from "./support/auth";
 import { BASE_URL } from "./support/env";
 import { expect, isDeployed, test } from "./support/fixtures";
+import { STACK_URL } from "./support/env";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import {
@@ -116,6 +117,39 @@ test("the bell counts unread notifications, and the Inbox lists open decisions f
   await expect(page.getByTestId("inbox-bell-count")).toHaveCount(0);
   await expect(main(page).getByTestId("inbox-waiting").getByTestId("notification")).toHaveCount(2);
   expect(await notificationCount(me)).toEqual({ unread: 0, open_decisions: 2, open_proposals: 0 });
+});
+
+test("a notice of a plugin names the plugin and its topic, links to its page and is filtered like any notice", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const link = `/p/${project}/x/teaching/schedule`;
+  const response = await fetch(`${STACK_URL}/plugin-notice/seed`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      project,
+      login: me.login,
+      plugin: "teaching",
+      topic: "lesson-reminder",
+      title: "Tomorrow you teach Algebra at 08:00",
+      body: "Room B2, 30 students.",
+      link,
+    }),
+  });
+  expect(response.ok).toBe(true);
+
+  await open(page, "/inbox");
+  const notice = main(page).getByTestId("notification");
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toHaveAttribute("data-notice-kind", "plugin_notice");
+  await expect(notice.getByTestId("notice-kind")).toHaveText("A notice from a plugin");
+  await expect(notice.getByTestId("notice-plugin")).toHaveText("teaching");
+  await expect(notice.getByTestId("notice-topic")).toHaveText("lesson-reminder");
+  await expect(notice.getByTestId("notification-link")).toHaveAttribute("href", link);
+
+  await main(page).getByTestId("inbox-facet-kind").getByRole("button", { name: "Notices" }).click();
+  await expect(page).toHaveURL(/\?kind=notice$/);
+  await expect(main(page).getByTestId("notification")).toHaveCount(1);
 });
 
 test("the owner answers a decision from the Inbox, and an answered decision takes no second answer", async ({ page, member }) => {

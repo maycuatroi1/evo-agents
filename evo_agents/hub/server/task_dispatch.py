@@ -127,7 +127,7 @@ class TaskPull(BaseModel):
 # The plugin and its task runs
 
 
-async def _plugin(request: Request, conn: AsyncConnection) -> int:
+async def plugin_of_request(request: Request, conn: AsyncConnection) -> int:
     """The plugin whose live token the request carries; 401 for none."""
     scheme, _, token = (request.headers.get("authorization") or "").strip().partition(" ")
     plugin_id = None
@@ -297,7 +297,7 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
     if len(body.task.encode()) > task_runs.MAX_TASK_BYTES:
         raise HTTPException(422, f"the task is longer than {task_runs.MAX_TASK_BYTES} bytes in UTF-8")
     async with request.app.state.engine.begin() as conn:
-        plugin_id = await _plugin(request, conn)
+        plugin_id = await plugin_of_request(request, conn)
         enabled = await _dispatcher(conn, plugin_id, project)
         row = await enabled_type(conn, enabled.project_id, plugin_id, name, lock=True)  # one dispatch of a type at once
         refusal = await _type_refusal(conn, enabled, row, name)
@@ -322,7 +322,7 @@ async def show_task(request: Request, project: ProjectName, task: TaskId) -> Tas
     """A task the plugin whose token the request carries handed, as its latest run has it."""
     r = tables.runs
     async with request.app.state.engine.begin() as conn:
-        plugin_id = await _plugin(request, conn)
+        plugin_id = await plugin_of_request(request, conn)
         enabled = await _dispatcher(conn, plugin_id, project)
         query = _task_select().where(
             r.c.project_id == enabled.project_id,

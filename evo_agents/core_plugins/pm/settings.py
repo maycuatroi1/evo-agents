@@ -7,6 +7,7 @@ A project that does not enable tasks, or whose pm config names a time zone or wo
 
 from __future__ import annotations
 
+from datetime import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -19,6 +20,7 @@ from evo_agents.plugins import config as plugin_config
 
 PLUGIN, TASKS, SRS = "pm", "tasks", "srs"
 DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
+DEFAULT_DIGEST_AT = time(8, 0)
 DEFAULT_DAYS = (1, 2, 3, 4, 5)  # Monday to Friday, ISO
 DEFAULT_STATUSES = (  # the statuses of the plugin tasks when its config names none
     ("backlog", "todo"),
@@ -62,6 +64,18 @@ def _days(project: str, given) -> frozenset[int]:
     return days
 
 
+def _digest_at(project: str, given) -> time:
+    try:
+        if given is None or given == "":
+            return DEFAULT_DIGEST_AT
+        hour, minute = (int(part) for part in str(given).split(":"))
+        return time(hour, minute)
+    except ValueError:
+        raise PmError(
+            409, f"the config of plugin {PLUGIN} in project {project}: digest_at is HH:MM, such as 08:00"
+        ) from None
+
+
 async def config(conn: AsyncConnection, project_id: int, project: str) -> Config:
     """The plugin's effective config in the project; 404 when the project does not enable it, 409 when it cannot be
     used."""
@@ -80,6 +94,7 @@ async def config(conn: AsyncConnection, project_id: int, project: str) -> Config
         wip_limit=values.get("wip_limit") or 2,
         pm=values.get("pm") or None,
         digest_chat=values.get("digest_chat") or None,
+        digest_at=_digest_at(project, values.get("digest_at")),
     )
 
 
