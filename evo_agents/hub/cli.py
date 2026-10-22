@@ -241,6 +241,10 @@ def _register_client_commands(hsub) -> None:
     register_org(hsub)
     register_autonomy(hsub)
 
+    from evo_agents.hub.cli_stop import register_stop
+
+    register_stop(hsub)
+
 
 def register(sub) -> None:
     hub = sub.add_parser("hub", help="team hub for memories, plans, skills and knowledge graphs")

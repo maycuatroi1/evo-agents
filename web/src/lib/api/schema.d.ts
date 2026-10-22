@@ -4110,6 +4110,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy/stops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Autonomy
+         * @description Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted.
+         */
+        post: operations["stop_autonomy_v1_autonomy_stops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/stops/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift Stop
+         * @description Lift the stop that holds for a person, a unit or the hub.
+         */
+        post: operations["lift_stop_v1_autonomy_stops_lift_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -21030,6 +21070,11 @@ export interface components {
             sources?: {
                 [key: string]: string;
             };
+            /**
+             * Principal
+             * @description the login of the run's principal, which its commits name in the trailer Evo-Principal
+             */
+            principal?: string | null;
         };
         /** RunChat */
         RunChat: {
@@ -24379,6 +24424,86 @@ export interface components {
              * @description whether the report wrote a revision; false for a resend that changed nothing
              */
             written: boolean;
+        };
+        /**
+         * StopSet
+         * @description What to stop, or lift the stop of: a person, a unit and those below it, or the whole hub.
+         */
+        StopSet: {
+            /**
+             * Scope
+             * @description login: a person; unit: a unit and below; all: the hub
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Login
+             * @description the person, for login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description the unit's slug, for unit
+             */
+            unit?: string | null;
+            /**
+             * Reason
+             * @description why; a lift takes none
+             */
+            reason?: string | null;
+        };
+        /**
+         * StopView
+         * @description A stop of autonomy, as written or lifted.
+         */
+        StopView: {
+            /** Id */
+            id: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "login" | "unit" | "all";
+            /**
+             * Target
+             * @description login:<login>, unit:<slug> or all
+             */
+            target: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Stopped By
+             * @description the login of who stopped
+             */
+            stopped_by: string;
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
+            /**
+             * Lifted By
+             * @description the login of who lifted it; null while it holds
+             */
+            lifted_by: string | null;
+            /** Lifted At */
+            lifted_at: string | null;
+            /**
+             * Runs
+             * @description the runs this call cancelled or asked to stop; empty for a lift
+             */
+            runs?: number[];
+            /**
+             * Leases
+             * @description how many leases this call ended
+             * @default 0
+             */
+            leases: number;
+            /**
+             * Told
+             * @description the logins told
+             */
+            told?: string[];
         };
         /** StorageCounts */
         StorageCounts: {
@@ -41602,6 +41727,144 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stop_autonomy_v1_autonomy_stops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lift_stop_v1_autonomy_stops_lift_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StopSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

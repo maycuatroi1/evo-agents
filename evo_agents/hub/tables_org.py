@@ -24,6 +24,9 @@ revision (1 and up), the level and the class overrides. A person without a row p
 Revision 0106 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
 autonomy taken when the run was queued (``evo_agents.hub.server.run_autonomy``); ``org_tables`` adds both to the runs
 table it is given, so that ``evo_agents.hub.tables`` describes runs whole.
+
+autonomy_stops (0109) holds every stop of autonomy S4, never deleted: the scope (login, unit or all), the person or the
+unit it names, the reason, who stopped and when, who lifted it and when (NULL while it holds).
 """
 
 from __future__ import annotations
@@ -159,6 +162,29 @@ def prefs_table(metadata: MetaData) -> Table:
     )
 
 
+def stops_table(metadata: MetaData) -> Table:
+    stops = Table(
+        "autonomy_stops",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("scope", Text, nullable=False),
+        Column("user_id", BigInteger),
+        Column("unit_id", BigInteger),
+        Column("reason", Text),
+        Column("stopped_by", BigInteger, nullable=False),
+        _stamp("stopped_at"),
+        Column("lifted_by", BigInteger),
+        Column("lifted_at", DateTime(timezone=True)),
+        _key("autonomy_stops", "user_id", "users", "CASCADE"),
+        _key("autonomy_stops", "unit_id", "org_units", "RESTRICT"),
+        _key("autonomy_stops", "stopped_by", "users", "RESTRICT"),
+        _key("autonomy_stops", "lifted_by", "users", "RESTRICT"),
+        PrimaryKeyConstraint("id", name="autonomy_stops_pkey"),
+    )
+    Index("autonomy_stops_live_idx", stops.c.scope, postgresql_where=stops.c.lifted_at.is_(None))
+    return stops
+
+
 def run_columns(runs: Table) -> None:
     """The principal of a run and the snapshot of its autonomy (0106)."""
     runs.append_column(Column("principal_id", BigInteger))
@@ -171,9 +197,10 @@ def secret_columns(secrets: Table) -> None:
     secrets.append_column(Column("environment", Text))
 
 
-def org_tables(metadata: MetaData, runs: Table, secrets: Table) -> tuple[Table, Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``, the autonomy columns of
-    ``runs`` and the environment label of ``secrets``."""
+def org_tables(metadata: MetaData, runs: Table, secrets: Table) -> tuple[Table, Table, Table, Table, Table]:
+    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs, autonomy_stops), added to ``metadata``, the autonomy
+    columns of ``runs`` and the environment label of ``secrets``."""
     run_columns(runs)
     secret_columns(secrets)
-    return units_table(metadata), seats_table(metadata), ceilings_table(metadata), prefs_table(metadata)
+    units, seats = units_table(metadata), seats_table(metadata)
+    return units, seats, ceilings_table(metadata), prefs_table(metadata), stops_table(metadata)

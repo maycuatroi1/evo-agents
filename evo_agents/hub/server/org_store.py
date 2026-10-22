@@ -266,3 +266,5 @@ async def merge_user(conn: AsyncConnection, into: int, holder_id: int) -> None:
     )
     await conn.execute(update(s).values(user_id=into, updated_at=func.now()).where(s.c.user_id == holder_id))
     await conn.execute(update(s).values(sponsor_id=into).where(s.c.sponsor_id == holder_id))
+    stops = tables.autonomy_stops  # a stop of the login holds on the account that took it
+    await conn.execute(update(stops).values(user_id=into).where(stops.c.user_id == holder_id))

@@ -1032,7 +1032,7 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
 
 
 async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server import pull_trailers, pulls
 
     target = github_target(change.origin)
     if target is None:
@@ -1049,7 +1049,7 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             )
         ).one()
         charter = await _charter(conn, change.project_id)
-        rev = tables.plans
+        rev, signed = tables.plans, await pull_trailers.block(conn, change.builder_run_id)
         body = (
             await conn.execute(
                 select(rev.c.body).where(rev.c.project_id == change.project_id, rev.c.plan_id == change.plan_id)
@@ -1069,7 +1069,7 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             branch=change.branch,
             base=base,
             title=f"Curator: {title}"[:240],
-            body=_pr_body(project, change, title),
+            body=_pr_body(project, change, title) + signed,
         )
         return {"pull": made, "base": base}
 

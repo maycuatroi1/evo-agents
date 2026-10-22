@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import account_providers, merge_gate, profiles
 from evo_agents.hub.autonomy_levels import ACTING, DENY, TEST_SECRETS, Choice, refusal
 from evo_agents.hub.credentials import GITHUB_READ_PERMISSIONS, TEST_ENVIRONMENT, github_repo
-from evo_agents.hub.server import audit, run_autonomy
+from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
@@ -243,11 +243,16 @@ def read_only(token: InstallationToken) -> bool:
 
 
 async def audited(conn: AsyncConnection, survey, actor_id: int | None, token_id: int | None) -> None:
-    """The audit row of a lease that withheld something of K7 (``survey.withheld``)."""
+    """The audit row of a lease that withheld something of K7 (``survey.withheld``), and the decision of K7 on the
+    ledger S1 (``autonomy_ledger``) for a run with a snapshot."""
+    choice = survey.k7
+    if choice is None:
+        return
+    mode = choice.mode if choice.condition is None else f"{choice.mode}:{choice.condition}"
+    result = f"withheld {','.join(sorted(set(survey.withheld)))}" if survey.withheld else "granted"
+    await autonomy_ledger.record(conn, survey.run.id, K7, mode, result, "lease", token_id=token_id)
     if not survey.withheld:
         return
-    choice = survey.k7
-    mode = choice.mode if choice.condition is None else f"{choice.mode}:{choice.condition}"
     await audit.record(
         conn,
         actor_id=actor_id,

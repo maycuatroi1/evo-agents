@@ -12984,6 +12984,76 @@
         "schema": "SrsVersion"
       }
     },
+    "hub stop": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lift"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "scope",
+          "target",
+          "reason",
+          "stopped_by",
+          "stopped_at",
+          "lifted_by",
+          "lifted_at",
+          "runs",
+          "leases",
+          "told"
+        ],
+        "schema": "StopView"
+      }
+    },
     "hub task block": {
       "positionals": [
         {
@@ -37192,6 +37262,170 @@
             },
             "404": {
               "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/stops": {
+        "post": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Stop Autonomy",
+          "description": "Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted.",
+          "operationId": "stop_autonomy_v1_autonomy_stops_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/autonomy/stops/lift": {
+        "post": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Lift Stop",
+          "description": "Lift the stop that holds for a person, a unit or the hub.",
+          "operationId": "lift_stop_v1_autonomy_stops_lift_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StopView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
               "content": {
                 "application/json": {
                   "schema": {
@@ -89519,6 +89753,18 @@
               "type": "object",
               "title": "Sources",
               "description": "K1 to K12, what set the mode of each: a ceiling, a preference, a policy"
+            },
+            "principal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal",
+              "description": "the login of the run's principal, which its commits name in the trailer Evo-Principal"
             }
           },
           "type": "object",
@@ -97252,6 +97498,167 @@
             "written"
           ],
           "title": "StepWritten"
+        },
+        "StopSet": {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope",
+              "description": "login: a person; unit: a unit and below; all: the hub"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person, for login"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit",
+              "description": "the unit's slug, for unit"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why; a lift takes none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scope"
+          ],
+          "title": "StopSet",
+          "description": "What to stop, or lift the stop of: a person, a unit and those below it, or the whole hub."
+        },
+        "StopView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "login",
+                "unit",
+                "all"
+              ],
+              "title": "Scope"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "login:<login>, unit:<slug> or all"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "stopped_by": {
+              "type": "string",
+              "title": "Stopped By",
+              "description": "the login of who stopped"
+            },
+            "stopped_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Stopped At"
+            },
+            "lifted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifted By",
+              "description": "the login of who lifted it; null while it holds"
+            },
+            "lifted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lifted At"
+            },
+            "runs": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "the runs this call cancelled or asked to stop; empty for a lift"
+            },
+            "leases": {
+              "type": "integer",
+              "title": "Leases",
+              "description": "how many leases this call ended",
+              "default": 0
+            },
+            "told": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Told",
+              "description": "the logins told"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "scope",
+            "target",
+            "reason",
+            "stopped_by",
+            "stopped_at",
+            "lifted_by",
+            "lifted_at"
+          ],
+          "title": "StopView",
+          "description": "A stop of autonomy, as written or lifted."
         },
         "StorageCounts": {
           "properties": {

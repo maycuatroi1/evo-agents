@@ -15,6 +15,9 @@ the agent, as the card gives it (an ask a project policy sets reads auto: the me
   the event saying the principal was not told.
 - auto: it lets the command through and records the event.
 
+Each event of the hook is a decision of the ledger S1 (plan autonomy-levels, criterion a10): its ``autonomy`` body names
+the class, the mode, the command, the verdict, and the run, its principal and its agent.
+
 The floor S2 (``FLOORS`` of ``autonomy_levels``): a command of K9 whose mode lets it run runs only when the run recorded
 a backup made within the last 24 hours (``evo-agents worker backup``, kept in the run's ``backups.jsonl``); otherwise
 the hook refuses it and says to make a backup first. This holds for every principal, A5 included.
@@ -145,6 +148,9 @@ class Gate:
     default_branches: tuple[str, ...] = ()
     record: Callable[[str, dict], None] = field(default=lambda text, body: None)
     act: Callable[[dict], Awaitable[dict | None]] | None = None
+    run_id: int | None = None
+    principal: str | None = None  # the login of the run's principal, from its card
+    agent: str | None = None  # the handle of the run's agent profile
 
     @classmethod
     def of(cls, autonomy: Mapping | None, worktree: Path, backups: Path, **given) -> Gate | None:
@@ -186,6 +192,7 @@ class Gate:
         why = self.refused(acted, decision) or await self._hub(acted, decision)
         for hit, mode in acted:
             body = {"class": hit.klass, "mode": mode, "what": hit.what, "verdict": "refused" if why else "allowed"}
+            body |= {"run": self.run_id, "principal": self.principal, "agent": self.agent}  # the ledger S1
             if decision is not None:
                 body["decision_id"] = decision
             told = " (the hub tells the principal)" if mode == NOTIFY and not why else ""
@@ -261,4 +268,7 @@ def for_run(run) -> Gate | None:
         default_branches=branches,
         record=lambda text, body: run.note(text, autonomy=body),
         act=act,
+        run_id=run.id,
+        principal=autonomy.get("principal") if isinstance(autonomy, Mapping) else None,
+        agent=(run.spec.get("profile") or {}).get("handle") if isinstance(run.spec.get("profile"), Mapping) else None,
     )

@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_calls, plugin_events, profiles, runs, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, run_autonomy
+from evo_agents.hub.server import audit, pull_trailers, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_types import contributed, enabled_type, type_spend
 from evo_agents.hub.server.chat_agents import open_draft
@@ -438,11 +438,12 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         agent_type, plugin = (
             await conn.execute(query.join(pl, pl.c.id == t.c.plugin_id).where(r.c.id == run_id))
         ).one()
+        signed = await pull_trailers.block(conn, run_id)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem = None, None, False, None
     if target is not None and app is not None:
-        text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id)
+        text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id) + signed
         try:
             made, opened = await open_draft(app, target, body.branch, (title or body.branch)[:240], text)
             url, number = made.get("html_url"), made.get("number")

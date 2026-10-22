@@ -179,6 +179,8 @@ PLUGIN_NOTICE_TABLES = frozenset({"plugin_notice_keys"})
 ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
 # migration 0105: the revisions of each person's own autonomy preference (plan autonomy-levels)
 AUTONOMY_LEVEL_TABLES = frozenset({"autonomy_prefs"})
+# migration 0109: the stops of autonomy S4 (plan autonomy-levels)
+AUTONOMY_STOP_TABLES = frozenset({"autonomy_stops"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

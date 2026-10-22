@@ -185,6 +185,16 @@ AUTONOMY_NOTIFIED = "autonomy.notified"
 # A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
 # run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
 AUTONOMY_BACKUP = "autonomy.backup"
+# The ledger S1 of autonomy (evo_agents.hub.server.autonomy_ledger): every decision a gate of the hub made for a run,
+# in the run's project, with the run's principal as actor, once for each distinct decision: "run:<id> principal=<login>
+# agent=<handle> <class> mode=<mode> result=<acted|asked|refused|allowed|granted|withheld> <act>", "-" for a principal
+# or an agent the run has none of.
+AUTONOMY_DECIDED = "autonomy.decided"
+# The stop S4 and its lift (evo_agents.hub.server.autonomy_stops), in no project, with who stopped or lifted as actor:
+# "stop:<id> <login:<login>|unit:<slug>|all> runs=<n cancelled or asked to stop> leases=<n ended>" and "stop:<id>
+# <login:<login>|unit:<slug>|all>"; never the reason.
+AUTONOMY_STOP = "autonomy.stop"
+AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a
