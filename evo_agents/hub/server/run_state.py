@@ -569,6 +569,11 @@ async def record_move(
 
         await task_run_ended(conn, run_id, new)
         return None
+    if found.kind == "question":  # it writes no step: its plugin gets the event agent.answer when it ends
+        from evo_agents.hub.server.question_dispatch import question_run_ended  # it queues runs through the routes too
+
+        await question_run_ended(conn, run_id, new)
+        return None
     if found.kind == "release":  # it writes no step: its end moves its release cycle on
         from evo_agents.hub.server.release_claims import release_run_moved  # it reads runs through the routes too
 
@@ -881,8 +886,8 @@ async def recover_runs(
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
     whose lease ran out ends as ``end_held`` says, a run that waited ``decision_wait`` for an answer is parked and one
-    parked for ``parked_for`` cancelled, each in a transaction of its own, and a queued run pinned to a revoked worker
-    fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    parked for ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
+    ``question_runs.QUEUE_SECONDS`` fails (no_worker), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -927,6 +932,9 @@ async def recover_runs(
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 
     await local_runs.end_silent(engine, batch)  # a local run no worker holds: it is neither lost nor parked
+    from evo_agents.hub.server import question_dispatch  # it moves runs through this module
+
+    await question_dispatch.expire_queued(engine, batch, ended)  # a question run no worker claimed in time
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)
