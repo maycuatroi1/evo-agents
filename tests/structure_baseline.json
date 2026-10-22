@@ -6,7 +6,7 @@
     "evo_agents/hub/server/changes.py": 1560,
     "evo_agents/hub/server/curator.py": 1330,
     "evo_agents/worker/cli.py": 1087,
-    "evo_agents/worker/interactive.py": 1376
+    "evo_agents/worker/interactive.py": 1334
   },
   "functions": {
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 16},
