@@ -162,11 +162,13 @@ Every run goes through a run kind the hub already has:
 | `deliver` | a plan run of the plan the build's author run wrote, on worker `loop.worker`, over the repos of its steps not done | the worker's owner |
 
 The owner of `loop.worker` must hold writer on the project. The author and plan runs are dispatched with a machine
-credential and the project's default agent profile, linked to the frame task, and audited as `loop.dispatch`. A
-worker that cannot take the run, or a plan that cannot run, leaves the work item queued with `worker` and the hub's
-why. An author run in Loop mode is ended by the hub once its plan is on the hub and its turn left no decision open;
-one that asks a question waits for its owner as any author run does (`author_question`). The merge requests of a plan
-run go through the merge queue (`docs/merge-queue.md`) as any plan run's do: the Loop merges nothing itself.
+credential and the project's default agent profile, linked to the frame task, and audited as `loop.dispatch`. A worker
+that cannot take the run, a harness for which no project of the worker's owner lists an origin (the worker's preflight
+would fail the author run), or a plan that cannot run (a repo of its steps the project lists no origin for, among
+others) leaves the work item queued with `worker` and the hub's why. An author run in Loop mode is ended by the hub once
+its plan is on the hub and its turn left no decision open; one that asks a question waits for its owner as any author
+run does (`author_question`). The merge requests of a plan run go through the merge queue (`docs/merge-queue.md`) as any
+plan run's do: the Loop merges nothing itself.
 
 ## Waiting for a person, triage and the breaker
 
@@ -204,7 +206,8 @@ People decide the direction of the project at three gates, gathered on its decis
    zone, to the admins and goal owners), and each active goal past its deadline. An admin writes a goal.
 2. **Canvas**: each baseline still proposed with an item to decide (a change of status, a status the value check
    proposed, a test card past its deadline), and each open proposal of a claim (a brainstorm's, the value check's, the
-   Curator's lens `product`).
+   Curator's lens `product`). A writer who did not propose an item of a baseline decides it, any writer once the
+   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines).
 3. **Policy**: each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose breaker
    tripped, and the Loop's own breaker.
 

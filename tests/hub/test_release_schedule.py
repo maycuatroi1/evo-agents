@@ -31,7 +31,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import jobs, releases, runs, tables
 from evo_agents.hub.release_cli import CHECK_KEYS, STATUS_KEYS
-from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.app import create_app, loop_tick
 from evo_agents.hub.server.release_check import fire_release_schedules, release_pass
 from evo_agents.hub.server.release_github import ls_refs, parse_refs
 from evo_agents.hub.worker import queue
@@ -548,7 +548,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker"
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
-    assert handed == [{"release_pass": release_pass}]
+    assert handed == [{"release_pass": release_pass, "loop_tick": loop_tick}]
 
 
 # From the command line

@@ -28,7 +28,6 @@ from evo_agents.core_plugins.canvas import (
     BASELINE_CRON,
     BASELINE_DEFAULT,
     BASELINE_JOB,
-    MANIFEST,
     WEEKDAYS,
     baselines,
     notices,
@@ -37,13 +36,10 @@ from evo_agents.core_plugins.canvas import (
 from evo_agents.core_plugins.canvas.content import CanvasError
 from evo_agents.core_plugins.canvas.store import CanvasRow
 from evo_agents.hub import tables
-from evo_agents.hub.plugin_calls import CoreContext, enabled_in
-from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.plugins import config as plugin_config
+from evo_agents.hub.plugin_calls import CoreContext
 
 log = logging.getLogger(__name__)
 
-PLUGIN = MANIFEST["id"]  # acting.PLUGIN, which this job does not import: it loads the server's agent types
 JOB = BASELINE_JOB
 CRON = BASELINE_CRON
 UTC_ZONE = "UTC"
@@ -69,18 +65,10 @@ class Due:
     due_at: datetime
 
 
-async def _stacks(conn: AsyncConnection, plugin_id: int, project_id: int):
-    return (await stored_stacks(conn, [plugin_id], project_id, None)).get(plugin_id, [])
-
-
 async def configured(conn: AsyncConnection, project_id: int) -> dict:
     """The config's ``baseline`` in project ``project_id``, as its layers set it; {} when canvas is not enabled."""
-    row = await enabled_in(conn, PLUGIN, project_id)
-    if row is None:
-        return {}
-    merged = plugin_config.merge(row.manifest.get("config"), await _stacks(conn, row.id, project_id))
-    found = merged.fields.get("baseline")
-    return dict(found.value) if found is not None and isinstance(found.value, dict) else {}
+    found = await baselines.config_value(conn, project_id, "baseline")
+    return dict(found) if isinstance(found, dict) else {}
 
 
 async def _known(conn: AsyncConnection, zone) -> bool:

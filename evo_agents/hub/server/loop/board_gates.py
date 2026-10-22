@@ -6,7 +6,7 @@ Quyết định): where a person decides the direction of the project.
   its deadline in the Loop's zone. An admin writes a goal.
 - gate 2, ``canvas``: each baseline of a canvas still proposed with an item to decide (a change of status, a status
   the value check proposed, a test card past its deadline to extend or retire), for the writers who changed none of
-  those claims; and each open proposal of a claim (a brainstorm's, the value check's, the Curator's lens product), for
+  those claims (any writer once the plugin canvas's self_approval is on); and each open proposal of a claim (a brainstorm's, the value check's, the Curator's lens product), for
   any writer. Both are read under their labels, as the plugin canvas reads them; an archived canvas has none.
 - gate 3, ``policy``: each pending proposal of @builder of kind policy or goal, each repo of the merge queue whose
   breaker tripped, and the Loop's own breaker tripped; an admin decides each.
@@ -32,6 +32,7 @@ from evo_agents.hub.server.loop.board_items import (
     item,
     line,
     project_path,
+    self_approval,
 )
 
 GOAL_REVIEW = "goal_review"  # runs.NOTICE_KINDS: loop.notices sends it
@@ -43,6 +44,7 @@ PENDING = "pending"  # tables_settings.PROPOSAL_STATES
 BUILDER_KINDS = {"policy": "policy_proposal", "goal": "goal_proposal"}  # of @builder's proposals, gate 3's
 TRIPPED = "tripped"  # merge_breaker.STATES, loop_states.breaker
 SOURCES = {"hub": "the value check", "agent": "an agent", "person": "a member"}  # tables_canvas.ACTORS, run aside
+CANVAS = "canvas"  # the core plugin whose config says self_approval
 
 
 def _plural(number: int, word: str) -> str:
@@ -122,8 +124,9 @@ async def _baselines(conn: AsyncConnection, reading: Reading, crowd: People) -> 
     query = select(i.c.baseline_id, i.c.kind, i.c.proposers).where(
         i.c.baseline_id.in_([row.id for row in rows]), i.c.decision.is_(None), i.c.kind.in_(DECIDED_ITEMS)
     )
+    anyone = await self_approval(conn, CANVAS, reading.project_id)  # a proposer may decide the item too
     for baseline_id, kind, proposers in await conn.execute(query):
-        waiting[baseline_id].append((kind, proposers or []))
+        waiting[baseline_id].append((kind, [] if anyone else proposers or []))
     found = []
     for row in rows:
         asks = waiting.get(row.id)
