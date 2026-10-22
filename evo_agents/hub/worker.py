@@ -11,6 +11,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 
 - ``hub.ping``: waits a few seconds and returns; deferring it shows that a worker takes jobs.
 - ``hub.cleanup_uploads``, hourly: objects under ``uploads/`` and ``blob_uploads`` rows older than STALE_AFTER.
+- ``hub.expire_seats``, hourly: the org seats past their end date or that of a cohort holding them are ended, audited
+  with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
+  and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
 - ``hub.prune_jobs``, daily: finished jobs older than JOB_RETENTION, failed ones included.
 - ``hub.kg_build``: one build of a project's knowledge graph (``evo_agents.hub.kg_build``), deferred by the api
   under the project's kg lock.
@@ -212,6 +215,15 @@ async def prune_audit(engine: AsyncEngine, days: int) -> dict:
 async def cleanup_uploads(context: JobContext, timestamp: int | None = None) -> dict:
     found = hub(context)
     return await remove_stale_uploads(found.blobs, found.engine)
+
+
+@queue.periodic(cron="5 * * * *")
+@queue.task(name=jobs.EXPIRE_SEATS, pass_context=True, queueing_lock=jobs.EXPIRE_SEATS)
+async def expire_seats(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.server.run_state import expire_seats as expire
+
+    found = hub(context)
+    return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
 @queue.task(name=jobs.KG_BUILD, pass_context=True)

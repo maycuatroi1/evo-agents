@@ -42,6 +42,7 @@ from evo_agents.hub import (
     tables_loop,
     tables_memory_agents,
     tables_merge,
+    tables_org,
     tables_outputs,
     tables_plugin_notices,
     tables_plugins,
@@ -233,7 +234,7 @@ memory_revisions = Table(
     ForeignKeyConstraint(["memory_id"], ["memories.id"], ondelete="CASCADE", name="memory_revisions_memory_id_fkey"),
     PrimaryKeyConstraint("memory_id", "revision", name="memory_revisions_pkey"),
 )
-tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0099)
+tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0100)
 
 plans = Table(
     "plans",
@@ -910,7 +911,7 @@ proposals = Table(
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
-    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0101)
+    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0102)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
     ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),
@@ -978,6 +979,7 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
+org_units, org_seats, autonomy_ceilings = tables_org.org_tables(metadata)  # the org chart (0099)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

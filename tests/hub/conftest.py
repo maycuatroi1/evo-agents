@@ -39,19 +39,20 @@ def pg_server():
     assert stray is None, "a test migrated the database named by EVO_HUB_TEST_DSN instead of its own"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _drop_templates():
+    """At the end of the session, drop the templates its tests made (``pg.revision_template``), if they made any."""
+    yield
+    pg.drop_revision_templates()
+
+
 @pytest.fixture(scope="session")
 def hub_template(pg_server):
-    """A database at the head of the hub migrations, migrated once per pytest process (once per xdist worker), that
-    ``hub_db`` copies; dropped at the end of the session."""
-    from evo_agents.hub.migrate import migrate
-
-    db = pg.create_database()
-    try:
-        migrate(db.dsn)
-        pg.make_template(db)
-        yield db
-    finally:
-        pg.drop_database(db)
+    """A database at the head of the hub migrations, migrated once per pytest process (once per xdist worker), one
+    revision a transaction, that ``hub_db`` copies; dropped at the end of the session with every other template, also
+    where ``_drop_templates`` does not reach (tests/worker and tests/plugins import this fixture)."""
+    yield pg.revision_template("head")
+    pg.drop_revision_templates()
 
 
 @pytest.fixture
@@ -71,6 +72,14 @@ def hub_db(request, pg_server):
         pg.drop_database(db)
     if leaked:
         pytest.fail(f"{leaked} connection(s) to {db.name} still open after the test: a pool or connection leaked")
+
+
+@pytest.fixture
+def whole_chain(pg_server):
+    """For a test that migrates the whole chain in one transaction, as ``migrate`` does from an empty database: it
+    waits until no other test on the server does, and holds the turn until it ends (``pg.one_whole_chain``)."""
+    with pg.one_whole_chain():
+        yield
 
 
 @pytest.fixture

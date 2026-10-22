@@ -38,6 +38,7 @@ import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
+import { dayFromNow, seatByApi, seatOf, unitByApi } from "./support/org";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import {
   askDecision,
@@ -831,6 +832,25 @@ const PAGES: Entry[] = [
       await page.setViewportSize({ width: 375, height: 812 });
       await page.goto("/secrets");
       await expect(page.locator("#main").getByTestId("secrets-table")).toBeVisible();
+    },
+  },
+  {
+    name: "org chart read by a member, a seat ending soon",
+    open: async ({ page, me }) => {
+      const slug = await unitByApi("a11y-org");
+      await seatByApi({ unit: slug, role: "member", login: me.login, ends_on: dayFromNow(2) });
+      await page.goto("/org");
+      await expect(seatOf(page, me.login, slug).getByTestId("org-seat-ends-soon")).toBeVisible();
+    },
+  },
+  {
+    name: "org chart on a small screen",
+    open: async ({ page, me }) => {
+      const slug = await unitByApi("a11y-org");
+      await seatByApi({ unit: slug, role: "member", login: me.login });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto("/org");
+      await expect(seatOf(page, me.login, slug)).toBeVisible();
     },
   },
   {
@@ -2018,6 +2038,20 @@ const PAGES: Entry[] = [
 
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
 const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
+    open: async (page) => {
+      const slug = await unitByApi("a11y-org");
+      await page.goto("/org");
+      await expect(page.locator("#main").getByTestId("org-unplaced")).toBeVisible();
+      await expectNoSeriousViolations(page, "org chart as a hub admin");
+      await page.locator("#main").locator(`[data-testid="org-unit"][data-slug="${slug}"] > div`).first().getByTestId("org-unit-menu").click();
+      await page.getByTestId("org-action-add-seat").click();
+      const dialog = page.getByTestId("org-seat-dialog");
+      await dialog.getByTestId("org-seat-dialog-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("org-seat-login")).toHaveAttribute("aria-invalid", "true");
+    },
+  },
   {
     name: "admin diagnostics",
     open: async (page) => {

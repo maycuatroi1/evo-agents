@@ -1,7 +1,7 @@
 """The upkeep of agents' memories: when one was last opened, archived, or found stale.
 
-Revision ID: 0100
-Revises: 0099
+Revision ID: 0101
+Revises: 0100
 Create Date: 2026-10-22
 
 memories takes three timestamps, all NULL for every memory there is (plan agent-profile-workspace, criterion a3):
@@ -18,8 +18,8 @@ Going back drops the three columns.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0100"
-down_revision = "0099"
+revision = "0101"
+down_revision = "0100"
 branch_labels = None
 depends_on = None
 
