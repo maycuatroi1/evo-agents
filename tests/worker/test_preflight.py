@@ -31,7 +31,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.hub import author
+from evo_agents.hub import author, runs
 from evo_agents.hub.judge import programs
 from evo_agents.worker import preflight
 from evo_agents.worker.runner import access, parallel
@@ -55,6 +55,9 @@ from tests.worker.test_plan_runs import (
 )
 
 MISSING = "no-such-tool-7f3a"  # a program no PATH has
+# The verify behind runs 42-45 of 2026-10-15: a check, then the plan author's notes in Vietnamese, which the shell
+# would read as the programs thủ and hai.
+PROSE = "test -f a.txt && (kiểm tra thủ công) && (hai run)"
 RUN_9 = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
 
 
@@ -90,6 +93,19 @@ RUN_9 = "fatal: could not read Username for 'https://github.com': terminal promp
 )
 def test_preflight_reads_the_programs_a_verify_command_calls(command, found):
     assert programs(command) == found
+
+
+def test_preflight_takes_the_verify_of_each_open_step_once_with_its_key():
+    body = {
+        "steps": [
+            {"id": 1, "verify": "make a", "status": "done"},
+            {"id": 4, "verify": " make b ", "status": "pending"},
+            {"order": 7, "verify": "make b"},
+            {"verify": "make c", "status": "in_progress"},
+            {"id": "x"},
+        ]
+    }
+    assert runs.open_verify(body) == [("4", "make b"), ("3", "make c")]
 
 
 def test_preflight_looks_for_each_program_on_the_runs_path(tmp_path):
@@ -171,11 +187,12 @@ def test_preflight_a_step_run_whose_verify_calls_a_missing_tool_fails_before_its
     run = stopped(hub, run_id, machine)
     assert run["failure_cause"] == "missing_tool"
     assert run["error"] == (
-        f"preflight: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}, which is not on "
-        "this worker's PATH; the agent did not start"
+        f"preflight: step 1: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}, which is not "
+        "on this worker's PATH; the agent did not start"
     )
     texts = hub.texts(run_id)
-    assert f"Preflight: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}" in " ".join(texts)
+    said = f"Preflight: step 1: verify command `test -f a.txt && {MISSING} --check a.txt` calls {MISSING}"
+    assert said in " ".join(texts)
     assert machine.origin_rev("alpha", "refs/heads/feat/alpha") is None, "nothing was pushed"
 
 
@@ -198,9 +215,29 @@ def test_preflight_a_plan_run_names_every_repo_without_origin_and_every_missing_
     assert run["failure_cause"] == "origin", "the cause of the first problem"
     error = run["error"]
     assert error.startswith("preflight: project demo lists no origin for beta, so no credential is leased for it")
-    assert f"verify command `{MISSING} lint && git status` calls {MISSING}" in error
+    assert f"step 2: verify command `{MISSING} lint && git status` calls {MISSING}" in error
     notes = [event["body"] for event in hub.runs[run_id]["events"] if event["kind"] == "system"]
     assert [note.get("cause") for note in notes if note["text"].startswith("Preflight: ")] == ["origin", "missing_tool"]
+
+
+def test_preflight_a_plan_run_names_the_step_whose_verify_is_not_a_command(machine):  # noqa: F811
+    body = plan_body()
+    body["steps"][1]["id"] = 4
+    body["steps"][1]["verify"] = PROSE
+    found = {}
+
+    async def run_it(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(body))
+        assert await hub.wait_state(run_id, "done", "failed") == "failed", hub.texts(run_id)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, run_it, plan=body)
+    hub, run_id = found["hub"], found["run"]
+    run = stopped(hub, run_id, machine)
+    assert run["failure_cause"] == "missing_tool"
+    assert run["error"].startswith("preflight: step 4: verify command `")
+    assert "is not runnable as a shell command" in run["error"] and "PATH" not in run["error"]
 
 
 def test_preflight_a_review_run_of_a_repo_without_origin_fails_with_that_cause(machine):  # noqa: F811
