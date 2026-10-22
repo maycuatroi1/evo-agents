@@ -126,6 +126,7 @@ describe("AppSidebar", () => {
       "nav-kg",
       "nav-plugins",
       "nav-chats",
+      "nav-org",
       "nav-workers",
       "nav-secrets",
       "nav-accounts",

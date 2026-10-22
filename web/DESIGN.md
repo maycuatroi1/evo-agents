@@ -246,6 +246,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A plan's steps as Board, List, Graph | `Columns3`, `LayoutList`, `Waypoints` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
+| Org chart; New unit, Add seat, Edit, Set ceiling, End seat, Archive unit; a unit's row that opens | `Building2`; `FolderPlus`, `UserPlus`, `Pencil`, `SlidersHorizontal`, `UserMinus`, `Archive`; `ChevronRight` |
+| A seat's primary mark, an agent's seat, a seat that ends within 7 days, a person's runs at work | `Star`, `Bot`, `Hourglass`, `Activity` |
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
 | Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
 | The usage limits of an account | `Gauge` |
