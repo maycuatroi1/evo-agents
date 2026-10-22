@@ -118,6 +118,7 @@ TABLES |= pg.GOAL_TABLES  # migration 0091
 TABLES |= pg.LOOP_TABLES  # migration 0093
 TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
+TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0099
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -192,8 +193,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_tables(hub_db):
-    assert len(TABLES) == 140  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_forty_one_tables(hub_db):
+    assert len(TABLES) == 141  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -2598,3 +2599,74 @@ def test_constraints_accept_good_rows(schema):
     # a memory's history goes with it
     schema.execute(delete(memories).where(memories.c.id == ids["memory"]))
     assert one(schema, select(func.count()).select_from(t.memory_revisions)) == 0
+
+
+def test_0099_keeps_the_questions_of_core_plugins_and_question_runs_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0098")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="northwind", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+        profile_id = one(conn, _profile_row(ids, "helpdesk", {axis: {"mode": "all"} for axis in axes}))
+        agent_types = t.project_agent_types
+        row = {"project_id": ids["project"], "plugin_id": plugin_id, "name": "helpdesk", "profile_id": profile_id}
+        row |= {"run_as": ids["user"], "daily_usd": 5.0, "enabled_by": ids["user"]}
+        type_id = one(conn, insert(agent_types).values(row).returning(agent_types.c.id))
+        task = one(conn, _task_run(ids, type_id))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "agent.answer", "contribution": "a"}
+        delivery["payload"] = {"question_id": 1}
+        with pytest.raises(errors.CheckViolation):  # no run of kind question before 0099
+            conn.execute(_task_run(ids, type_id, kind="question", branch=None, pulls=null(), repos=null()))
+        with pytest.raises(errors.CheckViolation):  # and no event agent.answer
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    move_to(hub_db, "0099")
+    q = t.agent_questions
+    asked = {"plugin_id": plugin_id, "project_id": ids["project"], "agent_type_id": type_id}
+    asked |= {"asker": "Ana", "cleared": {"level": "internal", "location": None, "below": False}}
+    with live.connect(hub_db) as conn:
+        question = _task_run(ids, type_id, kind="question", branch=None, pulls=null(), repos=[{"repo": "app"}])
+        run_id = one(conn, question)
+        other = one(conn, _task_run(ids, type_id, kind="question", branch=None, pulls=null(), repos=null()))
+        first = one(conn, insert(q).values({**asked, "run_id": run_id, "ref": "m-1"}).returning(q.c.id))
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+        for bad in (
+            _task_run(ids, None, kind="question", branch=None, pulls=null()),  # a question run names its agent type
+            _task_run(ids, type_id, kind="question", request=None, branch=None, pulls=null()),  # and its question
+            insert(q).values({**asked, "run_id": other, "ref": "two\nlines"}),
+            insert(q).values({**asked, "run_id": other, "ref": "m-2", "asker": "a" * 201}),
+            insert(q).values({**asked, "run_id": other, "ref": "m-2", "cleared": ["internal"]}),
+            insert(q).values({**asked, "run_id": other, "ref": "m-2", "outcome": "lost", "answered_at": func.now()}),
+            insert(q).values({**asked, "run_id": other, "ref": "m-2", "outcome": "done"}),  # answered_at with it
+            insert(q).values({**asked, "run_id": other, "ref": "m-2", "answer": "yes"}),  # an answer only when done
+            insert(q).values(
+                {
+                    **asked,
+                    "run_id": other,
+                    "ref": "m-2",
+                    "outcome": "done",
+                    "answered_at": func.now(),
+                    "answer": "x" * 8001,
+                }
+            ),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        with pytest.raises(errors.UniqueViolation):  # a ref once per plugin and project
+            conn.execute(insert(q).values({**asked, "run_id": other, "ref": "m-1"}))
+        with pytest.raises(errors.UniqueViolation):  # a run answers one question
+            conn.execute(insert(q).values({**asked, "run_id": run_id, "ref": "m-3"}))
+        done = {"outcome": "done", "answer": "Settings, then Security.", "answered_at": func.now(), "label": {}}
+        conn.execute(update(q).where(q.c.id == first).values(done))
+    assert query(hub_db, select(q.c.outcome, q.c.answer)) == [("done", "Settings, then Security.")]
+
+    # Going back drops the questions and deletes the question runs and the deliveries of agent.answer; the rest stays.
+    move_to(hub_db, "0098", down=True)
+    assert "agent_questions" not in tables(hub_db)
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind)) == [(task, "task")]
+    assert query(hub_db, select(func.count()).select_from(t.plugin_deliveries)) == [(0,)]
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # the checks of schema 0098 are back
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0099") :]

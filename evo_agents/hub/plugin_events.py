@@ -9,8 +9,10 @@ the plugin of the run's agent type alone (``evo_agents.hub.task_runs``), a rev o
 approved baseline of one (``canvas.claim``, ``canvas.baseline``, with ``canvas:read``; the core plugin canvas emits
 them), a batch of signals (``signal.posted``, with ``signals:read``; ``evo_agents.hub.signals``), an approved version of
 an SRS document (``srs.version.approved``, with ``srs:read``; the core plugin srs emits it), and a task's status set or
-changed (``tasks.status``, with ``tasks:read``; ``evo_agents.hub.task_status``). A core plugin takes the end of its own
-task runs without that grant, as it hands them without one (``task_dispatch.hand_own_task``), and the events of its
+changed (``tasks.status``, with ``tasks:read``; ``evo_agents.hub.task_status``), and the end of a question a core plugin
+asked an agent type of its own (``agent.answer``, which ``emit`` stores for that plugin alone;
+``evo_agents.hub.question_runs``). A core plugin takes the end of its own task runs and questions without a grant, as
+it hands them without one (``task_dispatch.hand_own_task``, ``core_plugin_api.ask_agent_type``), and the events of its
 own (``OWN``) likewise: the image trusts it. An events contribution takes the kinds its ``on`` names, or every kind
 when it names none. The same call writes an event of the last five kinds into the hub's own table hub_events too,
 which the Loop reads by cursor (``evo_agents.hub.hub_events``), whether a plugin takes it or not. The table
@@ -24,7 +26,10 @@ sends Telegram's.
 A payload carries ids and states, never a text the project's labels may keep from a plugin: a run's id, kind and
 states, a message's ids, a step's id and statuses, a task's ids, state, branch and pull requests, a notification's
 kind, member and link with the words a restricted project's Telegram message carries (``telegram.what_waits``). A
-plugin that needs more asks the hub with its token, under its grant.
+plugin that needs more asks the hub with its token, under its grant. ``agent.answer`` is the one exception, made on
+purpose: it carries the answer's text, to the core plugin that asked alone, which the image trusts, once the hub
+checked that the project is not kept from the place the answer goes (``core_plugin_api.restricted``); delivering it
+checks that again (``_answer_payload``), and a project kept from it by then gets the state refused and no text.
 
 ``deliver`` is the job hub.deliver_plugin_events, every minute. It takes the pending deliveries that are due, each in
 a transaction of its own with ``FOR UPDATE SKIP LOCKED``, checks again that the plugin is installed, turned on,
@@ -44,7 +49,7 @@ from datetime import timedelta
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import hub_events, tables
+from evo_agents.hub import access, hub_events, tables, telegram
 from evo_agents.hub.plugin_calls import (
     CoreContext,
     PluginCallError,
@@ -54,6 +59,7 @@ from evo_agents.hub.plugin_calls import (
     call,
     enabled_plugins,
 )
+from evo_agents.hub.question_runs import ANSWER_EVENT as ANSWER
 from evo_agents.hub.telegram import what_waits
 from evo_agents.plugins.protocol import EVENT_KINDS
 
@@ -67,6 +73,7 @@ PERMISSION = {
     "chat.message": "chats:read",
     "plan.step": "plans:read",
     "task.result": "runs:dispatch",
+    "agent.answer": "runs:dispatch",  # only a core plugin asks, and takes it ungranted
     hub_events.CLAIM: "canvas:read",
     hub_events.BASELINE: "canvas:read",
     hub_events.SIGNALS: "signals:read",
@@ -97,9 +104,9 @@ def subscriptions(manifest: dict, tier: str, kind: str) -> list[str]:
 
 def _granted(manifest: dict, permissions, kind: str, tier: str | None) -> bool:
     """Whether a plugin of ``tier`` whose project grants it ``permissions`` reads events of ``kind``: a core plugin
-    reads the end of its own task runs (``task.result`` goes to the plugin of the run's agent type alone) and the
-    events of ``OWN`` that are its own ungranted."""
-    if tier == "core" and (kind == "task.result" or OWN.get(kind) == manifest.get("id")):
+    reads the end of its own task runs and questions (``task.result`` and ``agent.answer`` go to the plugin of the
+    run's agent type alone) and the events of ``OWN`` that are its own ungranted."""
+    if tier == "core" and (kind in ("task.result", ANSWER) or OWN.get(kind) == manifest.get("id")):
         return True
     needed = PERMISSION[kind]
     return needed in (permissions or []) and needed in asked_for(manifest)
@@ -264,12 +271,35 @@ def _refusal(row) -> str | None:
     return None
 
 
-def _params(row) -> tuple[str, dict]:
+def _params(row, payload: dict) -> tuple[str, dict]:
     if row.kind == NOTIFICATION:
-        params = {"channel": row.contribution, "project": row.project, "notification": row.payload}
+        params = {"channel": row.contribution, "project": row.project, "notification": payload}
         return "channels", {**params, "delivery": row.id}
-    params = {"event": row.contribution, "project": row.project, "payload": row.payload, "kind": row.kind}
+    params = {"event": row.contribution, "project": row.project, "payload": payload, "kind": row.kind}
     return "events", {**params, "delivery": row.id}
+
+
+async def _answer_payload(conn: AsyncConnection, row) -> dict:
+    """The payload of delivery ``row`` as it goes now: an ``agent.answer`` with a text, the state refused and no text
+    when the project is kept now from the clearance its question named (``telegram.restricted_for``, failing closed:
+    a question gone, or a clearance it cannot read, is kept)."""
+    payload = row.payload
+    if row.kind != ANSWER or not isinstance(payload, dict) or payload.get("text") is None:
+        return payload
+    q, p, ps = tables.agent_questions, tables.projects, tables.project_sinks
+    hub_sink = (ps.c.project_id == p.c.id) & (ps.c.kind == access.HUB_KIND)
+    query = (
+        select(q.c.cleared, p.c.levels, p.c.locations, ps.c.clearance)
+        .select_from(q.join(p, p.c.id == q.c.project_id).outerjoin(ps, hub_sink))
+        .where(q.c.id == payload.get("question_id"), q.c.project_id == row.project_id)
+    )
+    found = (await conn.execute(query)).one_or_none()
+    cleared = found.cleared if found is not None and isinstance(found.cleared, dict) else None
+    if cleared is not None and isinstance(cleared.get("level"), str):
+        level, location, below = cleared["level"], cleared.get("location"), cleared.get("below") is True
+        if not telegram.restricted_for(found.clearance, found.levels, found.locations, level, location, below=below):
+            return payload
+    return {**payload, "state": "refused", "text": None}
 
 
 async def _deliver_one(conn: AsyncConnection, delivery_id: int, engine, config, host) -> str | None:
@@ -281,7 +311,7 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, engine, config, 
         await conn.execute(_set(delivery_id, state="failed", attempts=row.attempts + 1, last_error=refused))
         log.info("plugin delivery refused", extra={"delivery_id": delivery_id, "why": refused})
         return "failed"
-    point, params = _params(row)
+    point, params = _params(row, await _answer_payload(conn, row))
     item = next(item for item in row.manifest["contributes"][point] if item["name"] == row.contribution)
     context = CoreContext(row.name, engine, config, row.project, row.project_id)
     try:
