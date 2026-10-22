@@ -203,6 +203,20 @@ def test_decisions_page_of_a_project_with_the_loop_off_still_has_its_gates_and_n
     assert sent(client, db_now(hub_db).replace(day=1)) == {}, "the Loop's notices go to a project whose Loop is on"
 
 
+def test_decisions_page_lists_the_proposer_of_a_baseline_among_its_deciders_once_self_approval_is_on(
+    client, hub, hub_db
+):
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
+    assert client.post(BASELINES, json={"claim": "CL-1"}, headers=hub["chi"]).status_code == 201
+    (baseline,) = of_kind(board(client, hub["chi"]), "baseline")
+    assert baseline["deciders"] == sorted([OWNER, OTHER]), "off by default: chi changed CL-1 and opened its baseline"
+    config = f"/v1/projects/{PROJECT}/plugins/canvas/config"
+    written = client.post(config, json={"values": {"self_approval": True}}, headers=hub["owner"])
+    assert written.status_code == 200, written.text
+    (baseline,) = of_kind(board(client, hub["reader"]), "baseline")
+    assert (baseline["decided_by"], baseline["deciders"]) == ("writer", sorted([CHI, OWNER, OTHER]))
+
+
 # What the Loop's chain waits on
 
 

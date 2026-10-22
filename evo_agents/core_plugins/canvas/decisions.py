@@ -2,8 +2,10 @@
 
 Who decides. A writer of the project, never the agent of a run (its routes refuse a run's token, and no tool of
 @strategist decides), and never one of the item's ``proposers``: a member who changed the claim's status since the
-status in effect, or accepted the proposal that did, or opened the baseline at once; an admin is no exception. What the
-value check or an overdue test card asks, the hub proposed: any other writer decides it. An item is decided once.
+status in effect, or accepted the proposal that did, or opened the baseline at once; an admin is no exception. With the
+config's ``self_approval`` on, that last rule alone goes: a proposer decides the item as any writer does, and the item
+records who decided it either way. What the value check or an overdue test card asks, the hub proposed: any other
+writer decides it. An item is decided once.
 
 What each decision does, in the transaction that records it:
 
@@ -54,7 +56,9 @@ def _why(row: BaselineRow, item: ItemRow, decision: Decision) -> str:
     return f"{said}: {decision.reason}"[:MAX_REASON_CHARS] if decision.reason else said
 
 
-def _check(writer: writes.Writer, row: BaselineRow, item: ItemRow, decision: Decision, today: date) -> None:
+def _check(
+    writer: writes.Writer, row: BaselineRow, item: ItemRow, decision: Decision, today: date, self_approval: bool
+) -> None:
     if row.status != "proposed":
         raise CanvasError(409, f"baseline {row.number} is {row.status}: it takes no decision")
     if decision.decision not in DECIDES[item.kind]:
@@ -62,7 +66,7 @@ def _check(writer: writes.Writer, row: BaselineRow, item: ItemRow, decision: Dec
         raise CanvasError(422, f"the item of {item.code} is {item.kind}; its decisions are {allowed}")
     if item.decision is not None:
         raise CanvasError(409, f"the item of {item.code} in baseline {row.number} was {item.decision} already")
-    if writer.author.user_id in item.proposers:
+    if writer.author.user_id in item.barred(self_approval):
         raise CanvasError(
             403,
             f"you changed the status of {item.code} since the status in effect, accepted the proposal that did, or "
@@ -154,7 +158,7 @@ async def decide(
     item = held.get(number_of(decision.claim))
     if item is None:
         raise CanvasError(404, f"baseline {row.number} of canvas {canvas.slug} holds no item of {decision.claim}")
-    _check(writer, row, item, decision, today)
+    _check(writer, row, item, decision, today, await baselines.self_approval(conn, writer.access.project_id))
     rev = await _apply(conn, writer, canvas, row, item, decision)
     i = tables.canvas.baseline_items
     values = {

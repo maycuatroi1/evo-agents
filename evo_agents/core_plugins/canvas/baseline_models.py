@@ -40,7 +40,10 @@ class CanvasBaselineItem(BaseModel):
     deadline: date | None = Field(description="the deadline an overdue test card passed")
     evidence: list[CanvasEvidence] = Field(description="the claim's evidence the caller may read, as it is now")
     hidden_evidence: int = Field(description="pieces of its evidence above what the caller may read")
-    proposers: list[str] = Field(description="the members who may not decide it: they changed the status, or opened it")
+    proposers: list[str] = Field(
+        description="the members who may not decide it: they changed the status, or opened it; none while the "
+        "plugin's config turns self_approval on"
+    )
     decision: Literal[DECISIONS] | None
     decided_by: str | None
     decided_at: datetime | None
@@ -121,8 +124,14 @@ def summary_values(row: BaselineRow, found: list[ItemRow]) -> dict:
 
 
 def item_model(
-    item: ItemRow, evidence: list[EvidenceRow], hidden: int, names: dict[int, str], decisions: list[str]
+    item: ItemRow,
+    evidence: list[EvidenceRow],
+    hidden: int,
+    names: dict[int, str],
+    decisions: list[str],
+    barred: list[int],
 ) -> CanvasBaselineItem:
+    """``item`` as the API gives it, ``barred`` the members who may not decide it (``ItemRow.barred``)."""
     return CanvasBaselineItem(
         claim=item.code,
         kind=item.kind,
@@ -134,7 +143,7 @@ def item_model(
         deadline=item.deadline,
         evidence=[evidence_model(piece) for piece in evidence],
         hidden_evidence=hidden,
-        proposers=[names.get(user_id, str(user_id)) for user_id in item.proposers],
+        proposers=[names.get(user_id, str(user_id)) for user_id in barred],
         decision=item.decision,
         decided_by=item.decided_by,
         decided_at=item.decided_at,
