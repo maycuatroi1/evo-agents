@@ -348,3 +348,10 @@ def test_merge_gate_a_hold_at_gate_3_is_for_a_person_and_an_admin_may_pass_it():
     assert "This hold is for a person" in passable and "evo-agents hub merge pass" in passable
     assert merge_gate.comment(red).endswith("The hub gates it again after a new push.")
     assert "admin" not in merge_gate.comment(red)
+
+
+def test_merge_gate_a_merge_request_that_left_the_queue_keeps_what_gitlab_said_of_it():
+    assert merge_gate.closed_detail("merged", "c" * 40, HEAD) == {"gitlab": "merged", "merge_commit_sha": "c" * 40}
+    assert merge_gate.closed_detail("merged", None, HEAD) == {"gitlab": "merged", "merge_commit_sha": HEAD}
+    assert merge_gate.closed_detail("closed", None, HEAD) == {"gitlab": "closed"}
+    assert merge_gate.closed_detail("opened", None, HEAD) == {} and merge_gate.closed_detail(None, None, None) == {}

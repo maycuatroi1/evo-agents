@@ -84,7 +84,7 @@ the Loop reads them from their tables when it reconciles a work item, so it need
 | 7 | the frame task is ready (the clock) | group todo, the split run ended, in an active sprint when `loop.require_sprint` | the `build` queued | |
 | 8 | a frame task of the chain closed | before a run was handed out for it | its `build` cancelled (`task_closed`) | |
 | 9 | the `build`'s author run wrote a plan and ended (the clock) | | the `build` done; a `deliver` of that plan | `deliver:<plan id>` |
-| 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, or `merged` where the repo names no check job), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
+| 10 | the plan's merge requests in the merge queue (the clock) | each one through (`done`, `merged` where the repo names no check job, or `closed` because a person merged it on GitLab, as the queue's ledger says), each repo the queue does not merge marked merged in the plan | the `deliver` done; the release noted in the chain | |
 | 11 | a merge request of the chain reverted | | a failure of the `deliver` | |
 | 12 | `tasks.status`, `canvas.claim`, `signal.posted`, any other version approved | | nothing; the canvas's value check runs on signals by itself | |
 | 13 | a test card past its deadline | | nothing; the canvas's baseline asks to extend or retire it | |

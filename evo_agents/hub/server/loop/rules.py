@@ -28,8 +28,9 @@ or retired (row 4), or its frame task closed before a run was handed out for it 
 ``loop.stable_hours`` to queued; a ``build`` from its frame task's approval to the task, then to queued once the task
 is ready (group todo, the split run ended, in an active sprint when ``loop.require_sprint``; row 7); a ``build``
 whose author run wrote a plan and ended to done, with a ``deliver`` of that plan (row 9); a ``deliver`` whose merge
-requests are all through to done (row 10), one reverted a failure (row 11), and one whose repos the queue does not
-merge to a person (``merge_manual``) until the plan marks them merged. A run a person cancelled cancels its work item.
+requests are all through to done (row 10; one a person merged on GitLab, which the queue closed, is through), one
+reverted a failure (row 11), and one whose repos the queue does not merge to a person (``merge_manual``) until the
+plan marks them merged. A run a person cancelled cancels its work item.
 Test cards past their deadline make nothing (row 13): the canvas's baseline asks about them.
 
 A work item waits for a person (``waiting_human``), and fails nothing, while its run's agent waits for its owner (an
@@ -83,6 +84,7 @@ from evo_agents.hub.server.loop.model import (
     Effect,
     Event,
     ItemView,
+    MergeView,
     Note,
     RunView,
     Transition,
@@ -417,9 +419,16 @@ def _released(item: ItemView, merges: tuple) -> Transition:
     return Transition(item.id, DONE, DONE_EVENT, detail={"after_sha": shas, "released_at": released})
 
 
+def _through(merge: MergeView) -> bool:
+    """Whether a merge request of the queue is through: what follows its merge is over, or it merged where its repo
+    names no check job, or a person merged it on GitLab and the queue closed it (``outside``)."""
+    return merge.state == MERGE_FINAL or (merge.state == MERGED and not merge.checked) or merge.outside
+
+
 def _merged(item: ItemView, view: View) -> Transition | None:
-    """Rows 10 and 11: each merge request of the plan through the queue, and each repo the queue does not merge marked
-    merged in the plan, is the deliver done; a revert is a failure; one blocked or paused waits for a person."""
+    """Rows 10 and 11: each merge request of the plan through the queue (or merged by a person on GitLab), and each
+    repo the queue does not merge marked merged in the plan, is the deliver done; a revert is a failure; one blocked or
+    paused waits for a person."""
     merges = view.merges.get(item.plan_id or "", ())
     reverted = [merge.id for merge in merges if merge.state == REVERTED]
     if reverted:
@@ -427,7 +436,7 @@ def _merged(item: ItemView, view: View) -> Transition | None:
     repos = [repo for repo in item.detail.get("repos") or [] if isinstance(repo, str)]
     by_hand = [repo for repo in repos if repo in view.manual]
     queued = [repo for repo in repos if repo not in view.manual]
-    through = bool(merges) and all(m.state == MERGE_FINAL or (m.state == MERGED and not m.checked) for m in merges)
+    through = bool(merges) and all(_through(merge) for merge in merges)
     hand_done = all(repo in view.released.get(item.plan_id or "", frozenset()) for repo in by_hand)
     if hand_done and (through or (repos and not queued)):
         return _released(item, merges)

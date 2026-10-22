@@ -138,6 +138,19 @@ def test_merge_pass_a_new_push_takes_the_pass_back(world):
     assert gate_pass(world) == {"judging": 1}
 
 
+def test_merge_pass_a_hold_a_person_merges_on_gitlab_leaves_the_queue_with_the_merge_in_its_ledger(world):
+    merge_request, entry = held_at_gate_3(world)
+    merge_request.state, merge_request.merge_commit_sha = "merged", sha_of("merged by hand on GitLab")
+    assert gate_pass(world) == {"closed": 1}
+    entry = one(world)
+    assert entry["state"] == "closed" and entry["reason"] == "it left the queue: it is merged on GitLab"
+    closed = entry["events"][0]
+    assert closed["kind"] == "closed" and closed["detail"] == {
+        "gitlab": "merged",
+        "merge_commit_sha": sha_of("merged by hand on GitLab"),
+    }
+
+
 def test_merge_pass_refuses_a_hold_no_person_passes(world):
     plan_done(world)
     gate_pass(world)

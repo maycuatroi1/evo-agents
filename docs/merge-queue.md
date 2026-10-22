@@ -129,7 +129,9 @@ from one of:
 - `revert`: the revert the hub opens of a merge that broke a check (After the merge, below).
 
 A draft waits. Anything else stays open for a person, untouched. A merge request leaves the queue when its repo goes
-back to `off`, when it goes out of scope, or when a person merges or closes it on GitLab.
+back to `off`, when it goes out of scope, or when a person merges or closes it on GitLab; the ledger's line `closed`
+then keeps what GitLab said of it (`gitlab`: `merged` or `closed`, and for a merge `merge_commit_sha`), and the Loop
+counts one a person merged as through (`docs/loop.md`, row 10).
 
 ## The gates
 

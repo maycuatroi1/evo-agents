@@ -284,6 +284,23 @@ def test_loop_rules_runs_end_a_build_with_its_plan_and_a_deliver_with_its_merge_
     assert RULES.reconcile(watching, view(merges={"northwind-reorder": (shop, reverted)})).failed
 
 
+def test_loop_rules_a_merge_request_a_person_merged_on_gitlab_counts_as_through():
+    """A merge request held at a gate that a person merges by hand on GitLab leaves the queue (closed); the deliver
+    counts it through when the queue's ledger says GitLab merged it, and waits on one closed without a merge."""
+    item = ItemView(800, "deliver", "deliver:northwind-reorder", "waiting_human", "merge_blocked", 1)
+    held = replace(item, plan_id="northwind-reorder", detail={"merges": [2]})
+    at = NOW - timedelta(minutes=5)
+    shop = MergeView(1, "northwind-shop", "done", "abc123", at, True)
+    by_hand = MergeView(2, "lumen.docs", "closed", "fed789", at, True, outside=True)
+    assert RULES.reconcile(held, view(merges={"northwind-reorder": (shop, by_hand)})) == Transition(
+        800, "done", "done", detail={"after_sha": ["abc123", "fed789"], "released_at": at.isoformat()}
+    )
+    closed = replace(by_hand, after_sha=None, merged_at=None, outside=False)  # closed on GitLab, never merged
+    assert RULES.reconcile(held, view(merges={"northwind-reorder": (shop, closed)})) == Transition(
+        800, "watching", "waiting", reason="merge_queue", detail={}
+    )
+
+
 def test_loop_rules_replaying_a_chain_returns_the_same_keys():
     """The engine is a function of the event and the view: the same chain gives the same work items, whose keys
     hold no id of a row of hub_events."""
