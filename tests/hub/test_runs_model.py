@@ -28,6 +28,7 @@ from evo_agents.hub.runs import (
     EVENT_KINDS,
     HELD_STATES,
     MAX_PROMPT_BYTES,
+    OUTPUTS_RULE,
     RUN_STATES,
     TERMINAL_STATES,
     TRANSITIONS,
@@ -94,6 +95,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "replay",
         "history",
         "release",
+        "question",
     )
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
@@ -359,7 +361,15 @@ def test_decisions_and_notices_the_plan_names():
         "canvas_baseline",
         "merge_paused",
         "release",
+        "pm_daily",
+        "pm_escalation",
+        "run_outputs",
+        "loop_paused",
+        "goal_review",
+        "loop_brief",
+        "plugin_notice",
     )
+    assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")
     assert runs.DELIVERY_STATES == ("pending", "delivered", "failed")
@@ -572,11 +582,13 @@ def step_prompts() -> dict[str, str]:
 
 
 def test_the_prompt_of_a_step_run_is_the_one_0_3_0_gave():
+    """Byte for byte, but for the one line added since: the rule of the run's outputs (``runs.OUTPUTS_RULE``)."""
     golden = json.loads(STEP_PROMPTS_030.read_text(encoding="utf-8"))
     made = step_prompts()
     assert set(made) == set(golden)
     for name, prompt in golden.items():
-        assert made[name] == prompt, name
+        assert made[name].count(OUTPUTS_RULE + "\n") == 1, name
+        assert made[name].replace(OUTPUTS_RULE + "\n", "", 1) == prompt, name
 
 
 # The prompt of a plan run
@@ -650,6 +662,8 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "`evo-agents worker plan`",
         "Checkpoint steps (a verification, a review, a merge, a deploy, a release) are yours too, with no question",
         "`evo-agents worker step KEY in_progress --repo REPO`",
+        "`evo-agents worker step KEY verify --repo REPO --verify COMMAND` runs it on its own",
+        "on exit 124 run it again, never a loop of sleep",
         "`evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND`",
         "refuses done when one exits other than 0",
         "Do not call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
@@ -757,6 +771,7 @@ def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff
     for text in (
         "Rules for this session:",
         f"`evo-agents worker step {key} in_progress --repo REPO`",
+        f"`evo-agents worker step {key} verify --repo REPO --verify COMMAND`",
         f"--recommended KEY --step {key}`",
         "  - scope: ",
         '"summary" says what you did of step',

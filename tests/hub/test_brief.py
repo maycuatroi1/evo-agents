@@ -25,7 +25,7 @@ from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import curator, jobs, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.brief import send_briefs
+from evo_agents.hub.server.brief import send_briefs, send_loop_notices
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
@@ -209,6 +209,51 @@ def test_the_brief_names_the_review_run_and_the_proposals_waiting(review):  # no
     (note,) = briefs_of(client, headers["owner"])
     assert f"Review run #{run_id}: done, 0 findings, 1 proposal." in note["body"]
     assert "Proposals waiting for an answer: 1, 1 of them in your Inbox." in note["body"]
+
+
+def test_the_brief_has_the_loops_part_once_the_projects_loop_is_on_and_none_while_it_is_off(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], charter_body())
+    assert briefed(client, BRIEF) == {"brief": 1}
+    assert "loop" not in body_of(hub_db) and "**Loop**" not in briefs_of(client, headers["owner"])[0]["body"]
+
+    # the Loop on: a run handed out within the 24 hours before the next brief, one before them, a work item waiting
+    pid = sql(hub_db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    sql(hub_db, insert(tables.loop_states).values(project_id=pid, enabled=True, enabled_at=func.now()))
+    i, e = tables.loop_items, tables.loop_item_events
+    work = {"project_id": pid, "kind": "deliver", "cycle": "development", "key": "deliver:fleet", "engine": "rules/1"}
+    ((held,),) = sql(hub_db, insert(i).values(**work, state="waiting_human", reason="merge_blocked").returning(i.c.id))
+    morning = BRIEF + timedelta(days=1)
+    ledger = [
+        {"item_id": held, "kind": "dispatched", "state": "running", "at": morning - timedelta(hours=5)},
+        {"item_id": held, "kind": "dispatched", "state": "running", "at": morning - timedelta(hours=25)},
+    ]
+    sql(hub_db, insert(e).values(ledger))
+    assert briefed(client, morning) == {"brief": 1}
+    facts = body_of(hub_db, THE_DAY + timedelta(days=1))
+    assert facts["loop"] == {
+        "handed_out": {"deliver": 1},
+        "done": {},
+        "waiting": {"merge_blocked": 1},
+        "listed": [{"id": held, "kind": "deliver", "reason": "merge_blocked"}],
+        "breaker": "armed",
+    }
+    note = briefs_of(client, headers["owner"])[0]
+    assert note["details"]["loop"] == {"handed_out": 1, "done": 0, "waiting": 1}
+    loop = (
+        "**Loop**: 1 run handed out and 0 work items done in the last 24 hours; 1 waiting for a person "
+        "(1 a merge request held)."
+    )
+    assert f"\n\n{loop}\n\n- work item #{held} (deliver): a merge request held\n\n" in note["body"]
+    assert f"Decide on the decision board: /p/{PROJECT}/decide.\n\nWorker {WORKER}" in note["body"]
+
+    # the Curator sends this project's brief, which carries the Loop's part: the owner of its goal gets no brief of the
+    # Loop of its own at 07:00
+    g, r, owner = tables.goals, tables.goal_revisions, user_id(hub_db, OWNER)
+    ((goal,),) = sql(hub_db, insert(g).values(project_id=pid, number=1, revision=1).returning(g.c.id))
+    goal_row = {"goal_id": goal, "revision": 1, "statement": "Fewer nights wasted", "rank": 1, "status": "active"}
+    sql(hub_db, insert(r).values(**goal_row, owner_id=owner, created_by=owner))
+    assert client.portal.call(partial(send_loop_notices, client.app.state.engine, now=morning + MINUTE * 30)) == {}
 
 
 def test_the_brief_goes_to_the_owners_channel_and_a_restricted_project_gets_the_link_only(

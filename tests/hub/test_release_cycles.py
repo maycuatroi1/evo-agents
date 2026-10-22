@@ -549,6 +549,43 @@ def test_a_stopped_cycle_does_not_go_on_until_its_decision_and_keeps_the_check_b
     assert len(release_rows(world.db)) == 1
 
 
+def test_a_stopped_cycle_a_newer_tag_supersedes_closes_and_cancels_its_decision(world):
+    found = stopped_on_timeout(world)
+    world.github.tag(MINE, REPO, "v0.25.1", HEAD)  # released by hand, outside the cycle, on nightly
+    state = world.app.state
+    assert world.client.portal.call(partial(release_pass, state.engine, state.github_app, now=NEXT)) == {
+        "unchanged": 1
+    }, "the check goes on from v0.25.1 as if no cycle were there"
+    closed = cycle(world.db)
+    assert (closed["id"], closed["state"]) == (found["id"], "closed") and closed["ended_at"] is not None
+    assert (
+        "v0.25.1 was tagged outside cycle" in closed["stop_reason"] and "no run of release.yml" in closed["stop_reason"]
+    )
+    d, n = tables.decisions, tables.notifications
+    assert sql(world.db, select(d.c.state).where(d.c.id == found["decision_id"])) == [("cancelled",)]
+    unread = select(func.count()).select_from(n).where(n.c.decision_id == found["decision_id"], n.c.read_at.is_(None))
+    assert sql(world.db, unread) == [(0,)]
+    said = thread_messages(world, found["triage_chat_id"])[-1]
+    assert said.startswith("v0.25.1 was tagged outside cycle") and f"cancelled decision #{found['decision_id']}" in said
+    assert answer(world, found["decision_id"], "close").status_code == 409, "a cancelled decision takes no answer"
+    assert status_of(world)["cycle"] is None and len(release_rows(world.db)) == 1
+
+
+def test_a_stopped_cycle_with_a_run_active_or_no_newer_tag_stays_busy(world):
+    found = stopped_on_timeout(world)
+    world.github.tag(MINE, REPO, "v0.24.5", HEAD)  # newer than its base, older than the v0.25.0 it made
+    state = world.app.state
+    assert world.client.portal.call(partial(release_pass, state.engine, state.github_app, now=NEXT)) == {"busy": 1}
+    world.github.tag(MINE, REPO, "v0.26.0", HEAD)
+    r, rr = tables.runs, tables.release_runs
+    sql(world.db, update(r).values(state="review", finished_at=None).where(r.c.id.in_(select(rr.c.run_id))))
+    later = NEXT + timedelta(days=1)
+    assert world.client.portal.call(partial(release_pass, state.engine, state.github_app, now=later)) == {"busy": 1}
+    assert cycle(world.db)["state"] == "stopped"
+    d = tables.decisions
+    assert sql(world.db, select(d.c.state).where(d.c.id == found["decision_id"])) == [("open",)]
+
+
 def test_the_decision_continue_reopens_the_cycle_with_one_more_cap_and_queues_the_next_fix(world):
     _, fix_id = red_tag_fixing(world)
     assert fixed(world, fix_id) == {"tagged": 1}

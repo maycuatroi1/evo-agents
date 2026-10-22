@@ -1,4 +1,4 @@
-"""``evo-agents hub task list|show|create|edit|import``: the tasks of a project that enabled the core plugin tasks,
+"""``evo-agents hub task list|show|create|edit|block|unblock|import``: the tasks of a project that enabled the core plugin tasks,
 through its routes under /v1/x/tasks/<project>/ (``docs/plugins.md``, Core plugins). The plugin's code is
 ``evo_agents.core_plugins.tasks``, which this client never imports: it speaks HTTP only.
 
@@ -8,13 +8,18 @@ history and comments. ``create`` makes a task, ``edit REF`` changes one: ``--ass
 assignees, ``--role ROLE=LOGIN`` the whole list of each role it names (``--role qa=`` empties it), ``--use-case``,
 ``--step PLAN#STEP``, ``--run`` and ``--pull`` add links, ``--unlink`` drops one by its id. ``import FILE`` reads
 ``evo-tasks/1`` JSON (``-`` for stdin) once; ``--dry-run`` prints what it would do and the problems it found.
-``--json`` prints what the hub answered. A refusal prints the hub's reason and each problem it listed. Standard
+``block REF --waiting-on X --reason TEXT`` sets a blocker, a flag beside the status: X is a task when it has the shape
+of the project's refs (T-12), a member when it is the login of someone with a grant, else a text for someone outside
+(``--text`` makes it a text whatever it looks like). ``unblock REF`` clears every blocker set by hand that is still
+open, or the one ``--blocker ID`` names (an open decision of a run is answered, not cleared here). ``list --blocked``
+keeps the blocked tasks. ``--json`` prints what the hub answered. A refusal prints the hub's reason and each problem it listed. Standard
 library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -43,11 +48,25 @@ ITEM_KEYS = (
     "steps_total",
     "codes",
     "label",
+    "blocked",
     "created_by",
     "created_at",
     "updated_at",
 )
-DETAIL_KEYS = (*ITEM_KEYS, "description_md", "external_ref", "links", "events", "comments")
+DETAIL_KEYS = (*ITEM_KEYS, "description_md", "outcome_md", "external_ref", "links", "blockers", "events", "comments")
+BLOCKER_KEYS = (
+    "id",
+    "kind",
+    "reason",
+    "waiting_kind",
+    "waiting_on",
+    "since",
+    "set_by",
+    "cleared_at",
+    "cleared_by",
+    "decision_id",
+    "run_id",
+)
 IMPORT_KEYS = ("dry_run", "tasks", "sprints", "links", "created", "skipped", "problems")
 
 
@@ -89,6 +108,7 @@ def cmd_list(args) -> int:
         "backlog": "true" if args.backlog else None,
         "mine": "true" if args.mine else None,
         "assignee": args.assignee,
+        "blocked": "true" if args.blocked else None,
     }
     found = _call("GET", _path(args.project, "tasks", query=query))
     if args.json:
@@ -100,7 +120,7 @@ def cmd_list(args) -> int:
     rows = [
         (
             t["ref"],
-            t["status"],
+            t["status"] + (" (blocked)" if t["blocked"] else ""),
             t["priority"],
             ", ".join(t["assignees"]) or "-",
             t["sprint"] or "-",
@@ -128,6 +148,13 @@ def _link_line(link: dict) -> str:
     return f"#{link['id']} pull {link['url']}"
 
 
+def _blocker_line(blocker: dict) -> str:
+    on = f"{blocker['waiting_kind']} {blocker['waiting_on']}"
+    if blocker["kind"] == "decision":
+        return f"Blocked: decision {blocker['decision_id']} of run {blocker['run_id']} waits on {on} since {when(blocker['since'])}"
+    return f"Blocked #{blocker['id']}: waiting on {on} since {when(blocker['since'])}: {blocker['reason']}"
+
+
 def _print_task(task: dict) -> None:
     print(f"{task['ref']} [{task['type']}] {task['title']}")
     facts = [f"status {task['status']}" + (f" ({task['status_group']})" if task["status_group"] else "")]
@@ -141,6 +168,12 @@ def _print_task(task: dict) -> None:
     if task["description_md"]:
         for line in task["description_md"].splitlines():
             print(f"  | {line}")
+    if task["outcome_md"]:
+        print("  Outcome:")
+        for line in task["outcome_md"].splitlines():
+            print(f"  | {line}")
+    for blocker in task["blockers"]:
+        print(f"  {_blocker_line(blocker)}")
     if task["links"]:
         print("Links:")
         for link in task["links"]:
@@ -190,6 +223,7 @@ def _links(args) -> dict:
 FIELDS = {  # option -> the field of a task it sets
     "title": "title",
     "description": "description_md",
+    "outcome": "outcome_md",
     "type": "type",
     "status": "status",
     "priority": "priority",
@@ -200,7 +234,10 @@ FIELDS = {  # option -> the field of a task it sets
 
 
 def _fields(args) -> dict:
-    return {key: getattr(args, name) for name, key in FIELDS.items() if getattr(args, name) is not None}
+    found = {key: getattr(args, name) for name, key in FIELDS.items() if getattr(args, name) is not None}
+    if found.get("outcome_md") == "-":
+        found["outcome_md"] = sys.stdin.read()
+    return found
 
 
 @client_command
@@ -233,6 +270,51 @@ def cmd_edit(args) -> int:
         print_json(found)
     else:
         _print_task(found)
+    return 0
+
+
+def _waiting(args) -> dict:
+    """The body fields for what ``--waiting-on`` names: a task of the project when it has the shape of its refs, a
+    member when it is the login of someone with a grant on it, else a text; ``--text`` makes it a text."""
+    given = args.waiting_on.strip()
+    if args.text:
+        return {"waiting_text": given}
+    prefix = _call("GET", _path(args.project, "settings"))["prefix"]
+    if re.fullmatch(rf"{re.escape(prefix)}-[0-9]+", given, re.IGNORECASE):
+        return {"waiting_task": given}
+    people = _call("GET", _path(args.project, "people"))
+    if any(person["login"] == given for person in people):
+        return {"waiting_member": given}
+    return {"waiting_text": given}
+
+
+@client_command
+def cmd_block(args) -> int:
+    body = {"reason": args.reason, **_waiting(args)}
+    found = _call("POST", _path(args.project, "tasks", args.ref, "blockers"), body)
+    if args.json:
+        print_json(found)
+    else:
+        print(f"Blocked {args.ref}: waiting on {found['waiting_kind']} {found['waiting_on']} (blocker #{found['id']}).")
+    return 0
+
+
+@client_command
+def cmd_unblock(args) -> int:
+    if args.blocker is not None:
+        ids = [args.blocker]
+    else:
+        task = _call("GET", _path(args.project, "tasks", args.ref))
+        ids = [b["id"] for b in task["blockers"] if b["kind"] == "manual"]
+    cleared = [
+        _call("PATCH", _path(args.project, "tasks", args.ref, "blockers", id_), {"cleared": True}) for id_ in ids
+    ]
+    if args.json:
+        print_json(cleared)
+    elif cleared:
+        print(f"Cleared {len(cleared)} blocker(s) of {args.ref}: {', '.join('#' + str(b['id']) for b in cleared)}.")
+    else:
+        print(f"{args.ref} has no blocker set by hand that is open.")
     return 0
 
 
@@ -276,6 +358,9 @@ def _project(parser) -> None:
 def _task_options(parser, *, new: bool) -> None:
     parser.add_argument("--title", required=new, metavar="TEXT")
     parser.add_argument("--description", metavar="MARKDOWN")
+    parser.add_argument(
+        "--outcome", metavar="MARKDOWN", help="what the task came to, read by pm first; - reads stdin, empty clears it"
+    )
     parser.add_argument("--type", metavar="TYPE", help="one of the project's types (default: its first)")
     parser.add_argument("--status", metavar="KEY", help="one of the project's statuses (default: its first)")
     parser.add_argument("--priority", choices=PRIORITIES)
@@ -290,6 +375,24 @@ def _task_options(parser, *, new: bool) -> None:
     parser.add_argument("--pull", action="append", metavar="URL", help="link a pull or merge request; repeatable")
 
 
+def _register_blockers(tsub) -> None:
+    block = tsub.add_parser("block", help="block a task: why, and who or what it waits on (a flag, not a status)")
+    block.add_argument("ref", metavar="REF", help="the task's number, as T-42 or 42")
+    _project(block)
+    block.add_argument("--waiting-on", required=True, metavar="X", help="a task (T-12), a member's login, or a text")
+    block.add_argument("--reason", required=True, metavar="TEXT", help="why the task cannot go on")
+    block.add_argument("--text", action="store_true", help="take --waiting-on as a text, whatever it looks like")
+    json_option(block, returns_object(*BLOCKER_KEYS, schema="TasksBlocker"))
+    block.set_defaults(func=cmd_block)
+
+    unblock = tsub.add_parser("unblock", help="clear the blockers set by hand, or one with --blocker")
+    unblock.add_argument("ref", metavar="REF", help="the task's number, as T-42 or 42")
+    _project(unblock)
+    unblock.add_argument("--blocker", type=int, metavar="ID", help="clear this blocker only")
+    json_option(unblock, returns_array(*BLOCKER_KEYS, schema="TasksBlocker"))
+    unblock.set_defaults(func=cmd_unblock)
+
+
 def register_tasks(hsub) -> None:
     task = hsub.add_parser("task", help="tasks of a project: backlog, sprints, people and links (plugin tasks)")
     tsub = task.add_subparsers(dest="task_command", required=True)
@@ -301,6 +404,7 @@ def register_tasks(hsub) -> None:
     listed.add_argument("--backlog", action="store_true", help="the tasks of no sprint")
     listed.add_argument("--status", metavar="KEY", help="the tasks of this status")
     listed.add_argument("--assignee", metavar="LOGIN", help="the tasks this member is assigned")
+    listed.add_argument("--blocked", action="store_true", help="the tasks that are blocked")
     json_option(listed, returns_array(*ITEM_KEYS, schema="TasksItem"))
     listed.set_defaults(func=cmd_list)
 
@@ -327,6 +431,8 @@ def register_tasks(hsub) -> None:
     edit.add_argument("--unlink", action="append", type=int, metavar="LINK_ID", help="drop a link; repeatable")
     json_option(edit, returns_object(*DETAIL_KEYS, schema="TasksItemDetail"))
     edit.set_defaults(func=cmd_edit)
+
+    _register_blockers(tsub)
 
     imported = tsub.add_parser("import", help="evo-tasks/1 JSON, once: sprints and tasks linked by use case code")
     imported.add_argument("file", metavar="FILE", help="the JSON file; - for stdin")

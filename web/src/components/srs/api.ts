@@ -18,6 +18,10 @@ export type SrsDocument = Schemas["SrsDocument"];
 export type SrsVersion = Schemas["SrsVersion"];
 export type SrsVersionDetail = Schemas["SrsVersionDetail"];
 export type SrsReview = Schemas["SrsReview"];
+export type SrsUseCase = Schemas["SrsUseCase"];
+export type SrsUseCaseReview = Schemas["SrsUseCaseReview"];
+export type SrsVersionCases = Schemas["SrsVersionCases"];
+export type UseCaseState = SrsUseCase["state"];
 export type SrsItem = Schemas["SrsItem"];
 export type SrsProblem = Schemas["SrsProblem"];
 export type SrsDiff = Schemas["SrsDiff"];
@@ -135,6 +139,13 @@ export async function reviewVersion(api: ApiClient, project: string, slug: strin
   const headers = await csrfHeaders(api);
   const params = { path: { project, slug, number } };
   return call(api.POST("/v1/x/srs/{project}/documents/{slug}/versions/{number}/reviews", { params, body, headers }));
+}
+
+/** A review of one use case of a version in review; the hub answers the version with its use cases as they count now. */
+export async function reviewUseCase(api: ApiClient, project: string, slug: string, number: number, ref: string, body: SrsReviewIn) {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, slug, number, ref } };
+  return call(api.POST("/v1/x/srs/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews", { params, body, headers }));
 }
 
 export async function addComment(api: ApiClient, project: string, slug: string, body: SrsCommentIn) {

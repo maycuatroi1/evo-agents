@@ -46,7 +46,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, profiles, runs, tables
+from evo_agents.hub import chats, outputs, profiles, runs, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pulls
 from evo_agents.hub.server.agent_account_mask import mask_values
@@ -67,6 +67,7 @@ from evo_agents.hub.server.chat_views import (
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.profile_store import Profile, by_id
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId, RunRepo
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -98,6 +99,11 @@ class AgentMessageIn(BaseModel):
         None, ge=1, le=MAX_ID, description="a chat the run's agent is in; null: the chat of a chat run"
     )
     reply_to: MessageRef = Field(None, description="a message whose thread it goes in; null: the run's thread")
+    output_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
+        default_factory=list,
+        max_length=outputs.MAX_ATTACHED,
+        description="outputs of the run the message carries (POST .../runs/{id}/outputs), none of source tool",
+    )
 
     _body = field_validator("body")(_bounded)
 
@@ -302,7 +308,7 @@ async def post_message(request: Request, run_id: RunId, body: AgentMessageIn, us
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
         text = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
-        message_id, _ = await post_agent(conn, chat, run.profile, run_id, text, root)
+        message_id, _ = await post_agent(conn, chat, run.profile, run_id, text, root, output_ids=body.output_ids)
         await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
         view = await _view(conn, chat, message_id)
     log.info("chat message of an agent", extra={"run_id": run_id, "chat_id": chat.chat_id, "message_id": message_id})
@@ -344,7 +350,9 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         origin = run.principal
         author = f"@{run.profile.handle}"
         hand = Hand(chat, 0, 0, run.profile, origin.user_id, origin.login, run.via, run.hop + 1, author, text)
-        message_id, kept = await post_agent(conn, chat, run.profile, run_id, text, root, hand=hand, target=body.handle)
+        message_id, kept = await post_agent(
+            conn, chat, run.profile, run_id, text, root, hand=hand, target=body.handle, output_ids=body.output_ids
+        )
         handed = next((item for item in kept if item["name"] == body.handle), None)
         run_made = handed.get("run_id") if handed else None
         refusal = handed["refusal"] if handed else f"no agent @{body.handle} in this chat"
@@ -488,10 +496,15 @@ async def open_repo(request: Request, run_id: RunId, body: ChatRepoIn, user: Cur
             raise HTTPException(422, f"project {project} has no repo {name}: its repos are {listed}")
         worker = await worker_of(conn, user)
         if f"{project}/{name}" not in (worker.checkouts or {}):
-            raise HTTPException(
-                409,
-                f"worker {worker.name} has no checkout of {name} of project {project}: the run cannot open it here",
-            )
+            # a daemon that clones what it lacks clones it first, from the origin a project lists for it
+            if runs.CLONES_CHECKOUTS not in (worker.features or ()):
+                why = "the run cannot open it here"
+            elif not await repo_origins(conn, run.project_id, run.principal.user_id, [name]):
+                why = "and no project of the run's owner lists an origin to clone it from"
+            else:
+                why = None
+            if why is not None:
+                raise HTTPException(409, f"worker {worker.name} has no checkout of {name} of project {project}: {why}")
         repos = [dict(entry) for entry in run.repos if isinstance(entry, dict)]
         added = name not in [entry.get("repo") for entry in repos]
         if added:

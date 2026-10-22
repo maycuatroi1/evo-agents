@@ -196,12 +196,21 @@ class WorkerUpdate(BaseModel):
         description="true: it also takes the runs of every member who holds writer on a project it serves; false: "
         "its owner's runs alone, every worker's default",
     )
+    projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="every project it takes runs of, the whole list: the writer role on each one added; one dropped "
+        "must have no active run on the worker and no night shift on duty there",
+    )
 
     @model_validator(mode="after")
     def _some_field(self) -> WorkerUpdate:
-        fields = (self.slots, self.labels, self.name, self.plugins, self.version_locked, self.shared)
+        fields = (self.slots, self.labels, self.name, self.plugins, self.version_locked, self.shared, self.projects)
         if all(value is None for value in fields):
-            raise ValueError("name at least one of slots, labels, name, plugins, version_locked and shared to change")
+            raise ValueError(
+                "name at least one of slots, labels, name, plugins, version_locked, shared and projects to change"
+            )
         return self
 
 

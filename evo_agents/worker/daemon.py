@@ -81,7 +81,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans
+from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans, verify_jobs
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
@@ -100,6 +100,8 @@ RUNTIMES_EVERY = 300.0  # seconds between looks at the runtimes
 CHECKOUTS_EVERY = 60.0  # and at the checkouts
 CLEANUP_EVERY = 3600.0
 KEEP_WORKTREES = timedelta(days=7)
+# the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
+DIRECTORY_KINDS = ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
 LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events to go
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 
@@ -110,7 +112,7 @@ def _strings(value) -> bool:
 
 def _settings(value) -> dict | None:
     """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, "plugins" when the hub sends them
-    (0039) and "version_locked" (0048), or None when they are not as the hub sends them."""
+    (0039), "version_locked" (0048) and "projects" (evo-ak 0.31.2), or None when they are not as the hub sends them."""
     if not isinstance(value, dict):
         return None
     slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
@@ -127,6 +129,11 @@ def _settings(value) -> dict | None:
         if not isinstance(value["version_locked"], bool):
             return None
         found["version_locked"] = value["version_locked"]
+    if "projects" in value:  # a worker serves one project at least: none is a hub that sent no list
+        if not _strings(value["projects"]):
+            return None
+        if value["projects"]:
+            found["projects"] = list(value["projects"])
     return found
 
 
@@ -165,6 +172,7 @@ class Daemon:
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
         self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
         self.checkouts: dict[str, dict] = {}
+        self._set_up: dict[str, dict] = {}  # the checkouts runs set up (add_checkout), kept by a look begun before
         self.draining = False
         self.exit_code = 0
         self.stopped_by_hub = False
@@ -196,6 +204,24 @@ class Daemon:
     def repo_lock(self, checkout: Path) -> asyncio.Lock:
         return self._repo_locks.setdefault(str(checkout), asyncio.Lock())
 
+    def add_checkout(self, project: str, repo: str, path: Path) -> None:
+        """A checkout of ``repo`` of ``project`` a run set up at ``path`` (``runner.clones``): in the checkouts the next
+        heartbeat reports, and in ``checkouts`` of config.json, read again so a field set by hand since the start stays,
+        so the next look at the machine finds it whatever registry or project names it."""
+        key = f"{project}/{repo}"
+        self.checkouts[key] = self._set_up[key] = {"path": str(path), "branch": checkouts.git_branch(path)}
+        self.config.checkouts = {**(self.config.checkouts or {}), key: str(path)}
+        try:
+            on_disk = self.home.load_config()
+        except Exception:  # an unreadable config.json: write the one in memory, which holds the new checkout
+            on_disk = self.config
+        on_disk.checkouts = {**(on_disk.checkouts or {}), key: str(path)}
+        try:
+            self.home.save(on_disk)
+        except OSError as exc:
+            log.error("config.json could not be written; the checkout holds until the daemon stops", exc_info=exc)
+        log.info("checkout set up", extra={"checkout": key, "path": str(path)})
+
     def fatal(self, problem: HubProblem) -> None:
         """The hub no longer takes this worker (a revoked worker or token, or a protocol the hub no longer speaks):
         stop everything, without reports."""
@@ -222,7 +248,11 @@ class Daemon:
             self.runtimes = await asyncio.to_thread(self._detect)
             self._runtimes_at = now
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
-            self.checkouts = await asyncio.to_thread(checkouts.discover, self.config)
+            found = await asyncio.to_thread(checkouts.discover, self.config)
+            for key, entry in self._set_up.items():  # set up while the look ran, before config.json held it
+                if key not in found and checkouts.is_work_tree(Path(entry["path"])):
+                    found[key] = entry
+            self.checkouts = found
             self._checkouts_at = now
 
     def _detect(self) -> dict[str, dict]:
@@ -312,9 +342,8 @@ class Daemon:
         if not available:
             log.warning("no runtime can take runs here; the worker claims nothing until one can")
         if not self.checkouts:
-            log.warning(
-                "no checkout of the worker's projects found: add their repos to the harness registry "
-                "(`evo-agents hub registry pull`) or set checkouts in config.json",
+            log.info(
+                "no checkout of the worker's projects found: each run clones the repos it needs",
                 extra={"projects": self.config.projects},
             )
 
@@ -486,9 +515,10 @@ class Daemon:
         log.info("runtimes of plugins declared", extra={"runtimes": sorted(found)})
 
     def _take_settings(self, settings) -> None:
-        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked) when they differ from
-        the config: in memory, and in config.json, read again so a field set by hand since the start (checkouts) stays.
-        Settings this daemon cannot read are logged and left, and leave the lock unknown."""
+        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked, projects) when they
+        differ from the config: in memory, and in config.json, read again so a field set by hand since the start
+        (checkouts) stays. New projects have the checkouts looked at again at the next turn. Settings this daemon
+        cannot read are logged and left, and leave the lock unknown."""
         wanted = _settings(settings)
         self.updater.hear_lock(None if wanted is None else wanted.get("version_locked"))
         if wanted is None:
@@ -508,6 +538,8 @@ class Daemon:
             on_disk = self.config
         for key, value in wanted.items():
             setattr(on_disk, key, value)
+        if "projects" in wanted and old["projects"] != wanted["projects"]:
+            self.config.repos = on_disk.repos  # those `worker projects` on this machine read for new projects
         try:
             self.home.save(on_disk)
         except OSError as exc:
@@ -516,6 +548,8 @@ class Daemon:
         log.info("worker settings changed on the hub", extra={"changed": changed})
         if "slots" in changed:
             self.slot_free.set()  # more slots: the claim loop claims at once
+        if "projects" in changed:
+            self._checkouts_at = float("-inf")  # the checkouts of the projects it serves now
 
     # Updating itself
 
@@ -767,6 +801,8 @@ class Daemon:
         (it keeps its session and worktree for the run that resumes it) or still holds it for this worker (its lease
         runs out, and its worktree ages)."""
         stopped = await orphans.stop(orphan["agent"])
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(verify_jobs.stop_all, self.home.run_dir(run_id) / verify_jobs.JOBS_DIR)
         record = self.home.load_run(run_id) or orphan.get("record")  # as _close_abandoned_runs left it
         if control.get("held"):
             what = "kept: the hub still holds the run for this worker, which cannot go on with it; its lease runs out"
@@ -856,7 +892,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release"):
+        if record.get("kind") in DIRECTORY_KINDS:
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

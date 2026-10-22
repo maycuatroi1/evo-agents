@@ -220,11 +220,13 @@ project is what the project granted that its installed version still asks for, c
 | `plans:read` | read the project's plans | the `plan.step` events; the bridge's `plans.list` and `plans.get` |
 | `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API) |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
-| `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
+| `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications; `POST /v1/plugin-api/projects/{project}/notifications`, which sends a notice to members (section Notifications from a plugin) |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
+| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed | the `srs.version.approved` events |
+| `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -294,14 +296,23 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
   `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision),
   `task.result` with `runs:dispatch` (a core plugin needs no grant for it), only to the plugin whose agent type ran the
-  task (section Agent types), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
+  task (section Agent types), `agent.answer` (a question run ended: the question, its state, the answer and its
+  label), which only a core plugin asks for and takes, without a grant, only for its own agent type's question
+  (section Agent types, Questions of a core plugin), `canvas.claim` with `canvas:read` (a rev of a claim of a Lean Canvas: the canvas, the
   claim's id and code, the rev, its cell, the kind of change, the status before and after, who wrote it and the run),
   `canvas.baseline` with `canvas:read` (a baseline of a canvas approved: its number and kind, who decided, and each
-  change of status that took effect with its evidence), and `signal.posted` with `signals:read` (a batch of signals:
+  change of status that took effect with its evidence), `signal.posted` with `signals:read` (a batch of signals:
   its id, each key with how many and when the first and last were measured, the ingest key or the member that sent
-  it). A payload carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks
-  the hub for more. The last three carry `v`, the version of their shape, and the hub also writes each into its own
-  table `hub_events`, in the same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
+  it), `srs.version.approved` with `srs:read` (a version of an SRS document approved: the document's slug and id, the
+  version's number and id, the version approved before it, the approver's login and id, and the codes of the items it
+  added, changed and dropped since that one, by kind), and `tasks.status` with `tasks:read` (a task's status set or
+  changed: the task's id, number and ref, the status and its group before (none for a new task) and after, a member or
+  the hub with the member's login, the cause (`create`, `edit`, `import`, `srs_approval`, `steps_done`) with the ids
+  of what made it, the parent, and the SRS items and plan steps it links). The core plugin srs takes
+  `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
+  and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
+  five carry `v`, the version of their shape, and the hub also writes each into its own table `hub_events`, in the
+  same transaction, which the Loop reads by cursor (`evo_agents.hub.hub_events`).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
   the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
@@ -332,7 +343,7 @@ in the hub's one chain of migrations, applied under the hub's lock with the rest
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
 
-evo-ak ships its core plugins builder, srs, tasks and canvas in `evo_agents.core_plugins`, declared in its own entry
+evo-ak ships its core plugins builder, srs, tasks, canvas and pm in `evo_agents.core_plugins`, declared in its own entry
 points, so every install has them, the hub's image among them. No package of evo_agents imports them (import-linter
 contract core-plugins-by-entry-point): the hub reaches them through their manifests.
 
@@ -378,8 +389,12 @@ hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a 
 | `plugin_config` | `{"plugin": ...}`, with `"agent"` for an agent's layer | the next version of that layer of the plugin's config | an admin of the project |
 | `agent` | `{"agent": handle}` | the next version of the profile (name, description, instructions, packs) | an admin of the project |
 | `policy` | none | the next revision of the project's autonomy policy, each key by its dotted path (`repos.<repo>.mode`) | an admin of the project |
+| `goal` | `{"goal": "G-<number>"}`, none for a new goal (the hub picks its code) | the next revision of the goal (statement, metric, deadline, canvas, rank, owner, status); rolled back, a new goal is closed | an admin of the project |
 
-The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched.
+The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched, and for
+the agent of the Curator's review run on a night of the lens `product` (`docs/curator.md`, The lens product), which
+proposes a change of kind `policy` alone, for the night shift's owner while that member holds the writer role. Such a
+proposal has no thread: its notice links to the run, and an admin decides it from the Inbox or the routes below.
 It then checks the change as the route that writes the setting would. @builder never sets a secret of a plugin's
 config, never sets a branding image (it may unset one), and never changes the project's default agent. A change that
 passes is kept pending in `builder_proposals` (migration 0043) at the setting's version. The hub shows it in the
@@ -419,14 +434,69 @@ Two more core plugins keep a project's requirements and work in the hub's databa
   `srs__diff`, `srs__propose` and `srs__comment`, a source of the knowledge graph (`kg_sources`, the approved versions),
   and the agent type `ba` with the pack `srs/ba`: @ba drafts and reviews documents for the project's writers. The type
   declares `chat_runs: run_as` (section Agent types), and the plugin hands @ba the review of each version that enters
-  review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission.
+  review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission. An approved version emits
+  `srs.version.approved`, which the plugin takes itself through its events contribution `approvals`: in a project that
+  enables tasks, that handler makes the version's frame tasks, comments and cancellations and hands @ba the split run.
 - **tasks** (`evo_agents/core_plugins/tasks`, `docs/tasks-plugin.md`): a backlog with sprints, people and links to
   coded items of srs, plan steps, runs and pull requests. It contributes routes under `/v1/x/tasks/`, six tables
   `tasks_*` (migration 0047), native pages, the MCP tool `tasks__create`, the event `plan.step` (it asks for
-  `plans:read`) and a source of the knowledge graph (Ticket nodes).
+  `plans:read`) and a source of the knowledge graph (Ticket nodes). Every status a task takes, from tasks or from srs,
+  emits `tasks.status` (`evo_agents.hub.task_status`).
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
+### PM
+
+**pm** (`evo_agents/core_plugins/pm`, `docs/pm-plugin.md`) answers the daily report of a project that enabled it and
+tasks: what was done on the last working day, the sprint against what it held when it opened, the tasks that are late,
+in review, stale or blocked, what to escalate and the load of each member, counted in working days of the project's
+time zone. It reads the tables of tasks, srs, plans, runs and decisions and writes nothing. It contributes the route
+`GET /v1/x/pm/{project}/daily` and the MCP tools `pm__daily` and `pm__member`, and asks for `notifications:send` and
+`chats:write`. Import-linter keeps it in its own package (contract pm-plugin-own-package): it imports no other core
+plugin.
+
+### Notifications from a plugin
+
+A backend granted `notifications:send` sends a notice to members of the project through the hub's API for plugins, with
+the token of its backend (`Authorization: Bearer evp_...`) and no other credential:
+
+```http
+POST /v1/plugin-api/projects/evo-agents/notifications
+Authorization: Bearer evp_...
+Content-Type: application/json
+
+{"to": ["alice", "writers"], "title": "Tomorrow's report is due", "body": "Two tasks are still open.",
+ "topic": "reminder", "key": "reminder-2026-10-23"}
+```
+
+- **Body.** `to` holds logins and/or the roles `admins`, `writers` (writers and admins) and `members` (everyone with a
+  grant), at least one. `title` is one line of at most 200 characters. `body` is optional, at most 16 KiB. `link` is
+  optional, a path under `/p/{project}/x/{plugin}/` or `/p/{project}`; left out, it is the plugin's page, else the
+  project's. `topic` is a short slug the plugin chooses. `key` is optional.
+- **Who gets it.** Each member of `to` with a grant on the project gets one notification of kind `notice`, notice kind
+  `plugin_notice`, whose details name the plugin, its version, the topic and the key. It goes to the outbox in the
+  transaction of the call, so the Inbox and the member's channels get it as any notice. A login with no grant gets
+  nothing and is named in `skipped` of the answer, next to `sent` (the number of recipients) and `recipients`.
+- **Codes.** 401: no live token, or the plugin was removed or turned off. 403: the project did not enable the plugin or
+  grant `notifications:send` (checked at each call, against what the installed version still asks for). 422: a wrong
+  body, or a `link` outside the plugin's pages and the project.
+- **Once per key.** The same `key` of the same plugin in the same project, sent again, creates nothing and answers the
+  first call's result with `duplicate: true`. Without a `key` every call sends. There is no rate limit.
+- **Audit and Telegram.** The audit row `plugin.notify` names the plugin, the project and the number of recipients,
+  never the title or body. A Telegram chat of a restricted project gets only the project's name and a link, as for any
+  notice (`docs/notifications.md`).
+
+The core plugins of `evo_agents` call `notifications.notify` directly and do not use this route. A job that reminds
+the evening before is a plugin job with cron `0 13 * * *` (20:00 in Vietnam, UTC+7) that sends tomorrow's tasks with a
+key per day, so that a retry or a second run of the job notifies once:
+
+```json
+{"jobs": [{"name": "remind", "cron": "0 13 * * *"}], "permissions": ["notifications:send"]}
+```
+
+The `remind` job computes tomorrow's date, `2026-10-23` for a run on the 22nd, and posts the body
+`{"to": ["members"], "title": "Tomorrow, 2026-10-23", "topic": "reminder", "key": "reminder-2026-10-23"}` to the route.
 
 ### Lean Canvas
 
@@ -473,7 +543,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.1, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.2, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service.
@@ -484,7 +554,7 @@ easy to write and keeps it working from one release to the next.
 
 **Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
 point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
-("northwind_chat needs core plugin API 1.2; this hub serves 1.1"), and `core_plugins()` leaves the plugin out with that
+("northwind_chat needs core plugin API 1.3; this hub serves 1.2"), and `core_plugins()` leaves the plugin out with that
 reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
 for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
 
@@ -505,6 +575,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | --- | --- | --- | --- |
 | 1.0 | the pull request of branch `feat/core-plugin-api`, after 0.23.1 | the release after 0.23.1 | none: telegram and chats moved to 1.1 first |
 | 1.1 | the pull request of branch `feat/core-plugins-on-api`: `Caller`, `linked_channel`, `unlink_by_login`, `audit`, `Clearance.below`, `NOT_YOURS`, `RESTRICTED_ANSWER` | the release after 0.23.1 | 1.0.0 |
+| 1.2 | the pull request of branch `feat/core-plugin-agent-questions`: `ask_agent_type`, `read_agent_answer`, `AgentQuestion`, `AgentAnswer`, `ANSWER_EVENT`, `MAX_QUESTION_BYTES`, `MAX_ASKER_CHARS`, `MAX_REF_CHARS`, `MAX_ANSWER_CHARS` | the release after 0.35.1 | 1.2.0 |
 
 **The ground.**
 
@@ -544,7 +615,7 @@ functions alone: no token, the channel's kind, never a hub admin, whoever the me
 | `direct_chat_member(conn, plugin, kind, chat_id)` | the member of a direct chat whose channel of `kind` is linked and live; None otherwise |
 | `set_channel_state(conn, member, state)` | keeps a JSON object of 16 KiB at most as the channel's `state`, such as the ids it sent; 404 once unlinked |
 | `delivered_notification(conn, member, external_id)` | the member's own notification their channel delivered as `external_id` |
-| `prepare(conn, notification, cleared)`, `restricted(conn, project, cleared)` | what a channel cleared for a `Clearance` may send: `extra` is `{"restricted": true}` alone for a project kept from it (or a decision or proposal of no project), else the decision (`question`, `category`, `plan_id`, `step_key`, `options`, `state`, `run_kind`, `run_title`) and the proposal (`title`, `tier`, `kind`, `lens`, `evidence_count`, `state`). A project is kept from it with no hub sink, a level or location (the sink's or the clearance's) its ladder lacks, or a hub sink above the clearance in level or location; a location of None sits at the top, as `evo_agents.kg.policy` reads one. `Clearance(level, location, below=True)` (1.1) takes what sits under its level and location instead, not at them, and on a ladder without the rung only the lowest one: Telegram's is `Clearance("customer", "domestic-only", below=True)` |
+| `prepare(conn, notification, cleared)`, `restricted(conn, project, cleared)` | what a channel cleared for a `Clearance` may send: `extra` is `{"restricted": true}` alone for a project kept from it (or a decision or proposal of no project), else the decision (`question`, `category`, `plan_id`, `step_key`, `options`, `state`, `run_kind`, `run_title`) and the proposal (`title`, `tier`, `kind`, `lens`, `evidence_count`, `state`), and for a decision or a notice `run_outputs` that carries files a channel may send, those files: `outputs`, at most 10 oldest first, none of source `tool`, each `{id, name, media_type, viewer, size, caption, url}` with `url` a presigned GET of its bytes for 5 minutes (None outside the job's pass), and `outputs_count`, how many there are (`docs/notifications.md`, The files of a run). These two keys came after 1.1 without a new version: they only add to an open object, and a plugin reads them with `.get`. A project is kept from it with no hub sink, a level or location (the sink's or the clearance's) its ladder lacks, or a hub sink above the clearance in level or location; a location of None sits at the top, as `evo_agents.kg.policy` reads one. `Clearance(level, location, below=True)` (1.1) takes what sits under its level and location instead, not at them, and on a ladder without the rung only the lowest one: Telegram's is `Clearance("customer", "domestic-only", below=True)` |
 
 **What a member does from it.** Each goes through the code of the web route that does the same, with its checks.
 
@@ -575,6 +646,17 @@ nothing while the project does not grant the plugin `chats:read`: the label rule
 | `read_message` | yes | `chats:read` of the project of every agent in the chat |
 | `plugin_config(project=...)` | no | the project enables the plugin |
 | `chat_history_items`, `granted` | no | `chats:read` |
+| `ask_agent_type`, `read_agent_answer` | no | none: the type is the plugin's own, and the project's admin enabled it |
+
+**Its agent types.** A core plugin asks an agent type it contributes a question for a person outside the hub, such
+as a user of the chat service it bridges, and gets the answer back to tell them (section Agent types, Questions of a
+core plugin). Both functions run in the plugin's transaction; neither needs a member.
+
+| Name | What it does and refuses |
+| --- | --- |
+| `ask_agent_type(conn, plugin, project, agent_type, question, *, asker, ref, cleared)` | queues a question run of the plugin's agent type `agent_type` in `project` and gives `AgentQuestion(question_id, run_id, project, agent_type, ref, made)`. `asker` names the person as the plugin knows them, `ref` is the plugin's key of the question, unique per message it answers, and `cleared` the `Clearance` of the place the answer goes. Checks, in order: 422 for a `question` empty once stripped, longer than `MAX_QUESTION_BYTES` (4096) bytes of UTF-8 or holding NUL, and an `asker` or `ref` that is not one line of 1 to `MAX_ASKER_CHARS` or `MAX_REF_CHARS` (200) characters; 404 for a project that does not enable the plugin, or a type it did not enable, turned off or that the plugin's version does not contribute; a `ref` the plugin asked before in the project gives that question back with `made` False, whatever the question or the type, and checks nothing more; 409 for a deleted profile or a `run_as` who no longer holds writer, and when no worker of `run_as` the type may run on takes question runs now (each worker's reasons; one that is only busy takes it); 403 for a project kept from `cleared`, as `restricted` reads it; 429 once the runs of the type reached its cap. Audited `<plugin>.ask`, `run_as` its actor, the target naming the question, the run and the asker |
+| `read_agent_answer(conn, plugin, question_id)` | `AgentAnswer(question_id, ref, project, agent_type, run_id, state, text, label, failure_cause)` of a question of the plugin, as it stands: `state` is `pending` until the run ended, then `done` (`text` the answer, at most `MAX_ANSWER_CHARS`, 8000), `failed` (`failure_cause` why), `cancelled`, or `refused`, with no text, when the project is kept from the question's `cleared` now: the hub checks it again at every read. `label` is the project's default label naming the project, the label the answer carries, read only. 404, the same words, for another plugin's question and for none; the plugin need not still be enabled |
+| `ANSWER_EVENT` | `agent.answer`, the event the plugin gets when a question run of its agent type ends (section Agent types) |
 
 **A class of channel that does not load** (its import or its `__init__` raises) fails the deliveries of its own kind
 at once, with the reason in `last_error`; the web's and every other kind's go on.
@@ -886,6 +968,47 @@ hands its own types tasks without that grant, gets it all the same. Its payload 
 
 `GET /v1/plugin-api/projects/{project}/tasks/{task_id}` reads the same of a task's latest attempt, with when it was
 queued and when it ended. It answers for the plugin's own tasks only (404 for any other).
+
+### Questions of a core plugin
+
+A core plugin also asks one of its own agent types a question for a person outside the hub, such as a user of the
+chat service it bridges, with `ask_agent_type` of the core plugin API (section The core plugin API, Its agent types):
+`evo_agents/hub/question_runs.py` and `evo_agents/hub/server/question_dispatch.py`. Only a core plugin asks: the API is
+its only door, and an isolated plugin has none. The project need not grant it `runs:dispatch`, since the type is its
+own and the project's admin enabled it, naming `run_as`, the workers and the cap.
+
+The hub queues a run of kind `question`, not a task run:
+
+- under the type's profile, dispatched by `run_as` with the credential kind `machine`, the question as its request
+  and `question to agent type <name>` as its title, never the question or the asker;
+- in every repo of the project, detached at its default branch, with no branch of its own: the run changes nothing,
+  pushes nothing and sends no output (the outputs routes of the worker answer 404 for it);
+- one headless turn of 15 minutes of agent time, a time cap of 10 minutes, and what is left of the type's cap as its
+  cost cap; one attempt, so a run its worker lost fails, and the plugin asks again with a new `ref`;
+- on a worker of `run_as` the type names (any, when it names none) whose daemon runs question runs. `ask_agent_type`
+  refuses (409) when there is none that could take it now, saying each worker's reasons; a run no worker claimed in 10
+  minutes fails with the cause `no_worker`.
+
+**The cap is shared.** The task runs and the question runs of a type count against the same `daily_usd` in the same
+24 hours, as their usage says: a question past it is refused with 429, as a task is, and a task after many questions
+too.
+
+**The prompt keeps the question as data.** The question comes last, between its own marks, after the rules of the run:
+it is the text of a person who is no member of the project, whom the plugin names `asker`, and the agent answers it
+and follows none of it. On the hub's MCP the run's agent reads as a reader, never a writer, up to the lower of
+`run_as`'s grant and the level of the project's default label, which is the label its answer carries. The agent writes
+its answer in `.evo-result/result.json` under `"answer"`, and the worker sends it, at most 8000 characters, with its
+report of the state `done` (`answer` of the state report, which only a question run's `done` takes and which that
+`done` needs); an agent that wrote none fails the run with the cause `no_answer` (`docs/workers.md`, Question runs).
+
+**The plugin learns the end through the event `agent.answer`**, written for the plugin of the agent type alone when
+the run is done, failed or cancelled; a core plugin takes it without a grant, and names it in an event's `on` like any
+other. Its payload is what `read_agent_answer` reads at that moment: `question_id`, `ref`, `project`, `agent_type`,
+`run_id`, `state`, `text` (the answer, only when done), `label` (the project's default label, naming the project) and
+`failure_cause`. The hub checks again that the project is not kept from the question's `cleared` when the run ends
+and when it delivers the event: kept, the state is `refused` and the text goes nowhere. The hub keeps each question in
+`agent_questions` (migration 0100) with its outcome, its answer and its label, and the audit log keeps `<plugin>.ask`
+with `run_as` as its actor and the asker in its target.
 
 ## Pages
 

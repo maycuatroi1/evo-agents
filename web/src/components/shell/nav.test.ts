@@ -34,11 +34,11 @@ describe("nav", () => {
       ["inbox", "/inbox", "openDecisions"],
       ["monitor", "/monitor", "runningRuns"],
     ]);
-    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "mergeQueue", "insights", "signals", "curator", "releases", "agents", "memories", "skills", "kg", "plugins"]);
+    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "decide", "plans", "runs", "mergeQueue", "insights", "signals", "goals", "loop", "curator", "releases", "agents", "memories", "skills", "kg", "plugins"]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
+    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "org", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
     expect(HUB_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([["chats", "unreadChats"]]);
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
   });

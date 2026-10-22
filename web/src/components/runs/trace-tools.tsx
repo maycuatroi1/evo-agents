@@ -16,16 +16,20 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { OutputStrip } from "@/components/data/output-strip";
 import { useNow } from "@/hooks/use-now";
+import { baseName, type RunOutput } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { splitLinks } from "./forge";
+import { sendsFiles } from "./output-index";
 import { commandGist, worktreePath } from "./shell-command";
 import { callFailed, callRunning, groupDiff, groupObjects, groupPrograms, groupSpan, type Intent, programOf, type ToolGroup } from "./trace-groups";
 import { type ToolCall, toolLabel } from "./trace-model";
 import { KIND_ICON, useTraceDuration } from "./trace-look";
 import { useTimes } from "./trace-row";
 import { TermBlock } from "./trace-term";
+import { useTraceOutputs } from "./use-run-outputs";
 
 /**
  * The trace's tool calls (agent-trace.tsx): a group of calls that did the same kind of work as one row (trace-groups.ts),
@@ -103,14 +107,19 @@ function ToolDetails({
   grouped?: { at: string; icon: LucideIcon | null } | null;
 }) {
   const t = useTranslations("runs.detail.trace");
+  const tFiles = useTranslations("outputs.strip");
   const times = useTimes();
+  const outputs = useTraceOutputs();
   const { running, failed } = toolState(tool);
   const now = useNow(running && active);
   const { arg } = toolLabel(tool);
-  const line = arg === null ? null : tool.kind === "execute" ? commandGist(arg) : worktreePath(arg);
+  // A call that sends files (SendUserFile, Artifact, `worker output`) reads as the files it sent, not as their paths.
+  const files = (tool.id !== null && outputs?.index?.byCall.get(tool.id)) || [];
+  const sends = files.length > 0 && sendsFiles(tool);
+  const line = sends ? files.map((output) => baseName(output.name)).join(", ") : arg === null ? null : tool.kind === "execute" ? commandGist(arg) : worktreePath(arg);
   // The folded line shows the argument as text; an address in it is a link in the Input once the row is open.
-  const input = tool.input ?? (arg && splitLinks(arg).some((piece) => piece.href) ? arg : null);
-  const nothing = !tool.output && !tool.change && !input;
+  const input = sends ? null : (tool.input ?? (arg && splitLinks(arg).some((piece) => piece.href) ? arg : null));
+  const nothing = !sends && !tool.output && !tool.change && !input;
   const KindIcon = grouped?.icon ?? null;
   return (
     <details
@@ -121,6 +130,7 @@ function ToolDetails({
       }}
       className={cn("group/tool min-w-0 overflow-hidden", grouped ? "bg-card" : "rounded-sm border bg-card")}
       data-testid="trace-tool"
+      data-tool-call-id={tool.id ?? undefined}
       data-status={tool.status}
       data-kind={tool.kind}
       data-failed={failed || undefined}
@@ -140,7 +150,7 @@ function ToolDetails({
         {grouped ? <span className="sr-only">{toolLabel(tool).name ?? t(`kind.${tool.kind}`)}: </span> : null}
         <span
           className="min-w-0 flex-1 truncate font-mono text-xs leading-4 text-muted-foreground max-md:line-clamp-2 max-md:whitespace-normal max-md:[overflow-wrap:anywhere]"
-          title={arg ?? undefined}
+          title={sends ? (line ?? undefined) : (arg ?? undefined)}
           data-testid="trace-tool-arg"
         >
           {line ?? (tool.id ? <span className="text-fg-subtle">{tool.id}</span> : null)}
@@ -153,8 +163,9 @@ function ToolDetails({
           <p className="px-3 py-2 text-xs text-fg-subtle">{running && active ? t("noOutputYet") : t("noOutput")}</p>
         ) : (
           <div className="min-w-0">
+            {sends && outputs ? <OutputStrip outputs={files} label={tFiles("calls")} onOpen={outputs.open} className="p-2" testId="trace-tool-files" /> : null}
             {tool.change ? <TermBlock text={tool.change} diff testId="trace-tool-change" /> : null}
-            {tool.output ? <TermBlock text={tool.output} diff={tool.kind === "edit"} testId="trace-tool-output" /> : null}
+            {tool.output && !sends ? <TermBlock text={tool.output} diff={tool.kind === "edit"} testId="trace-tool-output" /> : null}
             {input ? <TermBlock text={input} label={t("input")} testId="trace-tool-input" /> : null}
           </div>
         )
@@ -204,14 +215,25 @@ export function useGroupLabel() {
   };
 }
 
+/** The files a group's calls hold (an image of a tool's result, a file sent), in the calls' order; null for none. */
+function useGroupFiles(group: ToolGroup): { list: RunOutput[]; open: (output: RunOutput, list: readonly RunOutput[]) => void } | null {
+  const outputs = useTraceOutputs();
+  const byCall = outputs?.index?.byCall;
+  if (!outputs || !byCall?.size) return null;
+  const list = group.calls.flatMap(({ tool }) => (tool.id !== null ? (byCall.get(tool.id) ?? []) : []));
+  return list.length ? { list, open: outputs.open } : null;
+}
+
 /**
  * One group of tool calls as a row: its kind's icon (`running` while its last call runs, `danger` when one failed),
  * what it did, how many failed, its files or programs in mono, and its time from the first call's start to the last
- * call's end, a clock while it runs. A button opens it on a line per call; its failed calls show under it either way.
+ * call's end, a clock while it runs. A button opens it on a line per call; its failed calls show under it either way,
+ * and the files its calls hold show under it as a strip that opens the page's viewer, folded or not.
  * `open` holds the group's state and the keys of its calls that are open: "1:a,b".
  */
 export function GroupRow({ group, open, onToggle, active }: { group: ToolGroup; open: string; onToggle: (key: string, open: boolean) => void; active: boolean }) {
   const t = useTranslations("runs.detail.trace.group");
+  const tFiles = useTranslations("outputs.strip");
   const label = useGroupLabel();
   const short = useTraceDuration();
   const [groupOpen, keys] = open.split(":");
@@ -226,6 +248,7 @@ export function GroupRow({ group, open, onToggle, active }: { group: ToolGroup; 
   const { title, detail } = label(group);
   const Icon = INTENT_ICON[group.intent];
   const shown = expanded ? group.calls : failed;
+  const files = useGroupFiles(group);
   return (
     <div className="flex min-w-0 flex-col" data-testid="trace-group" data-intent={group.intent} data-count={group.calls.length} data-running={running || undefined}>
       <button
@@ -260,6 +283,7 @@ export function GroupRow({ group, open, onToggle, active }: { group: ToolGroup; 
           aria-hidden="true"
         />
       </button>
+      {files ? <OutputStrip outputs={files.list} label={tFiles("calls")} onOpen={files.open} className="mb-1 ml-[26px]" testId="trace-group-files" /> : null}
       {shown.length ? (
         <ol className="mt-1 mb-1 ml-[26px] min-w-0 divide-y overflow-hidden rounded-md border" data-testid="trace-tools">
           {shown.map((entry) => (

@@ -5,8 +5,8 @@ POST /v1/worker/runs/{id}/credentials, with the worker's token and the protocol 
 for the leases of a run the worker holds, in one of ``runs.HELD_STATES`` (``waiting`` of a plan run among them); any
 other run, another worker's or one that ended, is 404 as for a state report. The hub takes the run's repos (its repo
 for a run of one step, its repos for a plan run, and for a chat run those it started with and those its agent opened
-since, ``chat_agents.open_repo``) and their origins in project_repos, compared in the form of
-``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
+since, ``chat_agents.open_repo``) and their origins in project_repos (the run's project's, else another project's the
+owner holds a grant on: ``repo_origins``), compared in the form of ``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
 project, on any of their workers or on this one, and that has not expired, never one of kind forge (``LEASED_KINDS``):
 
 - each secret of kind env, one per variable: the account the run took already, else one bound to this worker before
@@ -47,8 +47,10 @@ above, and on a worker the agent has no account on nothing changes. An account's
 (``credentials.agent_lease_name``), the audit row names it by id and handle (`` agent-accounts=12@<handle>``), and it
 is opened with the agent's own associated data (``sealing.agent_secret_aad``).
 
-The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
-and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
+The answer is {leases, missing, repos}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value
+included; each repo of the run with its origin, its path and the project that registered them, which a worker without a
+checkout of it clones from; and for each of the run's repos whose origin nothing covers, the repo, its origin and why:
+no origin registered, no
 secret covering it, the App not installed on it or not configured, the owner not allowed to push to it on GitHub,
 GitHub failing. Without EVO_HUB_SECRETS_KEY nothing is leased and every repo is missing, with that variable as the
 reason. A secret is leased once per run and worker: asked again, the same lease comes back with the secret's value as
@@ -69,7 +71,8 @@ GET /v1/projects/{p}/runs/{id}/credentials, the owner's view of a run's leases, 
 
 The owner must still hold writer on the run's project when the worker asks: once the grant is gone or lowered to
 reader, the ask is 403, and the admin route that took it gave back the leases still out of every run the member
-dispatched in the project (``end_member_leases``, from ``admin.grant`` and ``admin.revoke``).
+dispatched in the project (``end_member_leases``, from ``admin.grant`` and ``admin.revoke``). So once the owner's
+primary seat in the org chart ended, on every project (``org_expiry.take_back``).
 
 The hub gives leases back itself (``end_leases``) when a run leaves the held states (``run_state.move_run``: it ends,
 waits in review, or is parked) and when a worker is revoked (``workers.end_worker``, every lease of the worker). Those
@@ -85,10 +88,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
 from sqlalchemy import and_, exists, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -98,7 +100,6 @@ from evo_agents.hub.credentials import (
     GITHUB_HOST,
     GITHUB_TOKEN_REFRESH_SECONDS,
     LEASED_KINDS,
-    PROVIDERS,
     RELEASE_ENV_VARS,
     Lease,
     agent_lease_name,
@@ -113,6 +114,13 @@ from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relo
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.credential_models import (
+    CredentialLease,
+    Credentials,
+    GivenBack,
+    MissingOrigin,
+    RunRepoSource,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
@@ -123,6 +131,8 @@ from evo_agents.hub.server.lease_ending import (  # noqa: F401  (re-exported: ca
     revoke_tokens,
     revoker,
 )
+from evo_agents.hub.server.org_store import ended_refusal
+from evo_agents.hub.server.repo_origins import RepoOrigin, repo_origins
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
@@ -146,40 +156,6 @@ RELEASE_OFF_GITHUB = "a release run gets no git secret: it pushes to GitHub alon
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
-
-
-# Models
-
-
-class CredentialLease(BaseModel):
-    """One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."""
-
-    id: int = Field(description="the lease; the same id when it is asked for again")
-    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
-    provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
-    name: str = Field(description="the secret's name, or github-app:<account>")
-    env_var: str | None = Field(description="kind env: the variable it sets")
-    url_prefix: str | None = Field(description="kind git: the https prefix of the origins it answers for")
-    username: str | None = Field(description="kind git: the user git sends with the value")
-    value: str = Field(description="the credential itself: for memory only, never a file, a log line or an event")
-    expires_at: datetime | None = Field(description="when it stops working; ask again before, for a GitHub token")
-
-
-class MissingOrigin(BaseModel):
-    """A repo of the run whose origin no lease covers: git uses the machine's own credentials for it."""
-
-    repo: str
-    origin: str | None = Field(description="as the project registered it; null when it registered none")
-    reason: str
-
-
-class Credentials(BaseModel):
-    leases: list[CredentialLease]
-    missing: list[MissingOrigin]
-
-
-class GivenBack(BaseModel):
-    revoked: int = Field(description="leases of the run this worker gave back now; 0 when none was out any more")
 
 
 # What a run may get
@@ -272,6 +248,7 @@ class _Survey:
     origins: dict[str, str | None]  # repo -> origin as registered, in the run's order
     secrets: list[_Secret]
     tokens: list[_HeldToken]
+    places: dict[str, RepoOrigin] = field(default_factory=dict)  # repo -> where its origin and path come from
     env: list[_Secret] = field(default_factory=list)
     ended: tuple[str, ...] = ()  # variables whose accounts of the agent all ended: leased from no one
     leased: dict[str, _Secret] = field(default_factory=dict)  # lease name -> the secret leased under it
@@ -445,6 +422,9 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
             f"{row.owner}, who dispatched run {run_id}, no longer holds the writer role on project {row.project}: "
             "the run gets no credentials",
         )
+    ended = await ended_refusal(conn, row.dispatched_by, row.owner, what=f"leasing run {run_id}", lock=lock)
+    if ended is not None:
+        raise HTTPException(403, ended)
     from evo_agents.hub.server.changes import curator_policy  # it reads runs through the routes that import this one
 
     return _Run(
@@ -488,11 +468,7 @@ async def survey_run(
     and a secret cannot be deleted until the leases are recorded."""
     worker_id = (await worker_of(conn, user))[0]
     run = await _held_run(conn, worker_id, run_id, lock=lock)
-    repos = tables.project_repos
-    origins = select(repos.c.name, repos.c.origin).where(
-        repos.c.project_id == run.project_id, repos.c.name.in_(list(run.repos))
-    )
-    registered = {row.name: row.origin for row in await conn.execute(origins)}
+    places = await repo_origins(conn, run.project_id, run.owner_id, run.repos)
     rows = await conn.execute(
         _bound_secrets(run.owner_id, run.project_id, worker_id, lock=lock, refreshable=refreshable)
     )
@@ -546,7 +522,8 @@ async def survey_run(
         )
         for row in await conn.execute(_held_tokens(run_id, worker_id))
     ]
-    survey = _Survey(run, {repo: registered.get(repo) for repo in run.repos}, secrets, tokens)
+    origins = {repo: places[repo].origin if repo in places else None for repo in run.repos}
+    survey = _Survey(run, origins, secrets, tokens, places)
     survey.ended = tuple(sorted(claimed - {row.env_var for row in accounts if not row.ended}))
     _choose(survey)
     return worker_id, survey
@@ -848,7 +825,18 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     }
     log.info("credentials leased", extra=extra)
     response.headers.update(NO_STORE)
-    return Credentials(leases=[CredentialLease.model_validate(lease.to_json()) for lease in leases], missing=missing)
+    repos = [
+        RunRepoSource(
+            repo=repo,
+            origin=survey.origins[repo],
+            path=survey.places[repo].path if repo in survey.places else None,
+            project=survey.places[repo].project if repo in survey.places else None,
+        )
+        for repo in survey.origins
+    ]
+    return Credentials(
+        leases=[CredentialLease.model_validate(lease.to_json()) for lease in leases], missing=missing, repos=repos
+    )
 
 
 async def _rulesets_now(engine: AsyncEngine, app: GitHubApp, survey: _Survey) -> dict[str, str]:

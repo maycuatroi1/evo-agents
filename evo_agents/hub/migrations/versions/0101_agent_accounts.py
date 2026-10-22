@@ -1,7 +1,7 @@
 """Secrets an agent profile owns: the env secrets of the accounts an admin gives an agent.
 
-Revision ID: 0085
-Revises: 0084
+Revision ID: 0101
+Revises: 0100
 Create Date: 2026-10-21
 
 Plan agent-accounts, criterion a2. secrets.owner_id says whose secret a row is, a member's; a row an agent profile owns
@@ -24,8 +24,8 @@ accounts, and wait for no lease to name them, or restore a backup taken before t
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0085"
-down_revision = "0084"
+revision = "0101"
+down_revision = "0100"
 branch_labels = None
 depends_on = None
 
@@ -60,9 +60,9 @@ def downgrade() -> None:
     count = held.scalar_one()
     if count:
         raise RuntimeError(
-            f"cannot go back to schema 0084: {count} secret row(s) belong to agent profiles, which schema 0084 has no "
+            f"cannot go back to schema 0100: {count} secret row(s) belong to agent profiles, which schema 0100 has no "
             "owner for; delete the agent accounts (the rows stay as deleted ones while a lease or run names them) or "
-            "restore a backup taken before 0085"
+            "restore a backup taken before 0101"
         )
     op.drop_index(NAME_KEY, table_name="secrets")
     op.drop_constraint(ENV_CHECK, "secrets", type_="check")

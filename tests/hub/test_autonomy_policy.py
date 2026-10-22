@@ -79,7 +79,25 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "breaker.baseline_min_merges": 10,
         "breaker.judge_misses_7d": 2,
         "audit.sample_rate": 0.10,
+        # plan loop-engine: the Loop off, and no estimate and no budget (answer 1 of its checkpoint)
+        "loop.enabled": False,
+        "loop.worker": None,
+        "loop.timezone": None,
+        "loop.business.max_running": 2,
+        "loop.development.max_running": 1,
+        "loop.repo_max_running": 1,
+        "loop.dispatches_per_hour": 6,
+        "loop.max_items_per_hour": 30,
+        "loop.stable_hours": 0,
+        "loop.brainstorm.weekday": "monday",
+        "loop.brainstorm.time": "09:00",
+        "loop.require_sprint": False,
+        "loop.caps.author.minutes": 60,
+        "loop.caps.author.turns": 200,
+        "loop.caps.plan.minutes": 240,
+        "loop.caps.plan.turns": 600,
     }
+    assert not [name for name in defaults if "budget" in name or "estimate" in name or "usd" in name]
     assert {key.name: key.default for key in autonomy.REPO_KEYS} == {
         "mode": "off",
         "target_branch": None,
@@ -121,10 +139,14 @@ def test_autonomy_policy_reads_a_key_a_revision_leaves_out_or_no_longer_takes_as
     read = autonomy.effective(old, FACTS)
     assert read["merge"]["hold_until"] == "merged" and "max_diff_lines" not in read["merge"]
     assert read["repos"]["retired-repo"]["mode"] == "auto"  # a repo the project left stays named, as written
+    # a revision written before plan loop-engine reads with the Loop off and every loop key at its default
+    assert made["loop"]["enabled"] is False and made["loop"]["caps"]["plan"] == {"minutes": 240, "turns": 600}
+    on = autonomy.effective({**POLICY, "loop": {"enabled": True, "brainstorm": {"time": "07:30"}}}, FACTS)["loop"]
+    assert (on["enabled"], on["brainstorm"], on["stable_hours"]) == (True, {"weekday": "monday", "time": "07:30"}, 0)
     # a key a later release adds reads its default in a revision written before it
-    added = Key("loop.max_tasks_per_day", 3, lambda value: None, "a key plan loop-engine adds")
+    added = Key("later.max_tasks_per_day", 3, lambda value: None, "a key a later plan adds")
     monkeypatch.setattr(autonomy, "KEYS", (*autonomy.KEYS, added))
-    assert autonomy.effective(POLICY, FACTS)["loop"] == {"max_tasks_per_day": 3}
+    assert autonomy.effective(POLICY, FACTS)["later"] == {"max_tasks_per_day": 3}
 
 
 def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
@@ -137,7 +159,8 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         "merge": {"hold_until": "soon", "max_diff_lines": 500, "pipeline_minutes": True, "risk_paths": "a/**"},
         "audit": {"sample_rate": 2},
         "judge": {"worker": " "},
-        "loop": {},
+        "loop": {"enabled": "yes", "brainstorm": {"time": "9am"}, "timezone": "Asia/Ho Chi Minh", "budget": 5},
+        "later": {},
     }
     assert autonomy.problems(wrong, FACTS) == [
         f"repos.{SITE}.mode: {SITE} is on github.com, where the Curator's tiers decide what the hub merges; auto is "
@@ -152,10 +175,16 @@ def test_autonomy_policy_problems_name_each_key_and_value_it_refuses():
         'merge.risk_paths: a list of at most 100 globs, each of 1 to 500 characters, not "a/**"',
         "audit.sample_rate: a number from 0 to 1, not 2",
         'judge.worker: null or text of 1 to 100 characters on one line, no space at either end, not " "',
-        "loop: no such key; the policy takes repos, merge, judge, breaker, audit",
+        'loop.enabled: true or false, not "yes"',
+        'loop.brainstorm.time: a time of day as HH:MM, 00:00 to 23:59, not "9am"',
+        'loop.timezone: null or a time zone name such as Asia/Ho_Chi_Minh, at most 64 characters, not "Asia/Ho Chi '
+        'Minh"',
+        "loop.budget: no such key; loop takes enabled, worker, timezone, business, development, repo_max_running, "
+        "dispatches_per_hour, max_items_per_hour, stable_hours, brainstorm, require_sprint, caps",
+        "later: no such key; the policy takes repos, merge, judge, breaker, audit, loop",
     ]
     assert autonomy.problems(["merge"], FACTS) == [
-        'the policy is an object of sections (repos, merge, judge, breaker, audit), not ["merge"]'
+        'the policy is an object of sections (repos, merge, judge, breaker, audit, loop), not ["merge"]'
     ]
     assert autonomy.problems({"merge": {"risk_paths": ["x" * 70_000]}}, FACTS)[0].startswith("the policy is 70")
 

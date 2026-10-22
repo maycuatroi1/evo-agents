@@ -62,10 +62,11 @@ class TaskRun:
             raise RunFailed("a task run runs headless only")
         if not task_runs.is_task_branch(self.branch):
             raise RunFailed(f"a task run works on a branch task/<run>, not {self.branch}")
+        names = [entry.get("repo") for entry in repos]
+        await access.take_credentials(run, names, best_effort=True)  # cloning those it lacks first
+        run.check()
         held = self.work.held_repos(repos)
         names = [entry["repo"] for entry in held]
-        await access.take_credentials(run, names)
-        run.check()
         await access.check(run, names, path=access.run_path(run))
         run.check()
         await self.work.prepare(held)

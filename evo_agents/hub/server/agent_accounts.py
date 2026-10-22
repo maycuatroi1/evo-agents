@@ -3,7 +3,7 @@ project gives an agent profile env secrets of its own, which the hub keeps seale
 (``docs/credentials.md``, section "Accounts of an agent").
 
 An account of an agent is a row of ``secrets`` that the profile owns (``secrets.profile_id``, no member owner, migration
-0085), always kind env, unique by name among the profile's live accounts. It is bound to the profile's project and to
+0101), always kind env, unique by name among the profile's live accounts. It is bound to the profile's project and to
 at least one worker the admin names: a worker of the admin's own that is not revoked, or a shared worker of another
 member, and in both cases one that serves the project. Weight, priority and pause are those of any account
 (``evo_agents.hub.accounts``), kept in the ``accounts`` row of the secret.

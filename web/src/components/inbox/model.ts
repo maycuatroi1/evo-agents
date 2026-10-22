@@ -5,6 +5,7 @@ import { PROJECT_NAME } from "@/lib/queries";
 
 import {
   type Decision,
+  HUB_DECISION_CATEGORIES,
   INBOX_PAGE,
   type InboxQuery,
   MAX_ANSWER_BYTES,
@@ -147,6 +148,14 @@ export function isBranchNotice(notification: Pick<Notification, "notice_kind">):
   );
 }
 
+export type PluginFacts = { plugin: string | null; topic: string | null };
+
+/** The plugin that sent a notice and its topic, from `details`, keeping only text. */
+export function pluginFacts(details: Notification["details"]): PluginFacts {
+  const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : null);
+  return { plugin: text(details?.plugin), topic: text(details?.topic) };
+}
+
 /** Commits a notice lists before the rest fold under "and N more". */
 export const COMMITS_SHOWN = 5;
 
@@ -159,10 +168,24 @@ export function bellNumber(unread: number): string {
 }
 
 /** Why an answer cannot be sent as it stands: nothing chosen or written, or words over 4 KiB of UTF-8. */
-export type AnswerProblem = "empty" | "long" | null;
+export type AnswerProblem = "empty" | "option" | "long" | null;
 
-export function answerProblem(option: string | null, text: string): AnswerProblem {
+/** Whether the hub itself does what the answer of `decision` chooses (`runs.HUB_DECISION_CATEGORIES`). */
+export function isHubDecision(decision: Pick<Decision, "category">): boolean {
+  return (HUB_DECISION_CATEGORIES as readonly string[]).includes(decision.category);
+}
+
+/** The words of the link to the run a decision names: a triage run, a release run, an author run (no plan), a plan's run. */
+export function runLinkWords(decision: Pick<Decision, "category" | "plan_id">) {
+  if (decision.category === "triage") return "triageRunLink" as const;
+  if (decision.category === "release") return "releaseRunLink" as const;
+  return decision.plan_id === null ? ("authorRunLink" as const) : ("runLink" as const);
+}
+
+/** What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words too long. */
+export function answerProblem(option: string | null, text: string, hub = false): AnswerProblem {
   if (option === null && text.trim() === "") return "empty";
+  if (option === null && hub) return "option";
   if (utf8Bytes(text.trim()) > MAX_ANSWER_BYTES) return "long";
   return null;
 }
@@ -176,13 +199,15 @@ export function answerBody(option: string | null, text: string): { option?: stri
 /**
  * Whether the visitor may answer a decision, and if not why: only its run's owner answers, only while it is open, and
  * only while its run is queued or held by a worker (an agent may still read the answer), parked (the answer resumes
- * it) or, for a local session, idle (it takes the answer at its next turn). The API decides again on every answer.
+ * it) or, for a local session, idle (it takes the answer at its next turn). A decision of the hub's own takes its
+ * answer whatever its run is: the hub, not an agent, does what it chooses. The API decides again on every answer.
  */
 export type AnswerAccess = "answer" | "notOwner" | "closed" | "runGone";
 
-export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_state">, login: string | null): AnswerAccess {
+export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_state" | "category">, login: string | null): AnswerAccess {
   if (decision.state !== "open") return "closed";
   if (login === null || login !== decision.owner) return "notOwner";
+  if (isHubDecision(decision)) return "answer";
   // idle: a local session whose turn ended; it takes the answer at its next turn.
   if (decision.run_state !== "parked" && decision.run_state !== "idle" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
   return "answer";

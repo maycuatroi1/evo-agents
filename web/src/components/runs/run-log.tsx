@@ -1,49 +1,19 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  ArrowDownToLine,
-  ChevronDown,
-  Layers,
-  type LucideIcon,
-  MessageCircle,
-  MessagesSquare,
-  Pause,
-  Play,
-  ListTree,
-  ScrollText,
-  Settings2,
-  SquareTerminal,
-  Terminal,
-  Wrench,
-} from "lucide-react";
+import { ArrowDownToLine, Images, ListTree, MessageCircle, Pause, Play, ScrollText, Terminal } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { memo, type ReactNode, type RefObject, useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { FacetGroup } from "@/components/data/facet-group";
 import { SearchField } from "@/components/data/search-field";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
-import {
-  filterLines,
-  groupCounts,
-  LOG_GROUPS,
-  type LogGroup,
-  type LogLine,
-  splitMatches,
-  VIRTUAL_THRESHOLD,
-} from "./log-model";
+import { GROUP_ICON, GroupMenu } from "./log-group-menu";
+import { filterLines, groupCounts, LOG_GROUPS, type LogGroup, type LogLine, splitMatches, VIRTUAL_THRESHOLD } from "./log-model";
 import type { RunEventKind } from "./queries";
 import { LogStreamState } from "./log-stream-state";
 import type { RunLog } from "./use-run-log";
@@ -68,12 +38,6 @@ const KIND_TONE: Record<RunEventKind, string> = {
   usage_update: "text-term-muted",
 };
 
-const GROUP_ICON: Record<LogGroup, LucideIcon> = {
-  agent: MessagesSquare,
-  tools: Wrench,
-  output: SquareTerminal,
-  system: Settings2,
-};
 
 /** How close to the end (px) still counts as at the end. */
 const END_SLACK = 32;
@@ -205,75 +169,26 @@ function VirtualRows({
   );
 }
 
-/**
- * The log's groups on a phone: one 44 px button with the group shown (named "Show: Tools"), opening a menu of the
- * groups with their line counts, instead of a row of chips that would wrap over three lines. Under the search field,
- * beside Follow and Pause.
- */
-function GroupMenu({
-  group,
-  counts,
-  total,
-  onSelect,
-}: {
-  group: LogGroup | null;
-  counts: Record<LogGroup, number>;
-  total: number;
-  onSelect: (group: LogGroup | null) => void;
-}) {
-  const t = useTranslations("runs.detail.log");
+/** A tab's count: a round pill drawn for the eye, said in words after the tab's name. */
+function TabCount({ count, label, testId }: { count: number; label: string; testId: string }) {
   const format = useFormatter();
-  const options: { value: LogGroup | null; label: string; icon: LucideIcon; count: number }[] = [
-    { value: null, label: t("groups.all"), icon: Layers, count: total },
-    ...LOG_GROUPS.map((value) => ({ value, label: t(`groups.${value}`), icon: GROUP_ICON[value], count: counts[value] })),
-  ];
-  const shown = options.find((option) => option.value === group) ?? options[0];
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("min-w-0 shrink-0", group !== null && "border-brand bg-surface-selected text-foreground")}
-          // "Show: Tools" to a screen reader; the group's name and icon on screen.
-          aria-label={t("groupMenu", { group: shown.label })}
-          data-testid="log-group-menu"
-          data-group={group ?? "all"}
-        >
-          <shown.icon aria-hidden="true" />
-          {shown.label}
-          <ChevronDown aria-hidden="true" className="text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>{t("filter")}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={group ?? ""}
-          onValueChange={(value) => onSelect((LOG_GROUPS as readonly string[]).includes(value) ? (value as LogGroup) : null)}
-        >
-          {options.map((option) => (
-            <DropdownMenuRadioItem key={option.value ?? ""} value={option.value ?? ""} data-testid={`log-group-${option.value ?? "all"}`}>
-              <option.icon aria-hidden="true" />
-              {option.label}
-              <span className="ml-auto pl-3 text-xs text-fg-subtle tabular-nums">
-                <span aria-hidden="true">{format.number(option.count)}</span>
-                <span className="sr-only">{t("lines", { count: option.count })}</span>
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <span aria-hidden="true" className="rounded-full bg-muted px-1.5 text-[11px] leading-[18px] font-medium text-muted-foreground tabular-nums" data-testid={testId}>
+        {format.number(count)}
+      </span>
+      <span className="sr-only">, {label}</span>
+    </>
   );
 }
 
-export type SessionTab = "chat" | "trace" | "log" | "terminal";
+export type SessionTab = "chat" | "trace" | "outputs" | "log" | "terminal";
 
-export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "log", "terminal"];
+export const SESSION_TABS: readonly SessionTab[] = ["chat", "trace", "outputs", "log", "terminal"];
 
 /**
- * The card of a run's session: the Chat of an author run (first), the Trace (the kit's AgentTrace), the Raw log and,
- * for the owner of the run and of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
+ * The card of a run's session: the Chat of an author run (first), the Trace (the kit's AgentTrace), the Outputs once
+ * the run has files (run-outputs.tsx), the Raw log and, for the owner of the run and of its worker, the Terminal, as tabs. Every panel stays mounted, so switching tabs keeps the terminal's session, the
  * log's place and the trace's open rows. The composer sits under the Trace and the Raw log.
  */
 export function RunLogCard({
@@ -283,6 +198,7 @@ export function RunLogCard({
   composer,
   chat = null,
   trace = null,
+  outputs = null,
   terminal = null,
   frozen,
   tab: heldTab,
@@ -298,6 +214,8 @@ export function RunLogCard({
   chat?: ((shown: boolean) => ReactNode) | null;
   /** The Trace tab's panel, given whether it is the tab shown. Without it and a terminal, the card is the log alone. */
   trace?: ((shown: boolean) => ReactNode) | null;
+  /** The Outputs tab's panel and how many files the run holds, given once it holds any. */
+  outputs?: { count: number; panel: () => ReactNode } | null;
   /**
    * The Terminal tab's panel, for the owner of the run and of its worker (run-terminal.tsx), given whether it is the
    * tab shown.
@@ -320,7 +238,7 @@ export function RunLogCard({
 }) {
   const t = useTranslations("runs.detail.log");
   const tTabs = useTranslations("runs.detail.terminal.tabs");
-  const format = useFormatter();
+  const tOutputs = useTranslations("runs.detail.outputs");
   const ids = useId();
   const phone = useIsMobile();
   const first: SessionTab = chat ? "chat" : trace ? "trace" : "log";
@@ -329,7 +247,7 @@ export function RunLogCard({
   // A tab the card does not have (the Terminal once it is not offered, the Trace or the Chat without one) shows the
   // first it has.
   const tab: SessionTab =
-    (wanted === "terminal" && !terminal) || (wanted === "trace" && !trace) || (wanted === "chat" && !chat) ? first : wanted;
+    (wanted === "terminal" && !terminal) || (wanted === "trace" && !trace) || (wanted === "chat" && !chat) || (wanted === "outputs" && !outputs) ? first : wanted;
   const setTab = onTabChange ?? setOwnTab;
   const [group, setGroup] = useState<LogGroup | null>(null);
   const [query, setQuery] = useState("");
@@ -473,7 +391,7 @@ export function RunLogCard({
     </>
   );
 
-  if (!chat && !trace && !terminal) {
+  if (!chat && !trace && !terminal && !outputs) {
     return (
       <section
         aria-labelledby={`${ids}-title`}
@@ -526,21 +444,17 @@ export function RunLogCard({
                 {tTabs("trace")}
               </TabsTrigger>
             ) : null}
+            {outputs ? (
+              <TabsTrigger value="outputs" className="h-12" data-testid="run-tab-outputs">
+                <Images aria-hidden="true" />
+                {tTabs("outputs")}
+                <TabCount count={outputs.count} label={tOutputs("count", { count: outputs.count })} testId="run-tab-outputs-count" />
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="log" className="h-12" data-testid="run-tab-log">
               <ScrollText aria-hidden="true" />
               {tTabs("log")}
-              {all.length > 0 ? (
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="rounded-full bg-muted px-1.5 text-[11px] leading-[18px] font-medium text-muted-foreground tabular-nums"
-                    data-testid="run-tab-log-count"
-                  >
-                    {format.number(all.length)}
-                  </span>
-                  <span className="sr-only">, {t("lines", { count: all.length })}</span>
-                </>
-              ) : null}
+              {all.length > 0 ? <TabCount count={all.length} label={t("lines", { count: all.length })} testId="run-tab-log-count" /> : null}
             </TabsTrigger>
             {terminal ? (
               <TabsTrigger value="terminal" className="h-12" data-testid="run-tab-terminal">
@@ -567,6 +481,11 @@ export function RunLogCard({
             {trace(tab === "trace")}
           </TabsContent>
         ) : null}
+        {outputs ? (
+          <TabsContent value="outputs" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
+            {outputs.panel()}
+          </TabsContent>
+        ) : null}
         <TabsContent value="log" forceMount className={cn("gap-0 data-[state=inactive]:hidden", panelFill)}>
           {logBody}
         </TabsContent>
@@ -575,7 +494,7 @@ export function RunLogCard({
             {terminal(tab === "terminal")}
           </TabsContent>
         ) : null}
-        {tab !== "terminal" && tab !== "chat" ? composer : null}
+        {tab !== "terminal" && tab !== "chat" && tab !== "outputs" ? composer : null}
       </section>
     </Tabs>
   );

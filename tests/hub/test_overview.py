@@ -470,3 +470,24 @@ def test_the_lists_stop_at_their_limits_and_the_counts_do_not(client, members, h
     assert len(shown["open_decisions"]) == MAX_DECISIONS
     (project,) = [item for item in shown["projects"] if item["name"] == A]
     assert shown["counts"]["waiting_on_you"] == 3 * MAX_DECISIONS == project["open_decisions"]
+
+
+# The org chart's run counts (plan org-chart, criterion a6): GET /v1/org/runs counts as the overview does
+
+
+def org_runs(client, headers) -> list[tuple[str, str, int]]:
+    response = client.get("/v1/org/runs", headers=headers)
+    assert response.status_code == 200, response.text
+    return [(item["login"], item["project"], item["running"]) for item in response.json()["running"]]
+
+
+def test_orgchart_api_counts_the_runs_at_work_of_each_member_over_the_viewers_grants(client, members, world):
+    # owner reads A to customer and B: rollout's running and vault's in A, other's verifying, bea's in B
+    assert org_runs(client, members[OWNER]) == [(BEA, B, 1), (OWNER, A, 2), (OTHER, A, 1)]
+    # reader reaches internal on A alone: vault's run and B's are not counted
+    assert org_runs(client, members[READER]) == [(OWNER, A, 1), (OTHER, A, 1)]
+    assert org_runs(client, members[BEA]) == [(BEA, B, 1)]
+    # the overview's running count is the sum of the viewer's counts
+    assert overview(client, members[READER])["counts"]["running"] == 2
+    # a hub admin without a grant, and a stranger, count nothing
+    assert org_runs(client, members[ADMIN]) == [] and org_runs(client, members[STRANGER]) == []

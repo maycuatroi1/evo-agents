@@ -2,8 +2,8 @@
 project's repos, first of all whether it merges their merge requests on GitLab, as keys an admin of the project
 writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy_policies``, table autonomy_policies).
 
-A body is an object of sections. ``merge``, ``judge``, ``breaker`` and ``audit`` hold the keys of KEYS; ``repos``
-maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its writer set. A key it leaves out
+A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit`` and ``loop`` hold the keys of KEYS;
+``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its writer set. A key it leaves out
 reads as its default (``effective``), so a key a later release adds reads its default in every revision written
 before it, and a value an older release took that this one refuses reads as the default too. A project with no
 revision has every repo off: the hub merges nothing on its own, as before the policy (criterion a9).
@@ -11,6 +11,14 @@ revision has every repo off: the hub merges nothing on its own, as before the po
 Outside a body a key is named by its dotted path: ``merge.hold_until``, ``repos.<repo>.mode``,
 ``repos.<repo>.jobs.uat_check``. A repo's name may hold a dot, so ``key_path`` reads a repo key from its known end.
 The policy has no key that caps a diff or the merges of a day (the member's answers 4 and 8 of 2026-10-21).
+
+``loop`` (plan loop-engine, criterion a4) holds the keys of a project's Loop (``evo_agents.hub.server.loop``): whether
+it runs, the worker of its author and plan runs, the time zone of its schedule, how many work items of each cycle run
+at once and how many runs of a repo, how many runs it hands out an hour and how many work items it may make an hour
+before its breaker trips, how long a baseline stays approved before a work item comes of it, the weekday and time of
+its weekly look at each goal, whether a frame task must be in an active sprint, and the turns and minutes of the author
+and plan runs it hands out. It has no estimate and no budget (the member's answer 1 of 2026-10-21, checkpoint of step
+1). ``loop.enabled`` is false by default, so a revision written before these keys reads with the Loop off.
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -20,6 +28,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -37,6 +46,10 @@ MAX_REPOS = 1000  # as many as a project lists
 MAX_RISK_PATHS = 100
 MAX_GLOB_CHARS = 500
 MAX_NOTE_CHARS = 1000
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")  # loop.brainstorm.weekday
+TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.time, HH:MM on a 24-hour clock
+TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
+MAX_TIME_ZONE_CHARS = 64
 
 # Why a value is wrong, or None when it is right.
 Check = Callable[[Any], str | None]
@@ -114,6 +127,19 @@ def _optional(check: Check) -> Check:
     return optional
 
 
+def _flag(value) -> str | None:
+    return None if isinstance(value, bool) else "true or false"
+
+
+def _time_of_day(value) -> str | None:
+    return None if isinstance(value, str) and TIME_OF_DAY.fullmatch(value) else "a time of day as HH:MM, 00:00 to 23:59"
+
+
+def _time_zone(value) -> str | None:
+    right = isinstance(value, str) and len(value) <= MAX_TIME_ZONE_CHARS and TIME_ZONE.fullmatch(value) is not None
+    return None if right else f"a time zone name such as Asia/Ho_Chi_Minh, at most {MAX_TIME_ZONE_CHARS} characters"
+
+
 def _globs(value) -> str | None:
     each = _line(MAX_GLOB_CHARS)
     if isinstance(value, list) and len(value) <= MAX_RISK_PATHS and all(each(item) is None for item in value):
@@ -123,6 +149,29 @@ def _globs(value) -> str | None:
 
 # The keys
 
+LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no estimate and no budget
+    Key("loop.enabled", False, _flag, "true: the project's Loop makes work items and hands out their runs"),
+    Key("loop.worker", None, _optional(_line(100)), "the worker of the Loop's author and plan runs; null: none run"),
+    Key(
+        "loop.timezone",
+        None,
+        _optional(_time_zone),
+        "the time zone of the Loop's schedule; null: the charter's, else UTC",
+    ),
+    Key("loop.business.max_running", 2, _whole(0, 100), "work items of the business cycle running at once"),
+    Key("loop.development.max_running", 1, _whole(0, 100), "work items of the development cycle running at once"),
+    Key("loop.repo_max_running", 1, _whole(1, 100), "plan runs running plus merge requests not merged, per repo"),
+    Key("loop.dispatches_per_hour", 6, _whole(0, 1000), "runs the Loop hands out in 60 minutes"),
+    Key("loop.max_items_per_hour", 30, _whole(1, 10000), "work items made in 60 minutes; more trips the breaker"),
+    Key("loop.stable_hours", 0, _number(0, 720), "hours a baseline stays approved before a work item comes of it"),
+    Key("loop.brainstorm.weekday", "monday", _one_of(*WEEKDAYS), "the day of the weekly look at each goal"),
+    Key("loop.brainstorm.time", "09:00", _time_of_day, "the time of day of the weekly look at each goal"),
+    Key("loop.require_sprint", False, _flag, "true: a frame task is ready only in an active sprint"),
+    Key("loop.caps.author.minutes", 60, _whole(1, 1440), "the minutes of an author run the Loop hands out"),
+    Key("loop.caps.author.turns", 200, _whole(1, 10000), "the turns of an author run the Loop hands out"),
+    Key("loop.caps.plan.minutes", 240, _whole(1, 2880), "the minutes of a plan run the Loop hands out"),
+    Key("loop.caps.plan.turns", 600, _whole(1, 10000), "the turns of a plan run the Loop hands out"),
+)
 KEYS = (
     Key(
         "merge.opt_in_label", "evo-merge", _line(255), "the label a person puts on a merge request to ask for the queue"
@@ -149,6 +198,7 @@ KEYS = (
     Key("breaker.baseline_min_merges", 10, _whole(1, 10000), "merges of the first 14 days a baseline needs"),
     Key("breaker.judge_misses_7d", 2, _whole(0, 1000), "Judge passes found wrong in 7 days that the breaker allows"),
     Key("audit.sample_rate", 0.10, _number(0, 1), "the share of merged merge requests an admin is asked to check"),
+    *LOOP_KEYS,
 )
 REPO_KEYS = (
     Key("mode", OFF, _one_of(*MODES), "auto: the hub merges the repo's merge requests in scope; off: a person does"),

@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from evo_agents import __version__
 from evo_agents.cli import main
 from evo_agents.harness import plan_digest, validate_harness
 from evo_agents.hub import client as hub_client
@@ -377,8 +378,33 @@ def fake_uvx(bin_dir: Path, exit_code: int | None = None) -> Path:
     return script
 
 
+def fake_evo_agents(bin_dir: Path) -> Path:
+    """``evo-agents`` on the PATH, as ``uv tool install`` leaves it, running this checkout's evo_agents."""
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    script = bin_dir / "evo-agents"
+    script.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m evo_agents "$@"\n', encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
 def plugin_hooks() -> dict:
     return json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+
+
+HOOK_COMMAND = re.compile(
+    r"command -v uvx >/dev/null 2>&1 && uvx --offline --from (evo-ak==\S+) evo-agents (?P<args>[^|{}']+?)"
+    r" \|\| \{ command -v evo-agents >/dev/null 2>&1 && echo '(?P<plugin>evo-\w+): uvx could not run \1, so evo-agents"
+    r" from PATH runs (?P=args)' >&2 && evo-agents (?P=args); \} \|\| echo '(?P=plugin): (?P=args) did not run: uvx"
+    r" could not run \1 and evo-agents from PATH is missing or failed' >&2; true"
+)
+
+
+def hook_runs(command: str) -> str:
+    """What a hook command of a plugin runs after ``evo-agents``: the pinned release through ``uvx --offline``, else
+    ``evo-agents`` on the PATH with the same arguments, a line on stderr for either miss, and exit status 0."""
+    found = HOOK_COMMAND.fullmatch(command)
+    assert found, command
+    return found["args"]
 
 
 def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget():
@@ -387,27 +413,28 @@ def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget
     assert sorted(found) == ["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]
     (ask,) = found["PreToolUse"]
     assert ask["matcher"] == "AskUserQuestion"
-    assert ask["hooks"][0]["command"].endswith(" evo-agents hub hook local-ask || true")
+    assert hook_runs(ask["hooks"][0]["command"]) == "hub hook local-ask"
     assert ask["hooks"][0]["timeout"] >= local_sync.BUDGET["ask"] + 5
     (start,) = found["SessionStart"]
     assert start["matcher"] == "startup|resume|clear"
     (stop,) = found["Stop"]
     assert "matcher" not in stop
-    for group, name in ((start, "session-start"), (stop, "stop")):
+    (end,) = found["SessionEnd"]
+    for group, name in ((start, "session-start"), (stop, "stop"), (end, "session-end")):
         (hook,) = group["hooks"]
-        assert hook["type"] == "command" and hook["command"].endswith(f" evo-agents hub hook {name} || true")
+        assert hook["type"] == "command" and hook_runs(hook["command"]) == f"hub hook {name}"
         assert hook["timeout"] >= hooks.BUDGETS[name] + 5  # uvx and the interpreter start inside Claude Code's limit
     assert hooks.REQUEST_TIMEOUT < min(hooks.BUDGETS.values())
-    local = {"UserPromptSubmit": "user-prompt", "SessionEnd": "session-end"}
+    # SessionEnd pushes the digest, then reports the local run ended within what is left
+    assert hooks.BUDGETS["session-end"] >= hooks.REQUEST_TIMEOUT + local_sync.LIMITS["session-end"][1]
+    assert end["hooks"][0]["timeout"] <= 60  # Claude Code 2.1.299 waits 60 s at most for a SessionEnd hook
+    local = {"UserPromptSubmit": "user-prompt"}
     for event, name in local.items():
         (group,) = found[event]
         (hook,) = group["hooks"]
-        assert (
-            hook["command"].endswith(f" evo-agents hub hook {name} || true")
-            and "--offline --from evo-ak==" in hook["command"]
-        )
+        assert hook_runs(hook["command"]) == f"hub hook {name}"
         assert hook["timeout"] >= local_sync.BUDGET[name] + 5
-    tool = [g for g in found["PostToolUse"] if g["hooks"][0]["command"].endswith(" hub hook local-tool || true")]
+    tool = [g for g in found["PostToolUse"] if hook_runs(g["hooks"][0]["command"]) == "hub hook local-tool"]
     assert (
         len(tool) == 1 and "matcher" not in tool[0] and tool[0]["hooks"][0]["timeout"] >= local_sync.BUDGET["tool"] + 5
     )
@@ -424,11 +451,16 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
             env.pop(variable, None)
         return subprocess.run([SH, "-c", command], input=payload, env=env, capture_output=True, text=True)
 
+    failing = str(fake_uvx(tmp_path / "failing", exit_code=2).parent)
     for command in commands.values():
+        args = hook_runs(command)
         missing = run(command, str(tmp_path / "empty"))
         assert (missing.returncode, missing.stdout) == (0, "")
-        failing = run(command, str(fake_uvx(tmp_path / "failing", exit_code=2).parent))
-        assert (failing.returncode, failing.stdout) == (0, "")
+        assert missing.stderr.splitlines()[-1].startswith(f"evo-hub: {args} did not run: uvx could not run evo-ak==")
+        broken = run(command, failing)
+        assert (broken.returncode, broken.stdout) == (0, "")
+        lines = broken.stderr.splitlines()
+        assert lines[0] == "uvx: something broke" and lines[-1].startswith(f"evo-hub: {args} did not run: ")
     working = str(fake_uvx(tmp_path / "working").parent)
     started = run(commands["SessionStart"], working)
     assert started.returncode == 0 and "not signed in" in context_of(started.stdout)["context"]
@@ -437,6 +469,17 @@ def test_the_hook_commands_exit_0_with_uvx_missing_failing_or_working(own_home, 
     for name in ("UserPromptSubmit", "LocalTool", "SessionEnd"):  # not signed in: nothing sent, nothing said
         ended = run(commands[name], working)
         assert (ended.returncode, ended.stdout, ended.stderr) == (0, "", "")
+    # The release the plugin pins is not in uv's cache (or uvx is missing): evo-agents on the PATH runs the hook.
+    path = str(fake_evo_agents(tmp_path / "path").parent)
+    for uvx in (failing, str(tmp_path / "empty")):
+        started = run(commands["SessionStart"], f"{uvx}{os.pathsep}{path}")
+        assert started.returncode == 0 and "not signed in" in context_of(started.stdout)["context"]
+        assert started.stderr.splitlines()[-1] == (
+            f"evo-hub: uvx could not run evo-ak=={__version__}, so evo-agents from PATH runs hub hook session-start"
+        )
+        stopped = run(commands["Stop"], f"{uvx}{os.pathsep}{path}")
+        assert (stopped.returncode, stopped.stdout) == (0, "")
+        assert "did not run" not in stopped.stderr and stopped.stderr.splitlines()[-1].endswith(" runs hub hook stop")
 
 
 # Plan copies the export leaves alone

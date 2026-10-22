@@ -13,19 +13,27 @@ it queues a plan run, so the review comes first in a night whichever job runs fi
 
 The figures are counted without any model, over the REVIEW_DAYS (the charter's ``review.days``) before the moment they
 are counted, from what the hub holds and the schedule's owner may read: per tool, the calls and failures of the runs
-that ended (run_tool_stats) and of the sessions; per Bash program, those of the sessions; the failures that come from
-the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of the runs, by
-cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker reported
-(runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again across
-sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt, open_questions);
-the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the span; and what the
-worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that failed with its error;
+that ended (run_tool_stats) and of the sessions; per Bash program, those of the sessions, with their failures of a
+wrong call (usage_errors) and of the environment (env_errors) as the sessions' digests tell them
+(``evo_agents.hub.friction``); per skill (``skills``), its loads in the sessions' digests (typed with /name among them)
+and in runs, the friction in those sessions from each load to the person's next turn (Bash commands, failures by kind,
+interrupts, corrections) next to the baseline of every digest that counts skills, and what came of the runs that loaded
+it (done, the steps they reported done after the worker ran their verify again, failed and lost by cause); the failures
+that come from the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of
+the runs, by cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker
+reported (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again
+across sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
+open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
+span; and what the worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that
+failed with its error;
 and the health of the project's knowledge graph (``kg_health``, ``evo_agents.hub.server.kg_health``): how far each git
 source lags its default branch and the files it lacks or holds stale, at the latest measure, what the builds of the span
 covered, and what agents got from the graph; and the ``runtime`` and the ``harness`` of the sessions and runs
 (``evo_agents.hub.server.runtime_figures``): their tokens, the prompt cache, the context, the compactions, the cost of
 each session, run and merged pull request, the time of each hook and tool, and what the harness puts into every
-context, by source, with the always-loaded files of each repo. The sessions are their facets
+context, by source, with the always-loaded files of each repo; and the ``product`` the lens product reads
+(``evo_agents.hub.server.product_figures``): the active goals with their metrics, the signals of the span and the
+canvases of a project that enables the plugin canvas. The sessions are their facets
 (``evo_agents.hub.server.facet_figures``):
 each session's whose transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as
 its facet would be, and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``,
@@ -43,13 +51,15 @@ The review run is a run of kind review, dispatched as the owner of the schedule 
 worker on duty, which must say it runs review runs, over the repos of the project the worker has a checkout of, with the
 Reviewer's runtime and model of the charter and the night's caps, the review's own (``review.budget_usd``) below them.
 A project has at most one review run a night, and one active at a time. Its prompt is ``review.build_review_prompt``
-over the night's figures and the lenses of the night, which the run's first event names.
+over the night's figures and the lenses of the night, which the run's first event names, and on a night of the lens
+product the plugins it may propose through (PRODUCT_PLUGINS the project enables); ``looks_through`` tells those
+plugins whether a run is such a review run.
 """
 
 from __future__ import annotations
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -60,7 +70,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
-from evo_agents.hub.server import audit, facet_figures, kg_health, runtime_figures
+from evo_agents.hub.friction import SKILL_FIELDS
+from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.server import audit, facet_figures, kg_health, product_figures, runtime_figures
+from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
@@ -78,6 +91,11 @@ SAMPLES = facet_figures.SAMPLES  # runs, sessions and evidence an entry names
 OPEN_ITEMS = 50
 CLOSED = frozenset({"done", "fixed", "resolved", "answered", "closed", "wontfix", "dropped", "merged", "cancelled"})
 DEBT_SECTIONS = ("tech_debt", "debt", "open_questions")
+PRODUCT_PLUGINS = ("canvas", "builder")  # the plugins the lens product proposes through, where the project enables them
+SHELL_TOOLS = frozenset({"Bash", "shell"})  # Claude Code's and Codex's tool of the commands a digest's bash counts
+KIND_KEYS = ("usage_errors", "env_errors")  # the kinds of a program's failures the figures name
+COMPOUND_KEYS = ("calls", "errors", "usage_errors", "env_errors", "other_errors")  # a digest's bash_compound
+DIGEST_PARTS = ("tools", "bash_kinds", "bash_compound", "skills", "interrupts", "turns")  # what _skill_digests reads
 
 
 def _ended_runs(project_id: int, plans: list[str], since: datetime, until: datetime):
@@ -160,6 +178,144 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
         "failed_runs": sorted(failed.values(), key=lambda item: (-(item["failed"] + item["lost"]), item["cause"])),
         "runs": {**{state: states.get(state, 0) for state in runs.TERMINAL_STATES}, "cost_usd": round(cost, 4)},
     }
+
+
+# The skills, and the kinds of the programs' failures
+
+
+def _int(value) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+async def _skill_digests(conn: AsyncConnection, access: ProjectAccess, held: list) -> list:
+    """The digests of the sessions of ``held`` (``facet_figures.sessions_of``) that the reader may read through the
+    project's hub sink, with the parts the skills and the kinds of failures read (DIGEST_PARTS): a facet does not
+    carry them, so they come from the digest the evo-hub plugin pushed."""
+    through = access.rules.hub_sink.sink if access.rules.hub_sink else None
+    ids = sorted({session.session for session in held if session.session is not None})
+    if through is None or not ids:
+        return []
+    d = tables.session_digests
+    query = (
+        select(d.c.session_id, d.c.label, *(d.c.body[name].label(name) for name in DIGEST_PARTS))
+        .where(d.c.project_id == access.project_id, d.c.session_id.in_(ids))
+        .order_by(d.c.session_id)
+    )
+    return [row for row in (await conn.execute(query)).all() if access.visible(row.label, through)]
+
+
+def _with_kinds(programs: list[dict], rows) -> list[dict]:
+    """``programs`` (of ``facet_figures.session_figures``) with the failures of each by kind from the digests that tell
+    them (``bash_kinds``): usage_errors and env_errors; a digest of an older client adds none."""
+    kinds: dict[str, Counter] = defaultdict(Counter)
+    for row in rows:
+        for item in _list(row.bash_kinds):
+            if isinstance(item, dict) and item.get("program"):
+                kinds[item["program"]].update(
+                    usage_errors=_int(item.get("usage_errors")), env_errors=_int(item.get("env_errors"))
+                )
+    return [{**entry, **{key: kinds[entry["program"]][key] for key in KIND_KEYS}} for entry in programs]
+
+
+def _baseline(rows) -> dict:
+    """What every digest that counts skills says of all its turns: Bash commands and their failures (the Bash tool's,
+    Codex's shell), the person's turns and interrupts."""
+    base = Counter()
+    for row in rows:
+        if not isinstance(row.skills, list):
+            continue  # a digest of a client that did not count skills
+        base["digests"] += 1
+        for item in _list(row.tools):
+            if isinstance(item, dict) and item.get("gen_ai.tool.name") in SHELL_TOOLS:
+                base.update(bash=_int(item.get("calls")), errors=_int(item.get("errors")))
+        base.update(turns=_int(row.turns), interrupts=_int(row.interrupts))
+        compound = row.bash_compound if isinstance(row.bash_compound, dict) else {}
+        base.update({f"compound_{key}": _int(compound.get(key)) for key in COMPOUND_KEYS})
+    return base
+
+
+def _session_skills(rows) -> dict[str, dict]:
+    """Per skill, what the digests count of it (``friction.SKILL_FIELDS``) with the sessions that loaded it, and
+    evidence of them."""
+    found: dict[str, dict] = {}
+    for row in rows:
+        for index, item in enumerate(_list(row.skills)):
+            if not (isinstance(item, dict) and isinstance(item.get("skill"), str) and item["skill"]):
+                continue
+            entry = found.setdefault(item["skill"], {"counts": Counter(), "evidence": []})
+            entry["counts"].update({key: _int(item.get(key)) for key in SKILL_FIELDS}, sessions=1)
+            if len(entry["evidence"]) < SAMPLES:
+                entry["evidence"].append(f"session:{row.session_id}:skills:{index}")
+    return found
+
+
+async def _run_skills(conn: AsyncConnection, ended: tuple) -> dict[str, dict]:
+    """Per skill the Skill tool of the runs that ended loaded: its loads and failed loads, and what came of those runs:
+    done, the steps they reported done (each after the worker ran its verify again), failed and lost by cause."""
+    r, s, e = tables.runs, tables.run_tool_stats, tables.run_events
+    query = select(s.c.run_id, s.c.skills, r.c.state, r.c.failure_cause, r.c.error).join_from(
+        s, r, r.c.id == s.c.run_id
+    )
+    rows = (await conn.execute(query.where(*ended, s.c.skills.is_not(None)))).all()
+    done = e.c.body["step_report"]["status"].astext == "done"
+    steps = select(e.c.run_id, func.count().label("n")).where(
+        e.c.run_id.in_([row.run_id for row in rows]), e.c.kind == "system", done
+    )
+    verified = dict((await conn.execute(steps.group_by(e.c.run_id))).all()) if rows else {}
+    found: dict[str, dict] = {}
+    for row in rows:
+        cause = review.run_cause(row.failure_cause, row.error, row.state) if row.state in ("failed", "lost") else None
+        for item in _list(row.skills):
+            if not (isinstance(item, dict) and isinstance(item.get("skill"), str)):
+                continue
+            entry = found.setdefault(item["skill"], _run_entry())
+            entry["calls"] += _int(item.get("calls"))
+            entry["failed"] += _int(item.get("errors"))
+            entry["runs"] += 1
+            outcomes = entry["run_outcomes"]
+            outcomes["done"] += row.state == "done"
+            outcomes["verified_steps"] += verified.get(row.run_id, 0)
+            if cause is not None:
+                outcomes[row.state][cause] = outcomes[row.state].get(cause, 0) + 1
+            if len(outcomes["run_ids"]) < SAMPLES:
+                outcomes["run_ids"].append(row.run_id)
+    return found
+
+
+def _run_entry() -> dict:
+    outcomes = {"done": 0, "verified_steps": 0, "failed": {}, "lost": {}, "run_ids": []}
+    return {"calls": 0, "failed": 0, "runs": 0, "run_outcomes": outcomes}
+
+
+def _skill_figures(sessions: dict[str, dict], ran: dict[str, dict], base: Counter) -> list[dict]:
+    """``skills`` of the figures: per skill, its loads in sessions and runs, the friction after them in sessions next
+    to the baseline of every session that counts skills, and what came of the runs that loaded it; the most loaded
+    first."""
+    entries = []
+    for name in sessions.keys() | ran.keys():
+        found = sessions.get(name) or {"counts": Counter(), "evidence": []}
+        counted, run = found["counts"], ran.get(name) or _run_entry()
+        errors = sum(counted[key] for key in ("usage_errors", "env_errors", "other_errors"))
+        entries.append(
+            {
+                "skill": name,
+                "calls": counted["calls"] + run["calls"],
+                "typed": counted["typed"],
+                "failed": counted["failed"] + run["failed"],
+                "sessions": counted["sessions"],
+                "runs": run["runs"],
+                **{key: counted[key] for key in ("bash", "usage_errors", "env_errors", "other_errors")},
+                "error_rate": rate(errors, counted["bash"]),
+                "baseline_error_rate": rate(base["errors"], base["bash"]),
+                "interrupts": counted["interrupts"],
+                "corrections": counted["corrections"],
+                "interrupt_rate": rate(counted["interrupts"], counted["calls"]),
+                "baseline_interrupt_rate": rate(base["interrupts"], base["turns"]),
+                "run_outcomes": run["run_outcomes"],
+                "evidence": found["evidence"],
+            }
+        )
+    return sorted(entries, key=lambda item: (-item["calls"], item["skill"]))[:TOP]
 
 
 def _open(entry) -> bool:
@@ -253,6 +409,12 @@ async def _counted(
     environment: dict[str, Cause] = sessions.pop("environment")
     ended = _ended_runs(access.project_id, plans, since, until)
     ran = await _run_figures(conn, ended, environment)
+    digest_rows = await _skill_digests(conn, access, held)
+    sessions["programs"] = _with_kinds(sessions["programs"], digest_rows)
+    base = _baseline(digest_rows)
+    skills = _skill_figures(_session_skills(digest_rows), await _run_skills(conn, ended), base)
+    sessions["sessions"]["with_skills"] = base["digests"]
+    sessions["sessions"]["compound_bash"] = {key: base[f"compound_{key}"] for key in COMPOUND_KEYS}
     tools = sorted(ran.pop("tools") + sessions.pop("tools"), key=_tool_order)[:TOP]
     causes = [
         {
@@ -271,6 +433,7 @@ async def _counted(
         "tools": tools,
         "environment": causes,
         **sessions,
+        "skills": skills,
         **ran,
         **planned,
         "learned_skills": None,  # in files of the worktrees: the review run's worker counts them
@@ -278,6 +441,7 @@ async def _counted(
         "kg_health": await kg_health.figures(conn, access, plans, since, until, held),
         "runtime": spent,
         "harness": harness,
+        "product": await product_figures.figures(conn, access, since, until),
     }
     return figures, held, plans
 
@@ -379,10 +543,14 @@ def _review_budget(charter: dict, budget: dict) -> dict | None:
 
 async def _review_repos(conn: AsyncConnection, project_id: int, project: str, worker: Pinned) -> list[dict]:
     """The repos of the project the worker on duty has a checkout of, in name order, each with no branch: a review
-    run's worktrees are detached at origin's default branch."""
+    run's worktrees are detached at origin's default branch. A worker that has none and clones what it lacks
+    (runs.CLONES_CHECKOUTS) reviews every repo of the project, cloned before the run starts."""
     pr = tables.project_repos
-    names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).scalars()
-    return [{"repo": name, "branch": None} for name in names if f"{project}/{name}" in worker.checkouts]
+    names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).all()
+    held = [{"repo": name, "branch": None} for (name,) in names if f"{project}/{name}" in worker.checkouts]
+    if held or runs.CLONES_CHECKOUTS not in worker.features:
+        return held
+    return [{"repo": name, "branch": None} for (name,) in names]
 
 
 async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
@@ -475,8 +643,9 @@ async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, len
 
 
 async def review_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the charter's goals, what
-    earlier nights found through the lenses and the playbook of the Curator."""
+    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
+    (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses and
+    the playbook of the Curator."""
     r, c = tables.runs, tables.charters
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
@@ -493,10 +662,33 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     )
     repos = [repo.model_dump() for repo in view.repos or []]
     earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
-    goals = charter.get("goals")
+    goals = await project_goals.curator_goals(conn, row.project_id, view.project)
+    plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
     return review.build_review_prompt(
-        view.project, row.schedule_night, lenses, repos, held, goals, earlier=earlier, playbook=playbook
+        view.project,
+        row.schedule_night,
+        lenses,
+        repos,
+        held,
+        goals,
+        earlier=earlier,
+        playbook=playbook,
+        plugins=plugins,
     )
+
+
+async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, lens: str) -> bool:
+    """Whether run ``run_id`` is a review run of project ``project_id``, not ended, whose night looks through
+    ``lens``: the lenses its figures name (``queue_review``). The plugins canvas and builder ask it before they take
+    a proposal of the lens product from the run."""
+    r, cf = tables.runs, tables.curator_figures
+    query = (
+        select(cf.c.figures["lenses"])
+        .join_from(r, cf, cf.c.run_id == r.c.id)
+        .where(r.c.id == run_id, r.c.kind == "review", r.c.project_id == project_id, r.c.state.in_(runs.ACTIVE_STATES))
+    )
+    lenses = (await conn.execute(query)).scalar_one_or_none()
+    return isinstance(lenses, list) and lens in lenses
 
 
 # The job

@@ -810,6 +810,7 @@ class HubMcp(MCPServer):
             found = await tool_stats.run_tool_stats(caller.request, project, run_id, caller.user, sink=caller.sink)
             head = f"run #{run_id} ({found.runtime}, {found.state})"
             lines = [_tool_line(tool) for tool in found.tools] or [f"{head}: no tool call recorded"]
+            lines += [_skill_line(item) for item in found.skills]
             data = {"project": project, **found.model_dump(mode="json", by_alias=True), "summary": head}
             return "\n".join([f"{head}:", *lines] if found.tools else lines), data
         stats = await tool_stats.project_tool_stats(
@@ -824,6 +825,7 @@ class HubMcp(MCPServer):
         span = f"{stats.first_day} to {stats.last_day}"
         head = f"{stats.runs} runs of project {project} ended from {span} (UTC)"
         lines = [f"{_tool_line(tool)}, {tool.runtime}, in {tool.runs} runs" for tool in stats.tools]
+        lines += [f"{_skill_line(item)}, in {item.runs} runs" for item in stats.skills]
         data = {**stats.model_dump(mode="json", by_alias=True), "summary": f"{len(stats.tools)} tools"}
         return "\n".join([f"{head}:", *lines] if lines else [f"{head}; no tool call recorded"]), data
 
@@ -943,6 +945,10 @@ class HubMcp(MCPServer):
 
 def _tool_line(tool) -> str:
     return f"{tool.name}: {tool.calls} calls, {tool.errors} failed, {tool.duration_ms / 1000:.1f} s"
+
+
+def _skill_line(item) -> str:
+    return f"skill {item.skill}: {item.calls} loads, {item.errors} failed"
 
 
 def mount(app: FastAPI, config: HubConfig) -> HubMcp:

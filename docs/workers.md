@@ -31,10 +31,10 @@ describes how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, version lock and sharing after it joined | `workers` |
-| worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, projects, version lock and sharing after it joined | `workers` |
+| worker project | a project the worker may take runs of, chosen at registration; its owner adds and drops them later in place, the worker keeping its id, token and secret bindings | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)), and a question run (kind `question`) one read-only turn of a core plugin's agent type on a question from outside the hub ([Question runs](#question-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -69,15 +69,15 @@ a task run its agent type and the draft pull requests of its branch (`agent_type
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
 - **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name, plugins
-  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), version lock
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), projects
+  ([The projects a worker serves](#the-projects-a-worker-serves)), version lock
   ([Updating itself to nightly](#updating-itself-to-nightly)) and sharing ([Shared workers](#shared-workers)), from a web session with its CSRF header or with the
   owner's machine token. A hub admin who does not own the worker gets
-  403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
-  terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
-  again.
+  403 and anyone else 404, and a revoked worker is 409. Whether it allows the web terminal is not a setting: the
+  machine sets it when it joins or registers, and changing it means registering again.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
-  who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
+  who dispatched it. A worker takes runs only of the projects it serves, and only while its owner still
   holds writer on them: once the grant goes, claims skip those runs, the hub takes back the credentials leased to the
   member's runs there and leases them none.
 - **The agent has the full permissions of the machine's owner.** Claude Code runs with permission mode
@@ -153,6 +153,31 @@ worker. Share only a machine whose user holds no credential of its owner beyond 
 doctor` lists what it holds), with members who may read each other's work in the projects it serves. A worker that
 holds runs of several members over time keeps their worktrees until it prunes them; one slot keeps the side-by-side
 rule simple, and more slots serve one member at a time.
+
+## The projects a worker serves
+
+A worker takes runs of the projects chosen when it joined or registered. Its owner changes them in place, without
+registering again: the worker keeps its id, its token, its other settings, the charters that name it and its secret
+bindings, which name the worker and not a project. `PATCH /v1/workers/{id}` with `{"projects": [...]}` takes the whole
+list, 1 to 100 names, in any order, and replaces the rows of `worker_projects` in one transaction, with one audit row
+`worker.update` that shows the list before and after (`projects=[a,b]->[a,b,c]`). The same rights as the other
+settings apply: the owner alone, from a web session or with their machine token.
+
+- **A project added needs the writer role**, as a pairing does: 404 for a project the owner cannot see, 403 below
+  writer, and nothing changes.
+- **A project it serves already stays** whatever role the owner holds on it now. A list that keeps such a project is
+  not refused, though claims still skip its runs while the owner is below writer ([Who may do what](#who-may-do-what)).
+- **A project is not dropped while the worker is needed there**: 409, naming the project and why, and nothing changes,
+  while a run of that project in an active state (queued, held, waiting, in review or parked) is held by the worker or
+  pinned to it, or while the charter of that project's Curator puts its night shift on duty on the worker. Let the
+  runs end or cancel them, or name another worker in the charter (`evo-agents hub curator charter`), then drop it.
+
+The daemon learns the list from `settings.projects` of its next heartbeat answer, keeps it in `config.json`, and looks
+for the checkouts of the new projects at once. On the worker's machine, `evo-agents worker projects --add P` or
+`--remove P` changes them with the owner's machine token and writes the new list to `config.json` with the repos of
+its projects as the hub lists them; `--worker W` changes another of the owner's workers by id or name, from any
+machine signed in to its hub. On the web, the owner checks or unchecks them in the Settings card of the worker's page.
+A project added still needs its checkouts on the machine, as at registration ([Runtimes and checkouts](#runtimes-and-checkouts)).
 
 ## Worker status
 
@@ -282,6 +307,10 @@ depends on. The rules tell the agent to:
 - leave the plan alone: no `plan_step` tool of the hub, no `evo harness step`, no `evo-agents hub plan`, since the hub
   records the step from what the run reports;
 - commit in its checkout on the branch it is on, and not switch branches, merge or push (the daemon pushes);
+- send the files it made for the people who read the run (a screenshot, a video, a report) with `evo-agents worker
+  output FILE --caption TEXT`, or leave them in `.evo-run/outputs/` (see [Outputs of a run on the
+  machine](#outputs-of-a-run-on-the-machine)); the prompts of a plan run, of a step's session, of a chat run and of a
+  review run say the same, and those of a plan run and a step's session add `--attach FILE` of `worker ask`;
 - write `.evo-run/result.json` before it finishes, and keep `.evo-run/` out of its commits:
 
 ```json
@@ -501,6 +530,13 @@ audited `run.finish`). A parked run is then `done` at once (`OWNER ended the cha
 over, with the agent's summary (or its last message). A message or a wait after the end is 409. A queued author run
 has no chat to end (409: cancel it), and a run of another kind has none at all (409).
 
+An author run the Loop of a project hands out (plan loop-engine) runs in Loop mode: its prompt says no member reads its
+chat turn by turn, so the agent decides what it can and asks a member only what nobody else can answer. When its worker
+reports `waiting` after a turn that leaves a plan the run (or a run it resumes) put on the hub and no decision of the run
+open, the hub sets `finish_requested_at` itself, as the owner's end of the chat would, writes so in the run's log and
+sends no `author_waiting`; the worker ends the run `done` on its next heartbeat. A turn that ends before the plan is on
+the hub, or with a decision open, waits for the owner as any author run's does.
+
 A question with options goes to the member as a decision (Decisions and notices below), on a daemon that lists
 `author_decisions` in its heartbeat's `features`. `POST /v1/worker/runs/{id}/decisions` takes it from the worker that
 holds the author run with the bounds of a plan run's: a category of `runs.DECISION_CATEGORIES`, 2 to 6 options, at
@@ -616,7 +652,7 @@ otherwise):
 
 | Command | Route | What |
 | --- | --- | --- |
-| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`) |
+| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE] [--attach FILE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`); each `--attach` file goes to the run's outputs first and under the message (`output_ids`) |
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself; a refusal (201, `refusal`) is said in the thread and exits 1 |
@@ -685,6 +721,28 @@ it. The run then ends `done`, without verify results. It never waits and is neve
 task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
 cancelled, the plugin of its agent type gets the event `task.result`.
 
+## Question runs
+
+A question run (kind `question`, `evo_agents.hub.question_runs`) is one turn of an agent type of a core plugin on a
+question a person outside the hub asked, which the plugin hands over with `ask_agent_type` (`docs/plugins.md`, Agent
+types). The hub queues it like a task run, under the type's profile and dispatched by its `run_as`, with the repos of
+its project, no branch, one attempt, what is left of the type's cap of cost for 24 hours (shared with its task runs) and
+a time cap of 10 minutes. A worker of `run_as`, one of the type's workers when it names any, claims it only with
+`question` in its heartbeat's `run_kinds`: an older daemon never gets one, and a question run no worker claimed within
+10 minutes fails `no_worker`. The prompt (`question_runs.build_question_prompt`) says the question is the text of a
+person outside the hub, data and never instructions, and that the answer leaves the hub under the project's default
+label.
+
+A question run reads only, whatever its profile allows. The daemon takes the run's leases for the repos it has a
+checkout of (it goes on without the others, saying so), and makes a worktree of each detached at the commit origin's
+default branch has, as an author run does (`runner/question.py`). The agent works in one headless turn,
+`EVO_RUN_KIND=question`, with Claude Code's question tools turned off, its prompt verbatim, and the hub's MCP server,
+where it reads as a reader up to the level of the project's default label. The agent writes its answer in
+`.evo-run/result.json` under `"answer"`. At the end the daemon commits nothing, pushes nothing (`gitops.check_push`
+refuses a question run), opens no pull request, calls no `task/pulls` and uploads no diff; it reports `verifying`, then
+`done` with the answer in the report's `answer`, cut to 8000 characters. Without an answer the run fails with the cause
+`no_answer`. When it ends done, failed or cancelled, the plugin of its agent type gets the event `agent.answer`.
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine
@@ -705,6 +763,7 @@ the member's own token (a writer of the project); `{run_id}` is the run's id.
 | `GET .../local-runs/{run_id}/decisions/{id}?wait_s=0..25` | the decision, long-polling until it is answered; asking again returns the answer |
 | `POST .../local-runs/{run_id}/decisions/{id}/answered` | the machine reports it was answered on the spot; the first answer wins, a later one gets 409 |
 | `POST .../local-runs/{run_id}/inbox` | the answers not yet taken (`ack` marks them) |
+| `POST .../local-runs/{run_id}/output-uploads`, `.../outputs`, `GET .../output-settings` | the outputs of the session, as a worker's ([Outputs](#outputs)); a decision carries some with `output_ids` |
 
 A plan write (`PUT` or `PATCH` of a plan) may name `run_id`: `plan_revisions.run_id` then points at the local run.
 
@@ -801,7 +860,10 @@ Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) need
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
 replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
 repos and `replay` in `run_kinds`, and a history run (kind `history`, see
-[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. The
+[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. None of
+those checkouts is asked of a daemon whose last heartbeat listed `clones_checkouts` in `features`: it clones each repo
+of the run it has no checkout of before the run goes on ([Repos a run clones](#repos-a-run-clones)), so it takes a run
+whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -887,7 +949,9 @@ with the project's harness alone and whose agent opens each other repo it needs 
 ([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
 checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
 duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
-heartbeat answer and carries out an owner's Update now ([Update now](#update-now)). This daemon sends every kind of `runs.RUN_KINDS` and
+heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `clones_checkouts`, a daemon
+that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
+hands a run whatever checkouts it reports. This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -916,7 +980,8 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
-  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false},
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false,
+               "projects": ["demo"]},
   "nightly": {"commit": "<40 or 64 hex>", "read_at": "..."},
   "update_now": {"requested_at": "..."},
   "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
@@ -930,9 +995,9 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`, and
-`version_locked`, which a hub before schema 0048 does not send), which the owner may change with `PATCH
-/v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`,
+`version_locked`, which a hub before schema 0048 does not send, and `projects`, the names of the projects it serves,
+which a hub before evo-ak 0.31.2 does not send), which the owner may change with `PATCH /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
 those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon); for a daemon that
 lists `kg_sync`, the projects whose graph it keeps fresh, `[{"project", "received_at"}]`, `received_at` being when the
 hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon); `nightly`, the
@@ -1028,6 +1093,32 @@ a presigned PUT per blob the project does not hold yet. The worker PUTs the byte
 upload of another kind is unknown, 422) and records them on the run (`log_sha256`, `diff_sha256`). Only the worker
 that claimed the run uploads for it.
 
+### Outputs
+
+An output of a run is a file its agent made that the hub keeps for the run's readers (`evo_agents.hub.outputs`): one
+it sent on purpose (source `sent`), an image taken out of a tool's result (`tool`), or a file it left in the run's
+`.evo-run/outputs/` (`outputs`). Its bytes are a blob of kind `run-output`. The worker that claimed the run sends them
+in two calls, while it holds the run and after, as its log goes:
+
+1. `POST /v1/worker/runs/{id}/output-uploads` with `{"items": [{sha256, size, source}]}` (at most 100) answers as `POST
+   /v1/blobs/uploads`: a presigned PUT per file the project does not hold yet, the others under `present`.
+2. The worker PUTs the bytes, then `POST /v1/worker/runs/{id}/outputs` with `{"outputs": [{sha256, size, source, name,
+   media_type, caption, tool_call_id, upload_id}]}` commits the uploads and records the outputs: `name` is the file's
+   name or its path below `.evo-run/outputs/`, `media_type` one `type/subtype`, `tool_call_id` the tool call of the
+   trace it came from, `upload_id` null for a file the project held already. The answer lists the outputs in the
+   order sent; a file the run holds already (the same SHA-256) is the output it is, keeping the source of the two that
+   is kept longer (`sent` over `outputs` over `tool`) and its caption and tool call, or these when it had none. The
+   run's log gets a `system` event naming the outputs added or changed (`outputs`: their ids).
+
+`GET /v1/worker/runs/{id}/output-settings` says whether the project takes tool images (`tool_images`), the limits and
+what the run holds (`outputs`, `bytes`). A file is at most 200 MiB, a run holds at most 500 outputs and 1 GiB (a
+SHA-256 counted once): past one, both calls answer 413 with the limit in `detail` (`file_bytes`, `outputs_per_run`,
+`bytes_per_run`) and take nothing. An output of source `tool` while the project's admin turned tool images off is 409.
+A question (`POST .../decisions`) and a chat message of the agent (`POST .../chat/messages`, `.../chat/mentions`) carry
+outputs of the run with `output_ids` (at most 20; 422 for an output of another run, and in a chat for one of source
+`tool`). A chat run's outputs of source `sent` or `outputs` that no message carries go under its next message, and
+once the run ended under its last one. `docs/hub.md`, "Outputs of runs", says who reads them and how long they stay.
+
 ### When the hub does not answer
 
 The run keeps going. The daemon writes events to a spool on disk (at most 256 MiB) and sends them later by `seq`;
@@ -1054,6 +1145,8 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
+| `POST /v1/worker/runs/{id}/output-uploads`, `/outputs` | uploads files of the run's agent and records them as outputs of the run ([Outputs](#outputs)) |
+| `GET /v1/worker/runs/{id}/output-settings` | the project's switch of tool images, the limits of outputs and what the run holds |
 | `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run, or that the account failed to authenticate (`unauthorized`); on a limit hit or a refused token, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
@@ -1069,7 +1162,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), or `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)), at least one; the values it has already change nothing and are not audited |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), `projects` (the whole list, 1 to 100 names, [The projects a worker serves](#the-projects-a-worker-serves)), `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)) or `shared`, at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/update-now`, `/update-now/cancel` | owner or hub admin | ask the worker's daemon to update itself to nightly now, or withdraw that ([Update now](#update-now)); 409 with why for a revoked or locked worker, a daemon that does not say `update_now`, or one that runs nightly's commit already |
@@ -1082,6 +1175,8 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
+| `GET .../runs/{id}/outputs`, `.../outputs/{oid}`, `.../outputs/{oid}/content`, `.../outputs/{oid}/link` | reader | the run's outputs, one of them, its bytes (Range, `?download=true`) and a presigned GET of them ([Outputs](#outputs)) |
+| `DELETE .../runs/{id}/outputs/{oid}` | owner, or an admin of the project | delete an output; its bytes go once nothing refers to them |
 | `GET .../runs/{id}/accounts` | the member who dispatched it | the account the run has for each variable, how it came by it, and each usage limit it hit and failed over from ([credentials.md](credentials.md), Accounts) |
 | `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB; a reply in an author run's chat |
 | `GET .../runs/{id}/chat` | reader | the chat of an author run, and whose turn it is |
@@ -1110,10 +1205,12 @@ of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, o
 
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
-(the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
+(the step's repo, or every repo in a plan run's `repos`) unless its daemon says `clones_checkouts`, and, for a plan
+run, a daemon of 0.4.0 or later
 (`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one
 fails the answer is 409 naming each one, for example
-`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is
+`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness, and its daemon
+(evo-agents 0.30.0) does not clone what it lacks: ...`, and nothing is
 queued, rather than a run that stays queued for good. A dispatch without a worker is not checked: a worker that can
 take it may join later.
 
@@ -1130,7 +1227,8 @@ and `parent_run_id` naming the old run; the step must be ready again. Approve an
 for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
 that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
 each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
-was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run, has a runtime the
+was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run or a daemon that
+clones the ones it lacks (its reasons then say `clones <repos> before the run starts`), has a runtime the
 run's agent profile allows, is one the profile allows, and, when the owner bound any account to the project, has one
 ready on it (not expired, paused or cooling). The fit workers are ranked by the run's `failure_cause`: the worker the
 run was on first for `missing_tool`, `checkout` and `branch_mismatch`, last for `worker_stopped`, `lease_lost` and
@@ -1202,14 +1300,17 @@ worker's spool, are added in again, and `hub.prune_run_events` writes the figure
 deletes its events, so they stay when the log goes. The name a call counts under, `gen_ai.tool.name` as
 OpenTelemetry's GenAI conventions call it, is its title for Claude Code, which is the tool's name (`Bash`, `Read`,
 `mcp__server__tool`); Codex and opencode title a call by what it does, so for them it is the call's kind (`execute`,
-`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool.
+`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool. A call of
+Claude Code's Skill tool also names the skill it loaded (`rawInput.skill`): the row of the Skill tool keeps per skill
+its calls and the calls that failed (`run_tool_stats.skills`, schema 0087; none for a run that ended before it).
 
 `GET .../runs/{id}/tool-stats` answers a run's `runtime`, `state`, `finished_at` and `tools`, each with
-`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), to whoever
-may read the run. `GET /v1/projects/{p}/tool-stats` adds them up per tool and runtime, with the `runs` that called
-each, over the runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to
-90, 7 by default), filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The
-MCP tool `run_tool_stats` answers both, with `run_id` for one run.
+`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), and
+`skills`, each with `skill`, `calls` and `errors`, to whoever may read the run. `GET /v1/projects/{p}/tool-stats` adds
+them up per tool and runtime, with the `runs` that called each, and per skill with the `runs` that loaded it, over the
+runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to 90, 7 by default),
+filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The MCP tool
+`run_tool_stats` answers both, with `run_id` for one run.
 
 ### Messages
 
@@ -1352,6 +1453,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | message to the agent | 8 KiB |
 | inbox per read | 100 messages |
 | run log, diff | 64 MiB, 8 MiB in the blob store |
+| outputs | 200 MiB a file, 500 and 1 GiB a run, 100 a request, 20 a question or chat message |
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
@@ -1375,9 +1477,11 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
 | `evo-agents worker drain [--resume]` | stops claims (or resumes them) through `POST /v1/workers/{id}/drain` or `/undrain`, with the machine token |
+| `evo-agents worker projects [--add P ...] [--remove P ...] [--worker W]` | shows the projects the worker serves, or changes them in place with `PATCH /v1/workers/{id}` and the owner's machine token; this machine's worker by default, whose `config.json` takes the new list and the repos of its projects at once, or with `--worker` another of the owner's workers by id or name, whose daemon takes them at its next heartbeat ([The projects a worker serves](#the-projects-a-worker-serves)) |
 | `evo-agents worker revoke [--force]` | revokes the worker on the hub and deletes its token here; `--force` deletes it even when the hub cannot be reached; a background service stays installed, does not start the daemon again, and is named with the command that removes it |
-| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `done` runs each verify command again in the repo's worktree, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
-| `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; refuses in a step, review or judge run |
+| `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
+| `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run |
+| `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
 | `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
@@ -1397,7 +1501,8 @@ pairing codes and presigned signatures masked; `service.log` what the daemon pri
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
 decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker step` pushed to a default branch,
-`pushes.jsonl`, and the side branch it pushed instead, `push_conflict.json`; until the run ends on this machine,
+`pushes.jsonl`, the side branch it pushed instead, `push_conflict.json`, and the verify jobs of its steps with their
+output, `verify/`; until the run ends on this machine,
 `agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
@@ -1421,8 +1526,35 @@ in the registry's cluster of the project (`hub.project`, on the same hub): its r
 directory name. The registry is `~/.evo/harness/registry.json`, then `~/.claude/harness/registry.json`, as
 `evo-agents hub registry pull` writes it. Only a git work tree counts. The hub lists a project's harness apart from
 its repos, but a plan names the harness as one of its repos, since its plans live there, so a plan run needs a
-checkout of it too. The daemon reads the project's repos and harness from the hub each time it starts, while the
-machine is signed in with `evo-agents hub login`.
+checkout of it too; `evo-agents hub project register` sends the harness among the repos, with the origin its git
+remote names, when harness.yaml does not list it. The daemon reads the project's repos and harness from the hub each
+time it starts, while the machine is signed in with `evo-agents hub login`.
+
+### Repos a run clones
+
+A run never waits, and never fails, for want of a checkout a person would have to make by hand. Once a run's leases are
+taken, the daemon sets up each repo of the run it has no checkout of (`evo_agents/worker/runner/clones.py`), several
+at a time, under a lock of where the repo goes, so two runs never clone one repo at once:
+
+- where: the path the hub registered for the repo, placed in the project's workspace as `evo-agents hub registry pull`
+  places it, else `checkouts/<project>/<repo>` in the worker's home;
+- a git work tree there already is taken as it is and nothing is cloned;
+- else the daemon clones the origin the hub's answer to the leases names (`repos` of `POST
+  /v1/worker/runs/{id}/credentials`): the one the run's project registers, else the one another project registers for a
+  repo of that name, among the projects the run's owner holds a grant on, when they agree on it (a plan of one project
+  may work in the harness of another); the clone goes through the run's leases, is made beside its place and moved in
+  once whole;
+- a path taken by something that is no work tree moves the clone under the worker's home.
+
+The checkout is the daemon's from then on: in the next heartbeat's `checkouts` and in `checkouts` of `config.json`. A
+repo for which no project names an origin fails the run with cause `origin`, and a clone git cannot make with cause
+`credentials` (the remote refused the credential) or `checkout`; a chat run or a task run goes on without such a repo
+instead, with a note, as an author run does without any repo but its harness, and so do they without a repo they have
+a checkout of but the project lists no origin for (the preflight, below). A dispatch names such a repo only when
+some project the dispatcher holds a grant on lists its origin: otherwise the hub answers 409 and queues nothing. A chat
+run's agent opens a repo the worker has no checkout of likewise (`evo-agents worker repo open`): the hub refuses it, 409,
+only when no project of the run's owner lists an origin for it, and a chat run on a daemon of `lazy_chat_repos` starts
+with the harness without a checkout of it when one does.
 
 ### Runtime adapters
 
@@ -1545,6 +1677,12 @@ context. Each is null when the runtime did not report it. When agents go on one 
 answered decision, a move to another account), the keys stay those of the first one that reported them; they are null
 when the session started in the terminal UI, whose requests report no usage. A run that resumes a parked one reports
 the first request its own agent made in the session.
+
+When a run's agent takes several turns in its session (the next one after an answered decision or the owner's
+messages), the `usage` the run reports with its end, or with its failure, holds all of them, not the last turn's alone
+(`sessions.session_usage`): their numbers added up, but the largest `peak_context_tokens`, `context_window` and
+`total_cost_usd` (Claude Code's running total of the session, which already holds the turns before), as for each
+session of a plan run with a session per step. Each turn's `usage_update` event stays as the runtime said it.
 
 A Claude Code session of a run asks for the preset system prompt without its dynamic sections
 (`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new
@@ -1773,6 +1911,45 @@ codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a p
    out elsewhere. The worktree, and an `evo-run/<run>` branch, are removed 7 days after the run ended; the daemon
    looks every hour.
 
+### Outputs of a run on the machine
+
+The files a run's agent made reach the run's outputs on the hub ([Outputs](#outputs)) three ways, the second with
+Claude Code only:
+
+- **Sent.** `evo-agents worker output FILE ... [--caption TEXT]` sends files as outputs of source `sent`, each named by
+  its file name. The command checks each file (a regular file, a name the hub takes, at most 200 MiB) and asks the hub
+  how much the run may still take (`GET /v1/worker/runs/{id}/output-settings`): a file past a limit (200 MiB a file,
+  500 outputs or 1 GiB a run) is an `error:` line naming it and exit status 1, and nothing is sent; a hub that does not
+  answer then is no refusal. It then puts a copy of each file in the run's queue (`runs/<run>/outputs/` of the
+  worker's state, `evo_agents.worker.output_queue`) and returns: the daemon uploads them in the background.
+  `--attach FILE` of `worker ask` and `worker chat post` sends files the same way, waits (at most 110 seconds) until
+  the hub recorded them, and names them in the question or the message (`output_ids`, at most 20).
+- **Tool images.** With Claude Code, headless or driven in a terminal, every image block of a tool's result (a
+  browser's screenshot, a Read of an image file, the image of an MCP tool) becomes an output of source `tool`, of the
+  tool call it came from, once per SHA-256 in a run. A subagent's tool results come through the SDK's stream as the
+  main thread's do (claude-agent-sdk 0.2.170; run #80 of evo-agents logged a plan-step subagent's calls), so their
+  images too. The `tool_call_update` keeps the text of the result as before, and in place of the image an ACP
+  `resource_link`, `{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name": "image-<12 hex>.png",
+  "mimeType": "image/png", "size": N}` (`evo_agents.hub.outputs.output_link`): no event holds the image's base64.
+  With the project's switch off (`tool_images` false), or past a limit, the image is not sent and the link is a line
+  saying why; a limit is said once in a `system` event of the run. Codex and opencode send no tool images: their
+  agents use `worker output` and `.evo-run/outputs/`.
+- **The outputs directory.** The files the agent leaves in `.evo-run/outputs/` of the run's directory (in the run's
+  checkout, or above the worktrees of a plan run) become outputs of source `outputs`, named by their path below it,
+  when the agent reports a step (`worker step` asks the daemon to look) and when the run ends. Each file goes once:
+  `.evo-run/outputs-sent.json` keeps the size, time and SHA-256 of each file sent, so a file goes again only when its
+  bytes changed, and the run that resumes a parked one in the same directory sends only what is new. Links and hidden
+  files and folders are left out.
+
+The daemon sends the queue in batches of at most 100 files and 64 MiB, through `.../output-uploads`, the presigned
+PUTs and `.../outputs`. A file of text (Markdown, text, JSON, CSV, HTML, SVG, logs, code) goes through the redaction of
+the run's events first: every value of a lease the run holds is masked as `***`. A hub that does not answer holds
+nothing up: the files wait on disk and go with the worker's backoff. An upload that fails never fails the run: a batch
+the hub refuses is sent again one file at a time, a file it refuses is a `system` event of the run, and a hub that
+takes no outputs of the run (404, 403) stops them for the run. The end of a run waits up to 60 seconds for the queue
+before its last report, and 30 seconds more once the run is over here; what is still left then stays on this worker
+until the cleanup removes the run's state.
+
 ### The Python environment of a worktree
 
 `python -m pytest` and `python -m <package>` import the modules of the worktree, but read the package's metadata (its
@@ -1821,14 +1998,27 @@ as a verify that fails does.
    in its environment, and the daemon reports `running`. The agent works through four commands that read the run
    from those variables and its record under `EVO_WORKER_HOME`, call the hub with the worker's token, and refuse to
    run outside a plan run of the worker (`EVO_RUN_ID` not set, a run that is not running here, or a run of one step):
-   - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` runs each verify command again with
-     `/bin/sh` in R's worktree, all of them, and refuses the step when one exits other than 0: nothing is committed,
-     pushed or reported, and it exits 1. Otherwise it commits what R's worktree has left as `run #N step KEY: title`,
+   - `evo-agents worker step KEY verify --repo R --verify CMD` runs the step's verify commands as a job of the
+     worker, with `/bin/sh` in R's worktree, all of them, and waits on it `--wait` seconds (540 by default, -1 until it
+     ends). The job runs in a process of its own (`evo_agents.worker.verify_jobs`), which neither the end of the
+     command, of the agent's turn or of a subagent's stops, and is kept in `runs/<run>/verify/` with the tree R's
+     worktree held (what `git add -A` would stage there, `.evo-run/` left out) and the commands. A wait that runs out
+     exits 124 and the job goes on; the same command again waits on it. It exits 0 when the job passed, 1 when it
+     failed. A job for another tree of R stops the one running there, and the end of the run stops what still runs.
+   - `evo-agents worker step KEY done --repo R --evidence TEXT --verify CMD` takes the result of a job that passed
+     with the same commands on the tree R's worktree holds now (or on the tree such a job left, as when a formatter
+     wrote a file), and otherwise runs the job, or waits on the one running, as `verify` does (exit 124 when the wait
+     runs out); a job that failed is never taken, and runs again. When the verify fails, nothing is committed,
+     pushed or reported, and it exits 1. The evidence it reports ends with a line naming the job, its tree, and
+     whether `done` reused it, waited on it or ran it. Otherwise it commits what R's worktree has left as
+     `run #N step KEY: title`,
      leaving out what a run's commit leaves out (see [A run on the machine](#a-run-on-the-machine)), refuses a
      detached HEAD or a branch the agent switched to, pushes R's branch to the plan's branch on origin
      (never forced; a branch at HEAD already is left alone), and reports the step with the commit and the verify
      results. On a default branch the remote moved on, it first rebases the run's commits on top of the remote's tip
-     and runs the verify commands again there; when that cannot be done it pushes them to `evo-run/<run>`, reports
+     and runs the verify commands again there, as a job of the new tree (the worktree stays on the rebased commits
+     when the wait for it runs out, and `done` again picks the job up); when that cannot be done it pushes them to
+     `evo-run/<run>`, reports
      nothing, and the run fails (see [A default branch the remote moved on](#a-default-branch-the-remote-moved-on)).
      Without `--repo` the step's repo is the one the plan gives it. `in_progress` and `pending` only report.
    - `evo-agents worker ask` posts the decision, notes its id in `runs/<run>/decisions.jsonl`, prints the id, and
@@ -2207,8 +2397,10 @@ agent's environment, and a machine where Claude Code has no subscription login (
 environment, `~/.claude/.credentials.json`, or the macOS keychain item `Claude Code-credentials`) fails the run before
 its agent starts, saying so.
 
-The agent of a review run, a judge run or a Builder gets the hub's MCP server from its runtime's adapter, so it has the
-hub's tools its prompt names on a worker without the evo-hub plugin (`evo_agents/worker/runtimes/hub_tools.py`):
+The agent of a review run, a judge run, a Builder, or a task run or a question run of a plugin's agent type (the
+brainstorm of @strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
+hub's tools its prompt names on a worker without the evo-hub plugin, Codex included
+(`evo_agents/worker/runtimes/hub_tools.py`):
 Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hub`, the stdio proxy
 `evo-agents hub mcp` of the daemon's own install (its interpreter with `-I`, so a checkout of evo_agents in the
 worktree is never imported), with the run's `EVO_RUN_ID`, `EVO_WORKER_HOME` and `EVO_RUN_PROJECT`, so it speaks with
@@ -2304,7 +2496,10 @@ on in a session's worktrees leaves git's checks of those repos to their fetch ([
 machine](#a-chat-run-on-the-machine)). The checks:
 
 - each repo of the run has an origin in the project: a repo the hub's answer for the leases names missing with no
-  origin is one the project lists none for, and no credential can be leased for it;
+  origin is one the project lists none for, and no credential can be leased for it. A chat run or a task run, and an
+  author run for every repo but its harness, goes on without such a repo instead, as it does without one it has no
+  checkout of: the repo is left out of the run, noted ("Project ... lists no origin for ...: the agent works without
+  them") and named at the end of the agent's prompt; any other run, and an author run's harness, fails;
 - git reads each repo from its origin with what the run holds, its leases or else the machine's own credentials, and
   pushes to it when the run pushes that repo (a run of one step its repo, a plan run every repo of its plan); a
   review, judge or author run pushes nothing. The daemon asks the remote, as cheaply as git can: `git ls-remote origin
@@ -2424,7 +2619,9 @@ another status for both. A 426 (a protocol the hub no longer speaks) stops the d
 upgrade of evo-agents mends. Once its runs ended, a daemon that may update itself and whose `config.json` says the hub
 last sent `version_locked: false` first updates its install to the tag nightly, and exits 75 when that worked, so its
 service starts the new version instead of starting the old one again and again
-([Updating itself to nightly](#updating-itself-to-nightly)).
+([Updating itself to nightly](#updating-itself-to-nightly)). The other `evo-agents worker` commands exit as every
+`evo-agents` command does (`docs/hub.md`, "Exit status"): 69 when the hub or the network could not be reached, 75 when
+the hub answered 5xx or 429, 1 for another refusal, 2 for a wrong command line.
 
 A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
 while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents
@@ -2565,10 +2762,12 @@ request as `update_now` (`requested_at`, `ended_at`, `outcome`, `reason`) and th
 
 The update, once decided:
 
-1. `uv tool install` of `evo-ak[<extras>] @ git+https://github.com/maycuatroi1/evo-agents@nightly`, with the extras of
-   the install, into `~/.evo/installs/<install>/staging`. The staged install must start (`python -c 'import
-   evo_agents.cli, evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure
-   here leaves the install as it was.
+1. `uv tool install` of `evo-ak[<extras>] @ git+https://github.com/maycuatroi1/evo-agents@nightly`, with the extras
+   uv's receipt lists and always `worker`, into `~/.evo/installs/<install>/staging`. A receipt can lack `worker` when
+   evo-ak was installed again without it under a running daemon (seen 2026-10-22); nightly without it has no aiohttp,
+   and `worker run` would not start. The staged install must start (`python -c 'import evo_agents.cli,
+   evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure here leaves the
+   install as it was.
 2. A copy of the install's environment and of its commands (the `evo-agents` symlink or file in `~/.local/bin`) into
    `~/.evo/installs/<install>/backup`, symlinks kept as symlinks. When the copy cannot be made (a full disk), the update
    stops here and the install stays as it was.

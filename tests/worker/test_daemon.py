@@ -752,6 +752,45 @@ def test_join_with_a_pairing_code_then_status_drain_and_revoke(make_stack):
     assert no_worker.returncode == 1 and "evo-agents worker join" in no_worker.stderr
 
 
+def test_worker_projects_changes_the_projects_in_place_here_or_by_name_and_the_daemon_takes_them(
+    make_stack, hub_db, github
+):
+    stack = make_stack()
+    live.add_project(hub_db, "blog")
+    admin = bearer(live.sign_in(stack.client, github, ADMIN, 801)["token"])
+    granted = stack.client.put(f"/v1/admin/projects/blog/grants/{OWNER}", json=WRITER, headers=admin)
+    assert granted.status_code == 200, granted.text
+    config = stack.register()
+    worker_id = config["worker_id"]
+
+    shown = stack.cli("projects")
+    assert shown.returncode == 0 and f"serves {PROJECT}." in shown.stdout, shown.stderr
+    added = stack.cli("projects", "--add", "blog")
+    assert added.returncode == 0, added.stderr
+    assert f"serves blog, {PROJECT} now" in added.stdout and "no checkout of blog found" in added.stdout
+    on_file = json.loads((stack.state / "config.json").read_text(encoding="utf-8"))
+    assert on_file["projects"] == ["blog", PROJECT] and on_file["worker_id"] == worker_id
+    assert "blog" in on_file["repos"], "the repos of the new project, as the hub lists them"
+    assert (stack.state / "token").read_text(encoding="utf-8").strip() == stack.worker_token
+    again = stack.cli("projects", "--add", "blog")
+    assert again.returncode == 0 and "already; nothing changed" in again.stdout
+    unknown = stack.cli("projects", "--remove", "nowhere")
+    assert unknown.returncode == 1 and "does not serve nowhere" in unknown.stderr
+
+    # by name, from a machine signed in to the hub: the daemon takes the list at its next heartbeat
+    proc = stack.start_daemon()
+    removed = stack.cli("projects", "--worker", WORKER, "--remove", "blog")
+    assert removed.returncode == 0, removed.stderr
+    assert "next heartbeat" in removed.stdout
+    wait_until(
+        lambda: json.loads((stack.state / "config.json").read_text(encoding="utf-8"))["projects"] == [PROJECT],
+        "the daemon to take the projects the hub holds",
+    )
+    refused = stack.cli("projects", "--worker", str(worker_id), "--add", "nowhere")
+    assert refused.returncode != 0 and "nowhere" in refused.stderr
+    finished_cleanly(stack, proc)
+
+
 def test_a_revoked_worker_stops_its_daemon_with_the_status_a_service_does_not_restart(make_stack):
     stack = make_stack()
     config = stack.register()

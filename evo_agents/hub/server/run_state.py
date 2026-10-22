@@ -569,6 +569,11 @@ async def record_move(
 
         await task_run_ended(conn, run_id, new)
         return None
+    if found.kind == "question":  # it writes no step: its plugin gets the event agent.answer when it ends
+        from evo_agents.hub.server.question_dispatch import question_run_ended  # it queues runs through the routes too
+
+        await question_run_ended(conn, run_id, new)
+        return None
     if found.kind == "release":  # it writes no step: its end moves its release cycle on
         from evo_agents.hub.server.release_claims import release_run_moved  # it reads runs through the routes too
 
@@ -870,6 +875,14 @@ def _hours(span: timedelta) -> str:
     return f"{seconds} seconds"
 
 
+async def expire_seats(engine: AsyncEngine, sealer, github_app) -> dict:
+    """The job hub.expire_seats (``org_expiry.expire_seats``): the org seats past their end date ended, and the leases
+    of the people whose primary seat ended taken back. The hub's worker reaches it through this module, as the reaper."""
+    from evo_agents.hub.server.org_expiry import expire_seats as expire
+
+    return await expire(engine, sealer, github_app)
+
+
 async def recover_runs(
     engine: AsyncEngine,
     batch: int = RECOVER_BATCH,
@@ -881,8 +894,8 @@ async def recover_runs(
 ) -> dict:
     """One pass of the reaper: every held run past its timeout ends as ``end_timed_out`` says, then every held run
     whose lease ran out ends as ``end_held`` says, a run that waited ``decision_wait`` for an answer is parked and one
-    parked for ``parked_for`` cancelled, each in a transaction of its own, and a queued run pinned to a revoked worker
-    fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    parked for ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
+    ``question_runs.QUEUE_SECONDS`` fails (no_worker), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -927,6 +940,9 @@ async def recover_runs(
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 
     await local_runs.end_silent(engine, batch)  # a local run no worker holds: it is neither lost nor parked
+    from evo_agents.hub.server import question_dispatch  # it moves runs through this module
+
+    await question_dispatch.expire_queued(engine, batch, ended)  # a question run no worker claimed in time
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)
@@ -950,10 +966,13 @@ async def recover_runs(
     return report
 
 
-async def prune_run_events(engine: AsyncEngine, days: int) -> dict:
+async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
     """Delete the events of runs that ended more than ``days`` days ago, once their tool figures are written from them
-    (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and drop the sealed values of
-    the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and the outputs of source tool
+    of those runs that nothing carries, with the blobs no output names any longer (``output_prune``, whose objects go
+    from ``store`` now when it is given); and drop the sealed values of the GitHub tokens leased to runs that are past
+    their end (``credentials.drop_expired``)."""
+    from evo_agents.hub import output_prune
     from evo_agents.hub.server import credentials, tool_stats
 
     r, e = tables.runs, tables.run_events
@@ -970,4 +989,5 @@ async def prune_run_events(engine: AsyncEngine, days: int) -> dict:
         "run events pruned",
         extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},
     )
-    return {"deleted": deleted, "days": days, "tokens_dropped": dropped}
+    pruned = await output_prune.prune_tool_outputs(engine, store, days)
+    return {"deleted": deleted, "days": days, "tokens_dropped": dropped, **pruned}

@@ -72,6 +72,15 @@ export function withMessage(feed: Feed, message: GroupMessage): Feed {
   return { ...feed, entries, replies: withReply(feed.replies, message) };
 }
 
+/** `feed` with a message held as it reads now (the files of its run went under it); one not held stays out. */
+export function changedMessage(feed: Feed, message: GroupMessage): Feed {
+  const held = feed.entries.get(message.id);
+  if (!held) return feed;
+  // The stream's copy carries no progress unless asked for it: keep what the page holds.
+  const entries = new Map(feed.entries).set(message.id, { ...held, message: { ...message, progress: message.progress?.length ? message.progress : held.message.progress } });
+  return { ...feed, entries };
+}
+
 const isMe = (by: ChatAuthor, me: string | null) => by.kind === "person" && !!me && by.login?.toLowerCase() === me.toLowerCase();
 
 /** `names` with `name` in it (`added`) or left out; unchanged for no name. */
@@ -151,6 +160,8 @@ export function applyEvents(feed: Feed, events: readonly ChatEvent[], me: string
     next = { ...next, lastSeq: event.seq };
     if (event.kind === "message" && event.message) {
       next = withMessage(next, event.message);
+    } else if (event.kind === "message_changed" && event.message) {
+      next = changedMessage(next, event.message);
     } else if ((event.kind === "reaction_added" || event.kind === "reaction_removed") && event.reaction) {
       const change = event.reaction;
       const held = next.entries.get(change.message_id);

@@ -8,7 +8,9 @@ and the open tasks of a use case it dropped move to the first status of group ca
 and why. Then @ba gets a task run that splits each open frame task with no child into child tasks, made with
 tasks__create for the approver: the tool takes ``parent``, answers that run as it answers a chat run, refuses a child
 whose title the frame task has already, and still refuses any other task run. A second call of ``approved`` for the
-same version, as a replayed event would make, adds no task, comment or run.
+same version, as a replayed event would make, adds no task, comment or run. The approval emits srs.version.approved
+and the plugin srs makes all that when the hub delivers it (``tests.hub.test_srs_events``), so each approval here is
+followed by a pass of the job that delivers events.
 
 The stack is ``tests.hub.test_ba_agent``'s: owner runs @ba on the worker studio, chi writes the document, someone-else
 approves it.
@@ -37,6 +39,7 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, membe
     agent_of,
     app_key,
     client,
+    delivered,
     enable,
     enable_ba,
     granted,
@@ -84,6 +87,7 @@ def approved(client, hub, studio: dict, number: int, submitter: str = "chi") -> 
     reviewed(client, studio)
     answer = review(client, hub["other"], number)
     assert answer.status_code == 200 and answer.json()["state"] == "approved", answer.text
+    delivered(client)
 
 
 def called_again(client, hub_db, number: int, previous: int | None) -> auto_tasks.Outcome:
@@ -272,6 +276,7 @@ def test_srs_auto_tasks_need_the_plugin_tasks_and_make_frames_without_ba(client,
     imported(client, hub["chi"])
     assert submitted(client, hub["chi"], 1)["state"] == "in_review"  # @ba is off: no review run holds approval
     assert review(client, hub["other"], 1).json()["state"] == "approved"
+    delivered(client)
     off = client.get(f"{TASKS}/tasks", headers=hub["reader"])
     assert off.status_code == 404, "the project does not enable tasks: nothing is made"
     assert approval_rows(hub_db) == [] and runs_of(hub_db, "task") == []
@@ -284,6 +289,7 @@ def test_srs_auto_tasks_need_the_plugin_tasks_and_make_frames_without_ba(client,
     saved(client, hub["chi"], 1, {"new": new})
     submitted(client, hub["chi"], 2)
     assert review(client, hub["other"], 2).json()["state"] == "approved"
+    delivered(client)
     assert [(t["ref"], t["title"]) for t in tasks(client, hub["reader"])] == [("T-1", "UC ORD-3: Cancel an order")]
     ((number, previous, login, run_id, outcome),) = approval_rows(hub_db)
     assert (number, previous, login, run_id, outcome["created"]) == (2, 1, OTHER, None, [1])

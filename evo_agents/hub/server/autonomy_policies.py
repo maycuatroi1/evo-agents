@@ -12,7 +12,9 @@
   ``evo_agents.core_plugins.builder.proposals``), which an admin approves, and the hub writes it through ``write``.
 
 Writes of one project's policy wait for each other (a transaction-level advisory lock). Each revision adds an audit
-row ``policy.set`` naming the revision and the keys whose value it changed, never a value. ``effective_policy`` is
+row ``policy.set`` naming the revision and the keys whose value it changed, never a value. A revision that turns
+``loop.enabled`` on or off turns the project's Loop on or off in the same transaction (``evo_agents.hub.server.loop.
+state``). ``effective_policy`` is
 what the hub's own jobs read.
 """
 
@@ -32,6 +34,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.loop import state as loop_state
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -70,7 +73,7 @@ class PolicyWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     policy: dict[str, Any] = Field(
-        description="sections repos, merge, judge, breaker, audit; a key left out reads as its default"
+        description="sections repos, merge, judge, breaker, audit, loop; a key left out reads as its default"
     )
     note: str | None = Field(None, max_length=autonomy.MAX_NOTE_CHARS, description="why, for the history")
     if_revision: int | None = Field(None, ge=0, description="409 unless the policy is at this revision now")
@@ -221,7 +224,8 @@ async def write(
     before = {} if held is None else held.body
     if body == before:
         return now, False
-    keys = [key for key, _, _ in autonomy.changes(autonomy.effective(before, repos), autonomy.effective(body, repos))]
+    after = autonomy.effective(body, repos)
+    keys = [key for key, _, _ in autonomy.changes(autonomy.effective(before, repos), after)]
     values = {
         "project_id": access.project_id,
         "revision": now + 1,
@@ -238,6 +242,7 @@ async def write(
         target=f"{access.name}/policy revision={now + 1} keys={_keys_text(keys)}{via}",
         project_id=access.project_id,
     )
+    await loop_state.policy_written(conn, access.project_id, bool(after["loop"]["enabled"]))
     log.info("autonomy policy written", extra={"project": access.name, "revision": now + 1, "keys": len(keys)})
     return now + 1, True
 

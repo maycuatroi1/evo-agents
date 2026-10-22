@@ -21,8 +21,9 @@ writes). Its turn:
   blocked. A push of someone else sends it back to its gates (``gating``). Then the pipeline of the new head: one that
   fails runs again once (the ledger's ``retried``) and failing again blocks it, as does one not green after
   ``merge.pipeline_minutes``. Green, the cheap gates are read again at that head (0 the repo, 1 the pipeline, 3 score
-  hacking) with its patch: the patch judged goes on to its merge with the Judges' verdicts; a new patch sends it to its
-  gates and Judges again, keeping its place.
+  hacking, whose signs an admin's pass lets through while the patch is the one the gates passed: ``merge_pass``) with
+  its patch: the patch judged goes on to its merge with the Judges' verdicts; a new patch sends it to its gates and
+  Judges again, keeping its place.
 - ``merging``: GitLab merges it only while its head is still the sha its pipeline passed on (``gitlab.merge``), by
   fast-forward, so ``after_sha`` is that head. A push in between (409) sends it back to its gates; GitLab refusing the
   merge because the target branch moved sends it back to ``ready``, because a pipeline of its head still runs
@@ -54,7 +55,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, post_merge, tables
-from evo_agents.hub.server import audit, ledger
+from evo_agents.hub.server import audit, ledger, merge_pass
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
@@ -209,7 +210,7 @@ class Turn:
                 return False
             verdict, why = self.found.scope_of(row, mr)
             if verdict == "out":
-                await queue.close(conn, row, f"it left the queue: {why}")
+                await queue.close(conn, row, f"it left the queue: {why}", mr)
                 self.found.outcomes["closed"] += 1
                 return False
             if verdict == "wait":
@@ -331,9 +332,12 @@ class Turn:
             _, body = await self.found.expected_branch(conn, row)
         files = merge_gate.files_of(await self.gl.merge_request_diffs(self.path, mr.iid))
         hacked = self.found.hacked(files, body) if row.source != post_merge.REVERT else None
-        if hacked is not None:
-            return await self.blocked(row.id, f"at its rebased head, {hacked}", gate=3)
         same = merge_gate.patch_fingerprint(files) == row.fingerprint
+        passed_by = None
+        if hacked is not None:  # an admin's pass of the hold lets the patch the gates passed through again
+            passed_by = await merge_pass.passes(self.engine, row.id, f"at its rebased head, {hacked}", same_patch=same)
+            if passed_by is None:
+                return await self.blocked(row.id, f"at its rebased head, {hacked}", gate=3)
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, row.id, lock=True)
             if locked is None or locked.state != "testing" or locked.head_sha != mr.sha:
@@ -342,8 +346,10 @@ class Turn:
             why = "green at its rebased head"
             await queue.record(conn, locked, "pipeline", passed=True, reason=why, sha=mr.sha, detail=detail)
             for gate in (0, 1, 3):
-                why = "read again at its rebased head"
-                await queue.record(conn, locked, "gate", gate=gate, passed=True, reason=why, sha=mr.sha)
+                why, detail = "read again at its rebased head", None
+                if gate == 3 and passed_by is not None:
+                    why, detail = passed_by
+                await queue.record(conn, locked, "gate", gate=gate, passed=True, reason=why, sha=mr.sha, detail=detail)
             if same:
                 await queue.set_row(conn, row.id, state="merging", reason=None)
                 return True

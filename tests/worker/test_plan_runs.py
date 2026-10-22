@@ -1130,6 +1130,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "lazy_chat_repos",
             "update_now",
             "merge_judge",
+            "clones_checkouts",
         ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
@@ -1290,9 +1291,14 @@ def test_a_plan_run_without_session_per_step_keeps_one_session(machine):
     assert hub.runs[run_id]["summary"] == "Both." and "step_sessions" not in machine.home.load_run(run_id)
 
 
-def test_a_plan_run_in_one_session_reports_the_first_request_of_its_first_turn(machine):
-    first_turn = {"input_tokens": 12, FIRST_READ: 0, FIRST_CREATION: 41_000}
-    second_turn = {"input_tokens": 3, FIRST_READ: 39_000, FIRST_CREATION: 500}
+def test_a_plan_run_resumed_after_a_decision_reports_every_turn_and_the_first_request_of_its_first(machine):
+    """A run whose agent went on after its owner answered reports the usage of both turns: the tokens added up, and
+    Claude Code's total_cost_usd, the session's running total, as the last turn says it (run 489 of the hub reported
+    the second turn's tokens alone)."""
+    first_turn = {"input_tokens": 12, "output_tokens": 100, "total_cost_usd": 0.5989, FIRST_READ: 0}
+    first_turn[FIRST_CREATION] = 41_000
+    second_turn = {"input_tokens": 3, "output_tokens": 40, "total_cost_usd": 0.6448, FIRST_READ: 39_000}
+    second_turn[FIRST_CREATION] = 500
     machine.scenarios(
         {
             f"plan:{PLAN}": [{"cli": ["step", "1", "in_progress"]}, {"usage": first_turn}, ask()],
@@ -1318,5 +1324,6 @@ def test_a_plan_run_in_one_session_reports_the_first_request_of_its_first_turn(m
     first, second = machine.starts()
     assert second["resume"] == first["session"]
     usage = hub.runs[run_id]["usage"]
-    assert usage["input_tokens"] == 3, "the other numbers are the last turn's, as before"
+    assert (usage["input_tokens"], usage["output_tokens"]) == (15, 140), "the tokens of both turns, added up"
+    assert usage["total_cost_usd"] == 0.6448, "the session's running total, which holds the first turn's cost"
     assert (usage[FIRST_READ], usage[FIRST_CREATION]) == (0, 41_000), "the session's first request: its first turn's"

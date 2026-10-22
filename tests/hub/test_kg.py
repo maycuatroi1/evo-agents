@@ -979,7 +979,9 @@ def test_the_knowledge_config_must_fit_the_registered_project(hub, tmp_path):
     assert push(hub, laptop).ok
     raised = json.loads(json.dumps(config))
     raised["knowledge"]["sources"][0]["label"] = {"level": "customer"}
-    assert "sources docs would be labelled above" in refused(raised)
+    message = refused(raised)
+    assert "sources docs would be labelled above" in message
+    assert f"`evo-agents hub kg forget-source --project {PROJECT} --source docs`" in message
 
     # a project without a hub sink takes no push at all
     gamma = dict(REGISTRATION, sinks=REGISTRATION["sinks"][:1], harness={"name": "g", "workspace": "~/ws", "path": "g"})
@@ -991,6 +993,115 @@ def test_the_knowledge_config_must_fit_the_registered_project(hub, tmp_path):
         headers=hub.alice,
     )
     assert response.status_code == 422 and "declares no sink of kind hub" in response.json()["message"]
+
+
+# Forgetting a source
+
+
+class NoRunCommit(InProcessHub):
+    """Sends a run's log and blobs and fails its commit, so the run waits on the hub."""
+
+    def call(self, method, path, body=None, *, timeout=None):
+        if path.startswith(f"/v1/kg/{PROJECT}/runs/") and path.endswith("/commit"):
+            raise HubError("the commit was refused", 400)
+        return super().call(method, path, body, timeout=timeout)
+
+
+def drop_docs(machine: Machine) -> None:
+    """Take source docs out of the machine's knowledge.yaml."""
+    path = machine.harness / "knowledge.yaml"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text[: text.index("  - id: docs")] + text[text.index("  - id: vault") :], encoding="utf-8")
+
+
+def project_logs(hub) -> set[str]:
+    b = tables.blobs.c
+    return {row[0] for row in query(hub.db, select(b.sha256).where(b.kind == "kg-log"))}
+
+
+def forget(hub, source: str = "docs", member: str = "alice"):
+    return hub.client.delete(f"/v1/kg/{PROJECT}/sources/{source}", headers=getattr(hub, member))
+
+
+def test_a_source_the_config_drops_is_forgotten_and_then_the_config_goes_through(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    laptop.sync("docs", doc("guide", "Edited.", rev="2"))
+    waiting = Pusher(NoRunCommit(hub.client, hub.alice), laptop.project()).push()
+    assert not waiting.ok and count(hub.db, tables.kg_pending_runs) == 1
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    before = latest(hub)
+    assert before["status"] == "succeeded"
+    logs = project_logs(hub)
+    assert len(logs) == 2
+
+    # without docs, its runs on the hub would be labelled above the hub sink: the push names the way out
+    drop_docs(laptop)
+    refused = push(hub, laptop)
+    command = f"`evo-agents hub kg forget-source --project {PROJECT} --source docs`"
+    assert len(refused.errors) == 1 and "the config drops sources docs" in refused.errors[0]
+    assert command in refused.errors[0]
+
+    assert forget(hub, member="carol").status_code == 403
+    response = forget(hub)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert_json_keys("hub kg forget-source", {"project": PROJECT, "sources": [body]})
+    assert [body[key] for key in ("source", "ingested", "pending", "logs", "declared")] == ["docs", 1, 1, 2, True]
+    assert body["queued"] is True and body["build"]["requested_by"] == "alice"
+    assert count(hub.db, tables.kg_ingests) == 0 and count(hub.db, tables.kg_pending_runs) == 0
+    assert project_logs(hub) == set()
+    d = tables.blob_deletions.c
+    assert {row[0] for row in query(hub.db, select(d.sha256).where(d.deleted_at.is_(None)))} == logs
+    a = tables.audit.c
+    assert query(hub.db, select(a.target).where(a.action == "kg.forget")) == [(f"{PROJECT} source=docs runs=2",)]
+
+    # the config without docs goes through now; docs stays on the machine, and the graph holds none of it
+    pushed = push(hub, laptop)
+    assert pushed.ok and pushed.kept == {"docs": 2}
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    after = latest(hub)
+    assert after["status"] == "succeeded" and after["nodes"] < before["nodes"]
+    assert not tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    again = forget(hub)
+    assert again.status_code == 200
+    assert {k: again.json()[k] for k in ("ingested", "pending", "logs", "declared", "queued", "build")} == {
+        "ingested": 0,
+        "pending": 0,
+        "logs": 0,
+        "declared": False,
+        "queued": False,
+        "build": None,
+    }
+    assert len(query(hub.db, select(a.target).where(a.action == "kg.forget"))) == 1  # nothing was taken off
+
+
+def test_a_forgotten_source_leaves_the_worker_cache_even_while_the_config_declares_it(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    first = latest(hub)
+    assert first["status"] == "succeeded"
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    response = forget(hub)
+    assert response.status_code == 200 and response.json()["declared"] is True
+    with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+        run_jobs(hub.db, hub.s3, hub.worker_dir)
+    second = latest(hub)
+    assert second["status"] == "succeeded" and second["nodes"] < first["nodes"]
+    (started,) = [r for r in caplog.records if r.getMessage() == "kg cache started again: runs taken off the hub"]
+    assert started.runs == 1
+    assert not tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    shutil.rmtree(hub.worker_dir)  # a cache built from nothing gives the same graph
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    third = latest(hub)
+    assert third["status"] == "succeeded" and third["content_hash"] == second["content_hash"]
 
 
 def test_logs_that_are_not_a_run_of_the_project_are_refused_and_discarded(hub, tmp_path):

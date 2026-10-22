@@ -392,6 +392,8 @@ export type DecisionAsk = {
   context?: string | null;
   options?: { key: string; label: string; description?: string }[];
   recommended?: string | null;
+  /** Outputs of the run the question carries (`worker ask --attach`). */
+  output_ids?: number[];
 };
 
 /** The agent's `evo-agents worker ask`: a decision of the run, answered by its owner. Returns its id. */

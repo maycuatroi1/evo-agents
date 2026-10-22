@@ -1,6 +1,6 @@
 """Keeping tasks: a new task (``create``), a change of one (``edit``), its people, its links, sprints and comments.
 Every change of a task is a row of its history (``record``), with the member who made it, or the hub (no actor) and
-why.
+why. A new task and a change of its status emit ``tasks.status`` too (``announce``, ``evo_agents.hub.task_status``).
 
 A task's status is a key of the config's statuses and its type one of its types; its people hold a grant on the
 project; its sprint is one of the project's that is not closed; its parent is another task of the project, never one
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.tasks import PRIORITIES, links
 from evo_agents.core_plugins.tasks.settings import Settings, TasksError, number_of
 from evo_agents.core_plugins.tasks.store import SLOTS, People, TaskRow, members, people, sprint, visible
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_status
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_tasks import MAX_VALUE_CHARS
 
@@ -55,6 +55,7 @@ class TaskInput:
 
     title: str
     description_md: str = ""
+    outcome_md: str = ""
     type: str | None = None
     status: str | None = None
     priority: str = "medium"
@@ -85,6 +86,17 @@ def _text(value) -> str | None:
     if value is None:
         return None
     return str(value)[:MAX_VALUE_CHARS]
+
+
+async def announce(
+    conn: AsyncConnection, writer: Writer, task_id: int, old: str | None, new: str, cause: str = task_status.CREATE
+) -> None:
+    """Emit ``tasks.status`` of task ``task_id``, whose status ``writer``'s member set (``old`` None) or changed."""
+    settings = writer.settings
+    change = task_status.StatusChange(
+        task_id, old, new, settings.group(old), settings.group(new), cause, settings.prefix, writer.user_id
+    )
+    await task_status.emit(conn, writer.access.project_id, change)
 
 
 async def record(
@@ -240,9 +252,15 @@ async def _next_number(conn: AsyncConnection, project_id: int) -> int:
 
 
 async def create(
-    conn: AsyncConnection, writer: Writer, task: TaskInput, *, targets: list[links.Target] | None = None
+    conn: AsyncConnection,
+    writer: Writer,
+    task: TaskInput,
+    *,
+    targets: list[links.Target] | None = None,
+    cause: str | None = task_status.CREATE,
 ) -> int:
-    """Keep a new task, linked to ``targets`` when given (found already), else to what ``task.links`` names; its
+    """Keep a new task, linked to ``targets`` when given (found already), else to what ``task.links`` names, and emit
+    its status with ``cause`` (None: the caller emits it once it has set what is left, as an import sets parents); its
     number."""
     settings, access = writer.settings, writer.access
     values = {
@@ -251,6 +269,7 @@ async def create(
         "type": _type(settings, task.type),
         "title": task.title,
         "description_md": task.description_md,
+        "outcome_md": task.outcome_md,
         "status": _status(settings, task.status),
         "priority": _priority(task.priority),
         "due_on": task.due_on,
@@ -267,10 +286,12 @@ async def create(
     await record(conn, task_id, writer.user_id, "created", None, settings.ref(values["number"]))
     await _set_people(conn, writer, task_id, _slots(task.assignees, task.roles), People())
     await _add_links(conn, writer, task_id, targets)
+    if cause is not None:
+        await announce(conn, writer, task_id, None, values["status"], cause)
     return values["number"]
 
 
-FIELDS = ("title", "description_md", "type", "status", "priority", "due_on", "sprint", "parent")
+FIELDS = ("title", "description_md", "outcome_md", "type", "status", "priority", "due_on", "sprint", "parent")
 
 
 async def _relation(conn: AsyncConnection, writer: Writer, row: TaskRow, name: str, value: str | None):
@@ -319,8 +340,8 @@ async def edit(conn: AsyncConnection, writer: Writer, row: TaskRow, changes: Tas
         await conn.execute(update(t).where(t.c.id == row.id).values(**columns, updated_at=func.now()))
         for name, (old, new, _) in found.items():
             shown = name.removesuffix("_id")
-            if shown == "description_md":
-                await record(conn, row.id, writer.user_id, "description")
+            if shown in ("description_md", "outcome_md"):
+                await record(conn, row.id, writer.user_id, shown.removesuffix("_md"))
             else:
                 await record(conn, row.id, writer.user_id, shown, old, new)
     slots = _slots(changes.assignees, changes.roles)
@@ -330,6 +351,9 @@ async def edit(conn: AsyncConnection, writer: Writer, row: TaskRow, changes: Tas
         await _unlink(conn, writer, row.id, changes.unlink)
         await _add_links(conn, writer, row.id, targets)
         await conn.execute(update(t).where(t.c.id == row.id).values(updated_at=func.now()))
+    if "status" in found:  # with the links and parent the edit leaves
+        old, new, _ = found["status"]
+        await announce(conn, writer, row.id, old, new, task_status.EDIT)
 
 
 async def comment(conn: AsyncConnection, writer: Writer, task_id: int, body: str) -> int:
@@ -375,6 +399,8 @@ async def create_sprint(conn: AsyncConnection, writer: Writer, given: SprintInpu
         await _no_other_active(conn, project_id, None)
     _dates(given.starts_on, given.ends_on)
     values = {"project_id": project_id, "created_by": writer.user_id, **asdict(given)}
+    if given.state == "active":
+        values["activated_at"] = func.now()
     await conn.execute(insert(tables.tasks.sprints).values(**values))
 
 
@@ -391,6 +417,7 @@ async def edit_sprint(conn: AsyncConnection, writer: Writer, name: str, values: 
     state = values.get("state", held.state)
     if state == "active" and held.state != "active":
         await _no_other_active(conn, project_id, held.id)
+        values = {**values, "activated_at": func.now()}
     new_name = values.get("name", held.name)
     if new_name != held.name and await sprint(conn, project_id, new_name) is not None:
         raise TasksError(409, f"project {writer.access.name} has a sprint {new_name!r} already")
@@ -418,6 +445,7 @@ __all__ = [
     "TaskChanges",
     "TaskInput",
     "Writer",
+    "announce",
     "comment",
     "create",
     "create_sprint",

@@ -147,7 +147,45 @@ def test_the_lenses_of_the_nights_take_turns_and_each_comes_round():
     for offset in range(len(review.LENSES)):
         seen |= set(review.lenses_for(night + timedelta(days=offset), 3))
     assert seen == set(review.LENSES)
-    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 14
+    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 15
+
+
+def test_review_lenses_take_the_lens_product_in_turn_with_the_others_and_show_its_figure_first():
+    names = list(review.LENSES)
+    assert review.PRODUCT == "product" and names.index("product") == names.index("product_goals") + 1
+    assert names[-1] == "kg_health" and "product" in review.FIGURE_KEYS and review.LENS_FIGURES["product"] == "product"
+    nights = [review.lenses_for(date(2026, 10, 8) + timedelta(days=offset)) for offset in range(len(names))]
+    assert any("product" in lenses for lenses in nights)
+    figures = {"tools": [{"tool": "Bash", "errors": 3}], "product": {"goals": [{"goal": f"G-{n}"} for n in range(9)]}}
+    tonight = review.build_review_prompt("demo", date(2026, 10, 8), ["product"], [], figures)
+    assert tonight.index('"product"') < tonight.index('"tools"') and '"G-5"' not in tonight
+    other = review.build_review_prompt("demo", date(2026, 10, 8), ["cost"], [], figures)
+    assert other.index('"tools"') < other.index('"product"') and '"G-5"' not in other
+
+
+def test_review_lenses_product_proposes_only_through_the_plugins_the_project_enables():
+    def prompt(lenses, plugins=()):
+        return review.build_review_prompt("demo", date(2026, 10, 8), lenses, [], {}, plugins=plugins)
+
+    both = prompt(["product_goals", "product"], ("canvas", "builder"))
+    for words in (
+        "# The lens product",
+        "canvas__read",
+        "canvas__signals",
+        "with canvas__propose: a new claim starts as an assumption with a test card",
+        "(base_rev)",
+        "Never propose a claim as validated, nor edit a claim, add evidence or decide a baseline",
+        "with builder__propose of kind policy",
+        "Never write a goal, a baseline or the policy yourself",
+    ):
+        assert words in both, words
+    assert "propose no claim tonight" not in both and "propose no change of its autonomy policy" not in both
+    alone = prompt(["product"], ("builder",))
+    assert "Project demo does not enable the plugin canvas: propose no claim tonight." in alone
+    assert "canvas__propose" not in alone and "builder__propose of kind policy" in alone
+    neither = prompt(["product"])
+    assert "Project demo does not enable the plugin builder: propose no change of its autonomy policy" in neither
+    assert "# The lens product" not in prompt(["cost"], ("canvas", "builder"))
 
 
 @pytest.mark.parametrize(
@@ -333,7 +371,8 @@ def test_the_prompt_of_a_review_run_says_it_reads_only_and_treats_what_it_reads_
 def test_the_commands_the_prompt_of_a_review_run_names_are_in_the_contract():
     prompt = review.build_review_prompt("evo-agents", date(2026, 10, 8), ["tool_errors"], ["evo-agents"], {})
     found = [item.text for item in find_commands(prompt, "prompt")]
-    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose", "playbook"}
+    named = {text.split()[2] for text in found if text.split()[1] == "worker"}
+    assert named == {"finding", "propose", "playbook", "output"}
     assert {" ".join(text.split()[2:4]) for text in found if text.split()[2] == "playbook"} == {
         "playbook add",
         "playbook helpful",
@@ -346,3 +385,30 @@ def test_a_prompt_with_figures_too_long_for_it_is_cut():
     big = {"tools": [{"tool": "x" * 2000, "calls": n} for n in range(200)], "notes": "y" * 100_000}
     prompt = review.build_review_prompt("p", None, ["cost"], [], big, [{"id": "g", "what": "z" * 50_000}])
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES and "[cut by the hub" in prompt
+
+
+def test_the_review_prompt_says_which_tier_of_the_skill_figures_has_data():
+    """Through tool_errors and skills_memory the Reviewer reads the skill figures in three tiers: called, snags, work
+    done; the prompt names the tiers that have no data instead of letting a zero read as a measure."""
+    empty = review.skill_tiers({"sessions": {"digests": 3, "with_skills": 0}})
+    assert [line.split(":")[0] for line in empty] == ["- Called", "- Snags", "- Work done"]
+    assert all("no data" in line for line in empty)
+    figures = {
+        "sessions": {"digests": 3, "with_skills": 2},
+        "skills": [
+            {"skill": "execute-plan", "calls": 4, "typed": 1, "failed": 0, "runs": 2},
+            {"skill": "stop-slop", "calls": 1, "typed": 0, "failed": 1, "runs": 0},
+        ],
+    }
+    called, snags, done = review.skill_tiers(figures)
+    assert called == "- Called: 2 skills, 5 loads (1 typed as /name), 1 that failed."
+    assert snags.startswith("- Snags: 2 of 3 session digests count the friction")
+    assert done == "- Work done: 1 skills loaded in 2 runs; read each skill's run_outcomes."
+
+    night = date(2026, 10, 8)
+    for lenses, shown in ((["tool_errors"], True), (["skills_memory", "cost"], True), (["cost", "security"], False)):
+        prompt = review.build_review_prompt("p", night, lenses, [], figures)
+        assert ("# Skills and commands by tier" in prompt) is shown, lenses
+        assert '"skills"' in prompt, "the figures shown hold the skills"
+    assert "skills" in review.FIGURE_KEYS and "skills" in review.DIGEST_FIELDS
+    assert review.parse_evidence("session:abc:skills:0")["field"] == "skills"

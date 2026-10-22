@@ -21,6 +21,7 @@ export const LENSES = [
   "cost",
   "security",
   "product_goals",
+  "product",
   "kg_health",
 ] as const satisfies readonly Lens[];
 

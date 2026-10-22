@@ -229,6 +229,67 @@ def test_kg_sync_push_without_signing_in_fails_after_syncing(machine, capsys):
     assert code == 1 and "FAIL push: not signed in to a hub" in out and "OK   docs" in out
 
 
+# Forgetting a source
+
+
+class ForgettingHub:
+    """Answers DELETE /v1/kg/alpha/sources/{source} as the hub does, from ``answers`` by source."""
+
+    url = "https://hub.test"
+
+    def __init__(self, answers: dict):
+        self.answers = answers
+        self.calls = []
+
+    def call(self, method, path, body=None, *, timeout=None):
+        self.calls.append((method, path))
+        return self.answers[path.rsplit("/", 1)[1]]
+
+
+def forgotten(source: str, runs: int, declared: bool, build: dict | None = None) -> dict:
+    return {
+        "source": source,
+        "ingested": runs,
+        "pending": 1 if runs else 0,
+        "logs": runs + 1 if runs else 0,
+        "declared": declared,
+        "build": build,
+        "queued": build is not None,
+    }
+
+
+def test_forget_source_takes_each_source_off_once_and_asks_first_at_a_terminal(monkeypatch, capsys):
+    from evo_agents.hub import kg_cli
+
+    answers = {
+        "docs": forgotten("docs", 3, True, {"id": 7, "status": "queued"}),
+        "old": forgotten("old", 0, False),
+    }
+    hub = ForgettingHub(answers)
+    monkeypatch.setattr(kg_cli, "_signed_in", lambda: (hub, None))
+    command = ["hub", "kg", "forget-source", "--project", "alpha", "--source", "docs", "--source", "old"]
+
+    assert main([*command, "--source", "docs", "--yes"]) == 0
+    assert hub.calls == [("DELETE", "/v1/kg/alpha/sources/docs"), ("DELETE", "/v1/kg/alpha/sources/old")]
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "took 4 run(s) of source docs off project alpha; 4 log(s) leave the blob store with the next prune; "
+        "build 7 queued",
+        "the hub holds no run of source old of project alpha; nothing changed",
+    ]
+    assert "the knowledge config on the hub still declares docs" in printed.err
+
+    hub.calls.clear()
+    assert main([*command, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"project": "alpha", "sources": [answers["docs"], answers["old"]]}
+
+    hub.calls.clear()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    assert main(command) == 1
+    assert hub.calls == [] and "Nothing changed." in capsys.readouterr().out
+
+
 # Choosing the backend
 
 

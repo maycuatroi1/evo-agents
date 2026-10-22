@@ -190,8 +190,13 @@ bound to the run's project, bound to no worker or to this one, and not past its 
   its start, so a run that began before keeps its token without it until that token is renewed. A run of the
   Curator never gets it.
 
-The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
-`username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
+A repo's origin is the one the run's project registers for it, else the one another project registers for a repo of
+that name, among the projects the run's owner holds a grant on, when they agree on it (`repo_origins`).
+
+The answer is `{leases, missing, repos}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
+`username`, `value` and `expires_at`, as `Lease.from_json` reads them. `repos` names each repo of the run with its
+`origin`, `path` and the `project` that registered them, which a worker without a checkout of it clones from
+([Repos a run clones](workers.md#repos-a-run-clones)). `missing` names each repo whose origin nothing
 covers, with its origin (null when the project registered none) and the reason: no origin, no `git` secret covering
 it, "the GitHub App is not installed on owner/repo", "LOGIN cannot push to owner/repo on GitHub: ...", no GitHub
 App configured, GitHub failing. Without
@@ -352,6 +357,17 @@ The routes are the member's own, a hub admin included, and never carry a value:
   each usage limit it hit (`events`: `failover` with the account it moved `to`, or `stop`), read from the run's
   `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
 
+Each account has a **provider** and a **category**, read from its variable by a table in
+`evo_agents/hub/account_providers.py` (no column, no migration): `CLAUDE_CODE_OAUTH_TOKEN` is `claude`,
+`ANTHROPIC_API_KEY` is `anthropic` and `OPENAI_API_KEY` is `openai`, the three of category `model`; `GITLAB_*` is
+`gitlab`, `GITHUB_*` and `GH_TOKEN` are `github`, `NOTION_*` is `notion`, `LARK_*` and `FEISHU_*` are `lark`, a variable
+ending in `_SSH_KEY` or starting with `SSH_` is `ssh`, and any other variable is `other`; all of these are category
+`service`. `GET /v1/accounts` and `GET /v1/accounts/{name}` carry both, and so do `account list --json` and
+`account show --json`; `account list` prints the provider in its own column. Only a `model` account has a cost: a run's
+cost (its usage, as above) is counted on the model accounts the run took, and `cost_24h_usd` and `cost_7d_usd` are null
+for a `service` account, which `account list` shows as `-` and `account show` leaves out; a run that took a Claude
+account and a GitLab token costs the Claude account alone. `runs_24h` and `runs_7d` count for every account.
+
 The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
 project's policy; the run page shows the run's accounts and their failovers. Under the row of each Claude account, and
 of any account a run reported usage for, the page draws a bar per window the hub kept, as claude.ai's Usage page does:
@@ -499,7 +515,7 @@ failure of the endpoint (down, 5xx) does not mark the account.
 ### Accounts of an agent
 
 An **agent account** is an `env` secret that an agent profile owns (`secrets.profile_id`, no member owner, migration
-0085), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
+0101), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
 agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts.py`), names the workers it
 is bound to (the admin's own that are not revoked, or shared workers serving the project), and gives it a weight, a
 priority and an end like any account. The hub keeps the value sealed under its own associated data

@@ -9,8 +9,9 @@ agent types and tasks, 404 for any other.
 
 - POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks: hand a task to agent type ``name`` of the plugin. 404
   for a type its installed version does not contribute, or that the project did not enable or turned off; 409 when the
-  type's profile was deleted or its ``run_as`` no longer holds writer on the project; 429 once its task runs cost its
-  cap in the last BUDGET_HOURS (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
+  type's profile was deleted or its ``run_as`` no longer holds writer on the project; 403 when the primary seat of
+  ``run_as`` in the org chart ended; 429 once its task runs cost its cap in the last BUDGET_HOURS
+  (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
   with the credential kind machine, under the type's profile, on the branch ``task/<run>`` of each repo of the project,
   with what is left of the cap as its cost cap (``task_runs.run_budget``), queued for a worker of ``run_as`` the type
   names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor.
@@ -49,6 +50,7 @@ from evo_agents.hub.server.chat_agents import open_draft
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -127,7 +129,7 @@ class TaskPull(BaseModel):
 # The plugin and its task runs
 
 
-async def _plugin(request: Request, conn: AsyncConnection) -> int:
+async def plugin_of_request(request: Request, conn: AsyncConnection) -> int:
     """The plugin whose live token the request carries; 401 for none."""
     scheme, _, token = (request.headers.get("authorization") or "").strip().partition(" ")
     plugin_id = None
@@ -192,7 +194,7 @@ def _task(row) -> dict:
     }
 
 
-async def _type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
+async def type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
     """(status, why) agent type ``name`` (``row`` of ``agent_types.enabled_type``) takes no task now, or None."""
     if contributed(enabled.manifest, name) is None or row is None or row.disabled_at is not None:
         return 404, (
@@ -209,7 +211,8 @@ async def _type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple
             f"agent type {name} runs as {row.run_as}, who holds {role or 'no grant'} on project {enabled.project} now, "
             "not writer: an admin of the project names another member"
         )
-    return None
+    ended = await ended_refusal(conn, row.run_as_id, row.run_as, what=f"a task of agent type {name}")
+    return None if ended is None else (403, ended)
 
 
 def _title(body: TaskIn, name: str) -> str:
@@ -271,7 +274,7 @@ async def hand_own_task(
     if enabled is None:
         return None, f"plugin {plugin} is not enabled in the project, or it is turned off"
     row = await enabled_type(conn, project_id, enabled.id, name, lock=True)  # one dispatch of a type at once
-    refusal = await _type_refusal(conn, enabled, row, name)
+    refusal = await type_refusal(conn, enabled, row, name)
     if refusal is not None:
         return None, refusal[1]
     spent = await type_spend(conn, row.id)
@@ -297,10 +300,10 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
     if len(body.task.encode()) > task_runs.MAX_TASK_BYTES:
         raise HTTPException(422, f"the task is longer than {task_runs.MAX_TASK_BYTES} bytes in UTF-8")
     async with request.app.state.engine.begin() as conn:
-        plugin_id = await _plugin(request, conn)
+        plugin_id = await plugin_of_request(request, conn)
         enabled = await _dispatcher(conn, plugin_id, project)
         row = await enabled_type(conn, enabled.project_id, plugin_id, name, lock=True)  # one dispatch of a type at once
-        refusal = await _type_refusal(conn, enabled, row, name)
+        refusal = await type_refusal(conn, enabled, row, name)
         if refusal is not None:
             raise HTTPException(*refusal)
         spent = await type_spend(conn, row.id)
@@ -322,7 +325,7 @@ async def show_task(request: Request, project: ProjectName, task: TaskId) -> Tas
     """A task the plugin whose token the request carries handed, as its latest run has it."""
     r = tables.runs
     async with request.app.state.engine.begin() as conn:
-        plugin_id = await _plugin(request, conn)
+        plugin_id = await plugin_of_request(request, conn)
         enabled = await _dispatcher(conn, plugin_id, project)
         query = _task_select().where(
             r.c.project_id == enabled.project_id,

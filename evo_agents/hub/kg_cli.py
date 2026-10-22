@@ -1,4 +1,5 @@
-"""``evo-agents hub kg push|builds|build|health|prune|scrub``, and the hub backend of ``kg serve`` and ``kg query``.
+"""``evo-agents hub kg push|builds|build|health|forget-source|prune|scrub``, and the hub backend of ``kg serve`` and
+``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
 project of this machine, ``--all`` every project of projects.json the hub takes a push for. It reports its progress on
@@ -7,7 +8,9 @@ jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` wa
 when it failed. ``health`` prints the health of a project's graph over time as the hub measures it
 (``evo_agents.hub.server.kg_health``): for each git source of the latest measure the commit read, how many commits of
 the default branch it lacks and for how long, the files missing, stale and deleted, then the retrieval evaluation and
-the builds that changed nothing. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
+the builds that changed nothing. ``forget-source`` (the writer role) takes every run of one or more sources off the
+hub and queues a build without them (``evo_agents.hub.server.kg``), which a source must go through before
+knowledge.yaml drops it; at a terminal it asks first unless ``--yes``. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
 artifacts of graphs older than each project's ``--keep`` newest leave the bucket, and ``--dry-run`` only says which.
 ``scrub`` (a hub admin) reads every built graph and source blob of a project, or of every project, page by page
 (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
@@ -256,6 +259,57 @@ def _bytes(size: int) -> str:
     return f"{size} B"
 
 
+def forget(hub: Hub, project: str, sources: list[str]) -> list[dict]:
+    """DELETE /v1/kg/{project}/sources/{source} for each of ``sources``, in order: what the hub answered."""
+    return [hub.call("DELETE", f"{_base(project)}/sources/{quote(source, safe='')}") for source in sources]
+
+
+def forget_json(project: str, found: list[dict]) -> dict:
+    """What ``hub kg forget-source --json`` prints."""
+    return {"project": project, "sources": found}
+
+
+def forget_line(project: str, found: dict) -> str:
+    runs = found["ingested"] + found["pending"]
+    if not runs:
+        return f"the hub holds no run of source {found['source']} of project {project}; nothing changed"
+    line = f"took {runs} run(s) of source {found['source']} off project {project}"
+    if found["logs"]:
+        line += f"; {found['logs']} log(s) leave the blob store with the next prune"
+    build = found.get("build")
+    if build:
+        line += f"; build {build['id']} {build['status']}"
+    return line
+
+
+@_client_command
+def cmd_forget_source(args) -> int:
+    hub, _ = _signed_in()
+    sources = list(dict.fromkeys(args.source))
+    if not args.yes and not args.json and sys.stdin.isatty():
+        print(
+            f"About to take every run of {', '.join(sources)} off project {args.project} on the hub; the graph is built "
+            "again without them."
+        )
+        if input("Go on? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("Nothing changed.")
+            return 1
+    found = forget(hub, args.project, sources)
+    if args.json:
+        _print_json(forget_json(args.project, found))
+        return 0
+    for one in found:
+        print(forget_line(args.project, one))
+    still = [one["source"] for one in found if one["declared"] and one["ingested"] + one["pending"]]
+    if still:
+        print(
+            f"warning: the knowledge config on the hub still declares {', '.join(still)}: remove it from "
+            "knowledge.yaml and push (`evo-agents kg sync --push`), or a machine holding its runs sends them again",
+            file=sys.stderr,
+        )
+    return 0
+
+
 @_client_command
 def cmd_prune(args) -> int:
     hub, _ = _signed_in()
@@ -436,6 +490,18 @@ def register_kg(hsub) -> None:
     health.add_argument("--limit", type=int, default=30, help="measures and builds to show (default: 30, at most 200)")
     json_option(health, returns_object("project", "measures", "builds", schema="KgHealthView"))
     health.set_defaults(func=cmd_health)
+
+    forget_parser = ksub.add_parser(
+        "forget-source",
+        help="take every run of a source off the hub, so knowledge.yaml can drop it (needs the writer role)",
+    )
+    forget_parser.add_argument("--project", required=True, help="project name on the hub")
+    forget_parser.add_argument(
+        "--source", required=True, action="append", help="the source's id in knowledge.yaml; repeat for several"
+    )
+    forget_parser.add_argument("--yes", action="store_true", help="do not ask first at a terminal")
+    json_option(forget_parser, returns_object("project", "sources"))
+    forget_parser.set_defaults(func=cmd_forget_source)
 
     prune = ksub.add_parser(
         "prune", help="delete the artifacts of graphs older than each project's newest few (needs a hub admin)"

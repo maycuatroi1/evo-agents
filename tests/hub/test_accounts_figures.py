@@ -23,7 +23,7 @@ from evo_agents.hub import tables
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_accounts_api import VAR, account_of, accounts, run_on, three
-from tests.hub.test_credentials_api import PROJECT, env_secret, sample, worker_of
+from tests.hub.test_credentials_api import PROJECT, env_secret, leased, sample, worker_of
 from tests.hub.test_rate_limit_failover import RESET, answer_of, lease_of
 from tests.hub.test_runs import report
 
@@ -90,6 +90,26 @@ def test_each_account_shows_its_runs_cost_usage_and_the_runs_holding_it(client, 
     assert client.get("/v1/accounts/claude-c", headers=hub["owner"]).json() == listed
     for value in values.values():
         assert value not in json.dumps(found)
+
+
+def test_a_run_costs_its_model_account_and_leaves_its_service_account_without_a_cost(client, hub, hub_db):
+    env_secret(client, hub["owner"], "claude-a", VAR, sample("claude-a-"))
+    env_secret(client, hub["owner"], "gitlab-a", "GITLAB_TOKEN", sample("gitlab-a-"))
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
+    run = run_on(client, hub["owner"], worker, "evo-agents")
+    assert {lease["name"] for lease in leased(client, worker, run)["leases"]} >= {"claude-a", "gitlab-a"}
+    assert report(client, worker, run, "failed", error="done").status_code == 200
+    cost(hub_db, run, 0.75)
+
+    found = by_name(accounts(client, hub["owner"]))
+    claude, gitlab = found["claude-a"], found["gitlab-a"]
+    assert (claude["provider"], claude["category"]) == ("claude", "model")
+    assert (claude["runs_7d"], claude["cost_24h_usd"], claude["cost_7d_usd"]) == (1, 0.75, 0.75)
+    assert (gitlab["provider"], gitlab["category"]) == ("gitlab", "service")
+    assert (gitlab["runs_24h"], gitlab["runs_7d"]) == (1, 1)
+    assert (gitlab["cost_24h_usd"], gitlab["cost_7d_usd"]) == (None, None)
+    one = client.get("/v1/accounts/gitlab-a", headers=hub["owner"]).json()
+    assert one == gitlab
 
 
 def test_a_member_reads_their_own_account_alone(client, hub):

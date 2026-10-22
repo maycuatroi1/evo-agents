@@ -56,6 +56,18 @@ describe("a chat's feed", () => {
     expect(replyCount(feed, 1)).toBe(2);
   });
 
+  it("replaces a message held with what a message_changed event carries, the files of its run under it", () => {
+    const start = feedOf(page([message(1, 1, { reply_count: 2, run_id: 9, author: REVIEWER })], 2));
+    const file = { id: 5, run_id: 9, source: "sent", name: "chart.png", media_type: "image/png", viewer: "image", size: 10, sha256: "c".repeat(64), caption: null, tool_call_id: null, created_at: "2026-10-14T09:00:00Z", url: "/v1/chats/1/outputs/5/content" } as const;
+    const changed = message(1, 1, { reply_count: 2, run_id: 9, author: REVIEWER, outputs: [file] });
+    const { feed } = applyEvents(start, [event(3, { kind: "message_changed", message: changed }), event(4, { kind: "message_changed", message: message(8, 8) })], "octo");
+    expect(feed.entries.get(1)?.message.outputs?.map((item) => item.id)).toEqual([5]);
+    expect(replyCount(feed, 1)).toBe(2);
+    // A message the page never read stays out: it is not in the window shown.
+    expect(feed.entries.has(8)).toBe(false);
+    expect(feed.lastSeq).toBe(4);
+  });
+
   it("adds new messages from events once, and counts a new reply on top of what the page said", () => {
     const start = feedOf(page([message(1, 1, { reply_count: 1 })], 3));
     const reply = message(5, 4, { thread_root_id: 1, author: REVIEWER });

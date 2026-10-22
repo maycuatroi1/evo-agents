@@ -183,7 +183,7 @@ def test_plugin_points_each_have_a_version_and_the_schema_names_the_kinds_of_eve
 def test_plugin_events_of_canvas_and_signals_are_taken_with_their_permissions():
     from evo_agents.plugins.manifest import PERMISSION_TEXT
 
-    assert PERMISSIONS[-2:] == ("canvas:read", "signals:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
+    assert PERMISSIONS[7:9] == ("canvas:read", "signals:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
     data = manifest(
         permissions=["canvas:read", "signals:read"],
         contributes={"events": [{"name": "loop", "on": ["canvas.claim", "canvas.baseline", "signal.posted"]}]},
@@ -192,6 +192,22 @@ def test_plugin_events_of_canvas_and_signals_are_taken_with_their_permissions():
     assert read.permissions == ("canvas:read", "signals:read")
     with pytest.raises(ManifestError):
         read_manifest(manifest(contributes={"events": [{"name": "loop", "on": ["canvas.deleted"]}]}))
+
+
+def test_plugin_events_of_srs_and_tasks_are_taken_with_their_permissions():
+    """plan loop-engine adds srs:read and tasks:read after the nine before, and the events they let a plugin take."""
+    from evo_agents.plugins.manifest import PERMISSION_TEXT
+
+    assert PERMISSIONS[9:] == ("srs:read", "tasks:read") and set(PERMISSION_TEXT) == set(PERMISSIONS)
+    data = manifest(
+        permissions=["srs:read", "tasks:read"],
+        contributes={"events": [{"name": "loop", "on": ["srs.version.approved", "tasks.status"]}]},
+    )
+    assert read_manifest(data).permissions == ("srs:read", "tasks:read")
+    with pytest.raises(ManifestError):
+        read_manifest(manifest(contributes={"events": [{"name": "loop", "on": ["tasks.deleted"]}]}))
+    with pytest.raises(ManifestError):
+        read_manifest(manifest(permissions=["tasks:write"]))
 
 
 def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_only_in_core():

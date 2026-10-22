@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
@@ -74,10 +75,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_events, review, runs, tables
+from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, output_views
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -98,6 +101,9 @@ MAX_LIST = 200
 MAX_OFFSET = 100_000
 MAX_READ_IDS = 500
 NO_GRANT = "the member holds no grant on the notification's project any more"
+# The blob store of the job's pass, so a channel's prepare can hand out presigned GETs of a notification's files
+# (``output_notices.channel_outputs``); None outside a pass, or on a hub without one.
+PASS_BLOBS: ContextVar[BlobStore | None] = ContextVar("notification_pass_blobs", default=None)
 SESSION_ENDED = "the web session that linked this channel ended (signed out, revoked or expired): link it again"
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
@@ -479,18 +485,25 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     return "delivered"
 
 
-async def deliver_notifications(engine, *, config=None, batch: int = DELIVERY_BATCH) -> dict:
+async def deliver_notifications(
+    engine, *, config=None, batch: int = DELIVERY_BATCH, blobs: BlobStore | None = None
+) -> dict:
     """One pass of the job hub.deliver_notifications: each pending delivery that is due, tried once in a transaction
-    of its own. Returns how many were delivered, are to be tried again, and failed."""
+    of its own, with ``blobs`` the store the files of notifications are presigned from (PASS_BLOBS). Returns how many
+    were delivered, are to be tried again, and failed."""
     report = {"delivered": 0, "retried": 0, "failed": 0}
     async with engine.begin() as conn:
         due = (await conn.execute(_due(batch))).scalars().all()
     instances: dict[str, Channel] = {}
-    for delivery_id in due:
-        async with engine.begin() as conn:
-            outcome = await _deliver_one(conn, delivery_id, instances, config)
-        if outcome is not None:
-            report[outcome] += 1
+    token = PASS_BLOBS.set(blobs)
+    try:
+        for delivery_id in due:
+            async with engine.begin() as conn:
+                outcome = await _deliver_one(conn, delivery_id, instances, config)
+            if outcome is not None:
+                report[outcome] += 1
+    finally:
+        PASS_BLOBS.reset(token)
     if report["retried"] or report["failed"]:
         log.warning("notifications delivered", extra=report)
     elif report["delivered"]:
@@ -545,6 +558,11 @@ class Notification(BaseModel):
     link: str | None = Field(description="the hub web's page that shows it, a path of the hub's own site")
     created_at: datetime
     read_at: datetime | None
+    outputs: list[RunOutput] = Field(
+        default_factory=list,
+        description="the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted "
+        "since is left out), each with the URL its reader fetches the bytes from",
+    )
 
 
 def _shown():
@@ -725,6 +743,8 @@ async def list_notifications(
     async with request.app.state.engine.begin() as conn:
         page = _notifications((await conn.execute(listed)).all())
         matching = (await conn.execute(total)).scalar_one()
+        carried = await output_views.by_notification(conn, page)
+    page = [item.model_copy(update={"outputs": carried[item.id]}) if item.id in carried else item for item in page]
     return NotificationList(notifications=page, total=matching, limit=limit, offset=offset)
 
 

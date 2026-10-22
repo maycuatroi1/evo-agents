@@ -49,7 +49,8 @@ export function durationParts(ms: number): { hours: number; minutes: number } {
 
 // Which workers could take the runs. The hub decides at claim time (runs.py, _try_claim): a worker of the member who
 // dispatched, serving the project, neither draining nor revoked, with a free slot, a runtime the run asks for, and a
-// checkout of the run's repo keyed <project>/<repo>. This only says what the visitor may expect.
+// checkout of the run's repo keyed <project>/<repo>, unless its daemon clones the repos it lacks (CLONES_CHECKOUTS).
+// This only says what the visitor may expect.
 
 export type RuntimeName = (typeof RUNTIMES)[number];
 
@@ -102,6 +103,13 @@ export function runsSessionPerStep(worker: Pick<Worker, "features">): boolean {
   return (worker.features ?? []).includes(SESSION_PER_STEP);
 }
 
+/** The feature a worker's heartbeat names when its daemon clones a repo of a run it has no checkout of. */
+export const CLONES_CHECKOUTS = "clones_checkouts";
+
+export function clonesCheckouts(worker: Pick<Worker, "features">): boolean {
+  return (worker.features ?? []).includes(CLONES_CHECKOUTS);
+}
+
 export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   const free = Math.max(worker.slots - worker.held_runs, 0);
   const no = (problem: FitProblem): WorkerFit => ({ worker, fit: "no", problem, free });
@@ -111,7 +119,7 @@ export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
     return no({ kind: "runtime", runtime: request.runtime });
   }
   const missing = request.repos.filter((repo) => !(`${request.project}/${repo}` in worker.checkouts));
-  if (missing.length > 0) return no({ kind: "checkout", repos: missing });
+  if (missing.length > 0 && !clonesCheckouts(worker)) return no({ kind: "checkout", repos: missing });
   if (request.sessionPerStep && !runsSessionPerStep(worker)) return no({ kind: "sessionPerStep" });
   if (worker.status !== "online") return { worker, fit: "offline", problem: null, free };
   return { worker, fit: free > 0 ? "now" : "busy", problem: null, free };
@@ -152,6 +160,15 @@ export function dispatchOutlook(
   const later = fits.filter((fit) => fit.fit === "busy" || fit.fit === "offline");
   if (later.length) return { kind: "later", fits: later };
   return { kind: "none", fits };
+}
+
+/**
+ * Whether the hub refuses the runs of `outlook` (409, nothing dispatched): they are pinned to a worker that cannot claim
+ * them as its heartbeat reports them (a runtime, checkout or session per step it lacks), as the hub's `dispatch.unfit`
+ * checks it. Runs pinned to a busy, offline or draining worker wait in the queue instead.
+ */
+export function pinRefused(outlook: DispatchOutlook): boolean {
+  return outlook.kind === "pinned" && outlook.fit.fit === "no" && outlook.fit.problem?.kind !== "draining";
 }
 
 /** Whether `outlook` says nothing is wrong: a worker takes the runs now, or there is nothing to dispatch yet. */

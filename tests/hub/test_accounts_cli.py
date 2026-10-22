@@ -76,6 +76,8 @@ def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_
     account = {
         "name": "oauth-a",
         "env_var": VAR,
+        "provider": "claude",
+        "category": "model",
         "auth": "oauth",
         "state": "needs-relogin",
         "projects": ["evo-agents"],
@@ -114,6 +116,39 @@ if pg.DSN:
 
 
 @needs_pg
+def test_a_service_account_shows_no_cost(capsys):
+    from evo_agents.hub.cli_secrets import _print_account
+
+    account = {
+        "name": "gitlab-a",
+        "env_var": "GITLAB_TOKEN",
+        "provider": "gitlab",
+        "category": "service",
+        "auth": "token",
+        "state": "ready",
+        "projects": ["evo-agents"],
+        "workers": [],
+        "weight": 1,
+        "priority": 0,
+        "cooldown_until": None,
+        "cooldown_reason": None,
+        "paused_at": None,
+        "expires_at": None,
+        "last_leased_at": None,
+        "last_usage": None,
+        "last_usage_at": None,
+        "runs_24h": 2,
+        "runs_7d": 3,
+        "cost_24h_usd": None,
+        "cost_7d_usd": None,
+        "held_by": [],
+    }
+    _print_account(account)
+    out = capsys.readouterr().out
+    assert "  Runs: 2 in 24 hours, 3 in 7 days.\n" in out and "$" not in out
+
+
+@needs_pg
 def test_list_set_pause_and_policy_without_ever_printing_a_value(hub, monkeypatch, capsys):
     owner, other = hub.homes["owner"], hub.homes["other"]
     values = {name: sample(f"{name}-") for name in ("claude-a", "claude-b")}
@@ -128,6 +163,7 @@ def test_list_set_pause_and_policy_without_ever_printing_a_value(hub, monkeypatc
     assert [(a["name"], a["state"], a["weight"]) for a in found] == [("claude-a", "ready", 1), ("claude-b", "ready", 1)]
     table = ok(account_cli(monkeypatch, capsys, owner, "list"))
     assert "claude-a" in table.out and "claude-theirs" not in table.out
+    assert "PROVIDER" in table.out and {(a["provider"], a["category"]) for a in found} == {("claude", "model")}
 
     changed = account_cli(monkeypatch, capsys, owner, "set", "claude-b", "--weight", "3", "--priority", "2", "--json")
     account = as_json(changed)

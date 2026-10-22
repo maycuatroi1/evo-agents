@@ -183,7 +183,7 @@ def read_policy(name: str) -> dict:
         raise ValueError(f"{name} is not YAML: {exc}") from None
     body = {} if body is None else body
     if not isinstance(body, dict):
-        raise ValueError(f"{name} holds no object of sections (repos, merge, judge, breaker, audit)")
+        raise ValueError(f"{name} holds no object of sections (repos, merge, judge, breaker, audit, loop)")
     try:
         json.dumps(body)
     except (TypeError, ValueError):
@@ -238,7 +238,7 @@ def register_policy(hsub) -> None:
         required=True,
         metavar="PATH",
         help="the policy as YAML or JSON, - for stdin (sections: repos, "
-        "merge, judge, breaker, audit; a key left out reads as its default)",
+        "merge, judge, breaker, audit, loop; a key left out reads as its default)",
     )
     written.add_argument("--note", help="why, for the history (at most 1000 characters)")
     written.add_argument("--if-revision", type=int, metavar="N", help="refuse unless the policy is at revision N")

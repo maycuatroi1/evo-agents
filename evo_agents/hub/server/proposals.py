@@ -353,8 +353,9 @@ def _readable_run(row, plans: list[str], owner_id: int) -> bool:
 
 
 async def _session_evidence(conn: AsyncConnection, run: _ReviewRun, item: EvidenceIn, where: str) -> str:
-    """Where session evidence ``item`` is: its facet, else its digest (``facet_figures.lists_of``); 422 otherwise."""
-    held = await facet_figures.lists_of(conn, run.project_id, item.session_id)
+    """Where session evidence ``item`` is: its facet, else its digest, the digest first for its skills
+    (``facet_figures.lists_of``); 422 otherwise."""
+    held = await facet_figures.lists_of(conn, run.project_id, item.session_id, item.field)
     if held is None:
         raise _refused(where, f"project {run.project} has no digest of session {item.session_id}, nor a facet of it")
     what, body = held

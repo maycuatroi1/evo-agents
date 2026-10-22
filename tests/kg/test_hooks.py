@@ -326,7 +326,8 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0
-    assert f"commits read: app {read[:7]} (1 behind origin/main)" in note.splitlines()  # counted again, not 0
+    behind = f"commits read: 1 source, 0 current; behind: app {read[:7]} (1 behind origin/main)"
+    assert behind in note.splitlines()  # counted again, not 0
     assert "http" not in note and read not in note  # names and numbers only
 
     status = Session(project, "wide").call("kg_status", {})
@@ -339,7 +340,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     git(app, "update-ref", "-d", "refs/remotes/origin/main")  # no branch to count against: the count of the sync
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert f"commits read: app {read[:7]} (0 behind origin/main)" in note.splitlines()
+    assert "commits read: 1 source, all current" in note.splitlines()
 
 
 def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg_env, monkeypatch, capsys, unbound):
@@ -350,7 +351,7 @@ def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", json.dumps({"source": "startup"}))
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert code == 0 and f"commits read: app {read[:7]}" in note.splitlines()
+    assert code == 0 and f"commits read: 1 source, 0 current; behind unknown: app {read[:7]}" in note.splitlines()
     status = Session(project, "wide").call("kg_status", {})
     assert f"read    app {read[:7]} of HEAD" in status["content"][0]["text"].splitlines()
 
@@ -717,15 +718,17 @@ def test_kg_hooks_skip_the_parsers_of_every_other_command(linked, tmp_path, monk
 
 
 def test_the_plugin_adds_after_grep_and_never_before():
+    from tests.hub.test_hooks import hook_runs
+
     hooks = json.loads((Path(__file__).parents[2] / "plugins/evo-kg/hooks/hooks.json").read_text("utf-8"))["hooks"]
     assert "PreToolUse" not in hooks
     after = {group.get("matcher"): group["hooks"] for group in hooks["PostToolUse"]}
     assert sorted(after) == ["Bash", "Grep", "mcp__plugin_evo-kg_evo-kg__.*"]
     (grep,) = after["Grep"]
-    assert grep["command"].endswith(" evo-agents kg hook post-search || true")
-    assert {(h["if"], h["command"].rsplit(" post-search ", 1)[1]) for h in after["Bash"]} == {
-        ("Bash(rg *)", "--only rg || true"),
-        ("Bash(grep *)", "--only grep || true"),
+    assert hook_runs(grep["command"]) == "kg hook post-search"
+    assert {(h["if"], hook_runs(h["command"])) for h in after["Bash"]} == {
+        ("Bash(rg *)", "kg hook post-search --only rg"),
+        ("Bash(grep *)", "kg hook post-search --only grep"),
     }
     commands = [h["command"] for group in hooks.values() for g in group for h in g["hooks"]]
     assert not any("pre-search" in c or "Glob" in c for c in commands)

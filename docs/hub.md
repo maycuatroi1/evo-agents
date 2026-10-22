@@ -31,6 +31,8 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Merge queue, `/p/{project}/merge-queue`, `.../merge-queue/figures` and `.../merge-queue/policy` | the hub's merge queue on GitLab (`docs/merge-queue.md`): the merge requests waiting, in their turn and after their merge, why each waits or is blocked, its gates, verdicts and ledger, each repo's breaker and the audit samples waiting for an answer; the figures of each repo, agent and model; the autonomy policy, its form, its revisions and the comparison of two. A reader reads; an admin edits the policy, answers samples, approves a manual release, asks for a revert and resets a breaker | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`, `GET` and `PUT .../policy`, `.../policy/revisions`, `.../policy/compare` |
+| Goals, `/p/{project}/goals` and `.../goals/{code}`; Loop, `/p/{project}/loop` and `.../loop/items/{id}`; Decisions, `/p/{project}/decide` | the project's goals with their metric against the target and their work items by state; the Loop's work items by state or by chain, why each waits, and a work item's chain from the goal to the release with its ledger; the decision board, the three gates first (`docs/loop.md`). A reader reads; an admin turns the Loop on or off and resets its breaker | `GET /v1/projects/{project}/goals`, `.../loop`, `.../loop/items`, `.../loop/items/{id}`, `.../loop/goals`, `.../decision-board`, `GET` and `PUT .../policy`, `POST .../loop/resume` |
+| Org, `/org` | the org chart: units, seats, ceilings and effective levels, each person's runs at work, and for an admin the people still Unplaced; admins and leads change it there (`docs/org-chart.md`) | `GET /v1/org`, `GET /v1/org/runs` and the writes under `/v1/org` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 | Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
 
@@ -86,23 +88,27 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
+| org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | releases | `GET /v1/projects/{project}/releases`, `GET .../releases/cycles`, `PUT .../releases/schedule`, `POST .../releases/{pause,resume,run}` (`docs/releases.md`) |
 | autonomy policy | `GET` and `PUT /v1/projects/{project}/policy`, `GET .../policy/revisions`, `.../policy/revisions/{revision}`, `.../policy/compare?from=N&to=M`: reading needs a grant on the project, writing the admin role (`docs/merge-queue.md`) |
-| merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
+| goals | `GET /v1/projects/{project}/goals` (`?status=`), `GET .../goals/{ref}` (`?revision=`), `.../goals/{ref}/revisions`, `PUT .../goals/{ref}`, `POST .../goals/{ref}/close`: reading needs a grant on the project, writing the admin role (section Goals) |
+| loop | `GET /v1/projects/{project}/loop`, `GET .../loop/items` (`?state=`, `?kind=`, `?goal=`, `?open=`, `?limit=`), `GET .../loop/items/{id}`, `GET .../loop/goals`: reading needs a grant on the project; `POST .../loop/resume` the admin role (section Goals, `docs/loop.md`) |
+| decision board | `GET /v1/projects/{project}/decision-board`: what waits for a person, the three gates first; reading needs a grant on the project (section Goals, The decision board) |
+| merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/{id}/pass`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
@@ -110,8 +116,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
-| srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews` and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
+| srs | `/v1/x/srs/{project}/documents` (`?all=true` for the archived ones too), `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit`, `/reviews`, `/items/{ref}/reviews` (one use case) and `/withdraw`, `POST .../documents/{slug}/retire`, `/archive` and `/unarchive`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
 | tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
+| pm | `GET /v1/x/pm/{project}/daily?date=`: the daily report of a project (`docs/pm-plugin.md`) |
 | canvas | `GET` and `POST /v1/x/canvas/{project}/canvases`, `GET .../canvases/{slug}` with `/export`, `/proposals`, `/claims/{ref}`, `/claims/{ref}/diff`, `/claims/{ref}/judgings`; `POST .../canvases/{slug}/edit`, `/undo`, `/brainstorm`, `/archive`, `/unarchive`, `.../claims/{ref}/evidence`, `.../evidence/{id}/withdraw` and `/confirm`, `.../proposals/{id}/accept` and `/reject`, `POST .../canvases/import`; `GET` and `POST .../canvases/{slug}/baselines`, `GET .../baselines/{number}`, `POST .../baselines/{number}/items/{ref}/decide`: a project's Lean Canvases (`docs/canvas-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
@@ -199,6 +206,25 @@ four `evo-agents worker` commands above, in the code spans and fenced code block
 subcommand or option that does not exist, an option without its value, or a value outside an option's choices. The
 other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
 `--contract FILE` checks against a saved `contract print` output instead.
+
+### Exit status
+
+Every `evo-agents` command that talks to the hub ends with one of these statuses, so a script, evo-cli or the
+Curator's figures can tell a wrong call from a hub that was down (`evo_agents/hub/client.py`, `exit_status`):
+
+| Status | When |
+| --- | --- |
+| 0 | the command did what it says |
+| 1 | any other failure: the hub refused the request (4xx other than 429), not signed in, a file that cannot be read |
+| 2 | the command line is wrong: argparse's own status, with `invalid choice` or `unrecognized arguments` in its message, and the option combinations a command refuses |
+| 69 | the hub or the network could not be reached: refused, reset, no answer in time (`EX_UNAVAILABLE`) |
+| 75 | the hub answered 5xx or 429: try again later (`EX_TEMPFAIL`) |
+
+evo-cli reads status 2 with `invalid choice` or `unrecognized arguments` as an evo-agents too old for the command it
+ran, and asks for an upgrade; that meaning stays. The worker's daemon keeps its own statuses (`docs/workers.md`): 3,
+or `EVO_WORKER_REVOKED_EXIT`, once its token is revoked, and 1 when the hub answers 426. `evo-agents worker doctor`
+exits 2 when a finding is high, and a command that needs the worker extra and lacks it exits 2 too. The commands of
+`evo-agents kg` that work on this machine alone keep 1 and 2 as they are.
 
 ## Signing in
 
@@ -320,6 +346,17 @@ Memories add one rule on top: `project` and `reference` memories go to every mem
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
 only their owner sees them. A memory whose label names an audience goes only to a reader whose audience holds it
 (Memories, skills and knowledge graphs, Audience of memories).
+
+## The org chart
+
+The hub keeps an org chart of its people and agent profiles (`docs/org-chart.md`): a tree of units (the root, teams
+and cohorts), the seats people and agents hold in them (lead, member, intern, agent), and an autonomy ceiling from A0
+to A5 on each unit and seat, which no unit below may loosen. A hub admin changes all of it and the lead of a unit what
+lies below them, never above their own level; each change writes an `org.` audit row. `evo-agents hub org show`,
+`evo-agents hub org unit create`, `evo-agents hub org seat add` and `evo-agents hub autonomy ceiling set` drive it from
+the command line, the page `/org` from the web. The chart grants nothing on a project. Everyone starts with a primary
+seat at the root at A5, so nothing changes for them; a person whose primary seat ended is at A0, and the hub takes back
+the leases of their runs and refuses the runs they would start (`docs/org-chart.md`, Seats that end).
 
 ## Agent profiles
 
@@ -765,6 +802,15 @@ agent's edit and the Curator's plans all go through this check. The hub does not
 already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
 harness validate` warns of each verify of a step not done that the hub would refuse as new.
 
+`evo-agents harness validate`, and the warnings a PUT answers with, also check the shape the create-exec-plan skill
+asks of a plan (`plan_semantics` in `evo_agents/harness/__init__.py`): a step id that an earlier step has too, a step
+that depends on itself, a cycle of steps that depend on each other (once, with its ids), a step title over 60
+characters (counted as characters, not bytes; a step without a title passes, since older plans have none), an id
+`a<number>` in a step's `acceptance` that no criterion of the plan's `acceptance` has, and a criterion with an id
+that no step's `acceptance` names, unless it is `invariant: true`. A step's `acceptance` may be a list or a string
+such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
+plans hold there pass. Each is a warning: the hub stores the plan anyway.
+
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
 with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
@@ -921,7 +967,26 @@ each project's autonomy policy, and the @builder proposal kind `policy`; 0080 th
 and its rebases in a row; 0083 what follows a merge (its checks, a revert's merge request, the results of the UAT and
 PROD checks) and `merge_samples`; 0084 `merge_breakers` and the notice `merge_paused`. No column of a table older than
 0079 changes. Going back to 0078 drops those tables, deletes the forge secrets, the policy proposals, the judge runs on
-no plan and the merge_paused notices, and puts back the checks they widened.
+no plan and the merge_paused notices, and puts back the checks they widened. Schemas 0085 to 0090 belong to the
+plugins tasks and pm, to the run figures and to the outputs of runs: 0085 `tasks_blockers` and
+`tasks_sprints.activated_at`, 0086 `pm_sends` and the notices `pm_daily` and `pm_escalation`, 0087
+`run_tool_stats.skills`, 0088 `tasks_items.outcome_md` (`docs/tasks-plugin.md`, `docs/pm-plugin.md`,
+`docs/workers.md`), 0089 `run_outputs` and `run_output_links`, 0090 `notification_mutes` and the notice `run_outputs`
+(section Outputs of runs). Schema 0091 adds `goals` and `goal_revisions` and the @builder proposal kind `goal` (section
+Goals); going back to 0090 deletes the goal proposals and their notices and drops both tables. Schema 0092 adds the
+delivery kinds `srs.version.approved` and `tasks.status` and the permissions `srs:read` and `tasks:read`
+(`docs/plugins.md`, Extension points); `hub_events` takes both kinds as it is. Going back to 0091 deletes the
+deliveries and the rows of `hub_events` of the two kinds and takes the two permissions out of every grant. Schema 0093
+adds the Loop of a project (plan loop-engine, `docs/loop.md`): `loop_states` (on or off, the cursor on `hub_events`,
+the breaker), `loop_items` (each work item: kind, cycle, key unique in the project, ancestors, state and reason, tries
+and failures, the engine that made it) and `loop_item_events`, its ledger, only ever added to; no column of an older
+table changes, and going back to 0092 drops the three tables. Schema 0094 lets `findings.lens` and `proposals.lens`
+take the Curator's lens `product` (`docs/curator.md`, The lens product); going back to 0093 deletes the findings and
+proposals of that lens. Schema 0095 lets `decisions.category` take `loop`, the decision the Loop asks the person a
+work item's last run stands for after its third failure, and `notifications.notice_kind` take `loop_paused`, the
+notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
+kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
+root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1088,6 +1153,55 @@ Telegram and the Inbox like any other, and the first answer wins, from the web, 
 machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
 states and kind in `hub run list/show`; the machine side talks HTTP.
 
+## Outputs of runs
+
+An output is a file a run's agent made that the hub keeps for the people who read the run (`evo_agents.hub.outputs`):
+a file it sent on purpose (source `sent`: `evo-agents worker output`, SendUserFile, the Artifact tool, a file attached
+to a question or a chat message), an image the machine took out of a tool's result (`tool`: a browser's screenshot, a
+Read of an image), or a file left in the run's `.evo-run/outputs/` (`outputs`). It has a name, a media type, a size, a
+SHA-256, a caption, when it came and the tool call of the trace it came from. Its bytes are a blob of kind
+`run-output` the run's project holds; a run holds one output per SHA-256, so a file sent twice is the output it is.
+Schema 0089 holds them (`run_outputs`), what carries them (`run_output_links`: a question or a chat message) and a
+project's switch (`projects.output_tool_images`); going back to 0084 drops them, and the chat events of kind
+`message_changed`.
+
+- **Sending.** The worker of a run and the machine of a local session send outputs in two calls, the presigned
+  uploads of the bytes the project does not hold and the outputs (`docs/workers.md`, "Outputs").
+- **Limits.** 200 MiB a file, 500 outputs and 1 GiB a run, a SHA-256 counted once; past one, 413 names the limit.
+- **Reading.** Readers of a run list its outputs (`GET /v1/projects/{p}/runs/{id}/outputs`, `?source=` and `?after=`)
+  and a local run's are its member's alone. Each output's `url` serves its bytes from the hub's own origin to whoever
+  reads what listed it: the run (`.../runs/{id}/outputs/{oid}/content`), a question that carries it
+  (`.../decisions/{id}/outputs/{oid}/content`, its readers) or a chat message that carries it
+  (`/v1/chats/{id}/outputs/{oid}/content`, a member of the chat who reads the message). Anyone else gets 404.
+- **Serving.** An answer carries the output's type (text of every kind as UTF-8 `text/plain`), `nosniff`,
+  `Cross-Origin-Resource-Policy: same-origin`, a Content-Disposition with a safe name (an attachment with
+  `?download=true`, and always for a type the web does not view) and its SHA-256 as ETag, and serves one byte range
+  (206, 416 outside the file), so a video seeks. HTML and SVG never run with the hub's origin: their
+  Content-Security-Policy's `sandbox` gives them an opaque origin, without `allow-same-origin`, and `connect-src
+  'none'` lets an HTML page call nothing, so it reads no cookie and calls no API as the viewer; SVG runs no script.
+- **Questions and chats.** A question carries outputs of its run (`output_ids`), and every view of the question
+  lists them. A chat message of a run's agent carries outputs of that run, never a tool image. A chat run's own files
+  go under its next message, and once it ended under its last one, which the chat's streams hear of as
+  `message_changed`.
+- **Notices.** The files of sources `sent` and `outputs` go to the run's owner as the notice `run_outputs`, gathered a
+  minute a run, in the Inbox with their outputs and on Telegram with the run's link, never an image of source `tool`;
+  a member turns it off (`docs/notifications.md`, "The files of a run").
+- **Deleting.** The run's dispatcher or an admin of the project deletes an output (`DELETE
+  .../runs/{id}/outputs/{oid}`, audit `run.output_delete`): it leaves the questions and messages that carried it, and
+  its bytes go once nothing refers to them any longer (the blob collection counts `run_outputs.sha256`).
+- **Retention.** An output of source `tool` goes with its run's events, `EVO_HUB_RUN_LOG_DAYS` after the run ended
+  (hub.prune_run_events), unless a question or a chat message carries it. The other sources stay until someone deletes
+  them.
+- **The switch.** `GET /v1/projects/{p}/output-settings` answers any member whether the project takes tool images
+  (`tool_images`, on by default) and the limits; an admin of the project switches it with `PUT` (audit
+  `settings.outputs`). Off, the hub refuses outputs of source `tool` (409) and the machines send none; they read it at
+  `GET /v1/worker/runs/{id}/output-settings` and `GET .../local-runs/{id}/output-settings`.
+
+`evo-agents hub run outputs RUN [--source S] [--json]` lists a run's outputs, and `--download DIR` saves each under
+its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked against its SHA-256, next to a file of
+that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
+and in the `--json` of `hub chat send|react`.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -1096,8 +1210,12 @@ roles, its GitHub App and the ruleset it needs, and Telegram. This section and t
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
 below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
-default): the failures per tool
-and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
+default): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
+sessions' digests), the skills (per skill its loads in the sessions' digests, typed with `/name` among them, and in
+runs, the friction after each load next to the baseline of every digest that counts skills, the interrupts and
+corrections, and what came of the runs that loaded it: done, the steps whose verify the worker ran again at
+`evo-agents worker step done`, failed and lost by cause), the failures that come from the environment by cause (a
+command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
@@ -1622,7 +1740,9 @@ high risk), and merges the merge requests of a target branch one at a time: reba
 the sha the pipeline passed on. After the merge it follows the UAT check, runs the PROD deploy as `prod_release` says
 (`immediate`, `after_uat`, `manual`), reverts the culprit of a failed check first in the queue, rolls PROD back when the
 PROD check fails, draws audit samples, and trips the breaker of a repo on the policy's thresholds; only an admin resets
-it. A project without a policy, and every repo in mode `off`, keep their merge requests open for a person, as before.
+it. Gate 3 (score hacking) holds a merge request for a person: an admin passes the hold with a reason, the queue goes on
+from that gate at the same head, and a new push takes the pass back (`docs/merge-queue.md`, The gates). A project
+without a policy, and every repo in mode `off`, keep their merge requests open for a person, as before.
 
 ```sh
 evo-agents hub policy show --project demo                    # every key now, (default) where the policy sets none
@@ -1631,9 +1751,87 @@ evo-agents hub policy history --project demo
 evo-agents hub policy diff 2 4 --project demo
 evo-agents hub merge list --project demo                     # each repo's breaker, then the merge requests
 evo-agents hub merge resume lumen-api --project demo         # an admin resets the repo's breaker
+evo-agents hub merge pass lumen-api 11 --reason "..." --project demo  # an admin passes a hold at gate 3
 ```
 
 The web shows it on the project's Merge queue page (`/p/{project}/merge-queue`), with the tabs Figures and Policy.
+
+## Goals
+
+A goal says what a project is for, and how to tell it is reached (plan loop-engine): a statement, a metric (a key of kind
+number of the project's registry of signals, summed up over a window as a test card of the plugin canvas does it, and
+compared with a target), a deadline, the canvas whose product it drives, a rank among the project's goals (1 first), an
+owner with the writer role or above, and a status: `active`, `paused`, or `closed` with a reason (`achieved`,
+`dropped`, `expired`). A goal has no budget. Its code is `G-<number>`, given in order and never again: a goal is closed,
+never deleted. An admin of the project writes a goal whole as its next revision, and every revision is kept and
+audited (`goal.set`); the agent of a run only proposes one, through @builder (proposal kind `goal`). The lens
+`product_goals` of the Curator reads the active goals by rank. A goal of the Curator's charter (`{id, what}`) becomes
+a goal without a metric the first time the goals are read, its `id` kept as an alias that names it as its code does.
+
+```sh
+evo-agents hub goal list --project demo                       # by rank; --status active, paused or closed
+evo-agents hub goal show G-1 --project demo                   # with its revisions; --revision N for an older one
+evo-agents hub goal set --statement "Fewer searches find nothing" --metric search.zero_rate --aggregate p50 \
+  --comparator "<=" --target 0.05 --window-days 30 --deadline 2026-12-31 --project demo   # a new goal: G-<next>
+evo-agents hub goal set G-1 --target 0.03 --note "tighter" --project demo                  # the options given change
+evo-agents hub goal close G-1 --reason achieved --project demo
+```
+
+**The Loop** of a project (plan loop-engine), on with the policy's `loop.enabled`, hands its work items out through run
+kinds the hub has: a brainstorm to a task run of @strategist, a use case to a task run of @ba (whose version
+`srs__propose` writes as the goal's owner), the frame task of an approved use case to one author run in Loop mode, and
+the plan that run wrote to a plan run; author and plan runs go to worker `loop.worker`, in its owner's name, with the
+caps of `loop.caps`. A work item that fails twice gets its triage, and from the third failure the person its last run
+stands for answers a decision of category `loop` (run it again, drop it, leave it to a person), which the hub does.
+More work items in an hour than `loop.max_items_per_hour` trip its breaker: the Loop reads no event and hands out no
+run, each admin gets the notice `loop_paused`, and only an admin resets it.
+
+```sh
+evo-agents hub loop status --project demo     # on or off, its breaker, cursor, last tick, work items by state
+evo-agents hub loop resume --project demo     # an admin resets the breaker that tripped
+```
+
+`GET /v1/projects/{p}/loop` is what `status` prints, for anyone with a grant; `POST /v1/projects/{p}/loop/resume` the
+admin's reset (403 for anyone else, 409 when the breaker has not tripped), audited `loop.resume`.
+
+The Loop's work items, for anyone with a grant: `GET /v1/projects/{p}/loop/items` lists them newest first (`?state=`,
+`?kind=`, `?goal=` a code or alias, `?open=true` for those not done or cancelled, `?limit=` up to 500, 200 by default,
+`more` when more match), each with its kind and cycle, its state and reason with the figures of that reason
+(`waiting`: the cap and the count for `concurrency` or `rate`, the worker and why for `worker`...), its runs and
+failures, who it stands for, its ancestors by their codes (goal, claim, use case and version, frame task, plan, run),
+the work item it came of and the first of its chain (`root`). `GET .../loop/items/{id}` gives one with its chain (every
+work item that came of that first one), the stages of its path from the goal to the claim, the use case, the frame
+task, the plan, the runs handed out, the merge requests of the plan and the release, and its ledger. `GET
+.../loop/goals` measures each goal's metric now against its target, with its work items by state. Each ancestor shows
+as its own route shows it: a claim, an SRS document and a task under their labels through `X-Evo-Sink` or the
+project's hub sink, a plan, its runs and its merge requests when the reader reads that plan; one the reader may not
+read is left out and named in `hidden`. Nothing there writes.
+
+The web shows them on the project's pages Goals (`/p/{p}/goals`, a goal at `/p/{p}/goals/G-1`), Loop (`/p/{p}/loop`,
+by state or by chain, a work item's chain at `/p/{p}/loop/items/{id}`) and Decisions (`/p/{p}/decide`). An admin turns
+the Loop on or off on the Loop page, as the next revision of the policy (`loop.enabled`, with `if_revision`), and resets
+its breaker there; every other member reads.
+
+**The decision board** of a project, `GET /v1/projects/{p}/decision-board` (the web's `/p/{p}/decide`), gathers what
+waits for a person, the three gates first: the goals (the month's review once the hub asked for it with the notice
+`goal_review`, until a goal gets a revision or the month ends, and each active goal past its deadline), the canvases
+(each baseline still proposed with an item to decide, its overdue test cards among them, and each open proposal of a
+claim) and the policy (each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose
+breaker tripped, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
+decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person
+(one blocked at a gate says how it goes on: an admin passes a hold at gate 3, a new push moves any other) and its repos
+to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
+that wait for their review, with their settle chats. The SRS review and the settle chat are no fourth gate: the rules
+of the plugin srs stay. Each item has its group and kind, a title, since when, who may decide it (`decided_by`:
+`admin`, `writer`, `run_owner`, `srs_reviewer` or `chat_member`, and `deciders`, the logins that may now), the page
+where it is decided and the work item it holds up. Anyone with a grant reads the board and sees only what they may
+read (a canvas's items under its label, a decision of a run whose plan they read, through `X-Evo-Sink` or the
+project's hub sink); each page's buttons call the object's own route, so who may decide is as it was. The job
+`hub.loop_notices`, every 5 minutes, sends `goal_review` on the first day of each month to the admins and goal owners
+of a project whose Loop is on, and `loop_brief`, the Loop's part of the morning brief, at 07:00 in the Loop's zone to
+the goal owners of a project whose Curator sends no brief; the Curator's brief carries that part itself
+(`docs/notifications.md`, Notices). Schema 0096 lets `notifications.notice_kind` take both; going back to 0095 deletes
+them.
 
 ## Memories, skills and knowledge graphs
 
@@ -1682,6 +1880,20 @@ pushed. The text of `digest_show`, like that of `run_events`, stays under 24,000
 the hub's tools cut a text for `kg_more`: `digest_show` leaves out the last items of its longest lists and says how
 many (a kept item keeps the index that `session:ID:FIELD:INDEX` evidence names), and `run_events` stops before the
 event that would go past it and says after which seq to call again; one event's line holds at most 500 characters.
+A command that runs several programs (`a && b`, `a | b`, `a; b`) counts a call for each, and a failure counts for a
+program only when the command ran it alone or a line of the output starts with its name and a colon
+(`evo-agents kg scrub: error: ...`); the other failures of such commands are counted apart (`bash_compound`), so
+`evo-agents kg scrub --help; echo ======`, which zsh failed, is not a failure of evo-agents. `bash_kinds` splits each
+program's failures by kind: `usage_errors` (a wrong call: a usage line, an unrecognized argument, an invalid choice, or
+evo-agents' exit status 2), `env_errors` (the environment: the hub answering 5xx, the network, a timeout, a command the
+harness blocked, or evo-agents' 69 and 75) and `other_errors`. `skills` counts each skill the session loaded, through
+the Skill tool (its input's `skill`) or typed by the person as `/name` (the transcript's
+`<command-name>/name</command-name>`, which fires no Skill call and no PreToolUse hook; Claude Code's own commands,
+`/compact`, `/clear`, `/model` and the like, are not skills), and in the window from each load to the person's next
+turn the Bash commands, their failures by kind, the person's interrupts (`[Request interrupted by user`) and whether
+the turn that closed it corrected the agent (`evo_agents/hub/friction.py`). `turns` and `interrupts` are the session's.
+These fields are null in a digest an older evo-hub plugin pushed; the hub takes such a digest as before and does not
+count stored digests again.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -1690,8 +1902,15 @@ token is replaced wherever it appears. The push follows the write rule (the writ
 digest carries the project's default label, so only members whose grant, and the sink they read through, clear it
 see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest; only the member who pushed a session
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
-the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
-days.
+the hub pushes it, with up to three others that waited. Claude Code runs no Stop hook for a turn the person
+interrupted, so a session whose every turn was interrupted, or that closed while a tool ran, had no digest:
+SessionEnd now pushes the session's digest too, with those that waited, before it reports the local run ended (its
+hook may take 20 seconds of the session's exit; Claude Code 2.1.299 waits for a SessionEnd hook as long as hooks.json
+says, up to 60). When SessionEnd did not run either, SessionStart finds the session: it reads the transcripts of the
+last 7 days under the Claude Code projects directories, untouched for 10 minutes, of the directories of a hub project
+and with no entry in `digest-state.json`, at most 40 for 2 seconds, and queues each of 6 messages for the next Stop;
+the others are noted with their size and read again only once they changed. The directories of a worker's runs are
+left out. `hub.prune_digests` deletes the digests not pushed for 90 days.
 
 **Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
 project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
@@ -1845,6 +2064,24 @@ The questions of the session reach the member too (`docs/notifications.md`, A de
 hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
 reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
 it stopped waiting.
+The session's files become outputs of its run (Outputs of runs; `evo_agents/hub/local_outputs.py`): each file
+SendUserFile sends (its input's `files` and `caption`), each page the Artifact tool publishes (its `file_path`, the
+caption naming the page's title and claude.ai link), each file of `evo-agents hub send FILE... [--caption TEXT]` (a CLI
+session has no SendUserFile; the command finds the session by `CLAUDE_CODE_SESSION_ID`), all of source `sent`, and
+every image block of a tool's result (an MCP or Playwright screenshot, a Read of an image), of source `tool`. The
+tool's `tool_call_update` keeps, after its text, a content block per image in place of its base64: the ACP
+`resource_link` a worker's run writes (`{"type": "resource_link", "uri": "evo-output:sha256:<hex>", "name",
+"mimeType", "size"}`, `evo_agents.hub.outputs.output_link`), which the run's outputs match by SHA-256. A shape the
+hook does not know is passed over. The `local-tool` hook parses its payload whole up to 64 Mi characters (the other
+hooks stop at 1 MiB), and of a longer one still makes the tool's event from its first and last characters. No upload
+runs in a hook: the hook writes an image's bytes and the queue under `~/.evo/hub/local-outputs/<session>/` and starts
+`evo-agents hub send --queued` in the background, detached, unless one runs or the hub did not answer in the last 15 s;
+Stop, UserPromptSubmit and SessionEnd start it too while outputs wait. The sender copies each file sent (a text file
+through `redact_data`, as the events, captions too), reads the project's switch (off: the images are deleted unsent and
+no longer taken), then uploads and records in batches of 100; an output the hub refuses is dropped and named in
+`send.log`, and a hub or blob store that does not answer keeps everything for a later run. A question of the dialog
+carries the outputs of source `sent` of the turn (since the person's last message), waiting up to 3 s for those not
+recorded yet. Queues untouched for 7 days are deleted.
 [Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
@@ -1863,7 +2100,10 @@ commands, edits and errors from the normalized `item_completed` item stream (she
 searches), and `compactions` from the `ContextCompaction` items. The spool leaves a Codex result as it is, so
 `spool_results` and `spool_original_chars` are 0 and `spool_reads` counts the shell runs that name the spool directory.
 The `js`/node_repl and agent-spawning tools that the item stream does not normalize are not counted, and `files_read`
-is 0 since Codex reads files through the shell, which the commands already hold.
+is 0 since Codex reads files through the shell, which the commands already hold. A Codex digest counts a skill only
+when the person named it (`$name`), which the rollout marks with a message of the person that starts with `<skill>`
+and names it; a skill the model reads on its own with `cat .../SKILL.md` leaves no such mark and is not counted. Its
+interrupts are the `turn_aborted` events.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
@@ -1900,6 +2140,26 @@ audience (Projects and who sees what, Audience). A reader who does not hold ever
 of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
 answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
 those totals count messages most members may not read.
+
+**Dropping a source.** To drop a source from knowledge.yaml once the hub holds runs of it, run `evo-agents hub kg
+forget-source --project demo --source old-repo` first (the writer role; `--source` repeats), then remove the source
+from knowledge.yaml and push as usual (`evo-agents kg sync --push`). In the other order the push is refused: a source
+the config does not declare takes the highest label, the hub sink does not clear it, and the hub holds runs of it, so
+`PUT /v1/kg/{project}/config` answers 422 naming this command for each dropped source, and `kg sync --push` and `hub
+kg push` print it. `DELETE /v1/kg/{project}/sources/{source}` takes the source's runs off the hub in one transaction
+holding the blob lock. It deletes the source's ingested and pending runs and the project's rows of their logs, writes
+an audit row `kg.forget` (`<project> source=<id> runs=<n>`) and queues a build; the next hourly prune deletes the log
+objects from the bucket. The blobs the
+runs referred to stay the project's, as those of superseded runs do; `evo-agents hub kg scrub --purge` deletes those
+holding a secret. The worker's build cache cannot take a merged run back, so a build that finds a run the hub no
+longer lists starts its cache again and fetches what it needs (`evo_agents/hub/kg_build.py`). A source the hub
+config still declares comes back with the next push of a machine that holds its runs; `forget-source` warns when that
+is the case. Taking off a source the hub holds no run of changes nothing.
+
+```sh
+evo-agents hub kg forget-source --project demo --source old-repo  # asks first at a terminal; --yes does not
+evo-agents kg sync --push                                         # then: knowledge.yaml without old-repo
+```
 
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
@@ -2275,8 +2535,9 @@ be limited to that one bucket. Keys:
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
   blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
   blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
-  the retention deleted (Session transcripts, above), and only once no row refers to them. The `blobs`
-  table says which projects hold each.
+  the retention deleted (Session transcripts, above), and the outputs of runs deleted by hand or with their run's
+  events (Outputs of runs, above), and only once no row refers to them. The `blobs` table says which projects hold
+  each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
 An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presigned PUT URLs (valid 15 minutes, for
@@ -2284,7 +2545,7 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
-file, 48 MiB for a part of a session's transcript.
+file, 48 MiB for a part of a session's transcript, 200 MiB for an output of a run (`run-output`).
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
@@ -2370,10 +2631,24 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
   CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
   server's release pass to the job runner (`HubContext.release_pass`).
+- `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
+  autonomy policy), which each event of such a project also queues in its own transaction; one tick of a project runs
+  at a time and at most one waits (lock `loop:<project id>`). A tick reads the events past the project's cursor, its
+  goals' revisions and weekly look, and its work items not finished, and writes work items by the engine `rules/1`;
+  it calls no model (`evo_agents.hub.server.loop`). The `hub worker` command hands the server's tick to the job runner
+  (`HubContext.loop_tick`).
+- `hub.loop_notices`, every 5 minutes: for each project whose Loop is on, in the Loop's zone, the notice `goal_review`
+  on the first day of a month and the notice `loop_brief` at 07:00 for a project whose Curator sends no brief, each
+  once (The decision board, above; `evo_agents.hub.server.loop.notices`).
 - `hub.merge_queue`, every minute, one pass at a time: for each project with an autonomy policy, the merge requests of
   its repos in mode `auto` opened, gated, judged, merged one at a time on each target branch, and followed after their
   merge through the UAT check, PROD, the revert of a culprit and the rollback; and the breaker of each repo watched
   (The merge queue on GitLab, above; `docs/merge-queue.md`).
+- `hub.expire_seats`, hourly at minute 5: ends the org seats past their own end date or that of a cohort holding
+  them, each with an `org.seat_end` audit row whose actor is the hub, and takes back the leases still held by the runs
+  of every person whose primary seat ended, revoking their GitHub tokens (`docs/org-chart.md`, Seats that end). Such a
+  person is at A0: the hub refuses with 403 the runs they would dispatch, rerun or run a plugin task as, and the
+  credentials their runs' workers ask for; a chat run they ask for is refused with a reply in the thread.
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 

@@ -30,6 +30,20 @@ describe("contentSecurityPolicy", () => {
     expect(directives(contentSecurityPolicy({ nonce: "n", dev: true, https: true })).get("img-src")).toEqual(policy.get("img-src"));
   });
 
+  it("shows the outputs of runs from the web's own origin only: images, video and audio, and frames", () => {
+    for (const options of [{ nonce: "n" }, { nonce: "n", dev: true, https: true }]) {
+      const policy = directives(contentSecurityPolicy(options));
+      expect(policy.get("media-src")).toEqual(["'self'"]);
+      expect(policy.get("frame-src")).toEqual(["'self'"]);
+      expect(policy.get("object-src")).toEqual(["'none'"]);
+      // No origin of a blob store (R2, S3) or anywhere else: the hub serves an output's bytes itself.
+      for (const name of ["img-src", "media-src", "frame-src", "connect-src", "default-src"]) {
+        const outside = (policy.get(name) ?? []).filter((source) => /^https?:/.test(source));
+        expect(outside, name).toEqual(name === "img-src" ? ["https://avatars.githubusercontent.com"] : []);
+      }
+    }
+  });
+
   it("adds eval and websockets only for next dev, and the upgrade only over https", () => {
     expect(contentSecurityPolicy({ nonce: "n" })).not.toContain("'unsafe-eval'");
     expect(directives(contentSecurityPolicy({ nonce: "n" })).get("connect-src")).not.toContain("ws:");

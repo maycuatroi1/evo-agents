@@ -1,7 +1,8 @@
 """Dispatching: the runs of a plan's steps (POST /v1/projects/{p}/runs), a plan run (POST .../plan-runs) and an author
 run (POST .../author-runs), and what each refuses: a caller without writer, a worker not the caller's or one that could
 never claim the run, a repo without an origin, a step not ready, a plan the Curator made, and what the agent profile
-the dispatch names (the project's default without one) does not allow (``service.profiles``). The night shift queues
+the dispatch names (the project's default without one) does not allow (``service.profiles``), and a caller whose
+primary seat in the org chart ended (``check_seat``). The night shift queues
 its runs through ``insert_run`` and ``unfit`` too (``evo_agents.hub.server.curator``, ``collect``, ``changes``):
 ``insert_run`` gives a run whose values name no profile the project's default."""
 
@@ -22,9 +23,11 @@ from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
 from evo_agents.hub.server.runs.service import plugin_runtimes
@@ -53,6 +56,13 @@ def check_dispatcher(access: ProjectAccess) -> None:
         raise HTTPException(
             403, f"dispatching runs in project {access.name} needs the writer role on it; you hold {held}"
         )
+
+
+async def check_seat(conn: AsyncConnection, user: Principal, what: str = "dispatching a run") -> None:
+    """403 when the caller's primary seat in the org chart ended, naming its unit and the day (plan org-chart, a5)."""
+    reason = await ended_refusal(conn, user.user_id, user.login, what=what)
+    if reason is not None:
+        raise HTTPException(403, reason)
 
 
 @dataclass(frozen=True)
@@ -114,12 +124,36 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
     return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
 
 
+async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | None:
+    """Worker ``worker_id`` as its last heartbeat reported it, for a run the hub hands out itself in its owner's name
+    (the Loop's, ``evo_agents.hub.server.loop.dispatch``): no check of who dispatches; None for no such worker."""
+    w = tables.workers
+    query = select(
+        w.c.name, w.c.runtimes, w.c.checkouts, w.c.agent_version, w.c.run_kinds, w.c.features, w.c.labels, w.c.plugins
+    ).where(w.c.id == worker_id)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        return None
+    return Pinned(
+        worker_id,
+        row.name,
+        row.runtimes or {},
+        row.checkouts or {},
+        row.agent_version,
+        tuple(row.run_kinds or ()),
+        tuple(row.features or ()),
+        tuple(row.labels or ()),
+        tuple(row.plugins or ()),
+    )
+
+
 def unfit(
     worker: Pinned, project: str, kind: str, repos: list[str], runtime: str, *, session_per_step: bool = False
 ) -> list[str]:
     """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
     with a session per step when ``session_per_step``), as its last heartbeat reported it and the claim checks it;
-    empty when nothing does."""
+    empty when nothing does. A repo it has no checkout of keeps only an older daemon from it: one that says it clones
+    them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
@@ -152,10 +186,10 @@ def unfit(
     elif runtime != "any" and runtime not in usable:
         problems.append(f"it does not report {runtime} available")
     missing = [f"{project}/{repo}" for repo in repos if f"{project}/{repo}" not in worker.checkouts]
-    if missing:
+    if missing and runs.CLONES_CHECKOUTS not in worker.features:
         problems.append(
-            f"it has no checkout of {', '.join(missing)}: clone each one where the harness registry or the "
-            "project's workspace places it, or name its path in checkouts of the worker's config.json, then restart "
+            f"it has no checkout of {', '.join(missing)}, and its daemon (evo-agents "
+            f"{worker.agent_version or 'of an unknown version'}) does not clone what it lacks: upgrade it and restart "
             "its daemon"
         )
     return problems
@@ -181,21 +215,21 @@ def _short(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-async def _refuse_without_origin(conn: AsyncConnection, access: ProjectAccess, repos: list[str], what: str) -> None:
-    """409 when the project lists no origin for one of ``repos`` (no repo of that name, or one without its origin): no
-    credential is leased for such a repo, and the worker's preflight would fail the run before its agent starts."""
-    pr = tables.project_repos
-    listed = await conn.execute(
-        select(pr.c.name, pr.c.origin).where(pr.c.project_id == access.project_id, pr.c.name.in_(repos))
-    )
-    origins = {name: origin for name, origin in listed}
-    unlisted = [name for name in dict.fromkeys(repos) if not origins.get(name)]
+async def _refuse_without_origin(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, repos: list[str], what: str
+) -> None:
+    """409 when no origin is known for one of ``repos``, neither in the project nor in another one ``user`` holds a
+    grant on (``repo_origins``): no credential is leased for such a repo, a worker without a checkout of it has
+    nothing to clone, and the worker's preflight would fail the run before its agent starts."""
+    origins = await repo_origins(conn, access.project_id, user.user_id, repos)
+    unlisted = [name for name in dict.fromkeys(repos) if name not in origins]
     if unlisted:
         names = ", ".join(unlisted)
         raise HTTPException(
             409,
-            f"{what} needs {names}, for which project {access.name} lists no origin: add the repo with its origin to "
-            "the harness and run `evo-agents hub project register` again; nothing was dispatched",
+            f"{what} needs {names}, for which neither project {access.name} nor another project you hold a grant on "
+            "lists an origin: add the repo with its origin to the harness of either and run `evo-agents hub project "
+            "register` again; nothing was dispatched",
         )
 
 
@@ -250,7 +284,7 @@ async def queue_run(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
     _fits(pinned, access, "step", [name], runtime)
-    await _refuse_without_origin(conn, access, [name], f"step {key} of plan {held.plan_id}")
+    await _refuse_without_origin(conn, access, user, [name], f"step {key} of plan {held.plan_id}")
     values = {
         "project_id": access.project_id,
         "plan_id": held.plan_id,
@@ -323,6 +357,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
@@ -411,6 +446,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
@@ -430,7 +466,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         repos = plan_run_repos(held)
         names = [entry["repo"] for entry in repos]
         _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
-        await _refuse_without_origin(conn, access, names, f"plan {held.plan_id}")
+        await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
         )
@@ -483,25 +519,33 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     return view
 
 
-async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
-    """The repos of an author run on ``worker``: the project's harness first, where plans live, then each repo of the
-    project the worker has a checkout of, in name order, each with no branch, since an author run's worktrees are
-    detached. 409 when the project was registered without its harness."""
+async def author_repos(conn: AsyncConnection, project_id: int, project: str, checkouts: dict) -> list[dict] | None:
+    """The repos of an author run of ``project`` on a worker with ``checkouts``: the project's harness first, where
+    plans live, then each repo of the project the worker has a checkout of, in name order, each with no branch, since
+    an author run's worktrees are detached. None when the project was registered without its harness."""
     p, pr = tables.projects, tables.project_repos
-    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == access.project_id))).scalar_one_or_none()
+    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
     harness = author.harness_repo(path)
     if harness is None:
+        return None
+    names = await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))
+    repos = [{"repo": harness, "branch": None}]
+    for name in names.scalars():
+        if name != harness and f"{project}/{name}" in checkouts:
+            repos.append({"repo": name, "branch": None})
+    return repos
+
+
+async def _author_repos(conn: AsyncConnection, access: ProjectAccess, worker: Pinned) -> list[dict]:
+    """``author_repos`` on ``worker``; 409 when the project was registered without its harness."""
+    repos = await author_repos(conn, access.project_id, access.name, worker.checkouts)
+    if repos is None:
         raise HTTPException(
             409,
             f"project {access.name} was registered without its harness, where plans live, so an author run has "
             "nowhere to read the project's plans: register it again with `evo-agents hub project register` from its "
             "harness; nothing was dispatched",
         )
-    names = await conn.execute(select(pr.c.name).where(pr.c.project_id == access.project_id).order_by(pr.c.name))
-    repos = [{"repo": harness, "branch": None}]
-    for name in names.scalars():
-        if name != harness and f"{access.name}/{name}" in worker.checkouts:
-            repos.append({"repo": name, "branch": None})
     return repos
 
 
@@ -511,6 +555,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         problem = author.request_problem(body.request) or author.runtime_problem(body.runtime)
         if problem:
             raise HTTPException(422, f"{problem}; nothing was dispatched")

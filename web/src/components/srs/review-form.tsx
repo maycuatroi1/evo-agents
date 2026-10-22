@@ -29,7 +29,7 @@ const DECISIONS: Decision[] = ["approve", "request_changes"];
  * Why Approve is locked, under the choices: the open findings to decide, with the chat they are settled in, in
  * `attention` since a person settles them; or @ba's review of the round, which names its run and its state.
  */
-function LockNote({ id, project, round, lock }: { id: string; project: string; round: number; lock: ApproveLock }) {
+export function LockNote({ id, project, round, lock }: { id: string; project: string; round: number; lock: ApproveLock }) {
   const t = useTranslations("srs.review.lock");
   return (
     <div id={id}>

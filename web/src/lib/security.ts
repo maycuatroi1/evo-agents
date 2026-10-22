@@ -14,6 +14,13 @@
  * img-src adds one origin besides the web's own: GitHub's avatars (https://avatars.githubusercontent.com), the faces of
  * the people of a chat, which the hub names by their GitHub id and does not proxy. Nothing else loads from elsewhere.
  *
+ * The outputs of runs (lib/outputs.ts) need nothing more: the hub serves their bytes from this same origin, under
+ * /v1/.../outputs/{id}/content, to whoever may read what lists them. An image is img-src 'self', a video or an audio
+ * file media-src 'self' (said here rather than left to default-src, so a change of the default cannot widen it), and a
+ * PDF or an HTML page frame-src 'self', in a frame the hub's answer sandboxes: HTML gets `sandbox` without
+ * allow-same-origin and connect-src 'none', so it never runs with this origin. No presigned URL of the blob store is
+ * ever loaded by a page.
+ *
  * Styles allow 'unsafe-inline' because React renders `style` attributes (the sidebar's width variables, Radix
  * positioning) and a nonce cannot cover attributes; no untrusted markup is ever rendered as HTML, so the remaining
  * risk is style injection only.
@@ -48,6 +55,7 @@ export function contentSecurityPolicy({ nonce, dev = false, https = false }: Csp
     ["style-src", "'self'", "'unsafe-inline'"],
     ["img-src", "'self'", "data:", "blob:", GITHUB_AVATARS],
     ["font-src", "'self'"],
+    ["media-src", "'self'"],
     ["connect-src", "'self'", ...(dev ? ["ws:", "wss:"] : [])],
     ["object-src", "'none'"],
     ["base-uri", "'self'"],
