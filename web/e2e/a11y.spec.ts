@@ -2248,6 +2248,15 @@ for (const scheme of ["light", "dark"] as const) {
         await expectNoSeriousViolations(page, `/login (${scheme})`);
       });
 
+      for (const path of ["/", "/about"]) {
+        test(`product page at ${path} has no serious axe violation (${scheme})`, async ({ page }) => {
+          await page.goto(path);
+          await expect(page.getByTestId("product-page")).toBeVisible();
+          await expect(page.locator("html")).toHaveClass(new RegExp(scheme));
+          await expectNoSeriousViolations(page, `product page at ${path} (${scheme})`);
+        });
+      }
+
       test(`invite page of a visitor has no serious axe violation (${scheme})`, async ({ page, admin }) => {
         test.skip(isDeployed, "makes an invite link on the local stack");
         const project = uniqueName("a11y-invite");

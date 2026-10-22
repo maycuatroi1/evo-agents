@@ -4,7 +4,8 @@
 // EVO_HUB_TEST_DSN, the web's production build), the demo seeded through the real API, and each page written to
 // docs/images/<page>-<width>-<scheme>.png at the repo's root, light and dark, 1440 and 375 px wide. Then each image is
 // compressed in place: a palette of at most 256 colours, as pngquant would, without dithering (it draws stripes on the
-// flat fills of the UI), kept only when it is smaller. Arguments go on to `playwright test`, so
+// flat fills of the UI), kept only when it is smaller. Last, scripts/product-images.mjs cuts the product page's images
+// and its OpenGraph image from them into public/product/. Arguments go on to `playwright test`, so
 // `pnpm screenshots --headed` watches it run.
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -12,6 +13,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import sharp from "sharp";
+
+import { productImages } from "./product-images.mjs";
 
 const webDir = fileURLToPath(new URL("..", import.meta.url));
 const images = path.join(webDir, "..", "docs", "images");
@@ -36,3 +39,4 @@ for (const name of names) {
 }
 const kib = (bytes) => `${Math.round(bytes / 1024)} KiB`;
 console.log(`screenshots: ${names.length} images in ${path.relative(process.cwd(), images) || "."}, ${kib(before)} compressed to ${kib(after)}`);
+console.log(`product images: ${await productImages()} files in public/product`);

@@ -14,8 +14,14 @@ export const API_LOGIN_PATH = "/v1/auth/web/login";
 
 export const LOGIN_PATH = "/login";
 
+/**
+ * The public product page, the one page search engines may index. Its path is fixed so a member can share it; a visitor
+ * without a session who opens `/` gets the same page there (src/proxy.ts), while a member at `/` gets Home.
+ */
+export const PRODUCT_PATH = "/about";
+
 /** Pages reachable without a session. Everything else sends a visitor without a session to LOGIN_PATH. */
-export const PUBLIC_PATHS: ReadonlySet<string> = new Set([LOGIN_PATH]);
+export const PUBLIC_PATHS: ReadonlySet<string> = new Set([LOGIN_PATH, PRODUCT_PATH]);
 
 /**
  * The page of an invite link, `invites.PAGE` + its token: public as PUBLIC_PATHS are, since the person it invites

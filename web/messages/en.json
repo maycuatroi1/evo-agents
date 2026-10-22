@@ -110,6 +110,113 @@
       }
     }
   },
+  "product": {
+    "meta": {
+      "title": "evo-agents runs your plans with coding agents on your own machines",
+      "description": "Open-source tooling for Claude Code, Codex CLI and opencode. A worker on your own laptop or desktop runs your team's plans and stops for a person only at decisions. Apache-2.0.",
+      "imageAlt": "A plan run waiting for a decision: reindex the 48,210 products on staging now, or wait for tonight's window."
+    },
+    "header": {
+      "nav": "evo-agents on GitHub",
+      "docs": "Docs",
+      "source": "Source code"
+    },
+    "hero": {
+      "title": "Hand a plan to a coding agent on your own machine. It asks you only at decisions.",
+      "signIn": "Sign in with GitHub",
+      "openHub": "Open the hub",
+      "invite": "Ask for an invite",
+      "inviteHint": "The invite form is a public GitHub issue that asks for your GitHub login and what you want to do. No email."
+    },
+    "claims": {
+      "lede": "<readme>evo-agents</readme> is open-source tooling for teams that work with Claude Code, Codex CLI or opencode. A <workers>worker</workers> on your own laptop or desktop takes plan steps from your team's hub, runs them with one of those agents and sends the log and the evidence back.",
+      "planRuns": "A <planRuns>plan run</planRuns> hands a whole plan to one worker, and the agent does its steps in the order the plan allows. As the agent reports a step, <verify>the worker runs the step's verify commands again</verify>, then commits and pushes. <timeout>The run's timeout</timeout> of 2, 4, 8 or 24 hours counts only the time the agent works.",
+      "sleep": "On macOS the worker <sleep>keeps the machine awake</sleep> while it holds a run. A laptop on battery with its lid closed sleeps anyway: its runs stop, and <retry>the hub tries them again</retry> once their leases run out.",
+      "decisions": "A plan run's agent stops for you only at <decisions>decisions of a few kinds</decisions>, such as deleting data, a migration on real data, sending to an outside service, spending money, or a choice of architecture or scope the plan leaves open. It makes every other choice itself and <why>writes down why</why> in the step's evidence.",
+      "waiting": "While you decide, the run <waits>waits, and the wait does not count toward its timeout</waits>. You answer in the <inbox>Inbox</inbox> on the web, or with <telegram>a button on Telegram</telegram> when the hub has a bot. After 24 hours without an answer the run <parks>parks and frees its slot on the worker</parks>, and a later answer resumes it in the same session.",
+      "spool": "With the <spool>evo-hub plugin</spool> in Claude Code, a successful Bash, Grep, WebFetch or MCP result longer than 10,000 characters is written whole to a file on your machine. The model gets <head>its first and last 1,500 characters</head> and a line that names the file.",
+      "sessionPerStep": "A plan run can also give <sessionPerStep>each step a session of its own</sessionPerStep>, which holds that step and the plan's handoff instead of everything the run read before it.",
+      "graph": "<harnessInit>evo-agents harness init</harnessInit> gives each repo of a project a source, and the harness one of its own, for one knowledge graph of the project. Agents query it over MCP: <kgSearch>kg_search</kgSearch> finds ids by name, code, path or words, and <kgImpact>kg_impact</kgImpact> lists what depends on a file or a diff before you change it.",
+      "worktrees": "In a <planRuns>plan run</planRuns> the agent works in a worktree of each repo the plan names, on the branch the plan gives that repo, so one plan can change several repos.",
+      "install": "<graphify>The graphify extra</graphify> gives the knowledge graph code symbols in about 40 languages, and <worker>the worker extra</worker> adds the worker's daemon.",
+      "login": "You <hubLogin>sign in once per machine</hubLogin>, and the token stays in ~/.evo/hub.",
+      "plugins": "<hubPlugin>evo-hub</hubPlugin> connects the agent to the hub's plans, and <kgPlugin>evo-kg</kgPlugin> to the project's knowledge graph. Codex takes the evo-hub plugin with <codex>two commands of its own</codex>.",
+      "next": "Then <quickStart>make a harness</quickStart> for your repos and <workers>pair a worker</workers>.",
+      "roadmap": "<roadmap>The roadmap</roadmap> says what works today and what is still being built, without dates.",
+      "loop": "<loop>The Loop</loop> turns changes in a project, such as a revised goal or a plan an agent wrote, into work for the kinds of run the hub already has, and asks people at three gates. It is in the code, off by default, and <roadmap>still changing</roadmap>.",
+      "canvas": "<canvas>Canvas</canvas> keeps a Lean Canvas for each product of a project, and a claim on it reaches validated only with real evidence. It is in the code, does nothing until an admin of the project enables it, and is <roadmap>still changing</roadmap>.",
+      "growth": "<growth>Growth plugins</growth> are not built yet: one would follow the people who come to a project on their own, and the other would post the project's news through its own accounts, with a check before each post and a cap on spending.",
+      "status": "evo-agents is early and before 1.0: <pypi>releases go to PyPI as evo-ak</pypi>, and commands, routes and file formats still change between them. The <license>code is Apache-2.0</license>, and you get access to a hub <invites>from an invite link or a hub admin</invites>."
+    },
+    "needs": {
+      "title": "What evo-agents does",
+      "demo": "The screens come from a demo hub. Its projects, people and machines are made up.",
+      "need": "The need",
+      "answer": "In evo-agents",
+      "rows": {
+        "unattended": {
+          "title": "Long work without anyone at the keyboard",
+          "need": "People want agent work to keep going while they are away. Claude Code users asked for a session to go on once its session limit resets, and Claude Code now does that. A Show HN tool keeps a lid-closed Mac awake while agents work.",
+          "imageAlt": "The Monitor of a demo hub: four runs in flight on three workers, one of them waiting for a decision."
+        },
+        "away": {
+          "title": "Questions that wait for an answer",
+          "need": "Claude Code users reported a question that gave up after 60 seconds and went on without an answer. Others asked for a push to their phone when a permission approval waits.",
+          "imageAlt": "A plan run waiting for a decision: reindex the 48,210 products on staging now, or wait for tonight's window."
+        },
+        "context": {
+          "title": "Context that fills up",
+          "need": "People ask for compaction they can steer, and for a way back to what it dropped. An article by Anthropic says that “getting agents to make consistent progress across multiple context windows remains an open problem.”",
+          "imageAlt": "A run's log in which a long test output became a note that names the file holding all of it."
+        },
+        "repos": {
+          "title": "Changes that span repos",
+          "need": "People ask Claude Code and Codex for one session or workspace that holds several Git repositories.",
+          "imageAlt": "A knowledge graph search for checkout that finds files and symbols in the web, API and harness sources."
+        }
+      }
+    },
+    "sources": {
+      "title": "Sources",
+      "asOf": "Counts as of {date}.",
+      "issue": "Issue in {repo}",
+      "hn": "Hacker News",
+      "article": "Article by {publisher}",
+      "reactions": "{count, plural, one {# reaction} other {# reactions}}",
+      "discussion": "{points, plural, one {# point} other {# points}}, {comments, plural, one {# comment} other {# comments}}",
+      "open": "open",
+      "closed": "closed as completed on {date}"
+    },
+    "start": {
+      "title": "Get started",
+      "description": "Run these in a terminal on the machine where you work.",
+      "install": {
+        "title": "Install the evo-agents CLI",
+        "label": "install command"
+      },
+      "login": {
+        "title": "Sign the CLI in to this hub",
+        "label": "sign-in command"
+      },
+      "plugins": {
+        "title": "Add the evo-hub and evo-kg plugins to Claude Code",
+        "label": "plugin command {number}"
+      }
+    },
+    "direction": {
+      "title": "Direction",
+      "loop": "The Loop",
+      "canvas": "Canvas",
+      "growth": "Growth plugins"
+    },
+    "footer": {
+      "nav": "More about evo-agents",
+      "docs": "Docs",
+      "source": "Source code",
+      "roadmap": "Roadmap",
+      "license": "Apache-2.0 license"
+    }
+  },
   "nav": {
     "label": "Main navigation",
     "home": "Home",

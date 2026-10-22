@@ -110,6 +110,113 @@
       }
     }
   },
+  "product": {
+    "meta": {
+      "title": "evo-agents chạy plan của bạn bằng coding agent trên máy của chính bạn",
+      "description": "Bộ công cụ mã nguồn mở cho Claude Code, Codex CLI và opencode. Một worker trên laptop hay máy bàn của bạn chạy plan của nhóm và chỉ dừng lại hỏi người ở các quyết định. Giấy phép Apache-2.0.",
+      "imageAlt": "Một plan run đang chờ quyết định: reindex 48.210 sản phẩm trên staging ngay, hay chờ khung giờ tối nay."
+    },
+    "header": {
+      "nav": "evo-agents trên GitHub",
+      "docs": "Tài liệu",
+      "source": "Mã nguồn"
+    },
+    "hero": {
+      "title": "Giao một plan cho coding agent trên máy của bạn. Agent chỉ hỏi bạn khi cần quyết định.",
+      "signIn": "Đăng nhập bằng GitHub",
+      "openHub": "Mở hub",
+      "invite": "Xin lời mời",
+      "inviteHint": "Form xin lời mời là một issue công khai trên GitHub, hỏi login GitHub của bạn và việc bạn muốn làm. Không cần email."
+    },
+    "claims": {
+      "lede": "<readme>evo-agents</readme> là bộ công cụ mã nguồn mở cho các nhóm làm việc với Claude Code, Codex CLI hoặc opencode. Một <workers>worker</workers> trên laptop hay máy bàn của chính bạn nhận các bước của plan từ hub của nhóm, chạy chúng bằng một trong các agent đó rồi gửi lại log và bằng chứng.",
+      "planRuns": "Một <planRuns>plan run</planRuns> giao cả plan cho một worker, và agent làm các bước theo thứ tự plan cho phép. Mỗi khi agent báo một bước, <verify>worker chạy lại các lệnh kiểm của bước đó</verify>, rồi commit và push. <timeout>Timeout của run</timeout>, 2, 4, 8 hoặc 24 giờ, chỉ tính thời gian agent làm việc.",
+      "sleep": "Trên macOS, worker <sleep>giữ máy thức</sleep> trong lúc nó giữ một run. Laptop chạy pin mà gập nắp thì vẫn ngủ: các run trên máy đó dừng, và <retry>hub chạy lại chúng</retry> khi lease hết hạn.",
+      "decisions": "Agent của plan run chỉ dừng lại hỏi bạn ở <decisions>vài loại quyết định</decisions>, như xóa dữ liệu, migration trên dữ liệu thật, gửi gì đó ra dịch vụ bên ngoài, tiêu tiền, hay một lựa chọn kiến trúc hoặc phạm vi mà plan chưa chốt. Mọi lựa chọn khác agent tự quyết và <why>ghi lại lý do</why> vào bằng chứng của bước.",
+      "waiting": "Trong lúc bạn quyết, run <waits>chờ, và thời gian chờ không tính vào timeout</waits>. Bạn trả lời trong <inbox>Inbox</inbox> trên web, hoặc bấm <telegram>một nút trên Telegram</telegram> nếu hub có bot. Sau 24 giờ không ai trả lời, run <parks>tạm gác và nhả slot trên worker</parks>, và câu trả lời đến sau sẽ cho nó chạy tiếp trong cùng phiên.",
+      "spool": "Với <spool>plugin evo-hub</spool> trong Claude Code, kết quả thành công của Bash, Grep, WebFetch hay một tool MCP mà dài quá 10.000 ký tự được ghi nguyên vào một file trên máy bạn. Model nhận <head>1.500 ký tự đầu và 1.500 ký tự cuối</head>, kèm một dòng ghi tên file.",
+      "sessionPerStep": "Plan run cũng có thể cho <sessionPerStep>mỗi bước một phiên riêng</sessionPerStep>, chỉ chứa bước đó và bản bàn giao của plan thay vì mọi thứ run đã đọc trước đó.",
+      "graph": "<harnessInit>evo-agents harness init</harnessInit> cho mỗi repo của dự án một nguồn, harness cũng có nguồn riêng, để dựng một knowledge graph chung của dự án. Agent truy vấn graph qua MCP: <kgSearch>kg_search</kgSearch> tìm id theo tên, mã, đường dẫn hay từ khóa, còn <kgImpact>kg_impact</kgImpact> liệt kê những gì phụ thuộc vào một file hay một diff trước khi bạn sửa.",
+      "worktrees": "Trong một <planRuns>plan run</planRuns>, agent làm việc trong worktree của từng repo mà plan nêu, trên branch plan chỉ định cho repo đó, nên một plan sửa được nhiều repo.",
+      "install": "<graphify>Extra graphify</graphify> giúp knowledge graph lấy được symbol trong code của khoảng 40 ngôn ngữ, còn <worker>extra worker</worker> thêm daemon của worker.",
+      "login": "Bạn <hubLogin>đăng nhập mỗi máy một lần</hubLogin>, và token nằm trong ~/.evo/hub.",
+      "plugins": "<hubPlugin>evo-hub</hubPlugin> nối agent với các plan trên hub, còn <kgPlugin>evo-kg</kgPlugin> nối agent với knowledge graph của dự án. Codex dùng plugin evo-hub qua <codex>hai lệnh riêng</codex>.",
+      "next": "Sau đó <quickStart>tạo harness</quickStart> cho các repo của bạn và <workers>ghép một worker</workers>.",
+      "roadmap": "<roadmap>Roadmap</roadmap> ghi những gì đã dùng được và những gì còn đang làm, không hẹn ngày.",
+      "loop": "<loop>Loop</loop> biến các thay đổi trong dự án, như một goal vừa sửa hay một plan agent vừa viết, thành việc cho các loại run hub đã có, và hỏi người ở ba cổng. Loop đã có trong code, mặc định tắt, và <roadmap>còn đang thay đổi</roadmap>.",
+      "canvas": "<canvas>Canvas</canvas> giữ một Lean Canvas cho mỗi sản phẩm của dự án, và một claim trên đó chỉ thành Đã xác thực khi có bằng chứng thật. Canvas đã có trong code, không làm gì cho tới khi admin của dự án bật nó, và <roadmap>còn đang thay đổi</roadmap>.",
+      "growth": "<growth>Các plugin tăng trưởng</growth> chưa được làm: một plugin sẽ theo dõi những người tự tìm đến dự án, plugin kia sẽ đăng tin của dự án bằng chính tài khoản của dự án, có bước kiểm trước mỗi bài và trần chi tiêu.",
+      "status": "evo-agents còn sớm, chưa tới 1.0: <pypi>các bản phát hành lên PyPI với tên evo-ak</pypi>, và lệnh, route, định dạng file vẫn đổi giữa các bản. <license>Mã nguồn theo giấy phép Apache-2.0</license>, và bạn vào được một hub <invites>qua link mời hoặc nhờ hub admin</invites>."
+    },
+    "needs": {
+      "title": "evo-agents làm gì",
+      "demo": "Ảnh chụp lấy từ một hub demo. Dự án, người và máy trong đó đều là hư cấu.",
+      "need": "Nhu cầu",
+      "answer": "Trong evo-agents",
+      "rows": {
+        "unattended": {
+          "title": "Việc dài không cần ai ngồi canh",
+          "need": "Người dùng muốn agent làm tiếp khi họ đi vắng. Người dùng Claude Code xin cho phiên chạy tiếp khi hạn mức phiên hồi lại, và giờ Claude Code đã làm được việc đó. Một công cụ trên Show HN giữ máy Mac gập nắp thức trong lúc agent làm việc.",
+          "imageAlt": "Trang Monitor của một hub demo: bốn run đang chạy trên ba worker, một run trong đó đang chờ quyết định."
+        },
+        "away": {
+          "title": "Câu hỏi chờ người trả lời",
+          "need": "Người dùng Claude Code báo lỗi một câu hỏi tự bỏ cuộc sau 60 giây rồi chạy tiếp mà không có câu trả lời. Người khác xin được báo về điện thoại khi có yêu cầu cấp quyền đang chờ.",
+          "imageAlt": "Một plan run đang chờ quyết định: reindex 48.210 sản phẩm trên staging ngay, hay chờ khung giờ tối nay."
+        },
+        "context": {
+          "title": "Context đầy dần",
+          "need": "Người dùng xin được điều khiển việc compaction, và có cách xem lại những gì compaction đã bỏ. Một bài viết của Anthropic viết rằng “getting agents to make consistent progress across multiple context windows remains an open problem.”",
+          "imageAlt": "Log của một run, trong đó output dài của test được thay bằng một ghi chú nêu file chứa toàn bộ output."
+        },
+        "repos": {
+          "title": "Thay đổi trải trên nhiều repo",
+          "need": "Người dùng xin Claude Code và Codex mở một phiên hay một workspace chứa nhiều repo Git.",
+          "imageAlt": "Tìm checkout trên knowledge graph, ra file và symbol trong các nguồn web, API và harness."
+        }
+      }
+    },
+    "sources": {
+      "title": "Nguồn",
+      "asOf": "Số liệu tính đến {date}.",
+      "issue": "Issue trong {repo}",
+      "hn": "Hacker News",
+      "article": "Bài viết của {publisher}",
+      "reactions": "{count, plural, other {# reaction}}",
+      "discussion": "{points, plural, other {# điểm}}, {comments, plural, other {# bình luận}}",
+      "open": "đang mở",
+      "closed": "đã đóng, hoàn thành ngày {date}"
+    },
+    "start": {
+      "title": "Bắt đầu",
+      "description": "Chạy các lệnh này trong terminal trên máy bạn làm việc.",
+      "install": {
+        "title": "Cài CLI evo-agents",
+        "label": "lệnh cài đặt"
+      },
+      "login": {
+        "title": "Đăng nhập CLI vào hub này",
+        "label": "lệnh đăng nhập"
+      },
+      "plugins": {
+        "title": "Thêm plugin evo-hub và evo-kg vào Claude Code",
+        "label": "lệnh plugin số {number}"
+      }
+    },
+    "direction": {
+      "title": "Hướng đi",
+      "loop": "Loop",
+      "canvas": "Canvas",
+      "growth": "Plugin tăng trưởng"
+    },
+    "footer": {
+      "nav": "Thêm về evo-agents",
+      "docs": "Tài liệu",
+      "source": "Mã nguồn",
+      "roadmap": "Roadmap",
+      "license": "Giấy phép Apache-2.0"
+    }
+  },
   "nav": {
     "label": "Điều hướng chính",
     "home": "Trang chủ",

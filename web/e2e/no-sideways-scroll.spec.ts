@@ -40,7 +40,7 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), the org chart three units deep, Insights with its charts and a wide table,
- * Home, the Inbox and a decision in it, the sign-in page, the Monitor, chats and an SRS version's review with @ba's
+ * Home, the Inbox and a decision in it, the sign-in page, the product page, the Monitor, chats and an SRS version's review with @ba's
  * findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
@@ -295,6 +295,15 @@ for (const width of WIDTHS) {
 
 test("the sign-in page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page }) => {
   await noSidewaysScroll(page, WIDTHS, [{ path: "/login", ready: (p) => expect(p.getByRole("heading", { level: 1 })).toBeVisible() }]);
+});
+
+test.describe("signed out", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("the product page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page }) => {
+    test.setTimeout(60_000);
+    await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: (p) => expect(p.getByTestId("product-page")).toBeVisible() }]);
+  });
 });
 
 for (const width of WIDTHS) {
