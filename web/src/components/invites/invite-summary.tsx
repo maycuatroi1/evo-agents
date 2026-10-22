@@ -124,7 +124,7 @@ export function InviteSummary({ token, invite, hubName, loginReady, onAccepted }
       data-testid="invite-summary"
       data-state={invite.viewer === null ? "signed-out" : invite.for_viewer ? "for-viewer" : "other-login"}
     >
-      <h1 id="invite-heading" className="text-2xl font-semibold tracking-tight text-balance [overflow-wrap:anywhere]">
+      <h1 id="invite-heading" className="text-xl font-semibold tracking-tight text-balance [overflow-wrap:anywhere]">
         {t("heading", { inviter, hub: hubName })}
       </h1>
       <Facts invite={invite} />

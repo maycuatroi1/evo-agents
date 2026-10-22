@@ -3,28 +3,37 @@ import { DEMO_TIME_ZONE } from "./env"; // first: it sets the ports and the admi
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { expect, type Page, test } from "@playwright/test";
+import { type Browser, type BrowserContext, devices, expect, type Page, test } from "@playwright/test";
 
 import { signIn } from "../support/auth";
+import { WEB_ORIGIN } from "../support/env";
+import { HubAdmin } from "../support/hub";
 import { graphReady, nodePath } from "../support/kg";
 import { open } from "../support/plans";
 import { runPath } from "../support/runs";
 
 import { type Demo, keepAlive, seedDemo } from "./seed";
-import { CHECKOUT_PLAN, MAYA, NOW, PEOPLE, PROJECT } from "./story";
+import { CHECKOUT_PLAN, ELENA, MAYA, NOW, PEOPLE, type Person, PROJECT } from "./story";
 import { SPOOLED_CALL } from "./trace";
 
 /**
  * The images of the README and the product page: the demo of story.ts seeded once, then each page in light and dark,
- * 1440 and 375 px wide, as Maya sees it with the browser's clock standing at NOW. Each image is written to
- * docs/images/<page>-<width>-<scheme>.png at the repo's root; scripts/screenshots.mjs compresses them after.
+ * 1440 and 375 px wide, with the browser's clock standing at NOW. Most show what Maya sees; the sign-in page and an
+ * invite link's page show what a visitor sees, signed out, and Get started what Elena sees once she accepted Maya's
+ * link. Each image is written to docs/images/<page>-<width>-<scheme>.png at the repo's root; scripts/screenshots.mjs
+ * compresses them after.
  */
 const IMAGES = fileURLToPath(new URL("../../../docs/images/", import.meta.url));
 const WIDTHS = [
   [1440, 900],
   [375, 812],
 ] as const;
-const COLOURS: Record<number, string> = { [PEOPLE[0].id]: "#2f6f5e", [PEOPLE[1].id]: "#9a5b2e", [PEOPLE[2].id]: "#4b55a3" };
+const COLOURS: Record<number, string> = {
+  [PEOPLE[0].id]: "#2f6f5e",
+  [PEOPLE[1].id]: "#9a5b2e",
+  [PEOPLE[2].id]: "#4b55a3",
+  [PEOPLE[3].id]: "#8a3f6b",
+};
 
 /** A GitHub avatar of the demo's people: their initials on a colour of their own. */
 function avatar(id: number): string {
@@ -72,9 +81,45 @@ async function openSpooledOutput(page: Page, demo: Demo): Promise<void> {
   });
 }
 
-type Screen = { name: string; go: (page: Page, demo: Demo) => Promise<void> };
+/** The two invite links of the demo: one Maya just made, which a visitor opens, and one Elena accepted. */
+type Links = { open: string; accepted: string };
+/** Who sees a page: Maya, a visitor not signed in, or Elena after she accepted her link. */
+type Who = "maya" | "visitor" | "elena";
+type Screen = { name: string; as?: Who; go: (page: Page, demo: Demo, links: Links) => Promise<void> };
 
 const SCREENS: Screen[] = [
+  {
+    name: "login",
+    as: "visitor",
+    go: async (page) => {
+      await page.goto("/login");
+      await expect(page.getByTestId("login-github")).toBeVisible();
+    },
+  },
+  {
+    name: "invite",
+    as: "visitor",
+    go: async (page, _demo, links) => {
+      await page.goto(links.open);
+      await expect(page.getByTestId("invite-sign-in")).toBeVisible();
+    },
+  },
+  {
+    name: "get-started",
+    as: "elena",
+    go: async (page, _demo, links) => {
+      await page.goto(links.accepted);
+      await expect(page.getByTestId("invite-get-started")).toBeVisible();
+    },
+  },
+  {
+    name: "home",
+    go: async (page) => {
+      await open(page, "/");
+      await expect(main(page).getByTestId("needs-you-item")).toHaveCount(1);
+      await expect(main(page).getByTestId("in-flight-item").first()).toBeVisible();
+    },
+  },
   {
     name: "inbox",
     go: async (page) => {
@@ -88,11 +133,13 @@ const SCREENS: Screen[] = [
       await open(page, `/p/${PROJECT}/plans/${CHECKOUT_PLAN}?view=graph`);
       const canvas = main(page).getByTestId("step-graph-canvas");
       await expect(canvas).toHaveAttribute("data-ready", "true");
-      // The graph sits below the plan's goal and progress: scroll it up under the header, its toolbar in view.
-      await canvas.evaluate((element) => {
+      // The graph sits below the plan's goal and progress: scroll it up under the header, its toolbar in view. On a
+      // phone the toolbar stacks its search, Repo and views over three rows, so the graph's card starts the screen.
+      const phone = (page.viewportSize()?.width ?? 0) < 768;
+      await (phone ? main(page).getByTestId("step-graph") : canvas).evaluate((element, offset) => {
         element.scrollIntoView({ block: "start" });
-        window.scrollBy(0, -150);
-      });
+        window.scrollBy(0, -offset);
+      }, phone ? 64 : 150);
     },
   },
   {
@@ -148,28 +195,67 @@ const SCREENS: Screen[] = [
   },
 ];
 
-test("the README's images", async ({ page }) => {
+/** The demo's avatars, drawn here: no image is fetched from GitHub. */
+async function drawAvatars(context: BrowserContext): Promise<void> {
+  await context.route("https://avatars.githubusercontent.com/**", (route) => {
+    const id = Number(/\/u\/(\d+)/.exec(new URL(route.request().url()).pathname)?.[1] ?? 0);
+    return route.fulfill({ status: 200, contentType: "image/svg+xml", body: avatar(id) });
+  });
+}
+
+/** A browser of its own, as the config's `use` sets one up, its clock at NOW; signed in as `person` unless null. */
+async function browserOf(browser: Browser, person: Person | null): Promise<Page> {
+  const context = await browser.newContext({
+    ...devices["Desktop Chrome"],
+    baseURL: WEB_ORIGIN,
+    locale: "en-US",
+    timezoneId: DEMO_TIME_ZONE,
+    reducedMotion: "reduce",
+  });
+  await drawAvatars(context);
+  const page = await context.newPage();
+  await page.clock.setFixedTime(NOW);
+  if (person) await signIn(page, person);
+  return page;
+}
+
+/** Maya's two links to larkspur as a writer: the open one, and the one Elena accepted in her browser. */
+async function inviteLinks(elena: Page): Promise<Links> {
+  const admin = new HubAdmin(); // the stack's hub admin is Maya (env.ts)
+  const link = async () => {
+    const created = await admin.invite({ kind: "join", project: PROJECT, role: "writer", max_level: "internal", days: 7 });
+    return `/invite/${created.token}`;
+  };
+  const links = { open: await link(), accepted: await link() };
+  await elena.goto(links.accepted);
+  await elena.getByTestId("invite-accept").click();
+  await expect(elena.getByTestId("invite-get-started")).toBeVisible();
+  return links;
+}
+
+test("the README's images", async ({ page, browser }) => {
   test.setTimeout(1_200_000);
   expect(DEMO_TIME_ZONE).toBe("UTC");
   mkdirSync(IMAGES, { recursive: true });
   const demo = await seedDemo();
-  await page.route("https://avatars.githubusercontent.com/**", (route) => {
-    const id = Number(/\/u\/(\d+)/.exec(new URL(route.request().url()).pathname)?.[1] ?? 0);
-    return route.fulfill({ status: 200, contentType: "image/svg+xml", body: avatar(id) });
-  });
+  await drawAvatars(page.context());
   await page.clock.setFixedTime(NOW);
   await signIn(page, MAYA);
+  const pages: Record<Who, Page> = { maya: page, visitor: await browserOf(browser, null), elena: await browserOf(browser, ELENA) };
+  const links = await inviteLinks(pages.elena);
 
   for (const scheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    for (const one of Object.values(pages)) await one.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     for (const [width, height] of WIDTHS) {
-      await page.setViewportSize({ width, height });
+      for (const one of Object.values(pages)) await one.setViewportSize({ width, height });
       for (const screen of SCREENS) {
+        const shown = pages[screen.as ?? "maya"];
         await keepAlive(demo);
-        await screen.go(page, demo);
-        await page.evaluate(() => document.fonts.ready);
-        await page.screenshot({ path: `${IMAGES}${screen.name}-${width}-${scheme}.png`, animations: "disabled", caret: "hide" });
+        await screen.go(shown, demo, links);
+        await shown.evaluate(() => document.fonts.ready);
+        await shown.screenshot({ path: `${IMAGES}${screen.name}-${width}-${scheme}.png`, animations: "disabled", caret: "hide" });
       }
     }
   }
+  for (const one of [pages.visitor, pages.elena]) await one.context().close();
 });

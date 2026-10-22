@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * A shell command to copy: the text in a scrollable code line, and a button that copies it and says so in a toast.
- * Where the clipboard is refused, the button selects the text instead so the person can copy it by hand.
+ * A shell command to copy: the text, wrapped at its spaces and anywhere in a long word (a URL, a code) so the whole
+ * command shows at any width, and a button that copies it and says so in a toast. Where the clipboard is refused, the
+ * button selects the text instead so the person can copy it by hand.
  */
 export function CommandLine({ command, label, testId }: { command: string; label: string; testId?: string }) {
   const t = useTranslations("workers.copy");
@@ -24,10 +25,10 @@ export function CommandLine({ command, label, testId }: { command: string; label
       className="flex min-w-0 items-stretch overflow-hidden rounded-md border bg-muted/60"
       data-testid={testId}
     >
-      {/* Focusable so a keyboard can scroll a command wider than the dialog. */}
+      {/* Focusable so a keyboard reaches the text the button selects where the clipboard is refused. */}
       <code
         ref={code}
-        className="min-w-0 flex-1 overflow-x-auto px-3 py-2 font-mono text-xs leading-5 whitespace-nowrap text-foreground"
+        className="min-w-0 flex-1 self-center px-3 py-2 font-mono text-xs leading-5 whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
         tabIndex={0}
         data-command={command}
       >
