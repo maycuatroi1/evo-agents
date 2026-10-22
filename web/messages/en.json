@@ -3005,6 +3005,27 @@
       "conflict": "The hub refused the change.",
       "invalid": "The hub did not take this.",
       "hubSays": "The hub says: {message}"
+    },
+    "doc": {
+      "open": "Open {name} beside the chat",
+      "close": "Close the document",
+      "modeLabel": "How the document shows",
+      "read": "Read",
+      "changes": "Changes",
+      "shownLabel": "Version shown",
+      "against": "against",
+      "version": "Version {number} · {author} · {at, time, short}",
+      "reloaded": "{author} sent a new version: reloaded, the changes show below.",
+      "bodyLabel": "{name}",
+      "gone": "This document is no longer in the messages read.",
+      "readFailed": "The document could not be read.",
+      "retry": "Retry",
+      "loading": "Reading the document…",
+      "diffLabel": "Changes of the document",
+      "hiddenLines": "{count, plural, one {# unchanged line} other {# unchanged lines}}",
+      "legendAdded": "added",
+      "legendRemoved": "removed or replaced",
+      "legendSame": "unchanged"
     }
   },
   "accounts": {

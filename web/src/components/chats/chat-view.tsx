@@ -23,6 +23,8 @@ import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessag
 
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
+import { OpenDocContext } from "./doc-model";
+import { DocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { messagePreview, type Quote } from "./line-model";
@@ -38,6 +40,8 @@ const MembersSheet = dynamic(() => import("./members-sheet").then((module) => mo
 const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
 /** Tailwind's 2xl (96rem, 1536 px): from there the thread is a column beside the chat, below it a sheet. */
 const THREAD_COLUMN_QUERY = "(min-width: 96rem)";
+/** Tailwind's lg (64rem): from there a document is a column beside the chat, below it it sits above the chat. */
+const DOC_COLUMN_QUERY = "(min-width: 64rem)";
 
 /**
  * What the page under src/app puts under a message, a hook of the live feed and whether the chat has ended: the chat
@@ -105,6 +109,9 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const [thread, setThread] = useState<number | null>(() => numberParam(params.get("thread")));
   const [highlight, setHighlight] = useState<number | null>(() => numberParam(params.get("message")));
   const [members, setMembers] = useState(false);
+  // The Markdown document read beside the chat (doc-panel.tsx), by its name: the composer stays in reach.
+  const [doc, setDoc] = useState<string | null>(null);
+  const docWide = useMediaQuery(DOC_COLUMN_QUERY);
   const opener = useRef<HTMLElement | null>(null);
 
   // A link to one message: a reply of a group chat opens its thread (a direct chat's sits in the line); a message older
@@ -189,7 +196,11 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
     ) : null;
 
   return (
-    <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
+    <OpenDocContext.Provider value={setDoc}>
+    <div className={`flex h-full min-h-0 w-full gap-4 ${docWide ? "" : "flex-col"}`} data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
+      {doc !== null ? (
+        <DocPanel key={doc} feed={live.feed} name={doc} me={me} onClose={() => setDoc(null)} className={`${CARD} ${docWide ? "order-last w-[min(44rem,48%)] shrink-0" : "h-[45%] shrink-0"}`} />
+      ) : null}
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
         <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
         <MessageList
@@ -248,6 +259,7 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
       ) : null}
       <MembersSheet chat={chat} me={me} open={members} onOpenChange={setMembers} />
     </div>
+    </OpenDocContext.Provider>
   );
 }
 

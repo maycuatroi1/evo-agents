@@ -1,0 +1,134 @@
+/**
+ * A line diff of two texts, as git shows it: split on line ends (\n or \r\n, a final line end adds no empty line),
+ * the common head and tail trimmed, the middle matched by Myers' shortest edit script. Within each changed block the
+ * removed lines come before the added ones. A middle whose search would keep over MAX_CELLS diagonal entries is shown whole as
+ * removed then added, so a huge rewrite stays fast.
+ */
+
+export type DiffKind = "same" | "add" | "del";
+export type DiffLine = { kind: DiffKind; text: string; oldNo: number | null; newNo: number | null };
+
+const MAX_CELLS = 4_000_000;
+
+function splitLines(text: string): string[] {
+  if (text === "") return [];
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+/** The middle's edit script as kinds: "same" consumes a line of both sides, "del" of the old, "add" of the new. */
+function middleScript(a: string[], b: string[]): DiffKind[] {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0) return new Array<DiffKind>(m).fill("add");
+  if (m === 0) return new Array<DiffKind>(n).fill("del");
+
+  // Lines as integers, so the table compares numbers rather than strings.
+  const ids = new Map<string, number>();
+  const toId = (line: string) => {
+    let id = ids.get(line);
+    if (id === undefined) {
+      id = ids.size;
+      ids.set(line, id);
+    }
+    return id;
+  };
+  const ai = Int32Array.from(a, toId);
+  const bi = Int32Array.from(b, toId);
+
+  // Myers' greedy O(ND) search, keeping each step's furthest-reaching x per diagonal (k in -(d+1)..d+1) to walk back.
+  const offset = n + m + 1;
+  const v = new Int32Array(2 * offset + 1);
+  const trace: Int32Array[] = [];
+  let cells = 0;
+  let found = -1;
+  for (let d = 0; d <= n + m && found < 0; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1]) ? v[offset + k + 1] : v[offset + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && ai[x] === bi[y]) {
+        x++;
+        y++;
+      }
+      v[offset + k] = x;
+      if (x >= n && y >= m) found = d;
+    }
+    trace.push(v.slice(offset - d - 1, offset + d + 2));
+    cells += 2 * d + 3;
+    if (found < 0 && cells > MAX_CELLS) return [...new Array<DiffKind>(n).fill("del"), ...new Array<DiffKind>(m).fill("add")];
+  }
+
+  const reversed: DiffKind[] = [];
+  let x = n;
+  let y = m;
+  for (let d = found; d > 0; d--) {
+    const prev = trace[d - 1];
+    const at = (k: number) => prev[k + d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const prevX = at(prevK);
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) {
+      reversed.push("same");
+      x--;
+      y--;
+    }
+    reversed.push(x === prevX ? "add" : "del");
+    x = prevX;
+    y = prevY;
+  }
+  while (x-- > 0) reversed.push("same");
+  return reversed.reverse();
+}
+
+export function diffLines(before: string, after: string): DiffLine[] {
+  const a = splitLines(before);
+  const b = splitLines(after);
+
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+
+  const script: DiffKind[] = [
+    ...new Array<DiffKind>(head).fill("same"),
+    ...middleScript(a.slice(head, a.length - tail), b.slice(head, b.length - tail)),
+    ...new Array<DiffKind>(tail).fill("same"),
+  ];
+
+  const out: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  let k = 0;
+  while (k < script.length) {
+    if (script[k] === "same") {
+      out.push({ kind: "same", text: a[i], oldNo: i + 1, newNo: j + 1 });
+      i++;
+      j++;
+      k++;
+      continue;
+    }
+    // A changed block: all its removed lines, then all its added lines.
+    let dels = 0;
+    let adds = 0;
+    while (k < script.length && script[k] !== "same") {
+      if (script[k] === "del") dels++;
+      else adds++;
+      k++;
+    }
+    for (let d = 0; d < dels; d++, i++) out.push({ kind: "del", text: a[i], oldNo: i + 1, newNo: null });
+    for (let d = 0; d < adds; d++, j++) out.push({ kind: "add", text: b[j], oldNo: null, newNo: j + 1 });
+  }
+  return out;
+}
+
+export function diffStats(lines: DiffLine[]): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const line of lines) {
+    if (line.kind === "add") added++;
+    else if (line.kind === "del") removed++;
+  }
+  return { added, removed };
+}

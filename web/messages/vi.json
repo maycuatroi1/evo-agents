@@ -3005,6 +3005,27 @@
       "conflict": "Hub từ chối thay đổi.",
       "invalid": "Hub không nhận dữ liệu này.",
       "hubSays": "Hub báo: {message}"
+    },
+    "doc": {
+      "open": "Mở {name} cạnh khung chat",
+      "close": "Đóng tài liệu",
+      "modeLabel": "Cách hiển thị tài liệu",
+      "read": "Đọc",
+      "changes": "Thay đổi",
+      "shownLabel": "Phiên bản đang xem",
+      "against": "so với",
+      "version": "Bản {number} · {author} · {at, time, short}",
+      "reloaded": "{author} vừa gửi bản mới: đã tự tải lại, thay đổi hiện bên dưới.",
+      "bodyLabel": "{name}",
+      "gone": "Tài liệu này không còn trong các tin nhắn đã tải.",
+      "readFailed": "Không đọc được tài liệu.",
+      "retry": "Thử lại",
+      "loading": "Đang đọc tài liệu…",
+      "diffLabel": "Thay đổi của tài liệu",
+      "hiddenLines": "{count, plural, other {# dòng không đổi}}",
+      "legendAdded": "dòng thêm",
+      "legendRemoved": "dòng xóa hoặc thay thế",
+      "legendSame": "giữ nguyên"
     }
   },
   "accounts": {

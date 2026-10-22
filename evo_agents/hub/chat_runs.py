@@ -378,7 +378,9 @@ def _rules(
         f"{login}. `{MENTION_COMMAND} HANDLE TEXT` hands work to another agent of this chat: its run goes on for "
         f"{login}, at hop {hop + 1} of at most {MAX_HOPS}, never to yourself (@{handle}). An @ in your reply or in "
         f"`post` hands work to nobody. `{POST_COMMAND} TEXT --attach FILE` puts a file you made under the message.",
-        OUTPUTS_RULE + " A file you send so goes under your next message in this thread.",
+        OUTPUTS_RULE + " A file you send so goes under your next message in this thread. To change a document of "
+        "the chat (a Markdown file someone attached or sent), send the changed file under the same name: the chat "
+        "reloads it as the document's next version and shows what changed.",
         f"- Keep {RESULT_DIR}/ out of your commits. Before you end each turn, write {RESULT_FILE} as a JSON object "
         'whose "summary" says what you did, what you changed and what is left.',
     ]
