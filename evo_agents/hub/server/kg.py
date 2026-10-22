@@ -18,6 +18,14 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   holds every one, then in one transaction writes kg_ingests, an audit row and a queued build. Every step is
   idempotent by run id: a run the hub has answers ``ingested`` and writes nothing.
 - POST /v1/kg/{project}/blobs/check returns the hashes of a list that the project does not hold.
+- DELETE /v1/kg/{project}/sources/{source} (``evo-agents hub kg forget-source``) takes every run of a source off the
+  hub. A source the config no longer declares takes the highest label, so PUT config refuses to drop a source the hub
+  holds runs of and names this command. In one transaction holding the blob lock exclusively
+  (``evo_agents.hub.blob_gc``) it deletes the source's kg_pending_runs and kg_ingests rows and the project's
+  ``blobs`` rows of their logs, records the logs nothing else refers to for deletion (the next prune deletes the
+  objects), writes an audit row ``kg.forget`` and queues a build. The blobs the runs refer to stay the project's, as
+  those of superseded runs do. A source the config still declares comes back with the next push of a machine that
+  holds its runs.
 
 Building: POST /v1/kg/{project}/builds (writer) queues a build; GET /v1/kg/{project}/builds lists the builds, newest
 first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build whose
@@ -62,7 +70,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -109,6 +117,9 @@ REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256")]
 Sink = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[^\x00-\x1f\x7f]+$")]
 RunId = Annotated[uuid.UUID, PathParam(description="the connector run, as its log file is named")]
+SourceId = Annotated[
+    str, PathParam(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f/]+$", description="a source's id")
+]
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}, 404: {"model": ErrorBody}})
 
@@ -206,6 +217,17 @@ class RunCommitted(Queued):
     created: bool = Field(description="false when the run was in the corpus already")
 
 
+class SourceForgotten(Queued):
+    source: str
+    ingested: int = Field(description="runs of the source taken out of the project's corpus")
+    pending: int = Field(description="runs of the source that waited for their blobs, dropped")
+    logs: int = Field(description="their logs nothing else refers to, deleted from the blob store by the next prune")
+    declared: bool = Field(
+        description="whether the knowledge config on the hub still declares the source: a machine holding its runs "
+        "then pushes them again"
+    )
+
+
 class ToolCall(BaseModel):
     arguments: dict = Field(default_factory=dict)
     sink: Sink = AGENT_SINK
@@ -266,6 +288,36 @@ def _held_sources(project_id: int):
     return sources.order_by(sources.selected_columns.source)
 
 
+def forget_command(project: str, sources: list[str]) -> str:
+    """The command that takes every run of ``sources`` off the hub (``forget_source``)."""
+    return f"`evo-agents hub kg forget-source --project {project} " + " ".join(f"--source {s}" for s in sources) + "`"
+
+
+def _declared(knowledge: dict) -> set:
+    return {source.get("id") for source in knowledge.get("sources") or [] if isinstance(source, dict)}
+
+
+def _uncleared_message(project: str, knowledge: dict, uncleared: list[str]) -> str:
+    """Why a config is refused whose ``uncleared`` sources the hub holds runs of: a source the config no longer
+    declares takes the highest label, so dropping one needs its runs taken off the hub first."""
+    declared = _declared(knowledge)
+    dropped = [source for source in uncleared if source not in declared]
+    raised = [source for source in uncleared if source in declared]
+    parts = []
+    if dropped:
+        parts.append(
+            f"the config drops sources {', '.join(dropped)}, but the hub holds runs of them: take them off the hub "
+            f"first with {forget_command(project, dropped)}, then push again"
+        )
+    if raised:
+        parts.append(
+            f"sources {', '.join(raised)} would be labelled above what the hub sink of project {project} clears, but "
+            "the hub holds runs of them: lower their labels, raise the sink's clearance, or take their runs off the "
+            f"hub with {forget_command(project, raised)}"
+        )
+    return "; ".join(parts)
+
+
 @router.put("/{project}/config", response_model=ConfigSaved, responses=REFUSALS)
 async def put_config(request: Request, project: ProjectName, body: KgConfig, user: CurrentUser) -> ConfigSaved:
     """Save the knowledge config the project's graph is built with."""
@@ -283,11 +335,7 @@ async def put_config(request: Request, project: ProjectName, body: KgConfig, use
         held_sources = await conn.execute(_held_sources(access.project_id))
         uncleared = [source for source in held_sources.scalars() if not policy.source_label(source).below(ceiling)]
         if uncleared:
-            raise HTTPException(
-                422,
-                f"sources {', '.join(uncleared)} would be labelled above what the hub sink of project {project} "
-                "clears, but the hub holds runs of them: lower their labels or raise the sink's clearance",
-            )
+            raise HTTPException(422, _uncleared_message(project, config["knowledge"], uncleared))
         digest = config_digest(config)
         configs = tables.kg_configs
         held = (
@@ -696,6 +744,79 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
         build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
     log.info("kg build requested", extra={"project": project, "login": user.login, "queued": queued})
     return Queued(build=build, queued=queued)
+
+
+# Forgetting a source
+
+
+async def _drop_source(conn: AsyncConnection, project_id: int, source: str) -> tuple[int, int, int]:
+    """Delete the project's runs of ``source``, pending ones first (a commit in progress finishes before), then
+    ingested ones, and the project's rows of their logs; record the logs nothing else refers to for deletion. In
+    ``conn``'s transaction, which holds the blob lock exclusively. (ingested, pending, logs recorded)."""
+    ingests, pending_runs, blobs = tables.kg_ingests, tables.kg_pending_runs, tables.blobs
+    logs = {}
+    counts = []
+    for runs in (pending_runs, ingests):
+        dropped = await conn.execute(
+            delete(runs)
+            .where(runs.c.project_id == project_id, runs.c.source == source)
+            .returning(runs.c.log_sha256, runs.c.log_size)
+        )
+        rows = dropped.all()
+        logs.update((row.log_sha256, row.log_size) for row in rows)
+        counts.append(len(rows))
+    if logs:  # a log names its run, so no other run of the project refers to it
+        hashes = sorted(logs)
+        await conn.execute(
+            delete(blobs).where(
+                blobs.c.project_id == project_id, blobs.c.kind == LOG_KIND, blob_gc.hashes_in(blobs.c.sha256, hashes)
+            )
+        )
+        recorded = await blob_gc.forget(conn, {sha: (logs[sha], LOG_KIND) for sha in hashes})
+    else:
+        recorded = []
+    return counts[1], counts[0], len(recorded)
+
+
+@router.delete("/{project}/sources/{source}", response_model=SourceForgotten, responses=REFUSALS)
+async def forget_source(request: Request, project: ProjectName, source: SourceId, user: CurrentUser) -> SourceForgotten:
+    """Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the
+    hub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before)."""
+    async with request.app.state.engine.connect() as conn, conn.begin():
+        access = await project_access(conn, user, project)
+        _writer(access, "forgetting a source of")
+        configs = tables.kg_configs
+        knowledge = (
+            await conn.execute(select(configs.c.knowledge).where(configs.c.project_id == access.project_id))
+        ).scalar_one_or_none()
+        declared = source in _declared(knowledge or {})
+        await blob_gc.lock_exclusive(conn)
+        ingested, pending, logs = await _drop_source(conn, access.project_id, source)
+        build, queued = None, False
+        if ingested or pending:
+            await audit.record(
+                conn,
+                actor_id=user.user_id,
+                token_id=user.token_id,
+                action=audit.KG_FORGET,
+                target=f"{project} source={source} runs={ingested + pending}",
+                project_id=access.project_id,
+            )
+            build_id, queued = await _queue(request, conn, access.project_id, project, user.user_id)
+            build = (await _builds(conn, access.project_id, build_id=build_id))[0] if build_id is not None else None
+    log.info(
+        "kg source forgotten",
+        extra={"project": project, "login": user.login, "runs": ingested + pending, "logs": logs, "queued": queued},
+    )
+    return SourceForgotten(
+        source=source,
+        ingested=ingested,
+        pending=pending,
+        logs=logs,
+        declared=declared,
+        build=build,
+        queued=queued,
+    )
 
 
 # The tools
