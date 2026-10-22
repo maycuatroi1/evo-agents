@@ -2059,6 +2059,7 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
   {
     name: "org chart as a hub admin, with Unplaced and the add-seat form with errors",
     open: async (page) => {
+      test.setTimeout(60_000); // two axe passes, which went past 30 s on a loaded machine
       const slug = await unitByApi("a11y-org");
       await page.goto("/org");
       await expect(page.locator("#main").getByTestId("org-unplaced")).toBeVisible();
