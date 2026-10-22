@@ -35304,6 +35304,38 @@
           }
         }
       },
+      "/v1/org/runs": {
+        "get": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Org Runs",
+          "description": "Each member's runs at work now, by project, over the projects the viewer holds a grant on.",
+          "operationId": "org_runs_v1_org_runs_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrgRuns"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/org/units": {
         "post": {
           "tags": [
@@ -74457,6 +74489,48 @@
             "viewer"
           ],
           "title": "OrgChartView"
+        },
+        "OrgRunCount": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who dispatched the runs, their owner"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "running": {
+              "type": "integer",
+              "title": "Running",
+              "description": "their runs in that project whose agent works now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "project",
+            "running"
+          ],
+          "title": "OrgRunCount"
+        },
+        "OrgRuns": {
+          "properties": {
+            "running": {
+              "items": {
+                "$ref": "#/components/schemas/OrgRunCount"
+              },
+              "type": "array",
+              "title": "Running",
+              "description": "the runs at work the viewer sees, over the projects they hold a grant on, by login and project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "running"
+          ],
+          "title": "OrgRuns"
         },
         "OrgSeatView": {
           "properties": {

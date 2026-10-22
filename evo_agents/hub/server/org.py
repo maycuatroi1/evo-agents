@@ -2,6 +2,8 @@
 
 - GET /v1/org: the whole chart for any member signed in: every unit and seat with its ceiling, its effective level and
   the source of it, and the viewer's own (``evo_agents.hub.server.org_store``).
+- GET /v1/org/runs: each member's runs at work now, by project, counted over the projects the viewer holds a grant on
+  and as Home counts them (``evo_agents.hub.server.overview.running_by_member``), for the seats of the web's /org.
 - POST /v1/org/units, PATCH /v1/org/units/{slug}, POST /v1/org/units/{slug}/archive: create, edit and archive a unit.
 - POST /v1/org/seats, PATCH /v1/org/seats/{seat_id}, POST /v1/org/seats/{seat_id}/end: add, edit and end a seat.
 - PUT /v1/org/ceilings: the next ceiling revision of a unit, of a person's primary seat or of a seat.
@@ -20,13 +22,15 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org
-from evo_agents.hub.server import org_expiry, org_writes
+from evo_agents.hub.server import org_expiry, org_writes, overview
 from evo_agents.hub.server.credentials import revoker
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import (
     CeilingSet,
     CeilingWritten,
     OrgChartView,
+    OrgRunCount,
+    OrgRuns,
     OrgSeatView,
     OrgUnitView,
     SeatAdd,
@@ -84,6 +88,14 @@ async def show_org(request: Request, user: CurrentUser) -> OrgChartView:
     """The whole org chart, with every ceiling and effective level, and the viewer's own."""
     async with request.app.state.engine.begin() as conn:
         return await chart_view(conn, org.Actor(user_id=user.user_id, login=user.login, admin=user.admin))
+
+
+@router.get("/runs", response_model=OrgRuns)
+async def org_runs(request: Request, user: CurrentUser) -> OrgRuns:
+    """Each member's runs at work now, by project, over the projects the viewer holds a grant on."""
+    async with request.app.state.engine.begin() as conn:
+        counted = await overview.running_by_member(conn, user)
+    return OrgRuns(running=[OrgRunCount(login=login, project=project, running=n) for login, project, n in counted])
 
 
 @router.post("/units", status_code=201, response_model=OrgUnitView, responses=WRITE_REFUSALS)

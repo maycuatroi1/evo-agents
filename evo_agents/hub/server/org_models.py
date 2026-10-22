@@ -69,6 +69,18 @@ class OrgChartView(BaseModel):
     viewer: OrgViewer
 
 
+class OrgRunCount(BaseModel):
+    login: str = Field(description="the member who dispatched the runs, their owner")
+    project: str
+    running: int = Field(description="their runs in that project whose agent works now")
+
+
+class OrgRuns(BaseModel):
+    running: list[OrgRunCount] = Field(
+        description="the runs at work the viewer sees, over the projects they hold a grant on, by login and project"
+    )
+
+
 class UnitCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

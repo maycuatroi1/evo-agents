@@ -3887,6 +3887,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/org/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org Runs
+         * @description Each member's runs at work now, by project, over the projects the viewer holds a grant on.
+         */
+        get: operations["org_runs_v1_org_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/org/units": {
         parameters: {
             query?: never;
@@ -15264,6 +15284,29 @@ export interface components {
              */
             seats: components["schemas"]["OrgSeatView"][];
             viewer: components["schemas"]["OrgViewer"];
+        };
+        /** OrgRunCount */
+        OrgRunCount: {
+            /**
+             * Login
+             * @description the member who dispatched the runs, their owner
+             */
+            login: string;
+            /** Project */
+            project: string;
+            /**
+             * Running
+             * @description their runs in that project whose agent works now
+             */
+            running: number;
+        };
+        /** OrgRuns */
+        OrgRuns: {
+            /**
+             * Running
+             * @description the runs at work the viewer sees, over the projects they hold a grant on, by login and project
+             */
+            running: components["schemas"]["OrgRunCount"][];
         };
         /** OrgSeatView */
         OrgSeatView: {
@@ -39711,6 +39754,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgChartView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    org_runs_v1_org_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRuns"];
                 };
             };
             /** @description Unauthorized */
