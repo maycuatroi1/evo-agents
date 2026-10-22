@@ -9,9 +9,13 @@ import asyncio
 import logging
 import secrets as token_bytes
 
-from evo_agents.hub import runs
-from evo_agents.worker import doctor, doctor_report
-from evo_agents.worker.hubapi import HubProblem, Refused
+import pytest
+
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
+from evo_agents.hub import runs  # noqa: E402
+from evo_agents.worker import doctor, doctor_report  # noqa: E402
+from evo_agents.worker.hubapi import HubProblem, Refused  # noqa: E402
 
 
 def a_report(*findings: doctor.Finding) -> doctor.Report:

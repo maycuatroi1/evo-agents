@@ -14,8 +14,10 @@ from decimal import Decimal
 
 import pytest
 
-from evo_agents.hub.server.share_leases import ESTIMATE_USD, MIN_ESTIMATE_USD, estimate, peak_usage
-from tests.hub import pg
+pytest.importorskip("sqlalchemy", reason="the leases under a share need the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.hub.server.share_leases import ESTIMATE_USD, MIN_ESTIMATE_USD, estimate, peak_usage  # noqa: E402
+from tests.hub import pg  # noqa: E402
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 
