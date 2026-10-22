@@ -1,0 +1,25 @@
+name: Ask for an invite
+description: Ask for access to the evo-agents hub with your GitHub login. No email needed.
+title: "Invite: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You get access to the hub from an invite link or from a hub admin. Tell us the GitHub login you sign in with and what you want to do.
+
+        This issue is public. Leave out email addresses, tokens and anything else private.
+  - type: input
+    id: login
+    attributes:
+      label: GitHub login
+      description: The login you will sign in to the hub with, without the @.
+      placeholder: octocat
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What do you want to do with evo-agents?
+      description: The kind of work, how many repos it spans, and the agent you use (Claude Code, Codex CLI or opencode).
+    validations:
+      required: true

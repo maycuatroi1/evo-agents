@@ -13,7 +13,7 @@ function request(path: string, cookie?: string, headers: Record<string, string> 
 
 describe("proxy", () => {
   it("sends a visitor without a session to the sign-in page, with the security headers", () => {
-    for (const path of ["/", "/admin", "/p/demo", "/whatever/else"]) {
+    for (const path of ["/admin", "/p/demo", "/whatever/else", "/about/more", "/robots"]) {
       const response = proxy(request(path));
       expect(response.status, path).toBe(307);
       expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/login");
@@ -34,8 +34,31 @@ describe("proxy", () => {
     }
   });
 
+  it("gives a visitor without a session the product page at /, under the same URL, with a nonce", () => {
+    const response = proxy(request("/"));
+    expect(response.headers.get("location")).toBeNull();
+    expect(new URL(response.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/about");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("x-middleware-request-x-nonce")).toBe(/'nonce-([^']+)'/.exec(csp)?.[1]);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("gives a member Home at /, and the product page at its own path to anyone", () => {
+    const member = proxy(request("/", SESSION));
+    expect(member.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(member.headers.get("x-middleware-next")).toBe("1");
+    for (const cookie of [undefined, SESSION]) {
+      const response = proxy(request("/about", cookie));
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+
   it("treats a malformed session cookie as none", () => {
-    expect(proxy(request("/", "evs_short")).status).toBe(307);
+    expect(proxy(request("/admin", "evs_short")).status).toBe(307);
+    expect(proxy(request("/", "evs_short")).headers.get("x-middleware-rewrite")).toContain("/about");
   });
 
   it("lets the sign-in page through without a session", () => {
@@ -96,8 +119,8 @@ describe("proxy", () => {
     const pages = config.matcher[0];
     if (typeof pages === "string") throw new Error("the first matcher is the pages' one");
     const source = new RegExp(`^${pages.source}$`);
-    for (const path of ["/", "/login", "/admin", "/p/demo"]) expect(source.test(path), path).toBe(true);
-    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg", "/apple-icon.png"]) {
+    for (const path of ["/", "/about", "/login", "/admin", "/p/demo"]) expect(source.test(path), path).toBe(true);
+    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg", "/apple-icon.png", "/robots.txt", "/product/og.png"]) {
       expect(source.test(path), path).toBe(false);
     }
   });
