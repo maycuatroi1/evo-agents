@@ -6,7 +6,7 @@ touches a database or a clock, so a test builds the facts by hand and fixes the 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from evo_agents.core_plugins.pm.workdays import Calendar
 
@@ -26,6 +26,7 @@ class Config:
     wip_limit: int = 2
     pm: str | None = None
     digest_chat: int | None = None
+    digest_at: time = time(8, 0)
 
 
 @dataclass(frozen=True)

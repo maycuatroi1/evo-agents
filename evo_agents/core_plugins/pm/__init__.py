@@ -6,7 +6,7 @@ use cases and tasks that reached done), where the active sprint stands against w
 tasks are late or at risk, how long tasks wait in review, which have had no activity for ``stale_days`` working days,
 which are blocked and by what, what to escalate, and the load of each member. Days are counted in working days of the
 project's time zone (``timezone``, ``working_days``). The report writes nothing; the job ``daily`` (``job``) sends the
-digest and the escalations each working morning, once a day (criteria a6 and a8).
+digest and the escalations each working day from ``digest_at`` (08:00 by default) on, once a day (criteria a6 and a8).
 
 The route is ``GET /v1/x/pm/<project>/daily?date=`` (``server``); the tools ``pm__daily`` and ``pm__member`` of the
 hub's /mcp (``agent``) answer the same data for the caller; ``evo-agents hub pm daily`` is the client of the route. pm
@@ -23,7 +23,7 @@ SERVER = "evo_agents.core_plugins.pm.server"
 AGENT = "evo_agents.core_plugins.pm.agent"
 JOB = "evo_agents.core_plugins.pm.job"
 DAILY_JOB = "daily"
-DAILY_CRON = "0 1 * * 1-5"  # 01:00 UTC on weekdays; each project's own working days decide whether it acts
+DAILY_CRON = "*/15 * * * *"  # every 15 minutes, UTC; each project's working_days and digest_at decide whether it acts
 
 _DAYS = {"type": "integer", "minimum": 0, "maximum": 365}
 
@@ -50,6 +50,14 @@ CONFIG = {
             "uniqueItems": True,
             "items": {"type": "integer", "minimum": 1, "maximum": 7},
             "default": [1, 2, 3, 4, 5],
+        },
+        "digest_at": {
+            "title": "Digest at",
+            "description": "The time of day, HH:MM in the project's time zone, from which the daily digest and the "
+            "escalations are sent on a working day.",
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "default": "08:00",
         },
         "stale_days": {
             "title": "Stale after",

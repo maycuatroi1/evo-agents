@@ -18,7 +18,7 @@ if not pg.DSN:
 
 from sqlalchemy import insert, select, update
 
-from evo_agents.core_plugins.pm import DAILY_CRON, MANIFEST, job
+from evo_agents.core_plugins.pm import DAILY_CRON, MANIFEST, job, settings
 from evo_agents.hub import plugin_jobs, runs, tables
 from tests.hub.live import sql
 from tests.hub.test_pm_daily_plugin import EVERY_DAY, client, pm_core  # noqa: F401 (fixtures)
@@ -85,14 +85,14 @@ def busy(client, hub) -> None:
     block(client, alice, waiting["ref"], reason=SECRET, waiting_member="bao")
 
 
-def test_pm_job_the_manifest_has_a_cron_job_on_weekdays_and_owns_pm_sends():
+def test_pm_job_the_manifest_has_a_cron_job_every_15_minutes_and_owns_pm_sends():
     [item] = MANIFEST["contributes"]["jobs"]
     assert (item["name"], item["cron"], item["python"]) == (
         "daily",
-        "0 1 * * 1-5",
+        "*/15 * * * *",
         "evo_agents.core_plugins.pm.job:run",
     )
-    assert DAILY_CRON == job.CRON == "0 1 * * 1-5"
+    assert DAILY_CRON == job.CRON == "*/15 * * * *"
     assert [t["name"] for t in MANIFEST["contributes"]["tables"]] == ["pm_sends"]
     assert {job.NOTICE_DAILY, job.NOTICE_ESCALATION} <= set(runs.NOTICE_KINDS)
 
@@ -160,6 +160,42 @@ def test_pm_job_does_nothing_on_a_day_off_or_for_a_project_whose_config_cannot_b
     assert "skipped" not in run_project(client, monday) and len(sends(hub_db)) == 2
     configure(client, pm_hub["owner"], "pm", {"timezone": "Not/AZone"})
     assert "no IANA time zone" in run_project(client, morning(5))["skipped"]
+
+
+def at(day: datetime, hour: int, minute: int = 0) -> datetime:
+    return day.replace(hour=hour, minute=minute)
+
+
+def test_pm_job_a_saturday_in_working_days_sends_and_the_default_does_not(client, pm_hub, hub_db):
+    busy(client, pm_hub)
+    saturday = morning()
+    while saturday.isoweekday() != 6:
+        saturday += timedelta(days=1)
+    configure(client, pm_hub["owner"], "pm", {"working_days": [1, 2, 3, 4, 5]})
+    assert run_project(client, saturday)["skipped"] == "not a working day" and sends(hub_db) == []
+    configure(client, pm_hub["owner"], "pm", {"working_days": [1, 2, 3, 4, 5, 6]})
+    assert "digest" in run_project(client, saturday) and len(sends(hub_db)) == 2
+
+
+def test_pm_job_waits_for_digest_at_and_sends_once_however_often_it_runs(client, pm_hub, hub_db):
+    busy(client, pm_hub)
+    configure(client, pm_hub["owner"], "pm", {"digest_at": "06:30"})
+    day = morning(2)
+    assert run_project(client, at(day, 6, 29))["skipped"] == "before digest_at" and sends(hub_db) == []
+    assert "digest" in run_project(client, at(day, 6, 30))
+    assert len(sends(hub_db)) == 2
+    assert "digest" not in run_project(client, at(day, 6, 45)) and len(sends(hub_db)) == 2
+
+
+def test_pm_job_digest_at_defaults_to_0800_in_the_project_zone_and_a_bad_one_is_refused(client, pm_hub, hub_db):
+    busy(client, pm_hub)
+    configure(client, pm_hub["owner"], "pm", {"timezone": "Asia/Ho_Chi_Minh"})
+    day = morning(2)  # 12:00 UTC is 19:00 in Ho Chi Minh; 00:59 UTC is 07:59 there, 01:00 UTC is 08:00
+    assert run_project(client, at(day, 0, 59))["skipped"] == "before digest_at"
+    assert "digest" in run_project(client, at(day, 1))
+    assert settings._digest_at(PROJECT, None) == time(8, 0) and settings._digest_at(PROJECT, "06:30") == time(6, 30)
+    with pytest.raises(settings.PmError, match="digest_at"):
+        settings._digest_at(PROJECT, "25:00")
 
 
 def test_pm_job_the_admins_are_the_pm_when_the_config_names_none(client, pm_hub):
