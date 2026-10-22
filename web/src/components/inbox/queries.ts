@@ -59,6 +59,9 @@ export const DECISION_CATEGORIES = [
   "spend_money",
   "architecture",
   "scope",
+  "merge",
+  "credential",
+  "access",
 ] as const satisfies readonly DecisionCategory[];
 /**
  * `runs.HUB_DECISION_CATEGORIES`: decisions of the hub's own (a stopped release cycle, a work item of the Loop that

@@ -4853,6 +4853,7 @@
           "recommended",
           "state",
           "owner",
+          "asked_of",
           "answer_option",
           "answer_text",
           "answered_by",
@@ -4988,6 +4989,7 @@
           "recommended",
           "state",
           "owner",
+          "asked_of",
           "answer_option",
           "answer_text",
           "answered_by",
@@ -13843,6 +13845,9 @@
             "spend_money",
             "architecture",
             "scope",
+            "merge",
+            "credential",
+            "access",
             "triage"
           ]
         },
@@ -68510,6 +68515,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question",
                 "triage",
                 "release",
@@ -68566,7 +68574,12 @@
             "owner": {
               "type": "string",
               "title": "Owner",
-              "description": "the login of the run's owner, the one member who may answer"
+              "description": "the login of the run's owner"
+            },
+            "asked_of": {
+              "type": "string",
+              "title": "Asked Of",
+              "description": "the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0108"
             },
             "answer_option": {
               "anyOf": [
@@ -68667,6 +68680,7 @@
             "recommended",
             "state",
             "owner",
+            "asked_of",
             "answer_option",
             "answer_text",
             "answered_by",
@@ -68689,6 +68703,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "triage"
               ],
               "title": "Category",
@@ -74092,6 +74109,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question"
               ],
               "title": "Category",
@@ -78649,6 +78669,9 @@
                 "spend_money",
                 "architecture",
                 "scope",
+                "merge",
+                "credential",
+                "access",
                 "question",
                 "triage",
                 "release",
@@ -89094,6 +89117,45 @@
           "title": "RunBudget",
           "description": "The caps of a run the night shift queued (``evo_agents.hub.curator``)."
         },
+        "RunCard": {
+          "properties": {
+            "card": {
+              "type": "string",
+              "title": "Card",
+              "description": "the card's text, first in the run's prompt"
+            },
+            "modes": {
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "deny",
+                  "ask",
+                  "notify",
+                  "auto"
+                ]
+              },
+              "type": "object",
+              "title": "Modes",
+              "description": "K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto"
+            },
+            "categories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Categories",
+              "description": "the categories of decision its agent may ask"
+            }
+          },
+          "type": "object",
+          "required": [
+            "card",
+            "modes",
+            "categories"
+          ],
+          "title": "RunCard",
+          "description": "The autonomy card of a run (plan autonomy-levels, ``autonomy_card.card``): what its prompt opens with, built\nfrom the run's snapshot and its principal when the worker claims it."
+        },
         "RunChat": {
           "properties": {
             "run_id": {
@@ -90769,6 +90831,17 @@
                 }
               ],
               "description": "a release run's cycle, mode and start commit; null for any other run"
+            },
+            "autonomy": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunCard"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the autonomy card its prompt opens with; null for a run without a snapshot of autonomy"
             }
           },
           "type": "object",

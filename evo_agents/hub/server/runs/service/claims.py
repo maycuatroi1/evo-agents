@@ -26,11 +26,11 @@ from sqlalchemy import BigInteger, Text, and_, any_, case, column, exists, func,
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import author, curator, runs, tables
+from evo_agents.hub import author, autonomy_card, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server import principals, run_autonomy
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -668,8 +668,11 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
     run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``. The prompt of a run
     under an agent profile that is not its project's default ends with the index of its memories
-    (``memory_upkeep.with_index``)."""
+    (``memory_upkeep.with_index``). The prompt of a run with a snapshot of autonomy opens with its card
+    (``principals.card``), which it carries as ``autonomy`` too, for the worker to build a step's prompt with."""
     view = await run_view(conn, run_id)
+    card = await principals.card(conn, run_id)
+    autonomy = None if card is None else card.spec()
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
     dispatched = select(revisions.c.body).where(
@@ -703,7 +706,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         current = await current_plan(conn, project_id, view.plan_id)
         body, revision = current if current else (plan, view.plan_revision)  # the plan gone: as dispatched
         copy = PlanCopy(body=body, revision=revision)
-        prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []])
+        prompt = runs.build_plan_prompt(copy.body, [repo.model_dump() for repo in view.repos or []], None, autonomy)
         title = view.title
     else:
         try:
@@ -718,6 +721,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
 
     prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
+    if view.kind != "plan":  # the plan's prompt has it first already
+        prompt = autonomy_card.with_card(prompt, autonomy)
     return RunSpec(
         id=view.id,
         kind=view.kind,
@@ -750,6 +755,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
+        autonomy=autonomy,
     )
 
 

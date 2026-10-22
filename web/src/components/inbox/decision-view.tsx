@@ -92,7 +92,7 @@ export function AskedTiming({ decision, parksAt, className = "ml-auto" }: { deci
 export function DecisionStatePill({ decision, access, size }: { decision: Decision; access: AnswerAccess; size?: "lg" }) {
   const t = useTranslations("inbox.decision");
   const label =
-    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.owner }) : undefined) : undefined;
+    decision.state === "open" ? (access === "answer" ? t("waitingYou") : access === "notOwner" ? t("waitingFor", { owner: decision.asked_of }) : undefined) : undefined;
   return <StatusBadge kind="decision" status={decision.state} label={label} size={size} />;
 }
 

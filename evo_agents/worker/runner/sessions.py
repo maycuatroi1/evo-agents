@@ -242,7 +242,8 @@ class StepSessions:
         run = self.run
         repos = run.spec.get("repos") or []
         folders = {name: workspace.worktree.name for name, workspace in self.plan_run.directory.workspaces.items()}
-        bare = runs.build_step_session_prompt(body, step, repos, folders)
+        autonomy = run.spec.get("autonomy")  # the card of the run's autonomy, from a hub that sends one
+        bare = runs.build_step_session_prompt(body, step, repos, folders, autonomy=autonomy)
         room = runs.handoff_room(bare) // handoff.BYTES_PER_TOKEN
         budget = max(handoff.MIN_BUDGET_TOKENS, min(handoff.DEFAULT_BUDGET_TOKENS, room))
         if revision is None:
@@ -254,7 +255,7 @@ class StepSessions:
             f"The prompt of step {key} carries the handoff of the plan at revision {revision}: about {built.tokens} of "
             f"{budget} tokens{cut_note}."
         )
-        return runs.build_step_session_prompt(body, step, repos, folders, built.text)
+        return runs.build_step_session_prompt(body, step, repos, folders, built.text, autonomy)
 
     async def session(self, cls, key: str, prompt: str, session_id: str | None) -> None:
         """The agent's session of step ``key``, a new one or ``session_id``, turn after turn until it has nothing left

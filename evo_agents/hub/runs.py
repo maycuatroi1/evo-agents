@@ -72,6 +72,10 @@ import re
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from evo_agents.hub.autonomy_card import DECISION_CATEGORIES as DECISION_CATEGORIES
+from evo_agents.hub.autonomy_card import DECISION_CATEGORY_TEXT as DECISION_CATEGORY_TEXT
+from evo_agents.hub.autonomy_card import PROMPTED_DECISION_CATEGORIES as PROMPTED_DECISION_CATEGORIES
+from evo_agents.hub.autonomy_card import checkpoint_rule, decision_lines, with_card
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.record_rule import record_rule
@@ -264,31 +268,8 @@ TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
     **{state: {} for state in TERMINAL_STATES},
 }
 
-# Decisions and notices of a plan run (docs/notifications.md). The agent asks its owner only a decision of one of
-# these categories, and decides everything else itself.
-DECISION_CATEGORIES = (
-    "deploy",
-    "delete_data",
-    "live_migration",
-    "external_send",
-    "spend_money",
-    "architecture",
-    "scope",
-)
-DECISION_CATEGORY_TEXT = {
-    "deploy": "deploying or releasing anything to any environment, a checkpoint step that deploys included",
-    "delete_data": "deleting data that is not this run's own scratch: database rows, files, buckets, other "
-    "people's branches",
-    "live_migration": "a migration, backfill or bulk change on real data rather than a test database",
-    "external_send": "sending anything to a service outside this machine and the repos' own remotes: mail, chat, "
-    "issues, third-party APIs",
-    "spend_money": "anything that costs money beyond this runtime's own usage: paid APIs, cloud resources, purchases",
-    "architecture": "an architectural choice the plan leaves open",
-    "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
-}
-# What the prompt of a plan run tells its agent to ask: every category but deploy, since merging, deploying and releasing
-# are the agent's to do (main deploys on every push, deploy.yml). A worker of an older prompt may still ask a deploy.
-PROMPTED_DECISION_CATEGORIES = tuple(name for name in DECISION_CATEGORIES if name != "deploy")
+# Decisions and notices of a plan run (docs/notifications.md). The agent asks only a decision of one of these
+# categories, and decides everything else itself; each class of action that takes ask has its own (``autonomy_card``).
 LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
@@ -792,17 +773,7 @@ _PUSH_RULE = (
 )
 
 
-def _decision_lines(where: str) -> list[str]:
-    """The categories of decision the agent of a plan run may ask its owner, and where it writes the others."""
-    return [
-        "- Ask the run's owner only a decision of one of these categories:",
-        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in PROMPTED_DECISION_CATEGORIES),
-        f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
-        'line that starts with "Decision:".',
-    ]
-
-
-def _plan_rules() -> list[str]:
+def _plan_rules(autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
         "Rules for this plan run:",
@@ -810,11 +781,9 @@ def _plan_rules() -> list[str]:
         "(EVO_RUN_KIND=plan). Without it, follow these rules yourself.",
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
-        "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
-        "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
-        "yours too, with no question to the owner.",
+        checkpoint_rule(autonomy),
         record_rule("KEY", "a step"),
-        *_decision_lines("its step"),
+        *decision_lines("its step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step KEY`, with {fewest} to {most} options. It prints "
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
@@ -908,18 +877,19 @@ def _step_list(plan: dict) -> list[str]:
     return lines + _packed(listed, STEP_LIST_BYTES, f"- and {{left}} more steps not done, which {PLAN_FILE} lists")
 
 
-def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None) -> str:
+def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, autonomy=None) -> str:
     """The prompt of a plan run of ``plan`` over ``repos`` (the run's repos, each ``{"repo", "branch"}`` as the
     plan's ``repos`` names them), each checked out in the directory ``worktrees`` maps its name to (the repo's name,
     under the agent's directory, when it maps none): what the agent must and must not do, the repos, the plan's goal
     and its context, shortened, and a line for each step not done yet. The steps' what, verify and note stay in
-    PLAN_FILE, which the daemon writes, so the prompt stays within MAX_PROMPT_BYTES however long the plan is."""
+    PLAN_FILE, which the daemon writes, so the prompt stays within MAX_PROMPT_BYTES however long the plan is. The
+    autonomy card of the run (``autonomy``, ``autonomy_card.Card.spec``) opens it and says what the agent asks."""
     worktrees = worktrees or {}
     lines = [
         f"You are running the plan {_line(plan.get('id'), SHORT_BYTES, 'without an id')} from the evo-agents hub, as "
         "one plan run on a worker: do every step of it that is not done yet, in the order their depends_on allows.",
         "",
-        *_plan_rules(),
+        *_plan_rules(autonomy),
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees),
@@ -931,13 +901,13 @@ def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None) ->
         if _text(value):
             lines += ["", heading, clip(_text(value), budget)]
     lines += ["", *_step_list(plan)]
-    return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
+    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
 
 
 # The prompt of a step's session in a plan run with a session per step
 
 
-def _step_session_rules(key: str) -> list[str]:
+def _step_session_rules(key: str, autonomy) -> list[str]:
     fewest, most = DECISION_OPTIONS
     return [
         "Rules for this session:",
@@ -948,7 +918,7 @@ def _step_session_rules(key: str) -> list[str]:
         "hub holds it now. The handoff at the end of this prompt says what the sessions and runs before this one did; "
         "read the plan for what it left out.",
         record_rule(key, "the step"),
-        *_decision_lines("the step"),
+        *decision_lines("the step", autonomy),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step {key}`, with {fewest} to {most} options. It "
         "prints the decision's id. Go on with the work of the step that does not depend on the answer; when none is "
@@ -966,7 +936,7 @@ def _step_session_rules(key: str) -> list[str]:
 
 
 def build_step_session_prompt(
-    plan: dict, step: dict, repos: list, worktrees: dict | None = None, handoff: str | None = None
+    plan: dict, step: dict, repos: list, worktrees: dict | None = None, handoff: str | None = None, autonomy=None
 ) -> str:
     """The prompt of the session a plan run with a session per step gives ``step``, one of the steps of ``plan``,
     over ``repos`` checked out in ``worktrees`` (as ``build_plan_prompt`` takes them): what the agent must and must not
@@ -981,7 +951,7 @@ def build_step_session_prompt(
         "evo-agents hub, in an agent session of its own: this plan run gives each step not done yet a new session, "
         "with the handoff of the plan instead of the sessions before it.",
         "",
-        *_step_session_rules(key),
+        *_step_session_rules(key, autonomy),
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees or {}),
@@ -991,7 +961,7 @@ def build_step_session_prompt(
     lines += _step_lines(step, key)
     if handoff and handoff.strip():
         lines += ["", handoff.strip()]
-    return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
+    return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
 
 
 def handoff_room(prompt: str) -> int:

@@ -25,10 +25,24 @@ Inbox come in the same release.
 ## Decisions
 
 The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`). The
-prompt of a plan run lists all of them but `deploy` (`PROMPTED_DECISION_CATEGORIES`): merging, deploying and releasing
-are the agent's to do, and the route still takes a `deploy` decision from a worker of an older prompt. The route that
-takes a decision refuses any other, and the agent decides everything else itself and writes each such choice, with why,
-into the evidence of its step on a line that starts with `Decision:`.
+prompt of a run with a snapshot of autonomy opens with its autonomy card (`autonomy_card.card`, plan autonomy-levels):
+the principal, their role and unit, the person an intern reports to, the effective level, the classes in deny, in ask
+with the category to ask each in (`CLASS_CATEGORIES`: K5 `merge`, K6 `deploy`, K8 `credential`, K9 `delete_data` and
+`live_migration`, K10 `external_send`, K11 `spend_money`, K12 `access`), and in notify; at A5 only the floors S2 and S3.
+A plan run's prompt then lists the categories its card leaves to ask, with `architecture` and `scope`, and says that
+merging, deploying and releasing are the agent's only when K5 and K6 are auto. A run without a snapshot (a local run,
+one queued before schema 0106) lists all of them but `deploy` and the three of schema 0108
+(`PROMPTED_DECISION_CATEGORIES`), as before. The route that takes a decision refuses any other category, and the agent
+decides everything else itself and writes each such choice, with why, into the evidence of its step on a line that
+starts with `Decision:`.
+
+A decision goes to one person, `asked_of` (schema 0108, `principals.asked_of`): for a run whose principal is an intern,
+the person their seat reports to, and once it has been open 24 hours the leads of their unit too (the hourly job
+hub.expire_seats tells them, once each, and each may then answer); for a run the hub makes on its own, the sponsor of
+its agent; for any other, the run's principal. An intern never answers a decision of their own run (403). The Inbox,
+the decision board, `hub decision list` and `hub decision show` name that person, and the notification's body, which
+Telegram sends as it is, ends with "asked of <login>". A notice of a class in notify reaches the principal, and the
+person they report to when they are an intern.
 
 | Category | What it covers |
 | --- | --- |
@@ -39,6 +53,9 @@ into the evidence of its step on a line that starts with `Decision:`.
 | `spend_money` | anything that costs money beyond the runtime's own usage: paid APIs, cloud resources, purchases |
 | `architecture` | an architectural choice the plan leaves open |
 | `scope` | a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers |
+| `merge` | merging into a repo's default branch or the target branch of a pull or merge request (K5) |
+| `credential` | creating, rotating or revoking a credential: a token, a key, a secret, an account's password (K8) |
+| `access` | changing grants, autonomy ceilings or preferences, policies or agent profiles (K12) |
 
 A decision holds the run, its project, plan and step (the step is optional), the category, a question, a context in
 markdown of at most 16 KiB, and 2 to 6 options. An option has a key (letters, digits, `_` and `-`, at most 32

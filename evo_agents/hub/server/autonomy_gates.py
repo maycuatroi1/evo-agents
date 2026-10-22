@@ -4,7 +4,8 @@ reads the mode of the run's principal for the class of the act, the stricter of 
 
 - auto: the hub acts.
 - notify: the hub acts, then tells the principal (``told``, the notice ``autonomy``).
-- ask: the hub opens a decision of category ``autonomy`` to the principal and acts once the principal approves; it
+- ask: the hub opens a decision of category ``autonomy`` to the principal (to the person an intern reports to:
+  ``principals.asked_of``) and acts once the principal approves; it
   waits while the decision is open, and leaves the act undone when the principal refuses. A decision cancelled with
   its run is asked again.
 - deny: the hub leaves the act undone, with the reason.
@@ -38,7 +39,7 @@ from evo_agents.hub.autonomy_levels import (
     Choice,
     refusal,
 )
-from evo_agents.hub.server import audit, run_autonomy
+from evo_agents.hub.server import audit, principals, run_autonomy
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
 
 APPROVE, REFUSE = "approve", "refuse"
@@ -143,12 +144,13 @@ async def _open(conn: AsyncConnection, said: Verdict, choice: Choice, key: str, 
         f"{refusal(said.klass, ASK, choice)}. The hub acts once you approve, and leaves it undone if you refuse.",
         runs.MAX_DECISION_CONTEXT_BYTES,
     )
+    asked = await principals.asked_of(conn, said.run_id)
     values = {"run_id": said.run_id, "project_id": said.project_id, "category": runs.AUTONOMY_DECISION_CATEGORY}
     inserted = insert(d).values(**values, step_key=key, question=question, context=context, options=OPTIONS)
-    decision_id = (await conn.execute(inserted.returning(d.c.id))).scalar_one()
+    decision_id = (await conn.execute(inserted.values(asked_of=asked).returning(d.c.id))).scalar_one()
     await notify(
         conn,
-        user_id=said.principal_id,
+        user_id=asked,
         kind="decision",
         project_id=said.project_id,
         run_id=said.run_id,
@@ -169,19 +171,23 @@ async def _open(conn: AsyncConnection, said: Verdict, choice: Choice, key: str, 
 
 
 async def told(conn: AsyncConnection, said: Verdict, key: str, title: str, body: str | None = None) -> None:
-    """Tell the principal of a class in notify what the hub did for the run (the notice ``autonomy``), audited."""
+    """Tell the principal of a class in notify what the hub did for the run (the notice ``autonomy``), and the person
+    they report to when they are an intern (``principals.told_to``), audited."""
     if not said.tells:
         return
-    await notify(
-        conn,
-        user_id=said.principal_id,
-        kind="notice",
-        notice_kind=runs.AUTONOMY_DECISION_CATEGORY,
-        project_id=said.project_id,
-        run_id=said.run_id,
-        title=one_line(title),
-        body=body or f"{said.klass} ({CLASS_NAMES[said.klass]}) is notify for you: the hub acted, and tells you.",
-    )
+    for user_id in await principals.told_to(conn, said.principal_id):
+        await notify(
+            conn,
+            user_id=user_id,
+            kind="notice",
+            notice_kind=runs.AUTONOMY_DECISION_CATEGORY,
+            project_id=said.project_id,
+            run_id=said.run_id,
+            title=one_line(title),
+            body=body
+            or f"{said.klass} ({CLASS_NAMES[said.klass]}) is notify for the run's principal: the hub acted, "
+            "and tells you.",
+        )
     await audit.record(
         conn,
         actor_id=said.principal_id,
