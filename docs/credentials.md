@@ -691,6 +691,9 @@ Credentials card.
   have: the daemon fetches and pushes the run's repos on the host with them, as for any run. The runtime's login in a
   container is therefore a lease (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code, a provider's key
   for opencode or Codex); the machine's own login, its keychain and its `~/.claude` are not there.
+- **No lease value in a push.** Before every push the daemon reads the commits the push would send and refuses one
+  whose message or added lines hold a value of the run's leases, naming the commit alone (floor S3, `lease_leaks.py`);
+  a push from an agent's command asks the run's socket (`op leaks`), which answers the commit, never the value.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A

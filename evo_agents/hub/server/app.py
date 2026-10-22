@@ -382,6 +382,7 @@ def create_app(config: HubConfig) -> FastAPI:
         signals,
         task_dispatch,
         triage_actions,
+        worker_autonomy,
     )
     from evo_agents.hub.server.sealing import Sealer
 
@@ -392,6 +393,7 @@ def create_app(config: HubConfig) -> FastAPI:
         accounts.router,
         account_views.router,
         rate_limits.worker_router,
+        worker_autonomy.worker_router,
         agent_profiles.router,
         agent_accounts.router,
         agent_account_views.router,

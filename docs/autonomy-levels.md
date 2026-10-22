@@ -129,6 +129,42 @@ agent profiles, the org and its ceilings (K12) reads the principal's mode: deny 
 the source; ask is 403 telling the agent to ask its principal; notify and auto leave the route's own rules to decide.
 Every refusal writes `autonomy.refused`.
 
+## The hook of autonomy on the worker
+
+The claim gives the worker the run's card (`RunSpec.autonomy`: the mode and the source of each class, the categories of
+a decision). For every run of Claude Code that has one, the worker adds a `PreToolUse` hook next to the refusal of
+`claude` calls (`evo_agents/worker/autonomy_hook.py`). It reads each Bash command against a table of patterns
+(`evo_agents/worker/command_classes.py`): K9 (a forced push or a deleted remote branch, `DROP`, `TRUNCATE` or a
+`DELETE` without `WHERE` given to an SQL client, `rm -rf` outside the worktree and the temp dir, `terraform destroy`,
+`kubectl delete`, the recursive deletion of a bucket), K5 (`gh pr merge`, `glab mr merge`, a push to a default branch),
+K6 (a push of a tag `v*`, `gh release create`, `glab release create`), K8 (`evo-agents hub secret` and `hub account`
+writes), K10 (`gh issue|pr create` or `glab issue|mr create` on a repo not the run's) and K12 (`evo-agents hub
+admin|policy|agent|org|autonomy` writes).
+
+| Mode | What the hook does |
+|---|---|
+| deny | refuses, naming the class, the mode and the source |
+| ask | refuses, telling the agent to run `evo-agents worker ask --category C` and, once answered, the command again as `EVO_DECISION=<id> COMMAND`; the hub lets it through only for an answered decision of the run whose category is the class's |
+| notify | asks the hub (`POST /v1/worker/runs/{id}/autonomy-acts`), which sends the principal the notice `autonomy`, then lets the command run and writes an event of the run |
+| auto | lets the command run and writes an event of the run |
+
+The hub answers the mode now: when it reads a stricter mode than the card, the hook refuses. When the hub does not
+answer within 10 seconds, a command in notify runs.
+
+**The floor S2.** A command of K9 runs only after a backup made within the last 24 hours, for every principal, A5 too:
+the agent makes it, then records it with `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO]
+[--restore COMMAND]`. The hub writes it to the run's log and to the audit (`autonomy.backup`); the worker keeps it in the
+run's `backups.jsonl`, where the hook reads it. A time in the future is refused.
+
+**The floor S3 at a push.** Every push of the worker (`gitops._send`) first reads the commits it would send that the
+remote lacks and refuses one whose message or added lines hold the value of one of the run's leases
+(`evo_agents/worker/lease_leaks.py`). An agent's command, which holds no value, asks the run's socket (`op leaks`),
+which answers the commit alone. The refusal names the commit, never the value.
+
+**A second layer.** The hook reads the command's text. A command in base64, in a subshell, in a script the agent wrote,
+or through a tool other than Bash gets past it, and only Claude Code runs it so far. The hub's gates (the lease, the
+merge, the deploy, the routes) are what hold; the hook catches the plain cases early and leaves a trace of them.
+
 ## Commands
 
 | Command | What it does |
@@ -136,6 +172,7 @@ Every refusal writes `autonomy.refused`.
 | `evo-agents hub autonomy show [--login L] [--agent H --project P] [--repo R] [--json]` | the effective level and each class with its mode and source; `--json` prints principal, project, agent, level, classes, environments, workers |
 | `evo-agents hub autonomy set --level A2 [--class K6=deny]... [--reset]` | your own preference; class overrides merge onto those before, `--reset` drops them (A5 unless `--level`) |
 | `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision, whole: what it leaves out it drops |
+| `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | inside a run: records a backup (floor S2); the run's log, the audit row `autonomy.backup` and the run's `backups.jsonl` |
 
 A person sees their own autonomy, a lead those of the people in the units they lead, a hub admin everyone's; anyone
 else gets 403. Every write adds an audit row: `autonomy.pref_set` for a preference, `autonomy.ceiling_set` for a
@@ -148,3 +185,8 @@ caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` 
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
 `workers` of `autonomy_ceilings`. Schema 0106 adds `principal_id` and `autonomy` to `runs`. Schema 0107 adds `secrets.environment`, the decision category
 `autonomy` and the notice kind `autonomy`.
+
+The worker's routes, with the token of the worker that claimed the run: `POST /v1/worker/runs/{id}/backups` records a
+backup (201: `seq`, `made_at`, `fresh`; 422 for a time in the future), and `POST /v1/worker/runs/{id}/autonomy-acts`
+takes a class, the command and a decision's id, and answers the mode now, whether the principal was told, and whether
+the decision is answered.

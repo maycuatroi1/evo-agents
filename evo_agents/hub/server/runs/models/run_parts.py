@@ -185,3 +185,6 @@ class RunCard(BaseModel):
         description="K1 to K12, the mode each acts in for the agent: an ask a project policy sets shows as auto"
     )
     categories: list[str] = Field(description="the categories of decision its agent may ask")
+    sources: dict[str, str] = Field(
+        default_factory=dict, description="K1 to K12, what set the mode of each: a ceiling, a preference, a policy"
+    )

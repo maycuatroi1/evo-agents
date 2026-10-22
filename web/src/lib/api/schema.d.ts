@@ -5640,6 +5640,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Backup
+         * @description Record a backup the run's agent made, as the module says.
+         */
+        post: operations["record_backup_v1_worker_runs__run_id__backups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/autonomy-acts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Autonomy Act
+         * @description The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the
+         *     principal told when the mode is notify, as the module says.
+         */
+        post: operations["autonomy_act_v1_worker_runs__run_id__autonomy_acts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents": {
         parameters: {
             query?: never;
@@ -8935,6 +8976,43 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AutonomyActIn */
+        AutonomyActIn: {
+            /**
+             * Klass
+             * @description the class of the command
+             * @enum {string}
+             */
+            klass: "K5" | "K6" | "K8" | "K9" | "K10" | "K12";
+            /**
+             * What
+             * @description the command, cut, never a credential's value
+             */
+            what: string;
+            /**
+             * Decision Id
+             * @description for a class in ask: the decision of the run, of the class's category, that the agent asked first
+             */
+            decision_id?: number | null;
+        };
+        /** AutonomyActOut */
+        AutonomyActOut: {
+            /**
+             * Mode
+             * @description the class's mode for the run's principal now, the stricter of its snapshot and the value now; null for a run without a snapshot
+             */
+            mode: ("deny" | "ask" | "notify" | "auto") | null;
+            /**
+             * Told
+             * @description whether the hub told the principal (mode notify)
+             */
+            told: boolean;
+            /**
+             * Answered
+             * @description whether decision_id is a decision of the run, of the class, answered
+             */
+            answered: boolean;
+        };
         /** AutonomyClass */
         AutonomyClass: {
             /**
@@ -9057,6 +9135,47 @@ export interface components {
             retry_at: string | null;
             /** Reported At */
             reported_at: string | null;
+        };
+        /** BackupIn */
+        BackupIn: {
+            /**
+             * Target
+             * @description what was backed up: a database, a table, a bucket
+             */
+            target: string;
+            /**
+             * Location
+             * @description where the backup is: a path, a URL, a snapshot id
+             */
+            location: string;
+            /**
+             * Made At
+             * @description when it was made, with its time zone; now when absent
+             */
+            made_at?: string | null;
+            /**
+             * Restore
+             * @description the command that restores it
+             */
+            restore?: string | null;
+        };
+        /** BackupOut */
+        BackupOut: {
+            /**
+             * Seq
+             * @description the run event that records the backup
+             */
+            seq: number;
+            /**
+             * Made At
+             * Format: date-time
+             */
+            made_at: string;
+            /**
+             * Fresh
+             * @description made within the last 24 hours: it opens the floor S2 of K9
+             */
+            fresh: boolean;
         };
         /** Blob */
         Blob: {
@@ -20904,6 +21023,13 @@ export interface components {
              * @description the categories of decision its agent may ask
              */
             categories: string[];
+            /**
+             * Sources
+             * @description K1 to K12, what set the mode of each: a ceiling, a preference, a policy
+             */
+            sources?: {
+                [key: string]: string;
+            };
         };
         /** RunChat */
         RunChat: {
@@ -47613,6 +47739,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RateLimitAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_backup_v1_worker_runs__run_id__backups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autonomy_act_v1_worker_runs__run_id__autonomy_acts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyActIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyActOut"];
                 };
             };
             /** @description Unauthorized */

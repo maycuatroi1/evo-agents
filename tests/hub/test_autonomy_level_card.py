@@ -43,7 +43,8 @@ def test_autonomy_level_card_of_an_intern_names_their_mentor_and_each_class_in_d
     assert "K5" in notify and "but ask, category merge, when it touches a risk path" in notify
     assert made.categories == ("deploy", "external_send", "merge", *FREE_CATEGORIES)
     assert not made.ships, "K5 notify and K6 ask: merging and deploying are not the agent's alone"
-    assert made.spec() == {"card": text, "modes": made.modes, "categories": list(made.categories)}
+    spec = {"card": text, "modes": made.modes, "categories": list(made.categories), "sources": made.sources}
+    assert made.spec() == spec and set(made.sources) == set(autonomy_levels.CLASSES)
 
 
 def test_autonomy_level_card_shows_an_ask_of_a_project_policy_as_auto():

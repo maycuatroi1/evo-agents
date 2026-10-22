@@ -235,6 +235,7 @@ class RunContext:
     spent_seconds: float = 0.0
     environment: Environment = HOST_ENVIRONMENT  # where the agent runs: the host, or a container of a plugin's
     packs: tuple = ()  # the agent packs of the run's profile, built for it (``evo_agents.worker.packs.Pack``)
+    autonomy: object = None  # the hook of autonomy of a run with a snapshot (``evo_agents.worker.autonomy_hook.Gate``)
 
     @property
     def run_id(self) -> int:
