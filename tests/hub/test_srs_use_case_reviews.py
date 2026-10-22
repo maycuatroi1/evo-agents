@@ -61,7 +61,7 @@ def test_use_case_reviews_every_use_case_approved_approves_the_version_and_submi
     assert last.status_code == 200, last.text
     assert last.json()["state"] == "approved"
     assert {c["code"]: c["state"] for c in last.json()["use_cases"]} == dict.fromkeys(CASES, "approved")
-    assert states(client, hub["reader"], 1) == {}, "a version decided lists no use case to review"
+    assert states(client, hub["reader"], 1) == dict.fromkeys(CASES, "approved"), "the version approved last keeps them"
     (event,) = stored(hub_db)
     assert (event["version"], event["document"]) == (1, "demo-shop")
     first = last.json()["use_cases"][2]
