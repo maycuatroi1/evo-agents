@@ -297,6 +297,7 @@ def create_app(config: HubConfig) -> FastAPI:
         app.include_router(routes)
 
     from evo_agents.hub.server import (
+        autonomy_routes,
         changes,
         earlier,
         history,
@@ -329,6 +330,7 @@ def create_app(config: HubConfig) -> FastAPI:
         playbook.router,
         playbook.worker_router,
         org.router,  # the org chart (plan org-chart)
+        autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
     ):
         app.include_router(routes)
 

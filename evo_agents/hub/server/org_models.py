@@ -19,6 +19,10 @@ Handle = Annotated[str, StringConstraints(pattern=HANDLE_PATTERN)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=org.MAX_NAME_CHARS)]
 Note = Annotated[str, StringConstraints(max_length=org.MAX_NOTE_CHARS)]
 Level = Literal["A0", "A1", "A2", "A3", "A4", "A5"]
+PLACE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"  # an environment (host, <plugin>/<name>) or a worker's name
+Place = Annotated[str, StringConstraints(pattern=PLACE_PATTERN)]
+MAX_PLACES = 100  # environments or workers of one ceiling (schema 0100)
+CLASSES_FIELD = "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
 ChildKind = Literal["team", "cohort"]
 Role = Literal["lead", "member", "intern", "agent"]
 
@@ -148,6 +152,13 @@ class CeilingSet(BaseModel):
     seat: int | None = Field(None, ge=1)
     level: Level
     note: Note | None = None
+    classes: dict[str, str] = Field(default_factory=dict, max_length=12, description=CLASSES_FIELD)
+    environments: list[Place] = Field(
+        default_factory=list, max_length=MAX_PLACES, description="the environments it allows; empty: no limit"
+    )
+    workers: list[Place] = Field(
+        default_factory=list, max_length=MAX_PLACES, description="the workers it allows; empty: no limit"
+    )
 
 
 class CeilingWritten(BaseModel):
@@ -157,3 +168,6 @@ class CeilingWritten(BaseModel):
     level: Level
     previous: Level | None = Field(description="the level of the revision before; null for the first")
     note: str | None
+    classes: dict[str, str] = Field(description=CLASSES_FIELD)
+    environments: list[str] = Field(description="the environments it allows; empty: no limit")
+    workers: list[str] = Field(description="the workers it allows; empty: no limit")

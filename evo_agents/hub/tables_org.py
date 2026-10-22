@@ -15,6 +15,11 @@ seat.
 autonomy_ceilings holds every revision of the ceiling of a unit or a seat, never changed: the scope (unit or seat), the
 id of the unit or the seat, the revision (1 and up within the scope), the level (A0 to A5), the writer's note, who
 wrote it (NULL for the root's first, which schema 0099 wrote) and when. A scope's ceiling is its highest revision.
+From schema 0100 on (plan autonomy-levels) a revision also holds its class overrides (an object of K1 to K12, each a
+mode as ``evo_agents.hub.autonomy_levels`` reads it), and the environments and the workers it allows (empty: no limit).
+
+autonomy_prefs (0100) holds every revision of a person's own autonomy preference, never changed: the user, the
+revision (1 and up), the level and the class overrides. A person without a row prefers A5.
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ from sqlalchemy import (
     false,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 
 def _stamp(name: str) -> Column:
@@ -127,11 +133,28 @@ def ceilings_table(metadata: MetaData) -> Table:
         Column("note", Text),
         Column("author_id", BigInteger),
         _stamp("created_at"),
+        Column("overrides", JSONB, nullable=False, server_default="{}"),
+        Column("environments", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("workers", ARRAY(Text), nullable=False, server_default="{}"),
         _key("autonomy_ceilings", "author_id", "users", "RESTRICT"),
         PrimaryKeyConstraint("scope", "scope_id", "revision", name="autonomy_ceilings_pkey"),
     )
 
 
-def org_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings), added to ``metadata``."""
-    return units_table(metadata), seats_table(metadata), ceilings_table(metadata)
+def prefs_table(metadata: MetaData) -> Table:
+    return Table(
+        "autonomy_prefs",
+        metadata,
+        Column("user_id", BigInteger, nullable=False),
+        Column("revision", Integer, nullable=False),
+        Column("level", Text, nullable=False),
+        Column("overrides", JSONB, nullable=False, server_default="{}"),
+        _stamp("created_at"),
+        _key("autonomy_prefs", "user_id", "users", "CASCADE"),
+        PrimaryKeyConstraint("user_id", "revision", name="autonomy_prefs_pkey"),
+    )
+
+
+def org_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``."""
+    return units_table(metadata), seats_table(metadata), ceilings_table(metadata), prefs_table(metadata)

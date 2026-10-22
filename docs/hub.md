@@ -89,6 +89,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
+| autonomy levels | `GET /v1/autonomy`, `PUT /v1/autonomy/prefs`: the effective autonomy of a person or an agent on a repo, and a person's own preference (`docs/autonomy-levels.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
@@ -983,7 +984,9 @@ proposals of that lens. Schema 0095 lets `decisions.category` take `loop`, the d
 work item's last run stands for after its third failure, and `notifications.notice_kind` take `loop_paused`, the
 notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
 kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
-root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables.
+root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables. Schema
+0100 adds `autonomy_prefs`, each person's own autonomy preference in revisions, and the class overrides, environments
+and workers of a ceiling (`docs/autonomy-levels.md`); going back to 0099 drops the table and the three columns.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

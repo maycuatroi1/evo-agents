@@ -1182,6 +1182,30 @@
         },
         {
           "flags": [
+            "--class"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--environment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -1197,9 +1221,126 @@
           "revision",
           "level",
           "previous",
-          "note"
+          "note",
+          "classes",
+          "environments",
+          "workers"
         ],
         "schema": "CeilingWritten"
+      }
+    },
+    "hub autonomy set": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--level"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5"
+          ]
+        },
+        {
+          "flags": [
+            "--class"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--reset"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "revision",
+          "level",
+          "previous",
+          "classes"
+        ],
+        "schema": "PrefWritten"
+      }
+    },
+    "hub autonomy show": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "principal",
+          "project",
+          "agent",
+          "level",
+          "classes",
+          "environments",
+          "workers"
+        ],
+        "schema": "AutonomyView"
       }
     },
     "hub canvas brainstorm": {
@@ -35949,6 +36090,212 @@
           }
         }
       },
+      "/v1/autonomy": {
+        "get": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Show Autonomy",
+          "description": "The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode.",
+          "operationId": "show_autonomy_v1_autonomy_get",
+          "parameters": [
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Login"
+              }
+            },
+            {
+              "name": "project",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Project"
+              }
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Agent"
+              }
+            },
+            {
+              "name": "repo",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Repo"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/autonomy/prefs": {
+        "put": {
+          "tags": [
+            "autonomy"
+          ],
+          "summary": "Set Pref",
+          "description": "The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still\ndecide.",
+          "operationId": "set_pref_v1_autonomy_prefs_put",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefSet"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PrefWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -58491,6 +58838,37 @@
           ],
           "title": "AuthoredPlan"
         },
+        "AutonomyClass": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "deny",
+                "ask",
+                "notify",
+                "auto"
+              ],
+              "title": "Mode"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source that sets the mode: pref:<login>, seat:<id>, unit:<slug>, policy:<project>/<repo>, profile:<handle>, credential_share or instance"
+            },
+            "detail": {
+              "type": "string",
+              "title": "Detail",
+              "description": "how that source sets it, with the condition the mode acts under"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "source",
+            "detail"
+          ],
+          "title": "AutonomyClass"
+        },
         "AutonomyPolicy": {
           "properties": {
             "project": {
@@ -58562,6 +58940,100 @@
           ],
           "title": "AutonomyPolicy",
           "description": "One revision of a project's autonomy policy."
+        },
+        "AutonomyView": {
+          "properties": {
+            "principal": {
+              "type": "string",
+              "title": "Principal",
+              "description": "the login of the person whose autonomy it is"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile it runs as; null for the person alone"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level",
+              "description": "the lowest level the sources set"
+            },
+            "classes": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/AutonomyClass"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "K1 to K12, each its effective mode"
+            },
+            "environments": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environments",
+              "description": "the environments allowed; null: no limit"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "the workers allowed; null: no limit"
+            }
+          },
+          "type": "object",
+          "required": [
+            "principal",
+            "project",
+            "agent",
+            "level",
+            "classes",
+            "environments",
+            "workers"
+          ],
+          "title": "AutonomyView"
         },
         "AvatarUpload": {
           "properties": {
@@ -62773,6 +63245,35 @@
                 }
               ],
               "title": "Note"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "maxProperties": 12,
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "environments": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Environments",
+              "description": "the environments it allows; empty: no limit"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Workers",
+              "description": "the workers it allows; empty: no limit"
             }
           },
           "additionalProperties": false,
@@ -62844,6 +63345,30 @@
                 }
               ],
               "title": "Note"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "environments": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Environments",
+              "description": "the environments it allows; empty: no limit"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it allows; empty: no limit"
             }
           },
           "type": "object",
@@ -62853,7 +63378,10 @@
             "revision",
             "level",
             "previous",
-            "note"
+            "note",
+            "classes",
+            "environments",
+            "workers"
           ],
           "title": "CeilingWritten"
         },
@@ -79303,6 +79831,108 @@
             "changed"
           ],
           "title": "PolicyWritten"
+        },
+        "PrefSet": {
+          "properties": {
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "maxProperties": 12,
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            },
+            "reset": {
+              "type": "boolean",
+              "title": "Reset",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PrefSet",
+          "description": "The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset\nthat drops them (to A5 without a level)."
+        },
+        "PrefWritten": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "A0",
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5"
+              ],
+              "title": "Level"
+            },
+            "previous": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "A0",
+                    "A1",
+                    "A2",
+                    "A3",
+                    "A4",
+                    "A5"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Previous",
+              "description": "the level of the revision before; null for the first"
+            },
+            "classes": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Classes",
+              "description": "the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "revision",
+            "level",
+            "previous",
+            "classes"
+          ],
+          "title": "PrefWritten"
         },
         "Problem": {
           "properties": {

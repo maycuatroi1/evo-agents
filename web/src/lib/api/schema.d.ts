@@ -4047,6 +4047,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/autonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Autonomy
+         * @description The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode.
+         */
+        get: operations["show_autonomy_v1_autonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/autonomy/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Pref
+         * @description The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still
+         *     decide.
+         */
+        put: operations["set_pref_v1_autonomy_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -8542,6 +8583,24 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AutonomyClass */
+        AutonomyClass: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "deny" | "ask" | "notify" | "auto";
+            /**
+             * Source
+             * @description the source that sets the mode: pref:<login>, seat:<id>, unit:<slug>, policy:<project>/<repo>, profile:<handle>, credential_share or instance
+             */
+            source: string;
+            /**
+             * Detail
+             * @description how that source sets it, with the condition the mode acts under
+             */
+            detail: string;
+        };
         /**
          * AutonomyPolicy
          * @description One revision of a project's autonomy policy.
@@ -8577,6 +8636,44 @@ export interface components {
             created_by: string | null;
             /** Created At */
             created_at: string | null;
+        };
+        /** AutonomyView */
+        AutonomyView: {
+            /**
+             * Principal
+             * @description the login of the person whose autonomy it is
+             */
+            principal: string;
+            /** Project */
+            project: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent profile it runs as; null for the person alone
+             */
+            agent: string | null;
+            /**
+             * Level
+             * @description the lowest level the sources set
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Classes
+             * @description K1 to K12, each its effective mode
+             */
+            classes: {
+                [key: string]: components["schemas"]["AutonomyClass"];
+            };
+            /**
+             * Environments
+             * @description the environments allowed; null: no limit
+             */
+            environments: string[] | null;
+            /**
+             * Workers
+             * @description the workers allowed; null: no limit
+             */
+            workers: string[] | null;
         };
         /** AvatarUpload */
         AvatarUpload: {
@@ -10254,6 +10351,23 @@ export interface components {
             level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
             /** Note */
             note?: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments?: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers?: string[];
         };
         /** CeilingWritten */
         CeilingWritten: {
@@ -10281,6 +10395,23 @@ export interface components {
             previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
             /** Note */
             note: string | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
+            /**
+             * Environments
+             * @description the environments it allows; empty: no limit
+             */
+            environments: string[];
+            /**
+             * Workers
+             * @description the workers it allows; empty: no limit
+             */
+            workers: string[];
         };
         /**
          * Change
@@ -17476,6 +17607,51 @@ export interface components {
              * @description false when the newest revision is this policy already: nothing was written
              */
             changed: boolean;
+        };
+        /**
+         * PrefSet
+         * @description The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset
+         *     that drops them (to A5 without a level).
+         */
+        PrefSet: {
+            /** Level */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes?: {
+                [key: string]: string;
+            };
+            /**
+             * Reset
+             * @default false
+             */
+            reset: boolean;
+        };
+        /** PrefWritten */
+        PrefWritten: {
+            /** Login */
+            login: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "A0" | "A1" | "A2" | "A3" | "A4" | "A5";
+            /**
+             * Previous
+             * @description the level of the revision before; null for the first
+             */
+            previous: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Classes
+             * @description the class overrides, K1 to K12 each to deny, ask, notify or auto (with :condition where one fits)
+             */
+            classes: {
+                [key: string]: string;
+            };
         };
         /** Problem */
         Problem: {
@@ -40261,6 +40437,127 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_autonomy_v1_autonomy_get: {
+        parameters: {
+            query?: {
+                login?: string | null;
+                project?: string | null;
+                agent?: string | null;
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_pref_v1_autonomy_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrefSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
