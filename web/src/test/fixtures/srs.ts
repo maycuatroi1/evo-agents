@@ -1,4 +1,4 @@
-import type { SrsDocument, SrsFinding, SrsItem, SrsReview, SrsVersion } from "@/components/srs/api";
+import type { SrsDocument, SrsFinding, SrsItem, SrsReview, SrsUseCase, SrsUseCaseReview, SrsVersion } from "@/components/srs/api";
 
 /** Items, versions and documents for the SRS pages' unit tests: the shape of the demo-shop sample (tests/hub/fixtures/srs). */
 export function item(key: string, patch: Partial<SrsItem> = {}): SrsItem {
@@ -126,4 +126,14 @@ export function finding(id: number, patch: Partial<SrsFinding> = {}): SrsFinding
     created_at: "2026-10-11T08:05:00Z",
     ...patch,
   };
+}
+
+/** A review that counts on a use case, recorded on v3 unless said otherwise. */
+export function caseReview(patch: Partial<SrsUseCaseReview> = {}): SrsUseCaseReview {
+  return { reviewer: "bao", role: null, decision: "approve", body: "", version: 3, created_at: "2026-10-12T09:00:00Z", ...patch };
+}
+
+/** A use case of v3 in review that the version changes and nobody reviewed yet. */
+export function aUseCase(patch: Partial<SrsUseCase> = {}): SrsUseCase {
+  return { key: "uc1", code: "UC ORD-1", title: "Place an order", change: "changed", state: "pending", reviews: [], ...patch };
 }

@@ -7082,7 +7082,18 @@
       "compare": "Compare",
       "missingTitle": "No item {ref}",
       "missingText": "Version {version} of this document has no item by that code, alias or key.",
-      "createTask": "Create task"
+      "createTask": "Create task",
+      "review": {
+        "title": "Review of this use case in v{version}",
+        "draft": "v{version} is a draft: its use cases are reviewed once it is submitted.",
+        "reviewers": "Reviews that count",
+        "open": "Open the review of v{version}",
+        "state": {
+          "pending": "Waiting for the approvals the policy asks for.",
+          "approved": "Approved. v{version} is approved once every use case it needs reviewed is.",
+          "changes_requested": "A reviewer asked for changes: v{version} cannot be approved until it is settled."
+        }
+      }
     },
     "versions": {
       "oneVersion": "Only one version so far: nothing to compare.",
@@ -7219,6 +7230,36 @@
         "openChat": "Open the settle chat",
         "reviewTitle": "Approve waits for @ba's review of round {round}",
         "reviewText": "Approve unlocks when the run ends. You can still request changes."
+      },
+      "cases": {
+        "title": "Use cases to review",
+        "summary": "{approved} of {total} approved",
+        "summaryAsked": "{approved} of {total} approved, {asked} with changes requested",
+        "auto": "Once every use case below has the approvals the policy asks for, v{version} is approved with them, and so are its changes outside use cases: sections, screens, requirements and the rest. Approve or ask for changes on each one here.",
+        "empty": "No use case changed in v{version}, so no use case needs a review of its own: a review of the whole version approves it.",
+        "holdsTitle": "v{version} cannot be approved yet",
+        "holdsText": "A use case has a request for changes. Until its reviewer approves it again, no approval of the version goes through, a review of the whole version included.",
+        "listLabel": "Use cases of v{version} to review",
+        "state": {
+          "pending": "Pending",
+          "approved": "Approved",
+          "changes_requested": "Changes requested"
+        },
+        "reviewsLabel": "Reviews that count on {name}",
+        "noReviews": "No review counts yet.",
+        "fromVersion": "kept from v{version}, the use case reads the same",
+        "you": "you",
+        "approveFor": "Approve {name}",
+        "requestFor": "Request changes on {name}",
+        "approving": "Approving",
+        "noteLabel": "What to change in {name} (required)",
+        "send": "Send request",
+        "cancel": "Cancel",
+        "roleLabel": "Your reviews of use cases count for",
+        "roleAuto": "The hub's pick",
+        "approvedToast": "Approved {name}",
+        "versionApprovedToast": "Approved {name}; v{version} is now approved",
+        "requestedToast": "Asked for changes on {name}"
       }
     },
     "findings": {

@@ -212,6 +212,21 @@ The hub stays the gate: an approval that still meets the 409 shows its refusal, 
 again. Nothing on the web settles or waives a finding: settling goes through the settle chat, waiving through
 `evo-agents hub srs waive`.
 
+**On the web, reviewing use cases.** While a version is in review, its review page has a card, Use cases to review, with
+one row for each use case the version needs reviewed: its code linking to its page (a dropped use case opens at the
+version approved last), title, what the version does to it (added, changed, removed), where it stands (pending,
+approved, changes requested) and the reviews that count, each with its reviewer, role, note and, for a review kept from
+an earlier version because the use case reads the same, `from vM`. The card says that v{N} is approved once every use
+case has the approvals the policy asks for, together with its changes outside use cases, and, while one use case has a
+request for changes, that the version cannot be approved. A writer who may review the version (the rules of the section
+above, but a review the person already gave on the version or on that use case does not stop another: it replaces the
+last) gets Approve and Request changes on each row; Request changes opens a note field and needs the note. Approve is
+locked with the same reason as the version's form (open findings of level `decide`, @ba's review of the round running),
+and the 409 of the hub shows as a refusal under the row. A person who holds several roles picks which one their use case
+reviews count for. After each review the page reads the version again. The form that reviews the whole version stays as
+it is. The page of a use case, in a version that is a draft or in review, says where the use case stands in that
+version and links to the review page.
+
 ## Findings
 
 A finding is one conflict @ba found in a document (`srs_findings`): the version it was found on, the item it is about
