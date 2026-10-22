@@ -189,12 +189,13 @@ class Machine:
     group: Callable[[int | str], Group | None] = system_group
 
     @classmethod
-    def here(cls, path: str | None = None) -> Machine:
-        """This machine, as the user running the doctor; ``path`` replaces the service's PATH."""
+    def here(cls, path: str | None = None, env: Mapping[str, str] | None = None) -> Machine:
+        """This machine, as the user running the doctor; ``path`` replaces the service's PATH, and ``env`` (the
+        daemon's) this process's environment, its HOME the home."""
         uid = os.getuid()
-        env = dict(os.environ)
+        env = dict(os.environ if env is None else env)
         return cls(
-            home=Path.home(),
+            home=Path(env["HOME"]) if env.get("HOME") else Path.home(),
             user=user_name(uid),
             uid=uid,
             platform=sys.platform,

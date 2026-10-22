@@ -32,6 +32,8 @@ const ACCOUNT: Account = {
   cost_24h_usd: 1.5,
   cost_7d_usd: 4,
   held_by: [],
+  shares: [],
+  cost_by_principal: [],
 };
 
 describe("the state of an account", () => {

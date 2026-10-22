@@ -59,7 +59,7 @@ from evo_agents.hub.server.runs.service.profiles import (
     runtime_rule,
 )
 from evo_agents.hub.server.runs.service.views import current_plan, lost_here, run_view, steady, text_or_none
-from evo_agents.hub.server.runs.service.worker_fit import writes
+from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.run_environments import ContainerEnvironment
 from evo_agents.plugins.runtimes import AcpRuntime
@@ -269,15 +269,18 @@ def _claimable(
 
 def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
     """Whose queued runs worker ``worker_id`` of ``owner_id`` may take: its owner's alone; on a shared worker, also
-    those of another member who holds writer on the run's project now, none of the night shift's kinds
-    (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
+    those of another member who holds writer on the run's project now and whom the units the worker is narrowed to
+    admit (``worker_fit.unit_admits``), none of the night shift's kinds (``runs.CURATOR_KINDS``), and on any of them only while every run the worker holds is of the same member, so the
     agents of two members never run side by side as the daemon's user (``docs/workers.md``, Shared workers)."""
     r = tables.runs
     if not shared:
         return r.c.dispatched_by == owner_id
     held = tables.runs.alias("held")
     member = and_(
-        r.c.dispatched_by != owner_id, writes(r.c.dispatched_by, r.c.project_id), r.c.kind.not_in(runs.CURATOR_KINDS)
+        r.c.dispatched_by != owner_id,
+        writes(r.c.dispatched_by, r.c.project_id),
+        unit_admits(worker_id, r.c.dispatched_by),
+        r.c.kind.not_in(runs.CURATOR_KINDS),
     )
     other = exists().where(
         held.c.worker_id == worker_id,

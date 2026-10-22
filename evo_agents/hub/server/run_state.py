@@ -960,8 +960,10 @@ async def recover_runs(
     report = {state: ended.get(state, 0) for state in ("lost", "failed", "cancelled", "parked")}
     if expired or ended:
         log.warning("runs recovered", extra=report)
-    from evo_agents.hub.server import credentials
+    from evo_agents.hub.server import credentials, share_leases
 
+    async with engine.begin() as conn:  # the leases still out under a share that was revoked or ended
+        await share_leases.end_lapsed(conn)
     await credentials.revoke_tokens(engine, sealer, github_app)
     return report
 

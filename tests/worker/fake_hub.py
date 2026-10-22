@@ -46,6 +46,7 @@ class FakeHub:
         self.decisions: dict[int, dict] = {}
         self.inbox: dict[int, list[dict]] = {}
         self.notices: list[dict] = []
+        self.doctor_reports: list[dict] = []  # what the daemon's doctor sent (POST /v1/worker/doctor)
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
@@ -137,6 +138,7 @@ class FakeHub:
             [
                 post("/v1/worker/claim", self._claim),
                 post("/v1/worker/heartbeat", self._heartbeat),
+                post("/v1/worker/doctor", self._doctor),
                 post("/v1/worker/runs/{id}/state", self._state),
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
@@ -712,6 +714,10 @@ class FakeHub:
         run_id = self.queue.pop(0)
         self._move(run_id, "leased")
         return web.json_response({"run": self.runs[run_id]["spec"]})
+
+    async def _doctor(self, request: web.Request) -> web.Response:
+        self.doctor_reports.append(await request.json())
+        return web.json_response({"worker_id": 1, "doctor_at": _now(), "doctor_high": 0, "doctor_medium": 0})
 
     async def _heartbeat(self, request: web.Request) -> web.Response:
         body = await request.json()

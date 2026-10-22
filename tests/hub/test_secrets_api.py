@@ -50,6 +50,7 @@ SECRET_FIELDS = {
     "expires_at",
     "created_at",
     "updated_at",
+    "shares",
 }
 
 

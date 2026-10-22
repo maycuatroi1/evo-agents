@@ -52,7 +52,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
-from evo_agents.hub import claude_oauth, setup_token
+from evo_agents.hub import claude_oauth, cli_shares, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
@@ -82,6 +82,7 @@ SECRET_KEYS = (
     "expires_at",
     "created_at",
     "updated_at",
+    "shares",
 )
 
 
@@ -318,6 +319,7 @@ def register_secrets(hsub) -> None:
     )
     delete.add_argument("name", metavar="NAME")
     delete.set_defaults(func=cmd_delete)
+    cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
 
@@ -349,6 +351,8 @@ ACCOUNT_KEYS = (
     "cost_24h_usd",
     "cost_7d_usd",
     "held_by",
+    "shares",
+    "cost_by_principal",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -511,7 +515,8 @@ def cmd_account_show(args) -> int:
     if not SECRET_NAME.fullmatch(args.name):
         return _usage_error(f"{args.name!r} is not a secret's name")
     hub, _ = _signed_in()
-    a = hub.call("GET", _account_path(args.name))
+    owner = getattr(args, "owner", None)
+    a = hub.call("GET", _account_path(args.name) + (f"?owner={quote(owner, safe='')}" if owner else ""))
     if args.json:
         _print_json(a)
     else:
@@ -537,6 +542,9 @@ def _print_account(a: dict) -> None:
         print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
         print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
     print(f"  Held by: {held}.")
+    for row in a.get("cost_by_principal") or []:
+        print(f"  For {row['principal'] or '(gone)'}: {row['runs_month']} runs this month", end="")
+        print(f" ({money(row['cost_month_usd'])}), {row['runs_7d']} in 7 days ({money(row['cost_7d_usd'])}).")
 
 
 @_client_command
@@ -897,12 +905,13 @@ def register_accounts(hsub) -> None:
     json_option(listed, returns_array(*ACCOUNT_KEYS, schema="Account"))
     listed.set_defaults(func=cmd_account_list)
 
-    _named(
+    shown = _named(
         asub,
         "show",
-        "one account: state, last usage, runs and cost over 24 hours and 7 days, runs holding it",
+        "one account: state, last usage, runs and cost over 24 hours and 7 days and by principal, runs holding it",
         cmd_account_show,
     )
+    shown.add_argument("--owner", metavar="LOGIN", help="an account LOGIN shared with you: your runs' figures alone")
     changed = _named(asub, "set", "change the weight or priority of an account", cmd_account_set)
     changed.add_argument(
         "--weight",
@@ -920,6 +929,7 @@ def register_accounts(hsub) -> None:
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
     _register_login(asub)
     _register_oauth_login(asub)
+    cli_shares.register_share_commands(asub, "account")
 
     policy = asub.add_parser(
         "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"

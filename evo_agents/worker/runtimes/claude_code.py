@@ -753,7 +753,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed
-        if kind in ("chat", "task", "question"):  # an @handle or @path in the words it is given never makes it read a file
+        # an @handle or @path in the words it is given never makes it read a file
+        if kind in ("chat", "task", "question"):
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))

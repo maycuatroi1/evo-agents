@@ -76,7 +76,7 @@ from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F4
 from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_audience import person_audience
-from evo_agents.hub.server.memory_audience import Reader, label_audience
+from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import RunStep, write_event
@@ -84,7 +84,6 @@ from evo_agents.hub.server.runs.models import LINE, MAX_ID, NOT_HELD, OBJECT_NAM
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.kg.policy import audience_below
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -830,7 +829,7 @@ async def list_proposals(
             query = query.where(p.c.run_id == run_id)
         rows = (await conn.execute(query.order_by(p.c.id.desc()).limit(MAX_OFFSET))).all()
         through, reader = plan_routes._sink(access, sink), Reader(conn, user)
-        readable = [row for row in rows if await _reaches(reader, access, row.label, through)]
+        readable = [row for row in rows if await label_reaches(reader, access, row.label, through)]
     states, tiers_asked = set(state), set(tier)
 
     def kept(row, but: str | None = None) -> bool:
@@ -855,15 +854,6 @@ async def list_proposals(
     )
 
 
-async def _reaches(reader: Reader, access: ProjectAccess, label, through: str) -> bool:
-    """Whether a proposal labelled ``label`` reaches ``reader``'s caller through sink ``through``: the read rule, and
-    the audience its label names, if any (the memories its evidence names, ``memory_promotion.cited_audience``)."""
-    if not access.visible(label, through):
-        return False
-    named = label_audience(label)
-    return not named or audience_below(named, await reader.audience(label))
-
-
 async def readable_proposal(
     conn, access: ProjectAccess, proposal_id: int, sink: str | None, user: Principal, *, lock: bool = False
 ):
@@ -874,7 +864,7 @@ async def readable_proposal(
     if lock:
         query = query.with_for_update(of=p)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or not await _reaches(Reader(conn, user), access, row.label, plan_routes._sink(access, sink)):
+    if row is None or not await label_reaches(Reader(conn, user), access, row.label, plan_routes._sink(access, sink)):
         raise HTTPException(404, f"project {access.name} has no proposal {proposal_id}")
     return row
 
