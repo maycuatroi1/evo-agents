@@ -266,8 +266,8 @@ The engine sits behind `model.Engine`, three functions that read and never write
 class Engine(Protocol):
     name: str
 
-    def rules(self, event: Event, view: View) -> list[Effect]: ...   # what one event makes
-    def scheduled(self, view: View) -> list[Effect]: ...             # what the clock makes
+    def rules(self, event: Event, view: View) -> list[Effect]: ...  # what one event makes
+    def scheduled(self, view: View) -> list[Effect]: ...  # what the clock makes
     def reconcile(self, item: ItemView, view: View) -> Transition | None: ...  # where a work item moves now
 ```
 

@@ -127,6 +127,9 @@ PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for th
 # enable, or " run:<id>" for a task, whose actor is the member it runs as, with no token: the plugin's token handed it.
 AGENT_TYPE_ENABLE = "agent-type.enable"  # an admin of the project enabled it, or changed how; its profile on the first
 AGENT_TYPE_DISABLE = "agent-type.disable"  # an admin turned it off: the plugin's tasks are refused
+PLUGIN_NOTIFY = (
+    "plugin.notify"  # the plugin, granted notifications:send, sent members a notice: who and how many, no text
+)
 TASK_DISPATCH = "task.dispatch"  # the plugin, granted runs:dispatch, handed it a task: a run of kind task
 # A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
 # instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
