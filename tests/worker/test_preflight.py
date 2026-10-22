@@ -56,7 +56,7 @@ from tests.worker.test_plan_runs import (
 
 MISSING = "no-such-tool-7f3a"  # a program no PATH has
 # The verify behind runs 42-45 of 2026-10-15: a check, then the plan author's notes in Vietnamese, which the shell
-# would read as the programs thủ and hai.
+# would read as the programs kiểm and hai.
 PROSE = "test -f a.txt && (kiểm tra thủ công) && (hai run)"
 RUN_9 = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
 
@@ -129,6 +129,44 @@ def test_preflight_looks_for_each_program_on_the_runs_path(tmp_path):
     (hidden,) = preflight.hidden_problems(["true", f"{MISSING} secret-flag"], path)
     assert hidden.message == "hidden check 2 of 2 calls a program that is not on this worker's PATH"
     assert MISSING not in hidden.message and "secret-flag" not in hidden.message
+
+
+def test_preflight_says_a_prose_verify_is_not_a_command_instead_of_blaming_the_path():
+    (problem,) = preflight.verify_problems([("4", PROSE)], os.defpath)
+    assert problem.cause == "missing_tool"
+    assert problem.message == (
+        f"step 4: verify command `{PROSE}` is not runnable as a shell command: it runs `kiểm` as a program, and that "
+        "is not a command name; it also runs `hai`, which this worker does not have: rewrite the verify as a command"
+    )
+    assert "PATH" not in problem.message
+    (short,) = preflight.verify_problems(["test a = b && (thủ công) && (hai run)"], os.defpath)
+    assert "`thủ`" in short.message and "`hai`" in short.message and "PATH" not in short.message
+    (quote,) = preflight.verify_problems([("2", "check that it's done")], os.defpath)
+    assert quote.message.startswith("step 2: verify command `check that it's done` is not runnable as a shell command")
+    assert "a quote is left open" in quote.message
+
+
+def test_preflight_still_blames_the_path_for_a_plausible_program_that_is_absent(tmp_path):
+    tool = tmp_path / "lint-imports"
+    tool.write_text("#!/bin/sh\n", encoding="utf-8")  # there, but not executable
+    problems = preflight.verify_problems(
+        [("1", f"{MISSING} && ruff check ."), ("3", f"{tool} --strict")], f"{tmp_path}{os.pathsep}/no/bin"
+    )
+    assert [problem.message for problem in problems] == [
+        f"step 1: verify command `{MISSING} && ruff check .` calls {MISSING}, which is not on this worker's PATH",
+        "step 1: verify command `no-such-tool-7f3a && ruff check .` calls ruff, which is not on this worker's PATH",
+        f"step 3: verify command `{tool} --strict` calls {tool}, which is not on this worker's PATH",
+    ]
+    assert {problem.cause for problem in problems} == {"missing_tool"}
+
+
+def test_preflight_tells_each_verify_of_a_plan_by_what_is_wrong_with_it():
+    problems = preflight.verify_problems([("4", PROSE), ("5", f"{MISSING} --check"), ("6", "true")], os.defpath)
+    assert [problem.cause for problem in problems] == ["missing_tool", "missing_tool"]
+    prose, missing = (problem.message for problem in problems)
+    assert prose.startswith("step 4: ") and "not runnable as a shell command" in prose and "PATH" not in prose
+    assert "`kiểm`" in prose and "`hai`" in prose
+    assert missing == f"step 5: verify command `{MISSING} --check` calls {MISSING}, which is not on this worker's PATH"
 
 
 @pytest.mark.parametrize(
