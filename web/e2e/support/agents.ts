@@ -48,3 +48,18 @@ export function agentsPath(project: string): string {
 export function agentPath(project: string, handle: string): string {
   return `${agentsPath(project)}/${handle}`;
 }
+
+export type AgentAccount = components["schemas"]["AgentAccount"];
+export type AgentAccountWrite = components["schemas"]["AgentAccountWrite"];
+
+/** Add agent `handle`'s account `name`, or replace it whole, as an admin of `project` does. */
+export async function putAgentAccountByApi(admin: Account, project: string, handle: string, name: string, body: AgentAccountWrite): Promise<AgentAccount> {
+  const api = await apiOf(admin);
+  return call(api.PUT("/v1/projects/{project}/agents/{handle}/accounts/{name}", { params: { path: { project, handle, name } }, body }));
+}
+
+/** The live accounts of agent `handle` as `account` reads them. */
+export async function agentAccountsOf(account: Account, project: string, handle: string): Promise<AgentAccount[]> {
+  const api = await apiOf(account);
+  return call(api.GET("/v1/projects/{project}/agents/{handle}/accounts", { params: { path: { project, handle } } }));
+}

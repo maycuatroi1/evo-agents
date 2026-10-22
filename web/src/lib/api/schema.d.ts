@@ -5677,6 +5677,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Account
+         * @description The account ``name`` of agent ``handle`` with its figures; 404 when the agent has no live account of that name.
+         */
+        get: operations["get_agent_account_v1_projects__project__agents__handle__accounts__name__get"];
+        /**
+         * Put Agent Account
+         * @description Give the agent the account ``name``, or replace it whole; the value is sealed and never shown again.
+         */
+        put: operations["put_agent_account_v1_projects__project__agents__handle__accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Agent Account
+         * @description Delete the account: its value and bindings go, and its leases not given back are revoked.
+         */
+        delete: operations["delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Agent Account
+         * @description Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.
+         */
+        patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Accounts
+         * @description The live accounts of agent ``handle``, by variable and name, with their figures; never a value.
+         */
+        get: operations["list_agent_accounts_v1_projects__project__agents__handle__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Agent Accounts
+         * @description The live accounts of the agents of every project the caller holds a grant on, by project, handle, variable and
+         *     name; a hub admin's grants alone count, as for reading a profile.
+         */
+        get: operations["list_all_agent_accounts_v1_agent_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agent-packs": {
         parameters: {
             query?: never;
@@ -7964,6 +8037,263 @@ export interface components {
              * @description when it was deleted: it takes no new run, and reads as before
              */
             deleted_at: string | null;
+        };
+        /**
+         * AgentAccount
+         * @description An account of an agent as an admin sees it: everything but the value.
+         */
+        AgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+        };
+        /** AgentAccountChange */
+        AgentAccountChange: {
+            /**
+             * Value
+             * @description renew: a new value for the same account
+             */
+            value?: string | null;
+            /**
+             * Workers
+             * @description replaces the workers it is bound to
+             */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description its new end; null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, so no new run takes it; false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AgentAccountWrite */
+        AgentAccountWrite: {
+            /**
+             * Env Var
+             * @description the variable of the agent's environment it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
+             */
+            env_var: string;
+            /**
+             * Value
+             * Format: password
+             * @description the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again
+             */
+            value: string;
+            /**
+             * Workers
+             * @description names of the workers it is bound to: yours that are not revoked, or a member's shared worker; each serves the agent's project
+             */
+            workers: string[];
+            /**
+             * Expires At
+             * @description after this no run gets it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Weight
+             * @description its share in a weighted pool; 1 when new
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner; 0 when new
+             */
+            priority?: number | null;
+        };
+        /** AgentAccountWritten */
+        AgentAccountWritten: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Created
+             * @description false when an account of this name was replaced
+             */
+            created: boolean;
         };
         /**
          * AgentAxis
@@ -13847,6 +14177,125 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * ListedAgentAccount
+         * @description An account of an agent, with the project and the agent it belongs to.
+         */
+        ListedAgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /** Project */
+            project: string;
+            /**
+             * Handle
+             * @description the agent's handle, @ left out
+             */
+            handle: string;
+            /**
+             * Agent Name
+             * @description the agent's display name
+             */
+            agent_name: string;
+            /**
+             * Color
+             * @description the agent's colour, on which the web draws its initial
+             */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the agent's avatar on this hub; null: draw the initial
+             */
+            icon_url: string | null;
         };
         /** Live */
         Live: {
@@ -20317,7 +20766,7 @@ export interface components {
             id: number;
             /**
              * Name
-             * @description the secret's name, or github-app:<account>
+             * @description the secret's name, github-app:<account>, or @<handle>:<name> for an account of an agent
              */
             name: string;
             /**
@@ -47064,6 +47513,417 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_agent_account_v1_projects__project__agents__handle__accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_agent_account_v1_projects__project__agents__handle__accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_agent_account_v1_projects__project__agents__handle__accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agent_accounts_v1_projects__project__agents__handle__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_agent_accounts_v1_agent_accounts_get: {
+        parameters: {
+            query?: {
+                /** @description only the agents of this project */
+                project?: string | null;
+                /** @description only the agent of this handle */
+                handle?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListedAgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

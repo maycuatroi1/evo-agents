@@ -3211,13 +3211,103 @@
         "title": "Thông tin đăng nhập dịch vụ",
         "description": "Token và key mà run dùng cho việc khác: một repository, một workspace, một máy chủ. Chúng không có chi phí.",
         "none": "Chưa có thông tin đăng nhập dịch vụ. Thêm một secret gắn với dự án."
+      },
+      "agent": {
+        "title": "Tài khoản của agent",
+        "description": "Các secret mà agent sở hữu trong những dự án bạn tham gia. Admin của dự án đổi chúng trên trang agent.",
+        "none": "Chưa agent nào có tài khoản riêng.",
+        "agent": "Agent",
+        "projectTitle": "Dự án {project}",
+        "open": "Mở @{handle} của {project}",
+        "loadFailed": "Không tải được tài khoản của các agent."
       }
     },
     "variables": "{provider}, {count, plural, other {# biến}}",
     "variablesLabel": "Các biến của {provider}",
     "apiValue": "Giá trị API",
     "costLabel": "Chi phí",
-    "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run."
+    "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run.",
+    "agent": {
+      "title": "Tài khoản",
+      "description": "Các secret của agent này. Run dưới @{handle} nhận chúng trên những worker mà mỗi tài khoản gắn vào.",
+      "readOnly": "Các secret của agent này. Chỉ admin của {project} thêm hoặc đổi chúng.",
+      "add": "Thêm tài khoản",
+      "full": "Một agent có tối đa {max} tài khoản.",
+      "empty": "@{handle} chưa có tài khoản riêng.",
+      "emptyAdmin": "@{handle} chưa có tài khoản riêng. Thêm một tài khoản để run của nó có khoá không phải của bạn.",
+      "renew": "Gia hạn",
+      "renewLabel": "Gia hạn {name}",
+      "editLabel": "Sửa {name}",
+      "delete": "Xoá",
+      "deleteLabel": "Xoá {name}",
+      "deleteTitle": "Xoá tài khoản {name}?",
+      "deleteText": "Run dưới @{handle} không còn nhận {variable} từ tài khoản này, và run đang giữ nó sẽ mất nó. Giá trị bị xoá hẳn.",
+      "deleteConfirm": "Xoá tài khoản",
+      "deleting": "Đang xoá",
+      "deleted": "Đã xoá tài khoản {name}",
+      "deletedText": "Run dưới @{handle} không còn dùng nó.",
+      "form": {
+        "saving": "Đang lưu",
+        "cancel": "Huỷ",
+        "name": "Tên",
+        "nameHint": "Chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới.",
+        "envVar": "Biến",
+        "envVarHint": "Biến môi trường run nhận được, ví dụ OPENAI_API_KEY.",
+        "value": "Giá trị",
+        "valueHint": "Được niêm phong khi lưu. Không ai xem lại được, kể cả bạn.",
+        "workers": "Worker",
+        "workersHint": "Run dưới agent này chỉ dùng tài khoản trên các worker này. Bạn gắn được worker của mình và worker dùng chung phục vụ {project}.",
+        "workersFailed": "Không tải được danh sách worker.",
+        "noWorkers": "Không có worker nào của bạn hay worker dùng chung phục vụ {project}.",
+        "expires": "Hết hạn vào (không bắt buộc)",
+        "expiresHint": "Từ 00:00 UTC ngày này không run nào dùng nó. Để trống nếu không hết hạn.",
+        "expiresRenewHint": "Để trống để giữ ngày hết hạn.",
+        "weight": "Trọng số",
+        "weightHint": "Từ 0 đến {max}.",
+        "priority": "Ưu tiên",
+        "priorityHint": "Từ 0 đến {max}, càng thấp càng sớm.",
+        "add": {
+          "title": "Thêm tài khoản cho @{handle}",
+          "description": "Một secret của agent: run của nó nhận secret thành biến môi trường trên các worker bạn chọn.",
+          "save": "Thêm tài khoản",
+          "done": "Đã thêm tài khoản {name}",
+          "doneText": "Run tiếp theo dưới @{handle} có thể dùng nó."
+        },
+        "edit": {
+          "title": "Sửa tài khoản {name}",
+          "description": "Worker, ngày hết hạn, và cách một nhóm cùng biến chọn nó.",
+          "save": "Lưu",
+          "done": "Đã đổi tài khoản {name}",
+          "doneText": "Run tiếp theo dưới @{handle} đọc thay đổi này."
+        },
+        "renew": {
+          "title": "Gia hạn tài khoản {name}",
+          "description": "Giá trị mới thay giá trị cũ. Worker, trọng số và ưu tiên giữ nguyên.",
+          "save": "Gia hạn",
+          "done": "Đã gia hạn tài khoản {name}",
+          "doneText": "Run tiếp theo dưới @{handle} nhận giá trị mới."
+        },
+        "problems": {
+          "nameRequired": "Nhập tên.",
+          "nameInvalid": "Dùng tối đa {chars} chữ thường, chữ số, dấu chấm, gạch ngang hoặc gạch dưới, bắt đầu bằng chữ hoặc số.",
+          "nameTaken": "Agent này đã có tài khoản tên đó.",
+          "envVarRequired": "Nhập biến.",
+          "envVarInvalid": "Dùng chữ hoa, chữ số và gạch dưới, không bắt đầu bằng số, tối đa {max} ký tự.",
+          "envVarDenied": "Run tự đặt biến này. Chọn biến khác.",
+          "valueRequired": "Nhập giá trị.",
+          "valueTooLong": "Giá trị dài hơn {bytes} byte.",
+          "workersRequired": "Chọn ít nhất một worker.",
+          "expiresInvalid": "Nhập một ngày.",
+          "expiresPast": "Chọn một ngày sau hôm nay.",
+          "whole": "Nhập số nguyên.",
+          "range": "Nhập số từ {min} đến {max}."
+        }
+      },
+      "errors": {
+        "forbidden": "Hub từ chối: chỉ admin của dự án mới đổi tài khoản của agent.",
+        "conflict": "Hub từ chối: agent đã có số tài khoản tối đa. Xoá bớt một tài khoản trước."
+      }
+    }
   },
   "runs": {
     "title": "Run",

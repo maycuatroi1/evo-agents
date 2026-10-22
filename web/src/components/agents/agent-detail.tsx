@@ -29,11 +29,24 @@ import { AgentBadges, ReadOnlyNote } from "./parts";
 /**
  * One agent of a project (web/DESIGN.md, Agents): its face, name and @handle, what it is for and the instructions its
  * runs get, its eight axes and the agent packs it attaches, its versions, and the runs that went under it (`runs`,
- * which the route composes from the runs feature). Chat opens the visitor's direct chat with it (for one who writes to
+ * which the route composes from the runs feature), and its accounts (`accounts`, from the accounts feature, for a live
+ * agent that is not the default, which takes none). Chat opens the visitor's direct chat with it (for one who writes to
  * the project). An admin of the project edits it, changes its avatar and deletes it (never the default); everyone else
  * reads it. A deleted agent reads as before, under a note.
  */
-export function AgentDetail({ project, handle, initialError, runs }: { project: string; handle: string; initialError: ApiErrorInfo | null; runs: ReactNode }) {
+export function AgentDetail({
+  project,
+  handle,
+  initialError,
+  runs,
+  accounts,
+}: {
+  project: string;
+  handle: string;
+  initialError: ApiErrorInfo | null;
+  runs: ReactNode;
+  accounts: ReactNode;
+}) {
   const t = useTranslations("agents.detail");
   const state = useHubQuery(agentQuery(browserApi, project, handle), initialError);
   if (state.status === "error" && state.error.status === 404) {
@@ -41,7 +54,7 @@ export function AgentDetail({ project, handle, initialError, runs }: { project: 
   }
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
-      {(agent) => <AgentPage project={project} agent={agent} runs={runs} />}
+      {(agent) => <AgentPage project={project} agent={agent} runs={runs} accounts={accounts} />}
     </QueryView>
   );
 }
@@ -55,7 +68,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function AgentPage({ project, agent, runs }: { project: string; agent: Agent; runs: ReactNode }) {
+function AgentPage({ project, agent, runs, accounts }: { project: string; agent: Agent; runs: ReactNode; accounts: ReactNode }) {
   const t = useTranslations("agents.detail");
   const format = useFormatter();
   const admin = useAgentAdmin(project);
@@ -138,6 +151,7 @@ function AgentPage({ project, agent, runs }: { project: string; agent: Agent; ru
           </Card>
           <AgentPermissions agent={agent} />
           <AgentPacks agent={agent} />
+          {live && !agent.is_default ? accounts : null}
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <AvatarCard project={project} agent={agent} admin={admin} />
