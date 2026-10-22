@@ -379,6 +379,7 @@ TABLES = (
     ("srs_findings", "The conflicts found in a document, their sources and how each was settled"),
     ("srs_settle_chats", "The chat where members settle the conflicts of a version with @ba"),
     ("srs_approval_tasks", "What the approval of a version did to the project's tasks, and @ba's run that splits them"),
+    ("srs_use_case_reviews", "Approvals and requests for changes of single use cases of a version"),
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,

@@ -1,4 +1,4 @@
-"""The tables of the core plugin srs (0046, 0064, 0069, 0070, 0071), which ``evo_agents.hub.tables`` adds to its
+"""The tables of the core plugin srs (0046, 0064, 0069, 0070, 0071, 0098), which ``evo_agents.hub.tables`` adds to its
 metadata as ``tables.srs``: queries name them there (``tables.srs.documents``). The plugin's code is ``evo_agents.core_plugins.srs``; the hub owns
 the tables because its one chain of migrations creates them (``docs/plugins.md``, Core plugins).
 
@@ -30,6 +30,9 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
   enabled the plugin tasks: one row a version, the version approved before it that it was compared with, the member
   whose approval made it approved, the task run of @ba that splits the frame tasks (whom ``tasks__create`` of that
   run acts for) and what was done (``outcome``). A second call for the same version finds the row and does nothing.
+- srs_use_case_reviews (0098): an approval or a request for changes a writer gave one use case of a version in review,
+  with the version it was given on, the item, the role it counts for and a note; a later review of the same reviewer on
+  the same use case replaces the earlier one when they are counted, and the earlier one stays.
 """
 
 from __future__ import annotations
@@ -134,6 +137,7 @@ class SrsTables:
     findings: Table
     settle_chats: Table
     approval_tasks: Table
+    use_case_reviews: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
@@ -406,6 +410,27 @@ def _approval_tasks(metadata: MetaData) -> Table:
     )
 
 
+def _use_case_reviews(metadata: MetaData) -> Table:
+    name = "srs_use_case_reviews"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("item_id", BigInteger, nullable=False),
+        Column("reviewer_id", BigInteger, nullable=False),
+        Column("role", Text),
+        Column("decision", Text, nullable=False),
+        Column("body", Text, nullable=False, server_default=""),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
+        _key(name, "reviewer_id", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="srs_use_case_reviews_pkey"),
+        Index("srs_use_case_reviews_version_idx", "version_id", "item_id"),
+    )
+
+
 def srs_tables(metadata: MetaData) -> SrsTables:
     """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users, runs and chats
     already)."""
@@ -422,4 +447,5 @@ def srs_tables(metadata: MetaData) -> SrsTables:
         findings=_findings(metadata),
         settle_chats=_settle_chats(metadata),
         approval_tasks=_approval_tasks(metadata),
+        use_case_reviews=_use_case_reviews(metadata),
     )

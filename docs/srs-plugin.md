@@ -56,6 +56,9 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
   item a key and keeps it across versions, so an item renamed, moved or renumbered is the same item. A use case keeps
   its fields (ID, Status, Objective, Intent, Actor, Context, Trigger, Pre-condition, Post-condition, Expectation, and
   any other row of its table of items) and the steps of its activity flow; a business rule the steps it applies to.
+- **A use case review** (`srs_use_case_reviews`) is one approval, or one request for changes, of a writer on one use
+  case of a version in review, with the role it counts for and a note. Rows are kept; the ones that count are worked
+  out when read (section Approval, Reviewing a use case).
 - **A code** (`UC ORD-3`, `BR ORD3-2`, `SCR-4`, `NFR-SEC-01`, `CBR 2`) names a coded item. A code and its aliases are
   unique in the project across every document, compared with whitespace runs as one space and case folded, so
   `UC ORD-1` and `uc  ord-1` are one code. A code stays when its item is renamed or moved, no save changes it, and
@@ -154,6 +157,36 @@ approves it or asks for changes, with these rules:
   the hub, queues a build of its knowledge graph. It emits the event `srs.version.approved` in the same transaction;
   when the project enables the plugin tasks, the plugin keeps the project's tasks in step once the hub delivers that
   event (section Tasks when a version is approved).
+
+**Reviewing a use case.** A version in review has *use cases to review*: those it adds, those it changes (the use case
+itself, or a business rule under it added, changed or dropped) and those it drops, compared with the version approved
+last, every use case when none was approved yet. A use case that only moved needs no review; nothing else of the
+document is reviewed on its own. A writer approves one or asks for changes on one, under the rules above (writer, not a
+run's token, version in review, not an author since the last approval unless `self_approval`, a role from `roles`):
+
+```sh
+curl -X POST "$HUB/v1/x/srs/evo-agents/documents/orders/versions/2/items/UC%20ORD-1/reviews" \
+  -H "Authorization: Bearer $TOKEN" -d '{"decision": "request_changes", "body": "Name the gateway"}'
+```
+
+- `ref` is a code, alias or key. A ref that is not a use case to review of that version is a 422 that lists them, and a
+  request for changes without a note is a 422. An approval goes through the findings gate; a request is never held.
+- A later review of the same person on the same use case replaces the earlier one when counted; the rows stay.
+- A use case is `changes_requested` while one counted review asks for changes, else `approved` when its counted
+  approvals and the version-wide approvals of the round satisfy the policy (a version-wide approval of role R counts
+  for every use case, for R), else `pending`.
+- The version is approved, with the event `srs.version.approved` and the knowledge build, by the review that makes
+  every use case to review `approved`. Submit never approves. A version with no use case to review is approved by
+  version-wide reviews alone.
+- A request for changes on a use case keeps the version in review and blocks every approval, version-wide ones too
+  (those are still recorded). A version-wide request for changes still returns the version to `draft`.
+- A review carries to a later version while the use case reads the same there (title, fields, body and the business
+  rules under it; not its position), it was recorded on a version after the one approved last, and its reviewer may
+  still review. A version answers `use_cases` (`code`, `key`, `title`, `change`, `state` and the counted `reviews`, each
+  with the version it was recorded on) while it is a draft or in review; the review route answers the same.
+- The Loop does not hand a use case again when only one use case is change-requested: it is handed use cases through
+  the event `srs.version.approved` (section Tasks when a version is approved), which a use case review emits only when
+  it approves the whole version, so a request for changes on one use case hands nothing.
 
 **Withdrawing a version.** The author of a version in review, while they hold writer, or an admin of the project,
 takes it out of review for good:
@@ -370,7 +403,7 @@ Under `/v1/x/srs/{project}/`:
 | `GET documents` (`?all=true`) | the documents the caller sees, each with its latest and approved versions; the archived ones only with `all` |
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
-| `GET documents/{slug}/versions/{number}` | a version whole: its items and its problems |
+| `GET documents/{slug}/versions/{number}` | a version whole: its items, its problems and its `use_cases` to review |
 | `GET documents/{slug}/items/{ref}` (`?version=N`) | an item by code, alias or key, with its children |
 | `GET documents/{slug}/diff?from=N&to=M` | what changed between two versions, item by item |
 | `GET documents/{slug}/export` (`?version=N&anchors=false`) | a version as Markdown |
@@ -378,6 +411,7 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/versions` | changes made on `base_version` as the next version (201), 409 on a conflict |
 | `POST documents/{slug}/versions/{number}/submit` | a draft to review |
 | `POST documents/{slug}/versions/{number}/reviews` | `{"decision": "approve" \| "request_changes", "role", "body"}` |
+| `POST documents/{slug}/versions/{number}/items/{ref}/reviews` | same body: one use case of a version in review; answers the version with its `use_cases` |
 | `POST documents/{slug}/versions/{number}/withdraw` | `{"comment"}`, optional: a version in review out of review for good |
 | `POST documents/{slug}/retire` | `{"codes", "summary", "dry_run"}`: the next version without those items; `dropped` lists each item |
 | `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |

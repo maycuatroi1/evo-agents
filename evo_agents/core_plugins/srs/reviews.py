@@ -12,6 +12,13 @@
   approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
   but a withdrawn one, and emits ``srs.version.approved`` in the same transaction (``events.version_approved``), from
   which the plugin keeps the project's tasks in step (``auto_tasks``).
+- ``review_use_case``: the same writer approves or asks for changes on one use case of a version in review (plan
+  srs-use-case-review, ``use_case_reviews``), under the same conditions as the version's review, except that a later
+  review of theirs replaces the earlier one. An approval goes through the same gate; a request for changes needs a
+  note, is never held, and leaves the version in review, where it blocks every approval (a version-wide one is still
+  recorded). The version is approved by the review that makes every use case it adds, changes or drops since the
+  version approved last approved by the policy (a version-wide approval counts for each use case, for its role), and
+  none of them changes_requested; a version with no such use case is approved by version-wide reviews alone, as before.
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
@@ -26,21 +33,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import ROLES, checks, events, findings, store
+from evo_agents.core_plugins.srs import ROLES, checks, events, findings, store, use_case_reviews
 from evo_agents.core_plugins.srs.doc import SrsError
 from evo_agents.core_plugins.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
+from evo_agents.core_plugins.srs.use_case_reviews import APPROVE, REQUEST_CHANGES, CaseReview, CaseState, approved_by
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
-APPROVE, REQUEST_CHANGES = "approve", "request_changes"
 WITHDRAWN = "withdrawn"
 LAST_STATES = ("superseded", WITHDRAWN)  # a version in one never changes state again
 
@@ -65,14 +73,9 @@ async def submit(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow,
     return await store.version(conn, doc, number)
 
 
-async def _authors_since(conn: AsyncConnection, doc: DocumentRow, number: int) -> set[int]:
-    v = tables.srs.versions
-    since = doc.approved_version or 0
-    query = select(v.c.author_id).where(v.c.document_id == doc.id, v.c.number > since, v.c.number <= number)
-    return set((await conn.execute(query)).scalars())
-
-
-def role_for(settings: Settings, login: str, asked: str | None, kind: str, approvals: list[ReviewRow]) -> str | None:
+def role_for(
+    settings: Settings, login: str, asked: str | None, kind: str, approvals: Sequence[ReviewRow | CaseReview]
+) -> str | None:
     """The role a review of ``login`` counts for: the one asked, which they must hold, else the first role the policy
     requires that they hold and no approval of the round filled, else the first they hold; None when they hold none."""
     held = [role for role in ROLES if login in (settings.roles.get(role) or [])]
@@ -87,14 +90,6 @@ def role_for(settings: Settings, login: str, asked: str | None, kind: str, appro
     return next((role for role in required if role in held and role not in filled), held[0])
 
 
-def approved_by(policy: dict | None, approvals: list[ReviewRow]) -> bool:
-    """Whether ``approvals`` of a round approve a version under ``policy`` (that of its document's kind)."""
-    required = (policy or {}).get("required") or []
-    if not required:
-        return bool(approvals)
-    return set(required) <= {review.role for review in approvals}
-
-
 async def _approve(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) -> None:
     s = tables.srs
     v, d = s.versions, s.documents
@@ -104,12 +99,11 @@ async def _approve(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) ->
     await conn.execute(update(d).where(d.c.id == doc.id).values(approved_version=held.number))
 
 
-async def _checked_reviewer(
+async def _may_review(
     conn: AsyncConnection, access: ProjectAccess, user: Principal, doc, held: VersionRow, settings: Settings
 ) -> None:
     """Refuse ``user`` a review of ``held``: the agent of a run always, a member without writer, a version not in
-    review, an author since the version approved last (unless ``settings.self_approval``), a second review this
-    round."""
+    review, an author since the version approved last (unless ``settings.self_approval``)."""
     if user.scope is not None:
         raise SrsError(403, "the agent of a run never approves or returns a version: a member of the project does")
     writer(access, "reviewing a version")
@@ -117,9 +111,16 @@ async def _checked_reviewer(
         raise SrsError(
             409, f"version {held.number} of {doc.slug} is {held.state}: only a version in review is reviewed"
         )
-    if not settings.self_approval and user.user_id in await _authors_since(conn, doc, held.number):
+    if not settings.self_approval and user.user_id in await use_case_reviews.authors_since(conn, doc, held.number):
         since = f"version {doc.approved_version}" if doc.approved_version else "the first version"
         raise SrsError(403, f"{user.login} wrote a version of {doc.slug} since {since}: another member reviews it")
+
+
+async def _checked_reviewer(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, doc, held: VersionRow, settings: Settings
+) -> None:
+    """``_may_review``, and refuse a second review of the version this round."""
+    await _may_review(conn, access, user, doc, held, settings)
     if any(review.reviewer_id == user.user_id and review.round == held.round for review in held.reviews):
         raise SrsError(409, f"{user.login} reviewed version {held.number} in this round already")
 
@@ -162,10 +163,70 @@ async def review(
         await conn.execute(update(s.versions).where(s.versions.c.id == held.id).values(state="draft"))
     else:
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
-        if approved_by(settings.policy.get(doc.kind), [*approvals, mine]):
+        if await _approves(conn, access, doc, held, settings, [*approvals, mine]):
             await _approve(conn, doc, held)
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
     return await store.version(conn, doc, number)
+
+
+async def _approves(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    doc: DocumentRow,
+    held: VersionRow,
+    settings: Settings,
+    approvals: list[ReviewRow],
+) -> bool:
+    """Whether the version-wide ``approvals`` of the round, with the reviews of use cases that count, approve ``held``:
+    every use case to review approved, or the policy satisfied by ``approvals`` when it has none."""
+    doc_now = (await store.snapshot(conn, held)).doc
+    cases = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, approvals)
+    if cases:
+        return use_case_reviews.ready(cases)
+    return approved_by(settings.policy.get(doc.kind), approvals)
+
+
+async def review_use_case(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    user: Principal,
+    doc: DocumentRow,
+    number: int,
+    ref: str,
+    request: ReviewRequest,
+    settings: Settings,
+) -> tuple[VersionRow, list[CaseState]]:
+    """Approve use case ``ref`` (code, alias or key) of version ``number`` of ``doc`` or ask for changes on it, as
+    ``user``; the version's row and its use cases to review after. The caller holds the document's row lock."""
+    held = await store.version(conn, doc, number, lock=True)
+    await _may_review(conn, access, user, doc, held, settings)
+    wide = use_case_reviews.round_approvals(held)
+    before = await use_case_reviews.states(
+        conn, access.project_id, doc, held, (await store.snapshot(conn, held)).doc, settings, wide
+    )
+    item_id = await store.item_id(conn, access, doc, ref)
+    key = await use_case_reviews.key_of(conn, item_id)
+    case = next((case for case in before if case.key == key), None)
+    if case is None:
+        named = ", ".join(c.code or c.key for c in before) or "none"
+        raise SrsError(
+            422,
+            f"{ref} is not a use case version {number} of {doc.slug} needs reviewed: a use case it adds, changes or "
+            f"drops since the version approved last is, and these are: {named}",
+        )
+    if request.decision == REQUEST_CHANGES and not request.body.strip():
+        raise SrsError(422, "a request for changes on a use case needs a note saying what to change")
+    if request.decision == APPROVE:
+        await findings.approval_hold(conn, access, doc, held)
+    others = [r for r in case.reviews if r.reviewer_id != user.user_id and r.decision == APPROVE]
+    role = role_for(settings, user.login, request.role, doc.kind, [*others, *wide])
+    await use_case_reviews.record(conn, held, item_id, user.user_id, role, request.decision, request.body)
+    doc_now = (await store.snapshot(conn, held)).doc
+    after = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, wide)
+    if request.decision == APPROVE and use_case_reviews.ready(after):
+        await _approve(conn, doc, held)
+        await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
+    return await store.version(conn, doc, number), after
 
 
 async def withdraw(
@@ -344,6 +405,7 @@ __all__ = [
     "comments",
     "resolve",
     "review",
+    "review_use_case",
     "role_for",
     "submit",
     "withdraw",
