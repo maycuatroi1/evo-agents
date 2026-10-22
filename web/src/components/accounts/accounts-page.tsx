@@ -18,6 +18,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type Actions } from "./account-columns";
 import { AccountGroup } from "./account-group";
+import { AccountSharing } from "./account-sharing";
 import { Day } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
 import { useChangeAccount, useFailure } from "./hooks";
@@ -112,8 +113,8 @@ function RenewNotice({ accounts, now, onRenew }: { accounts: Account[]; now: num
  * their estimated cost over 24 hours and 7 days, and the runs holding it now, with its usage limits as bars under its
  * row (a Claude account's, or any a run reported); Renew
  * token (a Claude account's), Pause or Resume and Edit (weight and priority) on each, and a reminder for each token
- * that ends within 30 days; then the rotation policy of each project. Add Claude account opens the same dialog as
- * Renew token, empty. Never a value.
+ * that ends within 30 days; then the rotation policy of each project, then its shares and what the members they went
+ * to spent. Add Claude account opens the same dialog as Renew token, empty. Never a value.
  */
 export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("accounts");
@@ -190,6 +191,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
                 <Groups accounts={list} now={now} {...actions} />
               </div>
               <Policies accounts={list} />
+              <AccountSharing accounts={list} now={now} />
             </div>
           )
         }
