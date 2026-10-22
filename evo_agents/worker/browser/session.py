@@ -17,7 +17,10 @@ stops it and removes the directory of every run it does not hold (``sweep``).
 
 A run dispatched with browser identities (criterion a4) starts on the profile of the first and with the cookies of the
 others (``profiles.Profiles``), on an empty profile when Chromium does not start on that one; ``save``, as the run ends
-and before its final report, sends each identity's profile back to the hub and closes Chromium."""
+and before its final report, sends each identity's profile back to the hub and closes Chromium.
+
+``watch``, as soon as Chromium listens, starts the broker of the run's live view (``live.LiveView``, criterion a5),
+which ``save`` and ``close`` stop first, closing its end on the hub."""
 
 from __future__ import annotations
 
@@ -27,14 +30,14 @@ import json
 import os
 import shutil
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
 
 from evo_agents.worker import orphans
-from evo_agents.worker.browser import chromium, install, profiles
+from evo_agents.worker.browser import chromium, install, live, profiles
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runtimes.common import descendants, kill_tree
 
@@ -69,6 +72,7 @@ class BrowserSession:
         self.cdp: str | None = None
         self.socket: str | None = None  # the path of the browser's DevTools websocket
         self.noted: dict = {}  # its process group, as orphans.describe said it at the start
+        self.live: live.LiveView | None = None  # the broker of its live view, while Chromium runs
 
     @property
     def profile(self) -> Path:
@@ -114,9 +118,24 @@ class BrowserSession:
             await self._start(installed)
             await self.profiles.unopenable()
 
+    def watch(self, state_of: Callable[[], str]) -> None:
+        """Start the broker of the run's live view, once Chromium listens; ``state_of()`` is the run's state."""
+        hub = getattr(self.daemon, "hub", None)
+        if self.cdp is None or self.live is not None or hub is None:
+            return
+        devtools = self.cdp.replace("http://", "ws://", 1) + (self.socket or "")
+        self.live = live.LiveView(self.run_id, devtools, hub.session, hub.url, self.daemon.token, state_of)
+        self.live.start()
+
+    async def _unwatch(self) -> None:
+        watching, self.live = self.live, None
+        if watching is not None:
+            await watching.stop()
+
     async def save(self) -> None:
-        """Send the profiles of the run's browser identities back to the hub, once, closing its Chromium
-        (``Profiles.save``); nothing for a run without identities."""
+        """Stop the run's live view, then send the profiles of the run's browser identities back to the hub, once,
+        closing its Chromium (``Profiles.save``); no profile for a run without identities."""
+        await self._unwatch()  # the run ends: its live view with it
         await self.profiles.save()
 
     async def _start(self, installed: install.Installed) -> None:
@@ -151,6 +170,7 @@ class BrowserSession:
 
     async def close(self, grace: float = STOP_GRACE) -> None:
         """Close Chromium so it ends writing, kill what is left of it, and remove the run's browser directory."""
+        await self._unwatch()
         process, self.process = self.process, None
         try:
             if process is not None:

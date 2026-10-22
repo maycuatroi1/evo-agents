@@ -426,6 +426,7 @@ class Agent:
         finally:
             for line in self.browser.profiles.take_notes():
                 run.note(line)
+        self.browser.watch(lambda: run.state)
         self.note_once(
             f"Browser: Chromium runs for the run; its agent finds its DevTools in {browser_session.VARIABLE}."
         )
