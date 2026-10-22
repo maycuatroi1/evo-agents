@@ -783,6 +783,9 @@ async def chat_prompt(
     shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
     in_thread = [shown[row.id]["body"] for row in rows if row.id in shown and root_id in (row.id, row.thread_root_id)]
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
+    files = (await attachment_store.of_messages(conn, [found.message_id])).get(found.message_id, [])
+    if files:  # the worker saves them before the first turn and lists their paths after the prompt
+        trigger["files"] = [{"name": f.name, "media_type": f.media_type, "size": f.size} for f in files]
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(
         root,

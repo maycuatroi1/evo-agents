@@ -13887,6 +13887,14 @@
           "value": null,
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--fetch"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -91034,6 +91042,18 @@
               "type": "array",
               "title": "Attachments",
               "description": "a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run"
+            },
+            "chat_message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Message Id",
+              "description": "a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run"
             }
           },
           "type": "object",

@@ -1248,6 +1248,13 @@ each file (`--attach` repeated, up to 10) before the message, after checking the
 with one; `hub run chat` and `hub chat show` print the names of a message's files. hub-cli-v1 gained `--attach` and
 `attachments` in the `--json` of `hub run send` and `hub chat send|react`.
 
+**On the worker.** The worker saves the files of each message under `.evo-run/inbox/` of the agent's directory, which
+is never committed, and adds a block after the message's text that lists their paths, media types and sizes as data
+of the sender, not instructions; the runtime gets text alone (docs/workers.md, Files attached to messages). The claim
+of a chat run names the chat message that opened it in `RunSpec.chat_message_id` (null for any other run), whose
+files go to `.evo-run/inbox/chat-<id>/`, and the hub's prompt of that run names them after the message to answer in a
+`[files attached: ...]` line. A message without files reaches the agent as before.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three

@@ -207,6 +207,13 @@ def test_a_chat_messages_attachments_go_to_its_readers_its_chat_run_claim_and_it
     assert client.get(url, headers=hub["stranger"]).status_code in (403, 404)
     spec = claim(client, worker)
     assert spec["kind"] == "chat" and [f["id"] for f in spec["attachments"]] == [shot["id"]]
+    message_id = posted.json()["id"]
+    assert spec["chat_message_id"] == message_id, "the worker saves the files under .evo-run/inbox/chat-<it>/"
+    assert (
+        f"[files attached: diagram.svg (image/svg+xml, {len(SVG)} bytes). The worker saves them under "
+        in (spec["prompt"])
+    )
+    assert f".evo-run/inbox/chat-{message_id}/" in spec["prompt"]
     read = client.post(
         f"/v1/worker/runs/{spec['id']}/chat/read", json={"id": str(posted.json()["id"])}, headers=worker["headers"]
     )
@@ -235,6 +242,8 @@ def test_a_reply_with_attachments_reaches_the_inbox_of_the_running_chat_run(clie
 def test_a_text_only_message_carries_no_attachment(client, hub):
     worker, chat, mention, spec = a_chat_run(client, hub)
     assert mention["attachments"] == []
+    assert spec["attachments"] == [] and spec["chat_message_id"] == mention["id"]
+    assert "[files attached:" not in spec["prompt"], "a text-only message's prompt is as before"
     message = to_run(client, hub["owner"], spec["id"], "go on", [])
     assert message.status_code == 201 and message.json()["attachments"] == []
     assert "attachments" not in events(client, hub["owner"], spec["id"], "user_message")[-1]
