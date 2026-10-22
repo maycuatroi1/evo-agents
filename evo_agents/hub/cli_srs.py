@@ -1,4 +1,4 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive``: the
+"""``evo-agents hub srs list|show|import|export|submit|approve|reviews|withdraw|retire|archive|unarchive|findings|waive``: the
 BA documents of a project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
 plugins). The plugin's code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
 
@@ -8,7 +8,9 @@ with its fields and children. ``import FILE`` reads Markdown (``-`` for stdin) w
 a new document (``--slug``, ``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only.
 ``export SLUG`` prints a version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output``
 writes a file). ``submit SLUG N`` sends a draft to review; ``approve SLUG N`` approves it, ``--request-changes`` sends
-it back with ``--comment``. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an
+it back with ``--comment``; with ``--item CODE`` (repeatable) the review is of those use cases one by one, in order, and stops at
+the first the hub refuses. ``reviews SLUG N`` prints the version's state and the use cases it needs reviewed, with the
+reviews that count. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an
 admin, with the reason as a comment on it (``--comment``). ``retire SLUG CODE...``, an admin's, saves the next version
 without the items holding those codes or aliases and their subtrees (POST .../documents/{slug}/retire), a draft, and
 prints its number and every item dropped; ``--dry-run`` prints the items only and writes nothing. ``archive SLUG``, an
@@ -83,6 +85,7 @@ VERSION_KEYS = (
     "review_run",
     "reviews",
 )
+USE_CASE_VERSION_KEYS = (*VERSION_KEYS, "use_cases")
 
 
 def _path(project: str, *parts: str, query: dict | None = None) -> str:
@@ -271,11 +274,49 @@ def cmd_approve(args) -> int:
     body = {"decision": "request_changes" if args.request_changes else "approve", "body": args.comment or ""}
     if args.role:
         body["role"] = args.role
-    found = _call("POST", _path(args.project, "documents", args.slug, "versions", str(args.number), "reviews"), body)
+    version = ("documents", args.slug, "versions", str(args.number))
+    if not args.item:
+        found = _call("POST", _path(args.project, *version, "reviews"), body)
+    for ref in args.item or ():
+        found = _call("POST", _path(args.project, *version, "items", ref, "reviews"), body)
     if args.json:
         print_json(found)
     else:
         _print_version(args.slug, found)
+        if args.item:
+            _print_use_cases(found)
+    return 0
+
+
+def _counted(reviews: list[dict]) -> str:
+    return (
+        "; ".join(
+            f"{r['decision'].replace('_', ' ')} by {r['reviewer']}"
+            + (f" as {r['role']}" if r["role"] else "")
+            + f" on v{r['version']}"
+            for r in reviews
+        )
+        or "-"
+    )
+
+
+def _print_use_cases(version: dict) -> None:
+    cases = version.get("use_cases") or []
+    if not cases:
+        print("  no use case to review")
+        return
+    rows = [[c["code"] or c["key"], c["change"], c["state"].replace("_", " "), _counted(c["reviews"])] for c in cases]
+    table(("CODE", "CHANGE", "STATE", "REVIEWS"), rows)
+
+
+@client_command
+def cmd_reviews(args) -> int:
+    found = _call("GET", _path(args.project, "documents", args.slug, "versions", str(args.number)))
+    if args.json:
+        print_json({key: found[key] for key in USE_CASE_VERSION_KEYS})
+    else:
+        _print_version(args.slug, found)
+        _print_use_cases(found)
     return 0
 
 
@@ -443,8 +484,22 @@ def _register_review(ssub) -> None:
     approve.add_argument("--request-changes", action="store_true", help="send it back to draft instead")
     approve.add_argument("--comment", metavar="TEXT", help="what the review says; needed with --request-changes")
     approve.add_argument("--role", choices=ROLES, help="the role the review counts for (one you hold)")
-    json_option(approve, returns_object(*VERSION_KEYS, schema="SrsVersion"))
+    approve.add_argument(
+        "--item", action="append", metavar="CODE", help="review this use case only, by code, alias or key (repeatable)"
+    )
+    json_option(
+        approve,
+        returns_object(
+            *VERSION_KEYS,
+            schema="SrsVersion",
+            variants=(("--item", returns_object(*USE_CASE_VERSION_KEYS, schema="SrsVersionCases")),),
+        ),
+    )
     approve.set_defaults(func=cmd_approve)
+
+    reviews = _version_command(ssub, "reviews", "a version's state and the use cases it needs reviewed")
+    json_option(reviews, returns_object(*USE_CASE_VERSION_KEYS, schema="SrsVersionCases"))
+    reviews.set_defaults(func=cmd_reviews)
 
     withdraw = _version_command(ssub, "withdraw", "withdraw a version in review, for good (its author or an admin)")
     withdraw.add_argument("--comment", metavar="TEXT", help="why, kept as a comment on the version")

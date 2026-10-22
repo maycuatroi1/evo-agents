@@ -31,7 +31,16 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import checks, edits, findings, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs import (
+    checks,
+    edits,
+    findings,
+    imports,
+    markdown,
+    reviews,
+    store,
+    use_case_reviews,
+)
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
@@ -51,9 +60,11 @@ from evo_agents.core_plugins.srs.models import (
     SrsReviewIn,
     SrsSave,
     SrsVersion,
+    SrsVersionCases,
     SrsVersionDetail,
     SrsWaiveIn,
     SrsWithdrawIn,
+    cases_model,
     comment_model,
     detail_model,
     diff_model,
@@ -102,7 +113,9 @@ async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.Docum
     row = await store.version(conn, doc, number)
     snap = await store.snapshot(conn, row)
     settings = await store.settings(conn, access)
-    return detail_model(doc.slug, row, snap.doc, checks.problems(snap.doc, settings.template))
+    wide = use_case_reviews.round_approvals(row)
+    cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
+    return detail_model(doc.slug, row, snap.doc, checks.problems(snap.doc, settings.template), cases)
 
 
 # Reading
@@ -382,6 +395,39 @@ async def review_version(
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
         return version_model(decided)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews", response_model=SrsVersionCases)
+async def review_use_case(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    number: Number,
+    ref: Annotated[str, Path(min_length=1, max_length=100, description="the use case's code, an alias or its key")],
+    body: SrsReviewIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Approve one use case of a version in review or ask for changes on it, under the conditions of a review of the
+    version; a later review of the same member on the use case replaces the earlier one when they are counted. 422 for
+    an item that is no use case the version needs reviewed (one it adds, changes or drops since the version approved
+    last) and for a request for changes with no note. An approval goes through the gate of a version's (409 while a
+    finding of level decide is open or @ba's review runs); a request for changes leaves the version in review and
+    blocks every approval of it. The version is approved by the review that makes every use case to review approved,
+    as its version-wide reviews do: it emits srs.version.approved as any approval. Answers the version with its use
+    cases."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        settings = await store.settings(conn, access)
+        asked = reviews.ReviewRequest(body.decision, body.role, body.body)
+        decided, cases = await reviews.review_use_case(conn, access, user, doc, number, ref, asked, settings)
+        if decided.state == "approved":
+            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+        return cases_model(decided, cases)
 
     return await _answer(request, work)
 

@@ -26,6 +26,8 @@ import { policyOf, reviewBlock, rolesOf, selfApprovalOf, slots, versionOf } from
 import { ApprovalsCard, ReviewHistory } from "./review-parts";
 import { ReviewForm } from "./review-form";
 import { DraftBanner } from "./submit-banner";
+import { caseBlock } from "./use-case-model";
+import { type CaseAccess, UseCaseReviews } from "./use-case-reviews";
 import { ChecksCard } from "./version-rail";
 
 /** What approving the version would approve: every item changed since the version approved last. */
@@ -110,6 +112,14 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
         : block === "author"
           ? t("blocked.author", { versions: written.join(", "), since: approved ? `v${approved}` : t("firstVersion"), version: version.number })
           : t("blocked.reviewed", { version: version.number });
+  // A use case is reviewed again and again, each review replacing the person's last, so "reviewed" blocks nothing here.
+  const cases = caseBlock(block);
+  const access: CaseAccess =
+    !viewer || (cases === "author" && awaitingConfig)
+      ? { kind: "waiting" }
+      : cases !== null
+        ? { kind: "blocked", reason }
+        : { kind: "review", login: viewer.login, roles: rolesOf(fields, viewer.login), lock };
   return (
     <div className="flex flex-col gap-6" data-testid="srs-review" data-version={version.number}>
       <DocumentHead
@@ -157,6 +167,21 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
           <ApprovalsCard project={project} policy={policy} slots={slots(policy, version)} version={version} approved={approved} selfApproval={selfApproval} />
+          {version.state === "in_review" ? (
+            <QueryView state={detail} loading={<ListSkeleton rows={2} />}>
+              {(doc) => (
+                <UseCaseReviews
+                  project={project}
+                  slug={latest.slug}
+                  version={version.number}
+                  round={version.round}
+                  approved={approved}
+                  useCases={doc.shown?.use_cases ?? []}
+                  access={access}
+                />
+              )}
+            </QueryView>
+          ) : null}
           <FindingsCard
             project={project}
             slug={latest.slug}
