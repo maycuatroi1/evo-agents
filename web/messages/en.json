@@ -8759,7 +8759,8 @@
     "source": {
       "sent": "Sent by the agent",
       "tool": "From a tool's result",
-      "outputs": "Output folder"
+      "outputs": "Output folder",
+      "attached": "Attached to a message"
     },
     "strip": {
       "question": "Files of this question",
@@ -9216,5 +9217,20 @@
       "doneText": "No run takes it under this share any more.",
       "gone": "This share is already revoked. The list was read again."
     }
+  },
+  "attachments": {
+    "attach": "Attach files, at most {max}",
+    "list": "Files to send",
+    "drop": "Drop files to attach them",
+    "progress": "Uploading {name}",
+    "remove": "Remove {name}",
+    "retry": "Upload {name} again",
+    "failed": "Upload failed",
+    "failedBig": "Over {max}",
+    "failedNetwork": "Hub not reached",
+    "tooBig": "Not attached: {names}. A file is at most {max}.",
+    "tooMany": "A message carries at most {max} files: {names} not attached.",
+    "notReady": "A file did not upload: retry it or remove it, then send.",
+    "files": "Files of this message"
   }
 }

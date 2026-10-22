@@ -11,6 +11,10 @@ import type { components } from "./api/schema";
 export type RunOutput = components["schemas"]["RunOutput"];
 export type OutputSource = RunOutput["source"];
 export type OutputViewer = RunOutput["viewer"];
+/** Where a file the viewer shows came from: a run's output by its source, or a file a person attached to a message. */
+export type FileSource = OutputSource | "attached";
+/** A file the strips and the viewer show: a run's output, or a file attached to a message (lib/attachments.ts). */
+export type ViewedFile = Omit<RunOutput, "source" | "run_id" | "tool_call_id"> & { source: FileSource };
 
 /** `outputs.SOURCES` of the API, in its order: sent on purpose, taken out of a tool's result, left in .evo-run/outputs/. */
 export const OUTPUT_SOURCES = ["sent", "tool", "outputs"] as const satisfies readonly OutputSource[];

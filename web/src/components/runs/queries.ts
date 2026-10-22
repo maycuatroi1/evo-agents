@@ -354,11 +354,10 @@ export async function controlRun(api: ApiClient, project: string, id: number, ac
 }
 
 /** A message from the owner to the run's agent, which the worker hands over at the agent's next turn. */
-export async function sendRunMessage(api: ApiClient, project: string, id: number, text: string): Promise<RunMessage> {
+export async function sendRunMessage(api: ApiClient, project: string, id: number, text: string, files: number[] = []): Promise<RunMessage> {
   const headers = await csrfHeaders(api);
-  return call(
-    api.POST("/v1/projects/{project}/runs/{run_id}/messages", { params: { path: { project, run_id: id } }, body: { text }, headers }),
-  );
+  const body = files.length ? { text, attachment_ids: files } : { text };
+  return call(api.POST("/v1/projects/{project}/runs/{run_id}/messages", { params: { path: { project, run_id: id } }, body, headers }));
 }
 
 /** A presigned GET of the run's diff, working for 5 minutes; `download` asks for the attachment run-<id>.diff. */

@@ -30,6 +30,7 @@ from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.loop.runs_of import item_of_run
@@ -706,7 +707,16 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
+        attachments=await _opening_files(conn, view),
+        chat_message_id=view.chat_message_id if view.kind == "chat" else None,
     )
+
+
+async def _opening_files(conn: AsyncConnection, view: Run) -> list:
+    """The files of the chat message that opened chat run ``view``; none for any other run."""
+    if view.kind != "chat" or view.chat_message_id is None:
+        return []
+    return (await attachment_store.of_messages(conn, [view.chat_message_id])).get(view.chat_message_id, [])
 
 
 async def _release_spec(conn: AsyncConnection, view: Run):

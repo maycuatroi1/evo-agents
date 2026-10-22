@@ -49,6 +49,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import move_run, write_event
 from evo_agents.hub.server.runs.models import REFUSALS, Run, RunId
+from evo_agents.hub.server.runs.models.attachment_parts import SentFile
 from evo_agents.hub.server.runs.service.audits import audit_run
 from evo_agents.hub.server.runs.service.controls import ask_once, owned_run
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -97,6 +98,11 @@ class ChatMessage(BaseModel):
     login: str | None = Field(description="the owner's login for the owner's message; null for the agent's")
     text: str
     at: datetime
+    attachments: list[SentFile] = Field(
+        default_factory=list,
+        description="the files of the owner's message, whose bytes GET /v1/projects/{p}/runs/{id}/attachments/{aid}"
+        "/content serves",
+    )
 
 
 class RunChat(BaseModel):
@@ -159,6 +165,7 @@ def _messages(run_id: int, limit: int):
             case((owner, e.c.body["from"].astext)).label("login"),
             e.c.body["text"].astext.label("text"),
             e.c.at,
+            e.c.body["attachments"].label("attachments"),
         )
         .where(e.c.run_id.in_(select(chain.c.id)), or_(owner, _is_agent()))
         .order_by(e.c.run_id.desc(), e.c.seq.desc())
@@ -275,7 +282,10 @@ async def read_chat(
         rows = (await conn.execute(_messages(run_id, author.MAX_CHAT_MESSAGES + 1))).all()
         latest = (await conn.execute(_latest(run_id))).one()
     more = len(rows) > author.MAX_CHAT_MESSAGES
-    shown = [ChatMessage(**row._mapping) for row in reversed(rows[: author.MAX_CHAT_MESSAGES])]
+    shown = [
+        ChatMessage(**{**row._mapping, "attachments": row.attachments or []})
+        for row in reversed(rows[: author.MAX_CHAT_MESSAGES])
+    ]
     return RunChat(
         run_id=latest.id,
         state=latest.state,

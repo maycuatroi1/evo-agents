@@ -15,7 +15,7 @@ import {
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { baseName, extensionOf, type RunOutput, textKind } from "@/lib/outputs";
+import { baseName, extensionOf, type ViewedFile, textKind } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { useByteSize } from "./byte-size";
@@ -29,12 +29,12 @@ import { useByteSize } from "./byte-size";
 const TEXT_ICON = { markdown: FileText, plain: FileText, json: FileCode, code: FileCode, csv: FileSpreadsheet } as const;
 
 /** The icon of an output by how the web views it, text by what it holds: decorative, beside the words that name it. */
-export function OutputKindIcon({ output, className }: { output: Pick<RunOutput, "viewer" | "name" | "media_type">; className?: string }) {
+export function OutputKindIcon({ output, className }: { output: Pick<ViewedFile, "viewer" | "name" | "media_type">; className?: string }) {
   const Icon = ICONS[output.viewer === "text" ? textKind(output) : output.viewer];
   return <Icon className={className} aria-hidden="true" />;
 }
 
-const ICONS: Record<Exclude<RunOutput["viewer"], "text"> | keyof typeof TEXT_ICON, LucideIcon> = {
+const ICONS: Record<Exclude<ViewedFile["viewer"], "text"> | keyof typeof TEXT_ICON, LucideIcon> = {
   image: ImageIcon,
   video: Film,
   audio: AudioLines,
@@ -49,14 +49,14 @@ const ICONS: Record<Exclude<RunOutput["viewer"], "text"> | keyof typeof TEXT_ICO
 export function useOutputName() {
   const t = useTranslations("outputs");
   const size = useByteSize();
-  return (output: RunOutput) => t("open", { name: baseName(output.name), kind: t(`viewer.kind.${output.viewer}`), size: size(output.size) });
+  return (output: ViewedFile) => t("open", { name: baseName(output.name), kind: t(`viewer.kind.${output.viewer}`), size: size(output.size) });
 }
 
 /**
  * The picture of an output: an image's own bytes, lazily, cropped to its box; any other kind its icon and extension. An
  * image the browser cannot draw shows the broken-image icon. Decorative: the button around it carries the name.
  */
-export function OutputThumb({ output, compact = false }: { output: RunOutput; compact?: boolean }) {
+export function OutputThumb({ output, compact = false }: { output: ViewedFile; compact?: boolean }) {
   const [failed, setFailed] = useState(false);
   if (output.viewer === "image" && !failed) {
     return (
@@ -85,7 +85,7 @@ export function OutputThumb({ output, compact = false }: { output: RunOutput; co
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** A tile of the run page's grid: the picture over the name, its size and when it came. Opens the viewer. */
-export function OutputTile({ output, onOpen }: { output: RunOutput; onOpen: () => void }) {
+export function OutputTile({ output, onOpen }: { output: ViewedFile; onOpen: () => void }) {
   const format = useFormatter();
   const size = useByteSize();
   const name = useOutputName();
@@ -122,7 +122,7 @@ export function OutputTile({ output, onOpen }: { output: RunOutput; onOpen: () =
  * A chip of a strip: an image as a 56 px thumbnail, any other file as its icon, name and size on one line. Opens the
  * viewer. 44 px tall at the least under 768 px.
  */
-export function OutputChip({ output, onOpen }: { output: RunOutput; onOpen: () => void }) {
+export function OutputChip({ output, onOpen }: { output: ViewedFile; onOpen: () => void }) {
   const size = useByteSize();
   const name = useOutputName();
   const image = output.viewer === "image";

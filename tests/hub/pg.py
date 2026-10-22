@@ -181,6 +181,8 @@ ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
 SHARE_TABLES = frozenset({"credential_shares", "credential_share_projects"})
 # migration 0107: the units of the org chart a shared worker is narrowed to (plan credential-sharing)
 WORKER_SHARE_TABLES = frozenset({"worker_shares"})
+# migration 0109: the files people attach to messages, and the run inbox rows that carry them
+ATTACHMENT_TABLES = frozenset({"attachments", "run_inbox_attachments"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
