@@ -80,8 +80,8 @@ def unit(client, hub, slug: str, parent: str = "root") -> None:
     assert response.status_code == 201, response.text
 
 
-def seat(client, hub, slug: str, login: str = OTHER) -> None:
-    body = {"login": login, "unit": slug, "role": "member", "primary": True}
+def seat(client, hub, slug: str, login: str | None = None) -> None:
+    body = {"login": login or OTHER, "unit": slug, "role": "member", "primary": True}
     response = client.post("/v1/org/seats", json=body, headers=hub["admin"])
     assert response.status_code in (200, 201), response.text
 
