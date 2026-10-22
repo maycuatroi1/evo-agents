@@ -336,7 +336,8 @@ export function Outlook({
         tone = "ok";
       } else if (fit.fit === "busy") text = t("pinnedBusy", { name, subject });
       else if (fit.fit === "offline") text = t("pinnedOffline", { name, subject });
-      else text = t("pinnedNo", { name, problem: problem(fit.problem ?? { kind: "draining" }), subject });
+      else if (!fit.problem || fit.problem.kind === "draining") text = t("pinnedDraining", { name, subject });
+      else text = t("pinnedNo", { name, problem: problem(fit.problem), subject });
       break;
     }
   }
