@@ -72,7 +72,8 @@ def test_every_hook_runs_the_package_version_and_never_fails_the_session(name):
     prefix = f"command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak=={__version__} evo-agents {command}"
     for line in commands:
         assert line.startswith(prefix), line
-        assert line.endswith(" || true"), line
+        # A release missing from uv's cache falls back to evo-agents on the PATH (tests/hub/test_hooks.py runs it)
+        assert line.endswith(" >&2; true") and f"&& evo-agents {command}" in line, line
 
 
 @pytest.mark.parametrize("name", NAMES)
