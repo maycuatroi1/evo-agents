@@ -4991,6 +4991,7 @@
       "answerText": "Lời nhắn kèm:",
       "delivered": "Agent đã nhận câu trả lời",
       "notDelivered": "Đang chờ worker chuyển câu trả lời cho agent ở lượt kế tiếp.",
+      "hubTook": "Hub đã làm điều câu trả lời chọn.",
       "resumed": "Run #{run} đang tạm gác: câu trả lời đã cho run chạy tiếp thành <link>run #{next}</link>.",
       "onlyOwner": "Chỉ {owner}, người đã giao run #{run}, mới trả lời được quyết định này.",
       "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",
@@ -5006,7 +5007,9 @@
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Run xử lý lỗi #{id}",
-      "triageRun": "run xử lý lỗi #{id}"
+      "releaseRunLink": "Run release #{id}",
+      "triageRun": "run xử lý lỗi #{id}",
+      "releaseRun": "run release #{id}"
     },
     "answer": {
       "title": "Trả lời quyết định #{id}",
@@ -5028,10 +5031,13 @@
       "failed": "Không gửi được câu trả lời",
       "legend": "Câu trả lời của bạn",
       "note": "Ghi chú cho agent (không bắt buộc)",
+      "hubNote": "Ghi chú (không bắt buộc)",
       "notePlaceholder": "Thêm ghi chú cho agent",
       "textPlaceholder": "Viết câu trả lời cho agent",
+      "hubPlaceholder": "Lưu kèm câu trả lời",
       "foot": "Agent làm tiếp ngay khi bạn trả lời.",
       "footParked": "Run chạy tiếp trên cùng worker ngay khi bạn trả lời.",
+      "footHub": "Hub làm điều phương án nói ngay khi bạn trả lời.",
       "takeOver": "Tiếp quản",
       "takeOverLabel": "Tiếp quản run #{run} trong terminal"
     },
