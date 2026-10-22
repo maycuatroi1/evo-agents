@@ -153,6 +153,12 @@ def github_repo(origin: str) -> tuple[str, str] | None:
     return (parts[0], parts[1]) if len(parts) == 2 and all(parts) else None
 
 
+def agent_lease_name(handle: str, name: str) -> str:
+    """The name of the lease of account ``name`` of agent ``handle`` (``@<handle>:<name>``): a secret's name never starts
+    with ``@`` (SECRET_NAME), so it cannot be a member's secret's, and the leases of an answer have distinct names."""
+    return f"@{handle}:{name}"
+
+
 @dataclass(frozen=True)
 class Lease:
     """One credential a run holds: an env var for its agent, or what git answers for origins under url_prefix.
