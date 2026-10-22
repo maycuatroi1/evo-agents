@@ -125,6 +125,7 @@ TABLES |= pg.PLUGIN_NOTICE_TABLES  # migration 0097
 TABLES |= pg.SRS_USE_CASE_REVIEW_TABLES  # migration 0098
 TABLES |= pg.ORG_TABLES  # migration 0099
 TABLES |= pg.AGENT_QUESTION_TABLES  # migration 0100
+TABLES |= pg.BROWSER_TABLES  # migration 0105
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -206,20 +207,25 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_forty_four_tables(hub_db):
-    assert len(TABLES) == 144  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_forty_five_tables(hub_db):
+    assert len(TABLES) == 145  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
+    # are the sealed values of credentials (0011) and their nonces, the sealed tokens of OAuth accounts (0066), and the
+    # sealed data keys of browser profiles (0105), whose profiles are in the bucket, sealed
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
         ("accounts", "oauth_nonce"),
         ("accounts", "oauth_sealed"),
+        ("browser_identities", "key_nonce"),
+        ("browser_identities", "previous_key_nonce"),
+        ("browser_identities", "previous_sealed_key"),
+        ("browser_identities", "sealed_key"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("secrets", "nonce"),
@@ -2724,3 +2730,59 @@ def test_0104_lets_an_agent_profile_own_env_secrets_and_going_back_is_refused_wh
     assert query(hub_db, SNAPSHOT) == before
     assert "profile_id" not in columns(hub_db, "secrets")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
+
+
+def test_0105_keeps_browser_identities_and_going_back_records_their_blobs_for_deletion(hub_db):
+    move_to(hub_db, "0104")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        worker = one(conn, _worker_row(ids, ids["token"], "box", 2))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0105")
+    b = t.browser_identities
+    mine = {"project_id": ids["project"], "owner_kind": "member", "owner_id": ids["user"], "name": "northwind"}
+    mine |= {"domains": ["northwind.example"], "worker_id": worker, "created_by": ids["user"]}
+    saved = {"version": 2, "sha256": "a" * 64, "size": 10, "sealed_key": b"k" * 48, "key_nonce": b"n" * 12}
+    saved |= {"key_id": "0123abcd", "chromium_version": "141.0.7390.54"}
+    saved |= {"previous_sha256": "b" * 64, "previous_size": 9, "previous_sealed_key": b"k" * 48}
+    saved |= {"previous_key_nonce": b"n" * 12, "previous_key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        first = one(conn, insert(b).values(mine).returning(b.c.id))
+        assert conn.execute(select(b.c.status, b.c.version, b.c.sha256).where(b.c.id == first)).one() == (
+            "active",
+            0,
+            None,
+        )
+        conn.execute(update(b).values(saved).where(b.c.id == first))
+        project = {**mine, "owner_kind": "project", "owner_id": None}
+        conn.execute(insert(b).values(project))  # the project's identity of that name is another one
+        for bad in (
+            insert(b).values(mine),  # unique by (project, member, name) among the live ones
+            insert(b).values(project),  # unique by (project, name) among the project's live ones
+            insert(b).values({**mine, "owner_id": None}),  # a member's has its member
+            insert(b).values({**project, "owner_id": ids["user"], "name": "p2"}),  # the project's has none
+            insert(b).values({**mine, "name": "Northwind"}),  # the name of a secret
+            insert(b).values({**mine, "name": "n2", "domains": []}),  # at least one domain
+            insert(b).values({**mine, "name": "n3", "status": "broken"}),
+            insert(b).values({**mine, "name": "n4", "version": 1}),  # a saved version has its blob
+            insert(b).values({**mine, "name": "n5", **saved, "key_id": None}),  # a version is whole
+            insert(b).values({**mine, "name": "n6", **saved, "sha256": "A" * 64}),  # a hash in hex
+            insert(b).values({**mine, "name": "n7", **saved, "sha256": None, "size": None, "sealed_key": None}),
+            insert(b).values({**mine, "name": "n8", "worker_id": worker + 1000}),  # a worker that exists
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        with pytest.raises(errors.CheckViolation):  # a deleted one keeps no key
+            conn.execute(update(b).values(deleted_at=func.now()).where(b.c.id == first))
+        conn.execute(update(b).values(deleted_at=func.now()).where(b.c.owner_kind == "project"))
+        conn.execute(insert(b).values(project))  # a deleted one frees the name
+    move_to(hub_db, "0104", down=True)
+    assert "browser_identities" not in tables(hub_db)
+    deletions = t.blob_deletions
+    recorded = select(deletions.c.sha256, deletions.c.size, deletions.c.kind).order_by(deletions.c.sha256)
+    assert query(hub_db, recorded) == [("a" * 64, 10, "browser-profile"), ("b" * 64, 9, "browser-profile")]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(deletions))
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0105") :]

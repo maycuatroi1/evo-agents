@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub import (
     tables_accounts,
+    tables_browser,
     tables_curator,
     tables_goals,
     tables_kg,
@@ -954,6 +955,7 @@ merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_ta
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 org_units, org_seats, autonomy_ceilings = tables_org.org_tables(metadata)  # the org chart (0099)
+browser_identities = tables_browser.browser_tables(metadata)  # the browser identities of projects and members (0105)
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
