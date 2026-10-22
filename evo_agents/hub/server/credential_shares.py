@@ -153,7 +153,7 @@ async def _grantee_user(conn: AsyncConnection, user: Principal, login: str) -> i
     return found.id
 
 
-async def _grantee_unit(conn: AsyncConnection, slug: str) -> int:
+async def live_unit(conn: AsyncConnection, slug: str) -> int:
     """The id of the live unit ``slug``: neither it nor a unit above it archived, nor a cohort holding it ended."""
     chart, today = await org_store.load(conn), await org_store.today(conn)
     unit = chart.unit_by_slug(slug)
@@ -217,7 +217,7 @@ async def _grantee(conn: AsyncConnection, user: Principal, body: ShareWrite) -> 
     if body.grantee_kind == USER:
         grantee["grantee_user_id"] = await _grantee_user(conn, user, body.login or "")
     elif body.grantee_kind == UNIT:
-        grantee["grantee_unit_id"] = await _grantee_unit(conn, body.unit or "")
+        grantee["grantee_unit_id"] = await live_unit(conn, body.unit or "")
     return grantee
 
 

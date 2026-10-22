@@ -6542,6 +6542,119 @@
         "schema": "OrgUnitView"
       }
     },
+    "hub org worker list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
+    "hub org worker share": {
+      "positionals": [
+        {
+          "name": "worker",
+          "metavar": "WORKER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
+    "hub org worker unshare": {
+      "positionals": [
+        {
+          "name": "worker",
+          "metavar": "WORKER",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--unit"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "worker",
+          "owner",
+          "shared",
+          "units",
+          "doctor_at",
+          "doctor_high",
+          "doctor_medium"
+        ],
+        "schema": "WorkerShares"
+      }
+    },
     "hub plan abandon": {
       "positionals": [
         {
@@ -36316,6 +36429,230 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/org/workers": {
+        "get": {
+          "tags": [
+            "org"
+          ],
+          "summary": "List Worker Shares",
+          "description": "The caller's live workers, every live worker for a hub admin, with whom each is shared.",
+          "operationId": "list_worker_shares_v1_org_workers_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/WorkerShares"
+                    },
+                    "type": "array",
+                    "title": "Response List Worker Shares V1 Org Workers Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/org/workers/{worker_id}/units/{slug}": {
+        "put": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Share Worker",
+          "description": "Narrow the worker to a live unit of the org chart, sharing it when it was not.",
+          "operationId": "share_worker_v1_org_workers__worker_id__units__slug__put",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerShares"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "org"
+          ],
+          "summary": "Unshare Worker",
+          "description": "Take a unit back from the worker; with its last unit, sharing ends too.",
+          "operationId": "unshare_worker_v1_org_workers__worker_id__units__slug__delete",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkerShares"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -99703,6 +100040,84 @@
             "version_locked"
           ],
           "title": "WorkerSettings"
+        },
+        "WorkerShares": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker",
+              "description": "the worker's name, unique among its owner's live workers"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who registered it"
+            },
+            "shared": {
+              "type": "boolean",
+              "title": "Shared",
+              "description": "whether other members' runs may go to it"
+            },
+            "units": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Units",
+              "description": "the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves"
+            },
+            "doctor_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor At",
+              "description": "when its daemon sent the newest doctor report; null: none"
+            },
+            "doctor_high": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor High",
+              "description": "findings of severity high in that report; null: no report"
+            },
+            "doctor_medium": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doctor Medium",
+              "description": "findings of severity medium in that report; null: no report"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "worker",
+            "owner",
+            "shared",
+            "units"
+          ],
+          "title": "WorkerShares",
+          "description": "Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any."
         },
         "WorkerUpdate": {
           "properties": {

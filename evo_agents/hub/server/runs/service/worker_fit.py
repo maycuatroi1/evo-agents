@@ -6,9 +6,11 @@ again (``service.candidates``) list them all."""
 
 from __future__ import annotations
 
-from sqlalchemy import exists, func, or_, select
+from functools import cache
 
-from evo_agents.hub import profiles, runs, tables
+from sqlalchemy import and_, exists, func, or_, select
+
+from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.server.runs.models import available
 
@@ -23,12 +25,47 @@ def writes(user_id, project_id):
     return exists().where(g.c.user_id == user_id, g.c.project_id == project_id, g.c.role.in_(WRITER_ROLES))
 
 
-def shared_in(project_id):
-    """Whether the worker of the row (``tables.workers``) is one its owner shares in project ``project_id``: shared,
-    serving the project, and its owner holding writer there now (``docs/workers.md``, Shared workers)."""
+@cache
+def _seat_chains():
+    """Each member's live primary seat (not ended, its end day not passed) with every unit from the seat's up to the
+    root, one row (user_id, unit_id) each: a recursive CTE, built once so every query of a statement shares it."""
+    s, u = tables.org_seats, tables.org_units
+    seats = (
+        select(s.c.user_id, s.c.unit_id)
+        .where(
+            s.c.is_primary,
+            s.c.user_id.is_not(None),
+            s.c.ended_at.is_(None),
+            or_(s.c.ends_on.is_(None), s.c.ends_on >= func.current_date()),
+        )
+        .cte("seat_chains", recursive=True)
+    )
+    up = select(seats.c.user_id, u.c.parent_id).join_from(seats, u, u.c.id == seats.c.unit_id)
+    return seats.union(up.where(u.c.parent_id.is_not(None)))
+
+
+def unit_admits(worker_id, principal_id):
+    """Whether the units worker ``worker_id`` is narrowed to (``tables.worker_shares``) let it take a run of member
+    ``principal_id`` (each a value or a column): it has none, or the member's live primary seat is in one of them or
+    below one, with no unit above the seat archived nor a cohort above it ended (``org.Chart.ended``)."""
+    ws, u, chain = tables.worker_shares, tables.org_units, _seat_chains()
+    narrowed = exists().where(ws.c.worker_id == worker_id)
+    seated = exists().where(
+        ws.c.worker_id == worker_id, chain.c.user_id == principal_id, chain.c.unit_id == ws.c.unit_id
+    )
+    ended_unit = or_(u.c.archived_at.is_not(None), and_(u.c.kind == org.COHORT, u.c.ends_on < func.current_date()))
+    ended = exists().where(chain.c.user_id == principal_id, chain.c.unit_id == u.c.id, ended_unit)
+    return or_(~narrowed, and_(seated, ~ended))
+
+
+def shared_in(project_id, principal_id):
+    """Whether the worker of the row (``tables.workers``) is one its owner shares in project ``project_id`` with member
+    ``principal_id`` (each a value or a column): shared, serving the project, its owner holding writer there now, and,
+    when it is narrowed to units of the org chart, the member seated in one (``unit_admits``; ``docs/workers.md``,
+    Shared workers)."""
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
-    return w.c.shared & serves & writes(w.c.owner_id, project_id)
+    return w.c.shared & serves & writes(w.c.owner_id, project_id) & unit_admits(w.c.id, principal_id)
 
 
 def workers_of(user_id: int, project_id: int):
@@ -63,7 +100,7 @@ def workers_of(user_id: int, project_id: int):
             holding.label("holding"),
             others.label("others"),
         )
-        .where(or_(w.c.owner_id == user_id, shared_in(project_id)), w.c.revoked_at.is_(None), serves)
+        .where(or_(w.c.owner_id == user_id, shared_in(project_id, user_id)), w.c.revoked_at.is_(None), serves)
         .order_by(w.c.owner_id != user_id, w.c.id)
     )
 
