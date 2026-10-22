@@ -300,6 +300,7 @@ def create_app(config: HubConfig) -> FastAPI:
         app.include_router(routes)
 
     from evo_agents.hub.server import (
+        autonomy_page,
         autonomy_routes,
         autonomy_stops,
         changes,
@@ -336,6 +337,7 @@ def create_app(config: HubConfig) -> FastAPI:
         org.router,  # the org chart (plan org-chart)
         autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
         autonomy_stops.router,  # and their stop S4
+        autonomy_page.router,  # what the web's autonomy pages read
     ):
         app.include_router(routes)
 
