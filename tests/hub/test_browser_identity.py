@@ -31,6 +31,7 @@ from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, Unsealable,
 from tests.hub import test_secrets_cli as secrets_cli
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql, table_dump
+from tests.hub.test_browser_claim import add_browser_worker, browser_beat
 from tests.hub.test_run_cli import as_json, ok
 from tests.hub.test_run_tables import add_run
 from tests.hub.test_runs import OTHER, OWNER, PROJECT, add_worker, members
@@ -66,7 +67,7 @@ def hub(client, github) -> dict:
     headers = members(client, github)
     granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=headers["admin"])
     assert granted.status_code == 200, granted.text
-    add_worker(client, headers["owner"], "box")
+    add_browser_worker(client, headers["owner"], "box")
     return headers
 
 
@@ -78,7 +79,7 @@ def stored(hub_db, tmp_path, github, s3):
         headers = members(client, github)
         granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=headers["admin"])
         assert granted.status_code == 200, granted.text
-        box = add_worker(client, headers["owner"], "box")
+        box = add_browser_worker(client, headers["owner"], "box")
         state = client.app.state
         yield SimpleNamespace(
             client=client,
@@ -257,7 +258,7 @@ def test_browser_identity_of_the_project_is_an_admins_to_create_and_delete_and_e
 
     # names are unique per owner: the project's and a member's may share one, two of either may not
     mine = created(client, hub["owner"], "northwind-crm")
-    add_worker(client, hub["other"], "lab")
+    add_browser_worker(client, hub["other"], "lab")
     theirs = created(client, hub["other"], "northwind-crm", worker="lab")
     assert {i["id"] for i in listed(client, hub["owner"])} == {project["id"], mine["id"]}
     assert {i["id"] for i in listed(client, hub["other"])} == {project["id"], theirs["id"]}
@@ -281,7 +282,7 @@ def test_browser_identity_of_the_project_is_an_admins_to_create_and_delete_and_e
 
 def test_browser_identity_needs_a_worker_of_the_member_or_a_shared_one_that_serves_the_project(client, hub, hub_db):
     box = {"id": sql(hub_db, select(tables.workers.c.id).where(tables.workers.c.name == "box"))[0][0]}
-    add_worker(client, hub["other"], "lab")
+    add_browser_worker(client, hub["other"], "lab")
     for name in ("box", "nowhere"):  # the owner's worker, not shared, and none at all
         refused = create(client, hub["other"], "github-other", worker=name)
         assert refused.status_code == 422 and f"worker {name} is neither" in refused.json()["message"]
@@ -296,6 +297,18 @@ def test_browser_identity_needs_a_worker_of_the_member_or_a_shared_one_that_serv
     assert create(client, hub["other"], "github-elsewhere", worker="box").status_code == 422
     sql(hub_db, update(w).values(revoked_at=func.now()).where(w.c.name == "lab"))
     assert create(client, hub["other"], "github-revoked", worker="lab").status_code == 422
+
+
+def test_browser_identity_needs_a_worker_whose_daemon_reports_the_feature_browser(client, hub, hub_db):
+    plain = add_worker(client, hub["other"], "plain")  # its daemon never ran `evo-agents worker browser install`
+    refused = create(client, hub["other"], "github-plain", worker="plain")
+    assert refused.status_code == 422
+    assert "does not report the feature browser" in refused.json()["message"]
+    assert "evo-agents worker browser install" in refused.json()["message"]
+    assert browser_beat(client, plain).status_code == 200  # installed, its daemon restarted
+    assert created(client, hub["other"], "github-plain", worker="plain")["worker"] == "plain"
+    assert browser_beat(client, plain, None, features=()).status_code == 200  # a daemon that lost it
+    assert create(client, hub["other"], "github-again", worker="plain").status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -451,7 +464,7 @@ def test_browser_identity_commands_create_list_and_delete_printing_metadata_only
         f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=cli_hub.headers["admin"]
     )
     assert grant.status_code == 200, grant.text
-    add_worker(cli_hub.client, cli_hub.headers["owner"], "mac-mini")
+    add_browser_worker(cli_hub.client, cli_hub.headers["owner"], "mac-mini")
     owner, other = cli_hub.homes["owner"], cli_hub.homes["other"]
 
     def identity(who, *args):

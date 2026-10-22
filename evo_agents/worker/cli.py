@@ -60,7 +60,7 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, exit_status, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.worker import chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
+from evo_agents.worker import browser, chat_cli, output_cli, playbook_cli, projects_cli, step_verify, triage_cli
 from evo_agents.worker.agent_input import attest, decision_option, evidence_items, plan_file, promotion_file, read_text
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
@@ -1083,5 +1083,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (*AGENT_PARSERS, projects_cli.register_projects):
+    for extra in (*AGENT_PARSERS, projects_cli.register_projects, browser.register_browser):
         extra(wsub)

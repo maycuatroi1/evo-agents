@@ -264,6 +264,7 @@ def _listed(*where):
             w.c.self_update,
             w.c.self_update_since,
             w.c.kg_sync,
+            w.c.browser,
             *update_now.update_columns(),
             *update_now.nightly_columns(),
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),

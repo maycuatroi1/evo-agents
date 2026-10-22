@@ -48,7 +48,7 @@ from evo_agents.hub.server.runs.models import (
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
@@ -420,7 +420,10 @@ async def _try_claim(
             clones=clones,
             steady=is_steady,
             shared=shared,
-            profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
+            profile_gate=and_(
+                claim_clause(name, labels, runtimes, features, offered, environments, plugins),
+                browsers.claim_gate(worker_id, features),
+            ),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
@@ -699,6 +702,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         curator=await _curator_spec(conn, project_id, view),
         verify=verify,
         session_per_step=view.session_per_step,
+        browser=view.browser,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
         origin=await run_origin(conn, run_id),

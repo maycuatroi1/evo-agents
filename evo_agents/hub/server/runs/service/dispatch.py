@@ -30,7 +30,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
-from evo_agents.hub.server.runs.service import plugin_runtimes
+from evo_agents.hub.server.runs.service import browsers, plugin_runtimes
 from evo_agents.hub.server.runs.service.accounts import Picked, pick_account, record_pick
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
@@ -148,12 +148,19 @@ async def worker_as_pinned(conn: AsyncConnection, worker_id: int) -> Pinned | No
 
 
 def unfit(
-    worker: Pinned, project: str, kind: str, repos: list[str], runtime: str, *, session_per_step: bool = False
+    worker: Pinned,
+    project: str,
+    kind: str,
+    repos: list[str],
+    runtime: str,
+    *,
+    session_per_step: bool = False,
+    browser: bool = False,
 ) -> list[str]:
     """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
-    with a session per step when ``session_per_step``), as its last heartbeat reported it and the claim checks it;
-    empty when nothing does. A repo it has no checkout of keeps only an older daemon from it: one that says it clones
-    them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
+    with a session per step when ``session_per_step``, a run with a Chromium of its own when ``browser``), as its last
+    heartbeat reported it and the claim checks it; empty when nothing does. A repo it has no checkout of keeps only an
+    older daemon from it: one that says it clones them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
@@ -192,7 +199,7 @@ def unfit(
             f"{worker.agent_version or 'of an unknown version'}) does not clone what it lacks: upgrade it and restart "
             "its daemon"
         )
-    return problems
+    return problems + browsers.unfit(worker.features, browser)
 
 
 def _fits(
@@ -263,10 +270,12 @@ async def queue_run(
     picked: tuple[Picked, ...] = (),
     chosen: Chosen | None = None,
     plugin_config: dict | None = None,
+    browser: bool = False,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
     by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
-    config ``plugin_config`` (checked already); HTTPException when the step may not run now."""
+    config ``plugin_config`` (checked already), with a Chromium of its own when ``browser``; HTTPException when the
+    step may not run now."""
     body = held.body
     try:
         step = body["steps"][step_index(body, key)]
@@ -283,7 +292,7 @@ async def queue_run(
         raise HTTPException(
             422, f"step {key} names no repo and the plan does not list exactly one: give the step a repo"
         )
-    _fits(pinned, access, "step", [name], runtime)
+    _fits(pinned, access, "step", [name], runtime, browser=browser)
     await _refuse_without_origin(conn, access, user, [name], f"step {key} of plan {held.plan_id}")
     values = {
         "project_id": access.project_id,
@@ -303,6 +312,7 @@ async def queue_run(
         "parent_run_id": parent,
         "repo": name,
         "branch": _short(repo.get("branch")),
+        "browser": browser,
         **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
     }
@@ -386,6 +396,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 picked=_picks(picked),
                 chosen=chosen,
                 plugin_config=layer,
+                browser=body.browser,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
@@ -465,7 +476,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             )
         repos = plan_run_repos(held)
         names = [entry["repo"] for entry in repos]
-        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
+        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=body.browser)
         await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
         chosen = await choose(
             conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
@@ -487,6 +498,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "session_per_step": body.session_per_step,
+            "browser": body.browser,
             **chosen.columns(),
         }
         try:

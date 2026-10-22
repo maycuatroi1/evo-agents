@@ -402,7 +402,7 @@ Index(
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0065
+workers, worker_projects, worker_pairings, hub_nightly = tables_workers.worker_tables(metadata)  # 0009 to 0106
 
 runs = Table(
     "runs",
@@ -462,6 +462,7 @@ runs = Table(
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
+    Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0106)
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),

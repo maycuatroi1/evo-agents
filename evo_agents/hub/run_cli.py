@@ -50,9 +50,11 @@ from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_candidates import register_candidates
+from evo_agents.hub.run_cli_keys import RUN_KEYS
 from evo_agents.hub.run_cli_options import (
     account_option,
     author_options,
+    browser_body,
     dispatch_options,
     kind_text,
     list_options,
@@ -84,65 +86,6 @@ RAW_CHARS = 300  # of an event body shown as JSON
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
-RUN_KEYS = (
-    "id",
-    "kind",
-    "project",
-    "plan_id",
-    "step_key",
-    "title",
-    "plan_revision",
-    "dispatched_by",
-    "dispatched_via",
-    "worker_id",
-    "worker",
-    "pinned_worker_id",
-    "requested_runtime",
-    "runtime",
-    "model",
-    "mode",
-    "approval",
-    "timeout_min",
-    "run_seconds",
-    "attempt",
-    "max_attempts",
-    "parent_run_id",
-    "resume_of_run_id",
-    "state",
-    "lease_expires_at",
-    "session_id",
-    "repo",
-    "branch",
-    "repos",
-    "commit_sha",
-    "diffstat",
-    "verify",
-    "evidence",
-    "usage",
-    "budget",
-    "error",
-    "log_sha256",
-    "diff_sha256",
-    "last_seq",
-    "cancel_requested_at",
-    "takeover_requested_at",
-    "handback_requested_at",
-    "queued_at",
-    "leased_at",
-    "started_at",
-    "waiting_since",
-    "parked_at",
-    "finished_at",
-    "request",
-    "finish_requested_at",
-    "steady_wait",
-    "failure_cause",
-    "session_per_step",
-)
-RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its agent profile, where its agent runs
-RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
-RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
-RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
@@ -402,7 +345,7 @@ def cmd_dispatch(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan), "steps": args.steps}
+    body = {"plan_id": _plan_id(args.plan), "steps": args.steps, **browser_body(args)}
     chosen = {
         "runtime": args.runtime,
         "model": args.model,
@@ -435,7 +378,7 @@ def cmd_plan(args) -> int:
         return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
-    body = {"plan_id": _plan_id(args.plan)}
+    body = {"plan_id": _plan_id(args.plan), **browser_body(args)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
     chosen.update(account=args.account, profile=args.agent)
