@@ -1,27 +1,31 @@
 """The check of a project's release schedule, and the job ``hub.release_schedules`` that makes it once a local day
 (``evo_agents.hub.releases`` describes both).
 
-``check`` is one check of one schedule, for the job (trigger ``schedule``, the local day ``releases.due_day`` names)
-or for an admin's ``evo-agents hub release run`` (trigger ``manual``, the local day of now). It reads nothing of GitHub
-when the schedule is paused, has a cycle unfinished, or its owner no longer holds the admin role on the project; else
-it reads the newest tag and the target's commit (``evo_agents.hub.server.release_github``) outside any transaction,
-and the CI of the newest tag (``release_watch.red_tag``), then, under the schedule's row lock, looks at the gates again
-and records the check. A newest tag whose CI is red (its run of the workflow completed, did not publish, and a job of it
-failed), whoever made it, opens a cycle that starts with a fix: the cycle follows that tag with the failures read, and
-its first run, of kind release in mode fix, fixes it forward, whether a packaging path changed or not. Otherwise, with
-a packaging path changed, it opens a cycle and queues its first run in mode cut. Either run is dispatched as the owner,
-pinned to no worker, with what is left of the cycle's cap as its cost cap, audited as release.dispatch with the owner
-as actor and no token. A CI the hub cannot read (the App's installation grants no actions) counts as not red, and the
-check's reason says why. The scheduled check of a day happens once: a check of that day that did not fail, or
-ERROR_TRIES that did, and the job passes the schedule over, and the unique index on the day
-(``release_checks_day_key``) holds when two passes meet. No model is called by any of this.
+``check`` is one check of one schedule, for the job (trigger ``schedule``, the local day ``releases.due_day`` names) or
+for an admin's ``evo-agents hub release run`` (trigger ``manual``, the local day of now). It reads nothing of GitHub
+when the schedule is paused, has a cycle open, or its owner no longer holds the admin role on the project; else it reads
+the newest tag and the target's commit (``evo_agents.hub.server.release_github``) outside any transaction, and the CI of
+the newest tag (``release_watch.red_tag``), then, under the schedule's row lock, looks at the gates again and records
+the check. A stopped cycle keeps the check busy until its owner answers, unless the newest tag is newer than any the
+cycle knows (its base tag and the tags it made) and no run of it is active: a release made outside the cycle superseded
+it, so the check closes it, cancels the decision that waits on it and its notification, says so in the cycle's thread of
+the triage chat, and goes on from that tag as if no cycle were there. A newest tag whose CI is red (its run of the
+workflow completed, did not publish, and a job of it failed), whoever made it, opens a cycle that starts with a fix: the
+cycle follows that tag with the failures read, and its first run, of kind release in mode fix, fixes it forward, whether
+a packaging path changed or not. Otherwise, with a packaging path changed, it opens a cycle and queues its first run in
+mode cut. Either run is dispatched as the owner, pinned to no worker, with what is left of the cycle's cap as its cost
+cap, audited as release.dispatch with the owner as actor and no token. A CI the hub cannot read (the App's installation
+grants no actions) counts as not red, and the check's reason says why. The scheduled check of a day happens once: a
+check of that day that did not fail, or ERROR_TRIES that did, and the job passes the schedule over, and the unique index
+on the day (``release_checks_day_key``) holds when two passes meet. No model is called by any of this.
 
 ``fire_release_schedules`` is the job's checks, run every minute by the hub's worker: each schedule whose local time
 came in the last CATCH_UP_MINUTES gets the check of that day, in its own transactions, one failing leaving the others
 their turn; ``release_pass`` is the whole job, those checks, then the landing of the release runs that are done
 (``evo_agents.hub.server.release_land``), then the watch of the CI of the open cycles' tags
-(``evo_agents.hub.server.release_watch``). ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs of the project still queued are
-cancelled, and an open cycle left with no active run closes, with the pause as its reason.
+(``evo_agents.hub.server.release_watch``). ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs
+of the project still queued are cancelled, and an open cycle left with no active run closes, with the pause as its
+reason.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, releases, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.chat_runs import hub_reply
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.release_cycles import DISPATCH, queue_run
 from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
@@ -90,12 +95,13 @@ async def unfinished(conn: AsyncConnection, schedule_id: int):
     return (await conn.execute(query)).one_or_none()
 
 
-async def _gate(conn: AsyncConnection, row) -> tuple[str, str] | None:
-    """(outcome, reason) of a check of ``row`` that reads nothing, or None when it may read GitHub."""
+async def _gate(conn: AsyncConnection, row, *, past_stopped: bool = False) -> tuple[str, str] | None:
+    """(outcome, reason) of a check of ``row`` that reads nothing, or None when it may read GitHub; ``past_stopped``
+    lets a stopped cycle through, for the read that may find it superseded."""
     if row.paused_at is not None:
         return "paused", f"the release schedule of {row.project} is paused, by {row.paused_by_login or 'the hub'}"
     cycle = await unfinished(conn, row.id)
-    if cycle is not None:
+    if cycle is not None and not (past_stopped and cycle.state == "stopped"):
         return "busy", f"cycle #{cycle.id} is {cycle.state}: no other cycle opens until it ends"
     if not await owner_is_admin(conn, row.owner_id, row.owner, row.project):
         return "owner", (
@@ -272,6 +278,8 @@ async def _decide_red(conn: AsyncConnection, row, how: dict, read: Reading, ci: 
 
 async def _decide(conn: AsyncConnection, row, how: dict, read: Reading | str, ci: Read | None = None) -> Checked:
     """Record the check of ``row`` once GitHub was read, under the schedule's row lock the caller holds."""
+    if not isinstance(read, str) and row.paused_at is None:
+        await supersede(conn, row, read.base_tag)
     gated = await _gate(conn, row)
     if gated is not None:
         return await _record(conn, row, how, gated[0], reason=gated[1])
@@ -314,7 +322,7 @@ async def check(
             if row is None or (trigger == "schedule" and await _day_done(conn, schedule_id, local_day)):
                 return None
             how = {"trigger": trigger, "local_day": local_day or row.local_now.date(), "requested_by": requested_by}
-            gated = await _gate(conn, row)
+            gated = await _gate(conn, row, past_stopped=True)
             if gated is not None:
                 return await _record(conn, row, how, gated[0], reason=gated[1])
             where = await _github_repo(conn, row)
@@ -362,6 +370,40 @@ async def release_pass(engine: AsyncEngine, app: GitHubApp | None, *, now: datet
         **{f"landed_{how}": count for how, count in landed.items()},
         **{f"watched_{how}": count for how, count in watched.items()},
     }
+
+
+# Superseding
+
+
+async def supersede(conn: AsyncConnection, row, newest: str) -> int | None:
+    """Close the stopped cycle of schedule ``row`` that tag ``newest`` supersedes (see the module), cancel its decision
+    and the decision's notifications, and say so in its thread; the cycle's id, or None when there is none to close."""
+    cycle = await unfinished(conn, row.id)
+    newer = releases.tag_version(newest, row.tag_pattern)
+    if cycle is None or cycle.state != "stopped" or newer is None:
+        return None
+    c, t, rr, r = tables.release_cycles, tables.release_tags, tables.release_runs, tables.runs
+    found = (await conn.execute(select(c).where(c.c.id == cycle.id, c.c.state == "stopped").with_for_update())).one()
+    made = (await conn.execute(select(t.c.tag).where(t.c.cycle_id == found.id))).scalars().all()
+    known = [v for v in (releases.tag_version(tag, row.tag_pattern) for tag in (found.base_tag, *made) if tag) if v]
+    active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
+    if (known and newer <= max(known)) or (await conn.execute(select(active))).scalar_one():
+        return None
+    why = f"{newest} was tagged outside cycle #{found.id}, which it supersedes"
+    reason = releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}")
+    closed = {"state": "closed", "stop_reason": reason, "ended_at": func.now(), "updated_at": func.now()}
+    await conn.execute(update(c).where(c.c.id == found.id).values(**closed))
+    if found.decision_id is not None:
+        d, n = tables.decisions, tables.notifications
+        await conn.execute(update(d).values(state="cancelled").where(d.c.id == found.decision_id, d.c.state == "open"))
+        unread = (n.c.decision_id == found.decision_id, n.c.read_at.is_(None))
+        await conn.execute(update(n).values(read_at=func.now()).where(*unread))
+    if found.triage_chat_id and found.triage_root_id:
+        cancelled = f" and cancelled decision #{found.decision_id}" if found.decision_id is not None else ""
+        said = f"{why}: the hub closed the cycle{cancelled}; the release goes on from {newest}."
+        await hub_reply(conn, found.triage_chat_id, found.triage_root_id, said)
+    log.info("release cycle superseded", extra={"cycle_id": found.id, "tag": newest, "decision_id": found.decision_id})
+    return found.id
 
 
 # Pausing
