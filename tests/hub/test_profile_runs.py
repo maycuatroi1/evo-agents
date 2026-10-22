@@ -37,8 +37,8 @@ from tests.hub.test_credentials_api import (
     missing,
     registration,
     sample,
-    worker_of,
 )
+from tests.hub.test_credentials_api import worker_of as plain_worker
 from tests.hub.test_runs import add_worker, claim, of_run, report
 
 app_key, config, hub, client = (
@@ -101,6 +101,14 @@ def beat(client, worker: dict, features: list[str] | None = None, kinds: list[st
         body["run_kinds"] = kinds
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
+
+
+def worker_of(client, headers, name: str) -> dict:
+    """A worker whose daemon gives the claude-code agent of a run under a profile other than the project's default a
+    config dir of its own (``runs.AGENT_HOME``), which such a run needs (``tests.hub.test_claim_agent_home``)."""
+    worker = plain_worker(client, headers, name)
+    beat(client, worker, features=[runs.AGENT_HOME])
+    return worker
 
 
 def label(client, headers, worker: dict, *labels: str) -> None:
@@ -255,7 +263,7 @@ def test_a_profile_that_limits_tools_is_claimed_only_by_a_daemon_that_applies_pr
     assert "does not say it applies agent profiles" in text
     run = dispatched(client, admin["owner"], profile="reader-bot")
     assert claim(client, worker) is None
-    beat(client, worker, features=[runs.AGENT_PROFILES])
+    beat(client, worker, features=[runs.AGENT_PROFILES, runs.AGENT_HOME])
     spec = claim(client, worker)
     assert spec["id"] == run["id"]
     assert spec["profile"] == {

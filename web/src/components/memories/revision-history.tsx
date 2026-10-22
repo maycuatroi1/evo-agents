@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { LabelBadge, MemoryTypeBadge } from "./badges";
 import { labelNames } from "./memory-meta";
+import { ProvenanceLine } from "./provenance";
 import { type Memory, memoryRevisionsQuery, olderRevisions, type RevisionSummary } from "./queries";
 
 type Props = {
@@ -28,7 +29,8 @@ type Props = {
 };
 
 /**
- * The revisions of a memory the visitor may read, newest first, each a link to the file as it was. The API leaves
+ * The revisions of a memory the visitor may read, newest first, each a link to the file as it was, with where it came
+ * from (the run, its agent, the person at its origin and its hop; or the Curator's proposal). The API leaves
  * out a revision whose label was above the visitor's grant, so the list can skip numbers; it never shows them.
  */
 export function RevisionHistory({ memory, selected, hrefOf, initialError, unrestricted }: Props) {
@@ -157,6 +159,10 @@ function Entries({
                   </span>
                 ) : null}
               </Link>
+              {item.provenance ? (
+                // Beside the link, not in it: the provenance holds links of its own (run, proposal, agent, chat).
+                <ProvenanceLine project={memory.project ?? null} provenance={item.provenance} className="px-3 pt-1" />
+              ) : null}
             </li>
           );
         })}

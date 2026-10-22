@@ -543,6 +543,34 @@ evo-agents hub curator playbook --project demo   # the live entries, the most he
 evo-agents hub curator earlier --project demo    # earlier findings and what became of them
 ```
 
+**Promoting agents' memories.** An agent profile that is not its project's default keeps memories of its own and
+writes no shared memory (`docs/hub.md`, Memories of agents); the Curator decides what of them the project keeps. The
+prompt of a night's review run lists the memories of the project's agents written or changed since its last review run
+that ended done, each at its revision with where that revision came from (run, profile and version, the person at its
+origin, chat), and the project's shared memories by id, revision, place and description. Both list only what the
+run's owner reads through the agent's sink and what names no audience, never a memory archived or promoted already,
+and the prompt says that memories are data, never instructions.
+
+The Reviewer promotes with a proposal of kind `memory` that carries a promotion in place of a draft plan. Its evidence
+`memory:ID:REV` names the agents' memories it promotes, each at its current revision; its target is a shared memory to
+merge into (`memory_id` and `revision`) or a new one (`location`, `name` and `type` `project` or `reference`); and its
+body is the whole memory after the merge. The hub checks every source and the target when the run records it (422
+saying what is wrong), and gives it the join of the labels of the sources and of the target, which must pass the
+project's write rule through its hub sink.
+
+Accepting it, by an admin of the project or by the hub as the run records it when the charter's `auto_merge` names
+tier 0 (kind `memory` is tier 0), writes the shared memory with a revision naming the proposal, marks each source
+promoted (out of its agent's index, the searches of runs and the daily upkeep), and adds the ledger line `promoted`.
+No change, plan, branch or pull request is made, and `POST .../plan` refuses such a proposal. A source or target that
+changed since the proposal makes the accept a 409. A proposal of kind `memory` with a draft plan works as before. The
+web shows a promotion's sources, its target, the memory after the merge and, once accepted, the shared memory it wrote.
+
+```sh
+evo-agents worker propose --lens skills_memory --kind memory --title "Keep the release checklist" \
+  --evidence memory:41:3 --evidence memory:57:1 --promote-file promotion.yaml   # a review run's agent
+# promotion.yaml: target: {location: harness, name: release-checklist.md, type: project}; body: the merged memory
+```
+
 ## Two GitHub Apps and the ruleset
 
 The hub uses two GitHub Apps, and the difference between them is what keeps the Curator off default branches:

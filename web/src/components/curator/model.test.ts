@@ -157,6 +157,14 @@ describe("evidence", () => {
     });
     expect(evidenceView({ kind: "transcript", session_id: "s-1", line: 2 }, "demo", repos)).toMatchObject({ file: "main" });
     expect(evidenceView({ kind: "transcript", session_id: "s-1" }, "demo", repos).kind).toBe("other");
+    expect(evidenceView({ kind: "memory", memory_id: 7, revision: 2, resolved: "agent_memory", agent: "reviewer" }, "demo", repos)).toEqual({
+      kind: "memory",
+      memoryId: 7,
+      revision: 2,
+      agent: "reviewer",
+      href: "/p/demo/memories/7?revision=2",
+    });
+    expect(evidenceView({ kind: "memory", memory_id: 7 }, "demo", repos).kind).toBe("other");
     expect(evidenceView({ kind: "code", repo: "api", path: "a.py", line: 3 }, "demo", repos)).toMatchObject({
       kind: "code",
       url: "https://github.com/org/api/blob/main/a.py#L3",

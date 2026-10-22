@@ -1,6 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 
-import { call } from "@/lib/api/client";
+import { type ApiClient, call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
@@ -15,6 +16,7 @@ export type FoundMemory = Schemas["Found"];
 export type RevisionSummary = Schemas["RevisionSummary"];
 export type MemoryRevision = Schemas["MemoryRevision"];
 export type Revisions = Schemas["Revisions"];
+export type Provenance = Schemas["Provenance"];
 
 /** Whose memories a page shows: one project's, or the visitor's personal ones. */
 export type MemoryScope = { kind: "project"; project: string } | { kind: "personal" };
@@ -37,25 +39,33 @@ function scopeQuery(scope: MemoryScope) {
     : { scope: "personal" as const };
 }
 
+/** The API's ?agent=: an agent's memories are listed only when it is named, never with the shared ones. */
+const agentQuery = (agent: string | null) => (agent ? { agent } : {});
+const agentKey = (agent: string | null) => (agent ? [`agent:${agent}`] : []);
+
 export const memoryKeys = {
   all: ["memories"] as const,
-  list: (scope: MemoryScope) => ["memories", "list", scopeKey(scope)] as const,
-  search: (scope: MemoryScope, q: string, location: string | null) =>
-    ["memories", "search", scopeKey(scope), q, location ?? ""] as const,
+  list: (scope: MemoryScope, agent: string | null = null) => ["memories", "list", scopeKey(scope), ...agentKey(agent)] as const,
+  search: (scope: MemoryScope, q: string, location: string | null, agent: string | null = null) =>
+    ["memories", "search", scopeKey(scope), q, location ?? "", ...agentKey(agent)] as const,
   one: (id: number) => ["memories", "one", id] as const,
   revisions: (id: number) => ["memories", "revisions", id] as const,
   revision: (id: number, revision: number) => ["memories", "revision", id, revision] as const,
+  latest: (id: number, revision: number) => ["memories", "latest", id, revision] as const,
 };
 
-/** Every memory of the scope the visitor sees, following the cursor; `truncated` when more pages remained. */
-export const memoryListQuery = (api: ApiSource, scope: MemoryScope) =>
+/**
+ * Every memory of the scope the visitor sees, following the cursor; `truncated` when more pages remained. With `agent`
+ * (a project's agent's handle), that agent's memories instead of the shared ones.
+ */
+export const memoryListQuery = (api: ApiSource, scope: MemoryScope, agent: string | null = null) =>
   queryOptions({
-    queryKey: memoryKeys.list(scope),
+    queryKey: memoryKeys.list(scope, agent),
     queryFn: async ({ signal }): Promise<MemoryList> => {
       const items: Memory[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < LIST_PAGES; page += 1) {
-        const query = { ...scopeQuery(scope), limit: LIST_PAGE, ...(cursor ? { cursor } : {}) };
+        const query = { ...scopeQuery(scope), ...agentQuery(agent), limit: LIST_PAGE, ...(cursor ? { cursor } : {}) };
         const data = await call(api().GET("/v1/memories", { params: { query }, signal }));
         items.push(...data.items);
         if (!data.next_cursor) return { items, truncated: false };
@@ -66,11 +76,17 @@ export const memoryListQuery = (api: ApiSource, scope: MemoryScope) =>
   });
 
 /** Full-text search (the API's, configuration simple), best match first; `location` narrows it on the server. */
-export const memorySearchQuery = (api: ApiSource, scope: MemoryScope, q: string, location: string | null) =>
+export const memorySearchQuery = (
+  api: ApiSource,
+  scope: MemoryScope,
+  q: string,
+  location: string | null,
+  agent: string | null = null,
+) =>
   queryOptions({
-    queryKey: memoryKeys.search(scope, q, location),
+    queryKey: memoryKeys.search(scope, q, location, agent),
     queryFn: async ({ signal }) => {
-      const query = { ...scopeQuery(scope), q, limit: SEARCH_LIMIT, ...(location ? { location } : {}) };
+      const query = { ...scopeQuery(scope), ...agentQuery(agent), q, limit: SEARCH_LIMIT, ...(location ? { location } : {}) };
       return (await call(api().GET("/v1/memories/search", { params: { query }, signal }))).items;
     },
     placeholderData: keepPreviousData, // the last results stay while the next query runs, instead of a skeleton
@@ -93,6 +109,25 @@ export const memoryRevisionsQuery = (api: ApiSource, id: number) =>
         }),
       ),
   });
+
+/** The latest revision of a memory at `revision` and where it came from (run, agent, origin, hop), or null. */
+export const latestRevisionQuery = (api: ApiSource, id: number, revision: number) =>
+  queryOptions({
+    queryKey: memoryKeys.latest(id, revision),
+    queryFn: async ({ signal }) => {
+      const page = await call(
+        api().GET("/v1/memories/{memory_id}/revisions", { params: { path: { memory_id: id }, query: { limit: 1 } }, signal }),
+      );
+      return page.items[0] ?? null;
+    },
+    staleTime: Infinity, // keyed by the revision, which never changes
+  });
+
+/** Bring back an agent's memory the daily upkeep archived (a writer of its project): the memory as it is now. */
+export async function restoreMemory(api: ApiClient, id: number): Promise<Memory> {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/memories/{memory_id}/restore", { params: { path: { memory_id: id } }, headers }));
+}
 
 /** Older revisions than `before`, for "show more" in the history. */
 export function olderRevisions(api: ApiSource, id: number, before: number, signal?: AbortSignal) {
