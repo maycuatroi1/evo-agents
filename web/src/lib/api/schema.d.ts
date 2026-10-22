@@ -4320,8 +4320,9 @@ export interface paths {
         /**
          * Open Baseline
          * @description Open a baseline of one claim at once, without waiting for the week's: its change of status, the value check's
-         *     proposal or its overdue test card. Another writer decides it; the project's writers get the notice. 409 when the
-         *     claim asks nothing of a baseline, or a baseline still proposed holds it.
+         *     proposal or its overdue test card. Another writer decides it (the caller too, with the config's self_approval on);
+         *     the project's writers get the notice. 409 when the claim asks nothing of a baseline, or a baseline still proposed
+         *     holds it.
          */
         post: operations["open_baseline_v1_x_canvas__project__canvases__slug__baselines_post"];
         delete?: never;
@@ -4365,8 +4366,9 @@ export interface paths {
          * Decide Item
          * @description Decide the item of one claim of a baseline still proposed: accept, reject or defer a change of status; extend
          *     (with a new deadline) or retire a claim whose test card is overdue, or defer it. Never one whose status the caller
-         *     changed or whose proposal they accepted, nor in a baseline they opened; a rev it writes is the caller's, of kind
-         *     baseline. Once no item waits, the baseline is approved and its snapshot taken.
+         *     changed or whose proposal they accepted, nor in a baseline they opened, unless the config's self_approval is on;
+         *     a rev it writes is the caller's, of kind baseline. Once no item waits, the baseline is approved and its snapshot
+         *     taken.
          */
         post: operations["decide_item_v1_x_canvas__project__canvases__slug__baselines__number__items__ref__decide_post"];
         delete?: never;
@@ -8879,7 +8881,7 @@ export interface components {
             hidden_evidence: number;
             /**
              * Proposers
-             * @description the members who may not decide it: they changed the status, or opened it
+             * @description the members who may not decide it: they changed the status, or opened it; none while the plugin's config turns self_approval on
              */
             proposers: string[];
             /** Decision */

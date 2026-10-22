@@ -52,8 +52,9 @@ default, in ``baseline.timezone``, else the time zone of the project's Curator c
 status since the status in effect, every status the value check proposes, every test card past its deadline without
 real evidence (to extend or retire), and the new claims (``baselines``). The project's writers get the notice
 canvas_baseline in their Inbox, which Telegram forwards, and decide each item on the web (``decisions``), never the one
-who changed the status, nor a run; once every item has a decision, the baseline is approved with a snapshot that never
-changes. A writer may also open a baseline of one claim at once, for another to approve. Every rev emits the event
+who changed the status (unless the config's ``self_approval`` is on), nor a run; once every item has a decision, the
+baseline is approved with a snapshot that never changes. A writer may also open a baseline of one claim at once, for
+another to approve (or themselves, with ``self_approval`` on). Every rev emits the event
 ``canvas.claim``, every approval ``canvas.baseline``, for plugins granted canvas:read and for the hub's events
 (``events``).
 
@@ -103,7 +104,16 @@ CONFIG = {
                 },
             },
             "default": BASELINE_DEFAULT,
-        }
+        },
+        "self_approval": {
+            "title": "Self-approval",
+            "description": "Whether a writer may decide an item of a baseline they proposed, as any writer of the "
+            "project may: on, a member who changed the claim's status since the status in effect, accepted the "
+            "proposal that did, or opened the baseline decides it too, admins included. Every other rule stays: "
+            "writers only, one decision per item, and the agent of a run never decides. Off by default.",
+            "type": "boolean",
+            "default": False,
+        },
     },
 }
 HANDLERS = {"signals": "find_signals"}  # a tool whose function is named otherwise, beside the module signals

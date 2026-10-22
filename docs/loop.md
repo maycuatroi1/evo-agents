@@ -204,7 +204,8 @@ People decide the direction of the project at three gates, gathered on its decis
    zone, to the admins and goal owners), and each active goal past its deadline. An admin writes a goal.
 2. **Canvas**: each baseline still proposed with an item to decide (a change of status, a status the value check
    proposed, a test card past its deadline), and each open proposal of a claim (a brainstorm's, the value check's, the
-   Curator's lens `product`).
+   Curator's lens `product`). A writer who did not propose an item of a baseline decides it, any writer once the
+   plugin's `self_approval` is on (`docs/canvas-plugin.md`, Baselines).
 3. **Policy**: each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose breaker
    tripped, and the Loop's own breaker.
 
