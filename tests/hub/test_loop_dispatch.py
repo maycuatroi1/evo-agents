@@ -3,7 +3,8 @@ criterion a6 of plan loop-engine names it, on the hub with Postgres.
 
 Each kind of work item goes to a run kind the hub has: a brainstorm to a task run of @strategist, a use case to a task
 run of @ba whose version ``srs__propose`` writes as the goal's owner, a build to an author run of its frame task in
-Loop mode on worker loop.worker in its owner's name, and a deliver to a plan run of the plan that author run wrote.
+Loop mode on worker loop.worker in its owner's name (none while no project of the owner's lists an origin for the
+harness: the worker's preflight would fail it), and a deliver to a plan run of the plan that author run wrote.
 The Loop makes no task: an approval leaves only the tasks of the plugin srs's auto_tasks, however often it is read. A
 claim validated and a test card past its deadline make nothing of the Loop. The chain is ``tests.hub.test_loop_tick``'s:
 goal G-1 of owner drives the canvas of Northwind Pantry, whose claim CL-1 links use case UC ORD-1 of demo-shop.
@@ -28,7 +29,7 @@ from evo_agents.hub.server.loop.tick import tick
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_author_plans import put
-from tests.hub.test_author_runs import author_worker, publish_skill
+from tests.hub.test_author_runs import HARNESS, author_worker, publish_skill
 from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
     OTHER,
     agent_of,
@@ -43,10 +44,11 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
 )
 from tests.hub.test_ba_agent import item as srs_item
 from tests.hub.test_chat_runs import chat_worker
-from tests.hub.test_loop_admission import enable_strategist
+from tests.hub.test_loop_admission import enable_strategist, waits
 from tests.hub.test_loop_tick import (  # noqa: F401 (client, hub and loop_core are fixtures)
     FRAME,
     client,
+    harness_listed,
     hub,
     item,
     items,
@@ -122,6 +124,28 @@ def said(client, worker: dict, run_id: int, text: str) -> None:
 def author_notices(db) -> int:
     n = tables.notifications
     return sql(db, select(func.count()).where(n.c.notice_kind == "author_waiting"))[0][0]
+
+
+def frame_ready(client, hub, db, tmp_path) -> tuple[dict, int, int]:
+    """A Loop that is on with worker studio of owner as loop.worker, and the frame task of UC ORD-1, with a child
+    task, ready for its build: (studio, the frame task's id, its number)."""
+    publish_skill(client, hub, tmp_path, "The author mode.")
+    studio = author_worker(client, hub["owner"], "studio")
+    policy(client, hub, {"enabled": True, "worker": "studio"})
+    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
+    push_baseline(client, hub, "CL-1")
+    ticked(client, db)  # @strategist and @ba are off: their work items wait (type_refused)
+    submitted(client, hub["chi"], 1)
+    assert review(client, hub["other"], 1).json()["state"] == "approved"
+    ticked(client, db)
+    delivered(client)  # three frame tasks, no split run: @ba is off
+    t = tables.tasks.items
+    ((frame_id, frame),) = sql(db, select(t.c.id, t.c.number).where(t.c.external_key == FRAME))
+    child = client.post(
+        f"{TASKS}/tasks", json={"title": "Reorder button on the order page", "parent": f"T-{frame}"}, headers=hub["chi"]
+    )
+    assert child.status_code == 201, child.text
+    return studio, frame_id, frame
 
 
 def test_loop_dispatch_hands_a_brainstorm_to_strategist_and_a_use_case_to_ba_whose_version_the_goal_owner_writes(
@@ -240,22 +264,8 @@ def test_loop_dispatch_hands_a_brainstorm_to_strategist_and_a_use_case_to_ba_who
 def test_loop_dispatch_a_frame_task_gets_one_author_run_in_loop_mode_then_a_plan_run_of_its_plan(
     client, hub, hub_db, tmp_path
 ):
-    publish_skill(client, hub, tmp_path, "The author mode.")
-    studio = author_worker(client, hub["owner"], "studio")
-    policy(client, hub, {"enabled": True, "worker": "studio"})
-    edit(client, hub["chi"], {"claim": "CL-1", "base_rev": 2, "status": "testing", "test_card": CARD})
-    push_baseline(client, hub, "CL-1")
-    ticked(client, hub_db)  # @strategist and @ba are off: their work items wait (type_refused)
-    submitted(client, hub["chi"], 1)
-    assert review(client, hub["other"], 1).json()["state"] == "approved"
-    ticked(client, hub_db)
-    delivered(client)  # three frame tasks, no split run: @ba is off
-    t = tables.tasks.items
-    ((frame_id, frame),) = sql(hub_db, select(t.c.id, t.c.number).where(t.c.external_key == FRAME))
-    child = client.post(
-        f"{TASKS}/tasks", json={"title": "Reorder button on the order page", "parent": f"T-{frame}"}, headers=hub["chi"]
-    )
-    assert child.status_code == 201, child.text
+    harness_listed(client, hub)
+    studio, frame_id, frame = frame_ready(client, hub, hub_db, tmp_path)
 
     # the frame task ready: one author run, on studio in its owner's name, with the caps of loop.caps.author
     assert ticked(client, hub_db)["dispatched"] == 1
@@ -329,6 +339,31 @@ def test_loop_dispatch_a_frame_task_gets_one_author_run_in_loop_mode_then_a_plan
     assert plan_run["budget"] == {"max_usd": None, "max_turns": 600, "max_seconds": 14400}
     links = sql(hub_db, select(k.c.run_id).where(k.c.task_id == frame_id, k.c.kind == "run").order_by(k.c.id))
     assert [run_id for (run_id,) in links] == [run["id"], plan_run["id"]]
+
+
+def test_loop_dispatch_hands_out_no_author_run_while_no_project_lists_an_origin_for_the_harness(
+    client, hub, hub_db, tmp_path
+):
+    frame_ready(client, hub, hub_db, tmp_path)  # the project lists the harness as no repo, so with no origin
+    assert ticked(client, hub_db).get("dispatched") is None
+    build = item(hub_db, f"build:{FRAME}")
+    assert (build["state"], build["reason"], build["run_id"], build["attempts"]) == ("queued", "worker", None, 0)
+    kind, reason, detail, run_id = waits(hub_db, f"build:{FRAME}")[-1]
+    assert (kind, reason, run_id) == ("waiting", "worker", None)
+    assert detail == {
+        "why": f"the author run needs the harness {HARNESS}, for which neither project {PROJECT} nor another project "
+        "of the owner of worker studio lists an origin"
+    }
+    r = tables.runs
+    assert sql(hub_db, select(func.count()).where(r.c.kind == "author")) == [(0,)], "nothing for the preflight to fail"
+
+    # once the project lists the harness with its origin, the next tick hands the author run out
+    harness_listed(client, hub)
+    assert ticked(client, hub_db)["dispatched"] == 1
+    build = item(hub_db, f"build:{FRAME}")
+    assert (build["state"], build["reason"], build["attempts"]) == ("running", None, 1)
+    run = run_of(hub_db, build["run_id"])
+    assert (run["kind"], run["repos"][0]["repo"]) == ("author", HARNESS)
 
 
 def test_loop_dispatch_a_claim_validated_makes_no_build_and_a_card_past_its_deadline_no_decision(client, hub, hub_db):
