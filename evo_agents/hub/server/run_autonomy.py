@@ -115,10 +115,16 @@ async def _profile(conn: AsyncConnection, profile_id: int | None) -> tuple[str, 
 
 
 async def reached(
-    conn: AsyncConnection, at: Context, user_id: int, project_id: int, repos: list[str], profile_id: int | None
+    conn: AsyncConnection,
+    at: Context,
+    user_id: int,
+    project_id: int,
+    repos: list[str],
+    profile_id: int | None,
+    shares: Iterable[tuple[int, str | None]] = (),
 ) -> Reached:
-    """The effective autonomy of ``user_id`` running the agent profile ``profile_id`` on ``repos`` of the project now:
-    the strictest over the repos, each under its project policy."""
+    """The effective autonomy of ``user_id`` running the agent profile ``profile_id`` on ``repos`` of the project now,
+    under the credentials ``shares`` lend it (source 6): the strictest over the repos, each under its project policy."""
     from evo_agents.hub.server.autonomy_store import newest_pref
 
     login = await _login(conn, user_id)
@@ -127,18 +133,24 @@ async def reached(
     profile = await _profile(conn, profile_id)
     found = None
     for policy in await _policies(conn, project_id, repos) or [None]:
-        sources = org.autonomy_sources(at.chart, user_id, at.day, held, policy=policy, profile=profile)
+        sources = org.autonomy_sources(at.chart, user_id, at.day, held, policy=policy, profile=profile, shares=shares)
         one = autonomy_levels.effective(sources)
         found = one if found is None else autonomy_levels.stricter(found, one)
     return found
 
 
 async def _bounded(
-    conn: AsyncConnection, at: Context, people: Iterable[int], project_id: int, repos: list[str], profile_id
+    conn: AsyncConnection,
+    at: Context,
+    people: Iterable[int],
+    project_id: int,
+    repos: list[str],
+    profile_id,
+    shares: Iterable[tuple[int, str | None]] = (),
 ) -> Reached:
     found = None
     for user_id in people:
-        one = await reached(conn, at, user_id, project_id, repos, profile_id)
+        one = await reached(conn, at, user_id, project_id, repos, profile_id, shares)
         found = one if found is None else autonomy_levels.stricter(found, one)
     return found
 
@@ -210,10 +222,25 @@ async def stamp(conn: AsyncConnection, values: dict, who: For | None = None) -> 
     return {**values, "principal_id": principal, "autonomy": body(found, also)}
 
 
-async def recheck(conn: AsyncConnection, run_id: int, *, repo: str | None = None) -> Reached | None:
+async def share_levels(conn: AsyncConnection, run_id: int, lending: Iterable[int] = ()) -> list[tuple[int, str | None]]:
+    """(share id, level) of each credential share run ``run_id`` holds a live lease under, and of the shares
+    ``lending`` (those a lease is about to lend it): source 6 of its autonomy."""
+    cl, cs = tables.credential_leases, tables.credential_shares
+    held = select(cl.c.share_id).where(cl.c.run_id == run_id, cl.c.share_id.is_not(None), cl.c.revoked_at.is_(None))
+    ids = {*(await conn.execute(held)).scalars(), *lending}
+    if not ids:
+        return []
+    rows = await conn.execute(select(cs.c.id, cs.c.level).where(cs.c.id.in_(sorted(ids))).order_by(cs.c.id))
+    return [(row.id, row.level) for row in rows]
+
+
+async def recheck(
+    conn: AsyncConnection, run_id: int, *, repo: str | None = None, lending: Iterable[int] = ()
+) -> Reached | None:
     """The autonomy of run ``run_id`` at a gate: the stricter of its snapshot and the value now, on ``repo`` when the
-    gate acts on one (the run's repos without it), written back when stricter than the snapshot. None for a run
-    without a snapshot (a local run, one queued before schema 0106): the gate acts as before."""
+    gate acts on one (the run's repos without it), under the credential shares it is leased under and those
+    ``lending`` (source 6), written back when stricter than the snapshot. None for a run without a snapshot (a local
+    run, one queued before schema 0111): the gate acts as before."""
     from evo_agents.hub.server.org_store import user_by_login
 
     r = tables.runs
@@ -227,7 +254,8 @@ async def recheck(conn: AsyncConnection, run_id: int, *, repo: str | None = None
         if found is not None:
             people.append(found.id)
     repos = [repo] if repo else run_repos(row.repo, row.repos)
-    now = await _bounded(conn, await context(conn), people, row.project_id, repos, row.profile_id)
+    shares = await share_levels(conn, run_id, lending)
+    now = await _bounded(conn, await context(conn), people, row.project_id, repos, row.profile_id, shares)
     held = autonomy_levels.from_snapshot(row.autonomy)
     merged = _lowered(autonomy_levels.stricter(held, now))
     if merged != held:

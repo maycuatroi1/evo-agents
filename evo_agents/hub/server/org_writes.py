@@ -377,7 +377,7 @@ async def end_seat(w: Write, seat_id: int) -> int:
 @dataclass(frozen=True)
 class Limits:
     """What a ceiling revision sets besides its level: the class overrides and the environments and workers it
-    allows (schema 0105)."""
+    allows (schema 0110)."""
 
     classes: dict[str, str] = field(default_factory=dict)
     environments: tuple[str, ...] = ()

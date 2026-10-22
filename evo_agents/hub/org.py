@@ -205,10 +205,12 @@ def autonomy_sources(
     *,
     policy: Source | None = None,
     profile: tuple[str, int] | None = None,
+    shares: Iterable[tuple[int, str | None]] = (),
 ) -> list[Source]:
     """The seven sources of a principal's effective autonomy (``autonomy_levels.effective``), in order: their
     preference, their primary seat, its units up to the root, the project policy of the repo (when one is named), the
-    seat of the agent profile (handle, id) and its units (when one is named), the shared credential, the instance."""
+    seat of the agent profile (handle, id) and its units (when one is named), the credentials shared with the run (the
+    (share id, level) of each share it is leased under), the instance."""
     sources = [pref, *person_sources(chart, user_id, today)]
     if policy is not None:
         sources.append(policy)
@@ -216,7 +218,7 @@ def autonomy_sources(
         handle, profile_id = profile
         held = profile_sources(chart, profile_id, today)
         sources += held if held is not None else [Source(f"profile:{handle}", detail="holds no seat")]
-    return [*sources, autonomy_levels.credential_source(), autonomy_levels.instance_source()]
+    return [*sources, autonomy_levels.credential_source(shares), autonomy_levels.instance_source()]
 
 
 def unit_effective(chart: Chart, unit_id: int) -> Effective:

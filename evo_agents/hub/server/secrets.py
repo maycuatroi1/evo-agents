@@ -17,8 +17,9 @@ MAX_SECRETS_PER_OWNER secrets.
 
 GET /v1/secrets lists the caller's own secrets that are not deleted: name, kind, target, bindings and dates, never the
 value, sealed or not. A hub admin sees only their own too; /v1/admin/stats counts the rows of every table and shows
-none. DELETE /v1/secrets/{name} deletes softly: the row stays, for the leases and the audit lines that name it, while
-its sealed value and its bindings go, and the leases of it that are not given back yet are marked revoked. The name
+none; each comes with its shares not revoked (``evo_agents.hub.server.share_views``). DELETE /v1/secrets/{name} deletes
+softly: the row stays, for the leases and the audit lines that name it, while its sealed value and its bindings go,
+and the leases and shares of it that are not given back or revoked yet are marked revoked. The name
 is free again at once.
 
 An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token and other parts of an account's
@@ -77,6 +78,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.sealing import Sealer, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.share_views import CredentialShare, shares_of
 from evo_agents.hub.server.worker_models import LINE, WORKER_NAME
 
 log = logging.getLogger(__name__)
@@ -132,7 +134,7 @@ class SecretWrite(BaseModel):
     environment: Literal[SECRET_ENVIRONMENTS] | None = Field(
         None,
         description="kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is "
-        "leased the env secrets labelled test alone (docs/autonomy-levels.md)",
+        "leased the env secrets labelled test alone (docs/autonomy.md)",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
         min_length=1,
@@ -177,6 +179,7 @@ class Secret(BaseModel):
     expires_at: datetime | None
     created_at: datetime
     updated_at: datetime = Field(description="when its value was last written")
+    shares: list[CredentialShare] = Field(description="its shares not revoked, newest first")
 
 
 class SecretWritten(Secret):
@@ -203,6 +206,7 @@ def bound_names(target, key):
 async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None) -> list[Secret]:
     s, b = tables.secrets, tables.secret_bindings
     listed = select(
+        s.c.id,
         s.c.name,
         s.c.kind,
         s.c.env_var,
@@ -217,7 +221,9 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
     ).where(s.c.owner_id == owner_id, s.c.deleted_at.is_(None))
     if name is not None:
         listed = listed.where(s.c.name == name)
-    return [Secret(**row._mapping) for row in await conn.execute(listed.order_by(s.c.name))]
+    rows = (await conn.execute(listed.order_by(s.c.name))).all()
+    shares = await shares_of(conn, [row.id for row in rows])
+    return [Secret(**row._mapping, shares=shares.get(row.id, [])) for row in rows]
 
 
 @router.get("", response_model=list[Secret])
@@ -504,6 +510,9 @@ async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -
             update(cl).values(revoked_at=func.now()).where(cl.c.secret_id == secret_id, cl.c.revoked_at.is_(None))
         )
         revoked = ended.rowcount
+        cs = tables.credential_shares
+        unshared = update(cs).values(revoked_at=func.now(), revoked_by=user.user_id)
+        await conn.execute(unshared.where(cs.c.secret_id == secret_id, cs.c.revoked_at.is_(None)))
         target = audit_target(secret_id)
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=target

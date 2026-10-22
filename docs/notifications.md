@@ -31,12 +31,12 @@ with the category to ask each in (`CLASS_CATEGORIES`: K5 `merge`, K6 `deploy`, K
 `live_migration`, K10 `external_send`, K11 `spend_money`, K12 `access`), and in notify; at A5 only the floors S2 and S3.
 A plan run's prompt then lists the categories its card leaves to ask, with `architecture` and `scope`, and says that
 merging, deploying and releasing are the agent's only when K5 and K6 are auto. A run without a snapshot (a local run,
-one queued before schema 0106) lists all of them but `deploy` and the three of schema 0108
+one queued before schema 0111) lists all of them but `deploy` and the three of schema 0113
 (`PROMPTED_DECISION_CATEGORIES`), as before. The route that takes a decision refuses any other category, and the agent
 decides everything else itself and writes each such choice, with why, into the evidence of its step on a line that
 starts with `Decision:`.
 
-A decision goes to one person, `asked_of` (schema 0108, `principals.asked_of`): for a run whose principal is an intern,
+A decision goes to one person, `asked_of` (schema 0113, `principals.asked_of`): for a run whose principal is an intern,
 the person their seat reports to, and once it has been open 24 hours the leads of their unit too (the hourly job
 hub.expire_seats tells them, once each, and each may then answer); for a run the hub makes on its own, the sponsor of
 its agent; for any other, the run's principal. An intern never answers a decision of their own run (403). The Inbox,
@@ -185,10 +185,11 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
+| `worker_doctor` | the doctor report of a worker shared with units of the org chart has a high finding and the one before had none (`docs/workers.md`, Shared workers), to the worker's owner; the worker takes no run of those units' members until a report has none | the worker, the codes of the high findings, and a link to the worker's page; never a credential |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
 `curator_paused`, `release`, `merge_paused`, `loop_paused`, `goal_review`, `loop_brief`, `plugin_notice`, `author_waiting`, `pm_daily`,
-`pm_escalation`, `chat_mention`, `chat_added` and `run_outputs`, and the `merge_default_branch` of its merge queue. A
+`pm_escalation`, `chat_mention`, `chat_added`, `run_outputs` and `worker_doctor`, and the `merge_default_branch` of its merge queue. A
 release run that fails sends no
 `run_failed` and opens no triage thread of its own: its cycle stops and asks the owner instead. A chat's notice is
 kept in the project of one of its agents, a restricted one first, so a member who loses the grant on it stops getting

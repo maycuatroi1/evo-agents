@@ -6,7 +6,7 @@ records); the floor S2, a command of K9 only after a backup made within 24 hours
 and the PreToolUse hook every claude-code run with a snapshot gets, beside the profile's.
 
 The hook is a second layer: a command wrapped in base64, kept in a script or run through ``eval`` gets past it, as the
-last tests show and ``docs/autonomy-levels.md`` says.
+last tests show and ``docs/autonomy.md`` says.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.hub import chat_runs, tables
+from evo_agents.hub import autonomy_card, chat_runs, tables
 from evo_agents.hub.server.chats import NOT_IN_DIRECT
 from tests.hub import test_chat_runs as group_runs
 from tests.hub.live import sql
@@ -200,7 +200,7 @@ def test_a_direct_chat_run_prompt_shows_the_latest_turns_within_the_snapshot_byt
     for n in range(1, 5):
         turn(client, hub, worker, chat, f"Task {n}: {filler}", f"Answer {n}: {filler}")
     last = sent(client, hub["owner"], chat["id"], "Task 5: sum up what you did.")
-    prompt = claimed(client, hub, worker, last)["prompt"]
+    prompt = autonomy_card.without_card(claimed(client, hub, worker, last)["prompt"])  # the card opens it
     assert prompt.startswith(f"You are @reviewer (Reviewer), an agent of project {PROJECT} on the evo-agents hub")
     assert f"in a direct chat with {OWNER} (#{chat['id']})" in prompt
     assert f"This is a direct chat of {OWNER} and you" in prompt

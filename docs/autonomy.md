@@ -106,7 +106,7 @@ A git secret withheld leaves its repo on GitHub to the App, and any other repo m
 GitHub whose ruleset cannot keep the App off its default branch gets a token that reads only, with the reason in the
 audit row: the hub cannot give a token that writes to a run branch alone there. A lease that withheld anything writes
 `autonomy.refused` naming the class, the mode, the source and what it kept back. `hub secret set --environment test`
-labels an env secret (schema 0107 adds `secrets.environment`).
+labels an env secret (schema 0112 adds `secrets.environment`).
 
 **K5 at the merge** (`evo_agents/hub/server/autonomy_gates.py`): the GitLab merge queue (`merge_gate.ready`) and the
 Curator's tier merge (`changes`). **K6 at the deploy and the release**: the PROD deploy of the policy (`post_merge`) and
@@ -181,9 +181,9 @@ ceiling.
 ## Routes and schema
 
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
-caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0105 adds the
+caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0110 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`. Schema 0106 adds `principal_id` and `autonomy` to `runs`. Schema 0107 adds `secrets.environment`, the decision category
+`workers` of `autonomy_ceilings`. Schema 0111 adds `principal_id` and `autonomy` to `runs`. Schema 0112 adds `secrets.environment`, the decision category
 `autonomy` and the notice kind `autonomy`.
 
 The worker's routes, with the token of the worker that claimed the run: `POST /v1/worker/runs/{id}/backups` records a

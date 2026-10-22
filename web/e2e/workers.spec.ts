@@ -597,3 +597,32 @@ test.describe("in Vietnamese", () => {
     await expect(dialog.getByRole("tab", { name: "Pairing code" })).toBeVisible();
   });
 });
+
+test("the owner shares a worker from its Sharing card, which a hub admin does not get", async ({ page, member, signInAs }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const worker = await registerWorker(me, { name: uniqueName("lent"), projects: [me.projects[0]] });
+  await heartbeat(worker.id, { runtimes: RUNTIMES, checkouts: CHECKOUTS });
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  const card = main.getByTestId("worker-sharing");
+  await expect(card.getByRole("heading", { name: "Sharing" })).toBeVisible();
+  // Nothing is wrong with a worker shared with no unit: no pill, and its switch is free.
+  await expect(card.getByTestId("worker-doctor-none")).toBeVisible();
+  await expect(card.getByTestId("worker-doctor-high")).toHaveCount(0);
+  await expect(card.getByTestId("worker-shared-locked")).toHaveCount(0);
+  await expect(card.getByTestId("worker-units-empty")).toBeVisible();
+  const toggle = card.getByRole("switch", { name: "Share with the writers of its projects" });
+  await expect(toggle).not.toBeChecked();
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toast(page, `${worker.name} is shared`)).toBeVisible();
+  await expect(toggle).toBeChecked();
+  expect((await workersOf(me)).find((w) => w.id === worker.id)?.shared).toBe(true);
+
+  await signOut(page);
+  await signInAs(ADMIN_ACCOUNT);
+  await page.goto(`/workers/${worker.id}`);
+  await expect(main.getByTestId("worker-as-admin")).toBeVisible();
+  await expect(main.getByTestId("worker-sharing")).toHaveCount(0);
+});

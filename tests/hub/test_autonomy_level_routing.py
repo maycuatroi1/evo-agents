@@ -1,5 +1,5 @@
 """Who a decision and a notice go to, and the card of a claim (``evo_agents.hub.server.principals``), as criterion a12
-of plan autonomy-levels names them: schema 0108 gives decisions asked_of and the categories merge, credential and
+of plan autonomy-levels names them: schema 0113 gives decisions asked_of and the categories merge, credential and
 access; a decision of a run whose principal is an intern goes to the person they report to, and after 24 hours to the
 leads of their unit too; an intern never answers a decision of their own run; a notice of a class in notify reaches
 the principal and an intern's mentor; the claim's prompt opens with the run's card. The card itself:
@@ -78,11 +78,11 @@ def test_autonomy_level_routing_migration_0108_adds_asked_of_and_the_categories_
         ("merge",),
         ("architecture",),
     ]
-    move_to(hub_db, "0107", down=True)
+    move_to(hub_db, "0112", down=True)
     assert "asked_of" not in columns(hub_db, "decisions")
     left = sql(hub_db, select(d.c.id).where(d.c.run_id == run["id"]))
     assert left == [(kept["id"],)], f"decision {merge['id']} of category merge is gone"
-    move_to(hub_db, "0108")
+    move_to(hub_db, "0113")
     assert "asked_of" in columns(hub_db, "decisions")
 
 

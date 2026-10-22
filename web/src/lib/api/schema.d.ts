@@ -3309,6 +3309,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Run
+         * @description Upload a file for a message to the run's agent: the run's owner, while the run takes messages.
+         */
+        post: operations["upload_to_run_v1_projects__project__runs__run_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Run Upload
+         * @description Take back an upload of yours for the run that no message holds.
+         */
+        delete: operations["delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Content
+         * @description The bytes of a file of a message to the run, for its readers.
+         */
+        get: operations["run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload To Chat
+         * @description Upload a file for a message of the chat: a member of it.
+         */
+        post: operations["upload_to_chat_v1_chats__chat_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Chat Upload
+         * @description Take back an upload of yours for the chat that no message holds.
+         */
+        delete: operations["delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Content
+         * @description The bytes of a file a message of the chat carries, for a member who reads that message.
+         */
+        get: operations["chat_content_v1_chats__chat_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/attachments/{attachment_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Content
+         * @description The bytes of a file for the agent of a run the worker claimed: a file of a message its inbox took, or of a chat
+         *     message the agent may read.
+         */
+        get: operations["worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -4204,6 +4345,71 @@ export interface paths {
         get: operations["show_org_autonomy_v1_autonomy_org_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Worker Shares
+         * @description The caller's live workers, every live worker for a hub admin, with whom each is shared.
+         */
+        get: operations["list_worker_shares_v1_org_workers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/org/workers/{worker_id}/units/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Share Worker
+         * @description Narrow the worker to a live unit of the org chart, sharing it when it was not.
+         */
+        put: operations["share_worker_v1_org_workers__worker_id__units__slug__put"];
+        post?: never;
+        /**
+         * Unshare Worker
+         * @description Take a unit back from the worker; with its last unit, sharing ends too.
+         */
+        delete: operations["unshare_worker_v1_org_workers__worker_id__units__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Doctor
+         * @description Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
+         *     high finding stops it taking the runs of the units it is shared with.
+         */
+        post: operations["report_doctor_v1_worker_doctor_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5560,6 +5766,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/secrets/{name}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shares
+         * @description The shares of the caller's secret or account ``name``, revoked ones too, newest first.
+         */
+        get: operations["list_shares_v1_secrets__name__shares_get"];
+        put?: never;
+        /**
+         * Create Share
+         * @description Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``.
+         */
+        post: operations["create_share_v1_secrets__name__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Share
+         * @description Revoke a share: its secret's owner may, and a hub admin may revoke any.
+         */
+        delete: operations["revoke_share_v1_shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs/{run_id}/credentials": {
         parameters: {
             query?: never;
@@ -5635,7 +5885,8 @@ export interface paths {
         };
         /**
          * Get Account
-         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         * @description The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+         *     404 for a name that is neither.
          */
         get: operations["get_account_v1_accounts__name__get"];
         put?: never;
@@ -7985,6 +8236,16 @@ export interface components {
              * @description the runs a worker holds now with it
              */
             held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -8931,6 +9192,25 @@ export interface components {
             agent_error?: string | null;
             /** Session Id */
             session_id?: string | null;
+        };
+        /** Attachment */
+        Attachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
         };
         /** AudienceIn */
         AudienceIn: {
@@ -11691,12 +11971,17 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /**
+             * Attachments
+             * @description the files of the owner's message, whose bytes GET /v1/projects/{p}/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["SentFile"][];
         };
         /** ChatMessageIn */
         ChatMessageIn: {
             /**
              * Body
-             * @description at most 16384 bytes of UTF-8
+             * @description at most 16384 bytes of UTF-8; empty only with attachment_ids
              */
             body: string;
             /**
@@ -11704,6 +11989,11 @@ export interface components {
              * @description the message it answers: it goes in its thread
              */
             reply_to?: number | null;
+            /**
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
+             */
+            attachment_ids?: number[];
         };
         /** ChatPage */
         ChatPage: {
@@ -12247,6 +12537,82 @@ export interface components {
              */
             expires_at: string | null;
         };
+        /**
+         * CredentialShare
+         * @description A share of a secret or an account, as its owner sees it.
+         */
+        CredentialShare: {
+            /** Id */
+            id: number;
+            /**
+             * Secret
+             * @description the name of the secret or account shared
+             */
+            secret: string;
+            /**
+             * Credential
+             * @description subscription (a personal Claude account, shared only after its owner acknowledged the terms warning), api_key, git or env
+             * @enum {string}
+             */
+            credential: "subscription" | "api_key" | "git" | "env";
+            /**
+             * Grantee Kind
+             * @description user: one member; unit: a unit and below; all: everyone
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Grantee
+             * @description the member's login or the unit's slug; null for all
+             */
+            grantee: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to; null for none
+             */
+            level: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD; null for none
+             */
+            budget_usd: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description 1 to 100: no run takes the account while its usage is at this percent or above; null for none
+             */
+            usage_ceiling_pct: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once; null for no limit
+             */
+            max_running: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; null for no end
+             */
+            expires_at: string | null;
+            /**
+             * Terms Ack At
+             * @description when its owner acknowledged the terms warning; null for none
+             */
+            terms_ack_at: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+        };
         /** Credentials */
         Credentials: {
             /** Leases */
@@ -12460,7 +12826,7 @@ export interface components {
             owner: string;
             /**
              * Asked Of
-             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0108
+             * @description the login of the person asked, who answers it: the principal of its run, or the person an intern reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a decision asked before schema 0113
              */
             asked_of: string;
             /** Answer Option */
@@ -12775,6 +13141,44 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DoctorAnswer */
+        DoctorAnswer: {
+            /** Worker Id */
+            worker_id: number;
+            /**
+             * Doctor At
+             * Format: date-time
+             * @description when the hub took the report
+             */
+            doctor_at: string;
+            /** Doctor High */
+            doctor_high: number;
+            /** Doctor Medium */
+            doctor_medium: number;
+        };
+        /** DoctorFinding */
+        DoctorFinding: {
+            /**
+             * Code
+             * @description what the doctor found, as `worker doctor --json` names it
+             */
+            code: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
+            /**
+             * Detail
+             * @description what it found, as the doctor prints it
+             */
+            detail: string;
+        };
+        /** DoctorReport */
+        DoctorReport: {
+            /** Findings */
+            findings: components["schemas"]["DoctorFinding"][];
         };
         /** EarlierFinding */
         EarlierFinding: {
@@ -13587,6 +13991,11 @@ export interface components {
              * @description the files of its run it carries, oldest first, each with the chat's URL of its bytes
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /**
+             * Attachments
+             * @description the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes
+             */
+            attachments?: components["schemas"]["LinkedAttachment"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -14248,6 +14657,11 @@ export interface components {
              * @description the decision this message answers; null for any other message
              */
             decision_id?: number | null;
+            /**
+             * Attachments
+             * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** Job */
         Job: {
@@ -14713,6 +15127,30 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** LinkedAttachment */
+        LinkedAttachment: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Url
+             * @description the hub's URL of its bytes, for those who may read the message
+             */
+            url: string;
         };
         /**
          * ListedAgentAccount
@@ -15788,14 +16226,24 @@ export interface components {
              * @description when the worker took it for the agent
              */
             delivered_at: string | null;
+            /**
+             * Attachments
+             * @description the files it carries
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** MessageIn */
         MessageIn: {
             /**
              * Text
-             * @description at most 8 KiB of UTF-8
+             * @description at most 8 KiB of UTF-8; empty only with attachment_ids
              */
             text: string;
+            /**
+             * Attachment Ids
+             * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
+             */
+            attachment_ids?: number[];
         };
         /** MissingBlobs */
         MissingBlobs: {
@@ -16141,7 +16589,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -18555,6 +19003,32 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** PrincipalCost */
+        PrincipalCost: {
+            /**
+             * Principal
+             * @description the member the runs were made for, by login; null for one now gone
+             */
+            principal: string | null;
+            /** Runs 24H */
+            runs_24h: number;
+            /** Runs 7D */
+            runs_7d: number;
+            /**
+             * Runs Month
+             * @description the runs that took it since the month began, UTC
+             */
+            runs_month: number;
+            /** Cost 24H Usd */
+            cost_24h_usd: number;
+            /** Cost 7D Usd */
+            cost_7d_usd: number;
+            /**
+             * Cost Month Usd
+             * @description what those runs cost since the month began, in USD, an estimate
+             */
+            cost_month_usd: number;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -19688,6 +20162,11 @@ export interface components {
             sent_at: string;
             /** Body */
             body: string;
+            /**
+             * Attachments
+             * @description the files its author attached to it; a run's agent fetches their bytes with GET /v1/worker/runs/{id}/attachments/{aid}/content
+             */
+            attachments?: components["schemas"]["Attachment"][];
         };
         /** ReadRequest */
         ReadRequest: {
@@ -21048,10 +21527,10 @@ export interface components {
             account: string | null;
             /**
              * How
-             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member
              * @enum {string}
              */
-            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            how: "manual" | "worker" | "charter" | "pool" | "cooling" | "shared";
             /**
              * Failovers
              * @description the times the run moved to another account
@@ -22177,6 +22656,16 @@ export interface components {
             release?: components["schemas"]["ReleaseSpec"] | null;
             /** @description the autonomy card its prompt opens with; null for a run without a snapshot of autonomy */
             autonomy?: components["schemas"]["RunCard"] | null;
+            /**
+             * Attachments
+             * @description a chat run's: the files of the chat message that opened it (chat_message_id), whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves; empty for any other run
+             */
+            attachments?: components["schemas"]["Attachment"][];
+            /**
+             * Chat Message Id
+             * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
+             */
+            chat_message_id?: number | null;
         };
         /** RunState */
         RunState: {
@@ -22642,6 +23131,11 @@ export interface components {
              * @description when its value was last written
              */
             updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
         };
         /** SecretWrite */
         SecretWrite: {
@@ -22668,7 +23162,7 @@ export interface components {
             username?: string | null;
             /**
              * Environment
-             * @description kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy-levels.md)
+             * @description kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy.md)
              */
             environment?: "test" | null;
             /**
@@ -22748,6 +23242,11 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
              * Created
              * @description false when a secret of this name was replaced
              */
@@ -22790,6 +23289,26 @@ export interface components {
             error_at?: string | null;
             /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
             update_now?: components["schemas"]["UpdateNowReport"] | null;
+        };
+        /**
+         * SentFile
+         * @description A file as a ``user_message`` event names it (``as_event``).
+         */
+        SentFile: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's own name, as its uploader gave it
+             */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
         };
         /**
          * SessionDigest
@@ -23020,6 +23539,61 @@ export interface components {
              * @description 409 unless the layer is at this version now
              */
             if_version?: number | null;
+        };
+        /** ShareWrite */
+        ShareWrite: {
+            /**
+             * Grantee Kind
+             * @description user: one member, named by login; unit: a unit of the org chart and every unit below it, named by unit; all: everyone on the hub
+             * @enum {string}
+             */
+            grantee_kind: "user" | "unit" | "all";
+            /**
+             * Login
+             * @description grantee_kind user only: the member's login
+             */
+            login?: string | null;
+            /**
+             * Unit
+             * @description grantee_kind unit only: the unit's slug
+             */
+            unit?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs may use it, each one the secret is bound to
+             */
+            projects: string[];
+            /**
+             * Level
+             * @description the autonomy level a run using it is held to
+             */
+            level?: ("A0" | "A1" | "A2" | "A3" | "A4" | "A5") | null;
+            /**
+             * Budget Usd
+             * @description the most the runs using it may cost a month, in USD
+             */
+            budget_usd?: number | null;
+            /**
+             * Usage Ceiling Pct
+             * @description no run takes the account while its usage is at this percent or above
+             */
+            usage_ceiling_pct?: number | null;
+            /**
+             * Max Running
+             * @description the most runs that may hold it at once
+             */
+            max_running?: number | null;
+            /**
+             * Expires At
+             * @description when the share ends; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Terms Ack
+             * @description the owner acknowledges the terms warning, which sharing a personal subscription token needs
+             * @default false
+             */
+            terms_ack: boolean;
         };
         /** Sign */
         Sign: {
@@ -26659,7 +27233,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "run-output" | "attachment" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -27190,6 +27764,49 @@ export interface components {
              * @description the projects the worker serves, by name, as its owner set them; a hub before evo-ak 0.31.2 sends none, and a daemon that got none keeps those of its config
              */
             projects?: string[];
+        };
+        /**
+         * WorkerShares
+         * @description Whom a worker is shared with: its owner's writers, narrowed to ``units`` when it names any.
+         */
+        WorkerShares: {
+            /** Id */
+            id: number;
+            /**
+             * Worker
+             * @description the worker's name, unique among its owner's live workers
+             */
+            worker: string;
+            /**
+             * Owner
+             * @description the login of the member who registered it
+             */
+            owner: string;
+            /**
+             * Shared
+             * @description whether other members' runs may go to it
+             */
+            shared: boolean;
+            /**
+             * Units
+             * @description the slugs of the units it is narrowed to, sorted; none: shared with every writer of a project it serves
+             */
+            units: string[];
+            /**
+             * Doctor At
+             * @description when its daemon sent the newest doctor report; null: none
+             */
+            doctor_at?: string | null;
+            /**
+             * Doctor High
+             * @description findings of severity high in that report; null: no report
+             */
+            doctor_high?: number | null;
+            /**
+             * Doctor Medium
+             * @description findings of severity medium in that report; null: no report
+             */
+            doctor_medium?: number | null;
         };
         /**
          * WorkerUpdate
@@ -39223,6 +39840,622 @@ export interface operations {
             };
         };
     };
+    upload_to_run_v1_projects__project__runs__run_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_run_upload_v1_projects__project__runs__run_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_content_v1_projects__project__runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_to_chat_v1_chats__chat_id__attachments_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        /** @description the file's bytes, at most 52428800; Content-Type is its media type */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_chat_upload_v1_chats__chat_id__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_content_v1_chats__chat_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    worker_content_v1_worker_runs__run_id__attachments__attachment_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                run_id: number;
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_changes_v1_projects__project__curator_changes_get: {
         parameters: {
             query?: never;
@@ -42305,6 +43538,222 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_worker_shares_v1_org_workers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    share_worker_v1_org_workers__worker_id__units__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unshare_worker_v1_org_workers__worker_id__units__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerShares"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_doctor_v1_worker_doctor_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoctorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -47812,6 +49261,205 @@ export interface operations {
             };
         };
     };
+    list_shares_v1_secrets__name__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_v1_secrets__name__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_share_v1_shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the id of the share */
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialShare"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_credentials_v1_projects__project__runs__run_id__credentials_get: {
         parameters: {
             query?: never;
@@ -48020,7 +49668,10 @@ export interface operations {
     };
     get_account_v1_accounts__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the member who shared the account with the caller; omit for one's own */
+                owner?: string | null;
+            };
             header?: never;
             path: {
                 /** @description one of the caller's env secrets */

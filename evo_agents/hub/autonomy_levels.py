@@ -327,9 +327,14 @@ def policy_source(project: str, repo: str, mode: str, prod_release: str) -> Sour
     return Source(f"{POLICY}{project}/{repo}", None, overrides, detail=f"mode {mode}, prod_release {prod_release}")
 
 
-def credential_source() -> Source:
-    """Source 6, the credential shared with the run: none limits a class yet."""
-    return Source(CREDENTIAL_SHARE, detail="no shared credential limits it")
+def credential_source(shares: Iterable[tuple[int, str | None]] = ()) -> Source:
+    """Source 6, the credentials shared with the run (credential_shares.level of each share it is leased under, as
+    (share id, level)): the lowest level among them; empty when none carries a level."""
+    held = sorted((rank(level), share_id, level) for share_id, level in shares if level is not None)
+    if not held:
+        return Source(CREDENTIAL_SHARE, detail="no shared credential limits it")
+    _, share_id, level = held[0]
+    return Source(CREDENTIAL_SHARE, level, detail=f"share {share_id} of a credential the run is leased")
 
 
 def instance_source() -> Source:

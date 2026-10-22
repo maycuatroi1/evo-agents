@@ -177,7 +177,7 @@ class Decision(BaseModel):
     asked_of: str = Field(
         description="the login of the person asked, who answers it: the principal of its run, or the person an intern "
         "reports to (after 24 hours the leads of the intern's unit too), or a hub-made run's sponsor; the owner for a "
-        "decision asked before schema 0108"
+        "decision asked before schema 0113"
     )
     answer_option: str | None
     answer_text: str | None
@@ -222,7 +222,7 @@ class AnswerIn(BaseModel):
 
 
 def asked_person():
-    """Who answers a decision, of a query that joins its run: the person it was asked of, or before schema 0108 a
+    """Who answers a decision, of a query that joins its run: the person it was asked of, or before schema 0113 a
     gate's decision of autonomy the run's principal and any other the run's owner."""
     d, r = tables.decisions, tables.runs
     gate = and_(d.c.category == runs.AUTONOMY_DECISION_CATEGORY, r.c.principal_id.is_not(None))

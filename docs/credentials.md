@@ -600,6 +600,66 @@ applications, and says developers may not collect, store or intermediate Claude.
 account against that page, and `account login` with a setup-token is the route that keeps the sign-in inside
 Anthropic's own binary.
 
+### Sharing a secret or an account
+
+The owner of a secret or an account may share it with one member, a unit of the org chart and every unit below it,
+or everyone on the hub, for some of the projects it is bound to (`POST /v1/secrets/{name}/shares`, table
+`credential_shares` of migration 0105):
+
+```
+evo-agents hub account share claude-a --login someone-else --project demo --level A2 --budget-usd 50 \
+    --usage-ceiling 80 --max-running 2 --expires 2027-01-31 --ack-terms
+evo-agents hub secret share notes-key --unit lab --project demo
+evo-agents hub account unshare --share 12
+evo-agents hub secret unshare --share 13
+```
+
+Only the owner creates a share, a hub admin included. The owner revokes it (`DELETE /v1/shares/{id}`), and a hub admin
+may revoke any share; a revoked share stays, with who revoked it and when, and deleting the secret revokes its shares.
+A forge secret is never shared. A unit grantee is a live unit: neither it nor a unit above it is archived, and no
+cohort holding it has ended. `hub secret list --json` and `hub account show --json` carry each one's live shares under
+`shares`; `GET /v1/secrets/{name}/shares` lists revoked ones too.
+
+The hub sorts each credential into a class: `subscription` for an account of provider claude, whether its token was
+pasted or came from OAuth; `api_key` for an Anthropic or OpenAI API key; `git`; and `env` for the rest. A subscription
+token is shared only with the owner's acknowledgement of this warning (`terms_ack` in the API, `--ack-terms` on the
+command line), which the web, the command line and the audit show word for word
+(`evo_agents.hub.credential_shares.TERMS_WARNING`):
+
+> This is a personal Claude subscription token. Anthropic's Consumer Terms (section 2) do not allow you to let anyone
+> else use your account. Anthropic may limit, suspend or close the account without notice. Every request a run makes
+> with this token is made in your name, as the account holder.
+
+Without the acknowledgement the hub answers 409 with that warning, and the command prints it and exits non-zero. With
+it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` holding the warning after the row
+`share.create`. Every write adds a `share.` audit row that names the secret by id, never by value.
+
+#### Leasing under a share
+
+A run's principal is the member who dispatched it; each lease records it (`credential_leases.principal_id`, migration
+0106). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
+principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
+must still be bound to the project; a run of the Curator and a release run never take one
+(`evo_agents/hub/server/share_leases.py`).
+
+The principal's own secrets come first: a shared account is taken only when none of their own for the variable is
+ready (`run_accounts.how` is `shared`), and a shared git secret only for an origin none of their own covers. A share
+lends nothing when its owner paused the account or it cools down (the owner's runs go first and may still take it
+cooling), when the highest usage among the windows of its last report whose reset has not passed reaches
+`usage_ceiling_pct` (unknown usage lends; the CLI reports a window's usage as a fraction of its limit, which the
+hub reads as a whole percent, a fraction above 1 as 100), when `max_running` runs hold it, or when this month's cost (UTC) of the
+runs under it plus an estimate for each run still running without a cost and for this one exceeds `budget_usd`. The
+estimate is the mean cost of the share's runs this month, else 1.00 USD, never under 0.01 USD. A run that holds a
+lease under a share keeps it. An agent's account (`hub agent account`) has no member owner, so no share names it; an
+agent's own account for a variable comes before any share. When a refused share leaves the run with nothing for a variable or origin, a `system`
+event of the run says why, naming the share by id alone.
+
+Revoking a share ends the leases out under it at once; a share that ended or no longer covers a run ends them at the
+run's next ask and on every pass of the reaper. `hub account show NAME --json` carries `cost_by_principal`: per
+member, runs and cost over 24 hours, 7 days and this month. The owner sees every row; a member it was shared with
+reads it with `--owner LOGIN` (`GET /v1/accounts/{name}?owner=LOGIN`) and sees their own row, runs and holders alone.
+The share's `level` is stored only, until the autonomy levels apply it.
+
 ## Plugins
 
 A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).

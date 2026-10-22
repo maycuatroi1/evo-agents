@@ -32,6 +32,7 @@ import {
 } from "./support/runs";
 import { pmPath, seedPm } from "./support/pm";
 import { putSecretByApi, secretValue } from "./support/secrets";
+import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
@@ -40,7 +41,7 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * A table wider than the page scrolls inside its own region; the document itself never scrolls sideways. Step 25
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
- * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), the org chart three units deep, Insights with its charts and a wide table,
+ * (admin, plans, memories, skills, knowledge graph, workers, secrets and their shares, accounts, runs), the org chart three units deep, Insights with its charts and a wide table,
  * Home, the Monitor, chats and an SRS version's review with @ba's findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
@@ -184,7 +185,31 @@ test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", as
     value: secretValue("wide"),
   });
   await putSecretByApi(me, `${LONG}-env`, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
-  await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("secrets-table") }]);
+  // Shared with a member and a unit of long unbroken names, with every limit set: the list of shares under the table.
+  const other = await otherMember(LONG.slice(0, 24));
+  const unit = await unitByApi(LONG.slice(0, 40));
+  const limits = { level: "A3", budget_usd: 99_999.99, usage_ceiling_pct: 80, max_running: 12, expires_at: "2099-12-31T00:00:00Z" } as const;
+  await shareByApi(me, `${LONG}-env`, { grantee_kind: "user", login: other.login, projects: [project], ...limits });
+  await shareByApi(me, `${LONG}-env`, { grantee_kind: "unit", unit, projects: [project], ...limits });
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("share-row") }]);
+});
+
+test("the shares of an account and a worker's Sharing card never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(60_000);
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await putSecretByApi(me, `${LONG}-oa`, { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("wide") });
+  const other = await otherMember(LONG.slice(0, 24));
+  await shareByApi(me, `${LONG}-oa`, { grantee_kind: "user", login: other.login, projects: [project], budget_usd: 99_999.99, terms_ack: true });
+  const live = await liveWorker(me, project, `${LONG}-worker`);
+  const unit = await unitByApi(LONG.slice(0, 40));
+  await doctorReport(live, CLEAN_REPORT);
+  await narrowByApi(me, live, unit);
+  await doctorReport(live, HIGH_REPORT);
+  await noSidewaysScroll(page, WIDTHS, [
+    { path: "/accounts", ready: shown("share-row") },
+    { path: `/workers/${live.worker.id}`, ready: shown("worker-doctor-high") },
+  ]);
 });
 
 test("the org chart never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {

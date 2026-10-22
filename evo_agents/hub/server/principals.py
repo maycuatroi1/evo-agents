@@ -1,12 +1,12 @@
 """Who answers for a run, and the card of its autonomy (plan autonomy-levels, criterion a12).
 
-The person a decision goes to (``asked_of``), stored on the decision when it is asked (decisions.asked_of, schema 0108):
+The person a decision goes to (``asked_of``), stored on the decision when it is asked (decisions.asked_of, schema 0113):
 
 - a run whose principal is an intern: the person their primary seat reports to (``org.mentor``); once the decision has
   been open ESCALATE_AFTER, the leads of the intern's unit too (``escalate``, run by the hourly job hub.expire_seats),
   each told once and each then allowed to answer it;
 - a run the hub made on its own (``run_autonomy.HUB_KINDS``): the sponsor of its agent profile's live seat;
-- any other run: its principal; a run without one (a local run, one queued before schema 0106) its owner, as before.
+- any other run: its principal; a run without one (a local run, one queued before schema 0111) its owner, as before.
 
 So an intern never answers a decision of their own run (403): the decisions of a merge, a deploy or any other class
 their autonomy holds are their mentor's. A notice of a class in notify goes to the principal, and to the person they

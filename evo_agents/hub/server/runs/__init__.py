@@ -17,7 +17,8 @@ project lists an origin for (409 naming it: no credential is leased for a repo w
 would fail the run; a rerun and a plan run are refused the same way), and a worker named must be one of the caller's
 own or one another member shares in the project while holding writer there (``worker_fit.shared_in``; 403 for any
 other id, a hub admin's included), live and serving the project (409). A shared worker claims the runs of its owner and
-of every member who holds writer on the run's project, one member's runs at a time (``claims``).
+of every member who holds writer on the run's project, and whom the units it is narrowed to admit
+(``worker_fit.unit_admits``), one member's runs at a time (``claims``).
 Each run is notified on RUNS_CHANNEL and audited (run.dispatch), and keeps the step's title. ``model`` is optional,
 one line of at most ``runs.MAX_MODEL_CHARS``, as the runtime names it; without one the runtime chooses as it would.
 Each run keeps the credential it was dispatched with in dispatched_via (``credentials.dispatch_credential``): web for a

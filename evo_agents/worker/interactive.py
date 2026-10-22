@@ -64,7 +64,7 @@ from evo_agents.hub import terminal as frames
 from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.worker.adapter import AgentEvent, RunContext
-from evo_agents.worker.runtimes import claude_code, codex, common, opencode
+from evo_agents.worker.runtimes import claude_code, codex, common, hub_tools, opencode
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -721,10 +721,9 @@ class Tui:
 
 
 class ClaudeCodeTui(Tui):
-    """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, so the session also shows in
-    the Claude apps; a new session gets ``--session-id`` and the run's prompt. The run's model and effort go with
-    it when the run names them. A run whose lease sets CLAUDE_CODE_OAUTH_TOKEN gets no ``--remote-control``, and
-    no ANTHROPIC_API_KEY of the daemon's (``claude_code.dropped_env``)."""
+    """``claude --resume ID --dangerously-skip-permissions --remote-control evo-run-N``, shown in the Claude apps; a
+    new session gets ``--session-id`` and the prompt, each the run's model and effort. A lease's CLAUDE_CODE_OAUTH_TOKEN
+    drops ``--remote-control`` and the daemon's ANTHROPIC_API_KEY (``claude_code.dropped_env``); ``hub_tools.tui_args``."""
 
     runtime = "claude-code"
     program = "claude"
@@ -776,6 +775,7 @@ class ClaudeCodeTui(Tui):
             value = self.setting(key)
             if value:
                 argv += [flag, value]
+        argv += hub_tools.tui_args(self.context, self.runtime)  # the hub's MCP server alone, in a config dir of its own
         if not self.resumed:
             argv.append(self.prompt)
         return argv
