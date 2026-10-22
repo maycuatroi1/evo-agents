@@ -143,6 +143,7 @@ RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its a
 RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
 RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
 RUN_KEYS += ("session_run_id", "session_turn", "session_turns", "session_title")  # a chat run's session; null otherwise
+RUN_KEYS += ("principal", "autonomy")  # whom it acts for, and the autonomy snapshot (docs/autonomy-levels.md)
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")

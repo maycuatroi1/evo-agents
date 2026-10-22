@@ -175,6 +175,10 @@ MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
 CLONES_CHECKOUTS = "clones_checkouts"
+# a daemon whose claude-code runs apply the run's autonomy snapshot in their PreToolUse hook (plan autonomy-levels): the
+# hub hands a run with a class below auto (evo_agents.hub.autonomy_levels.restricted) to no other, on claude-code only
+AUTONOMY = "autonomy"
+AUTONOMY_RUNTIME = "claude-code"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -189,6 +193,7 @@ WORKER_FEATURES = (
     UPDATE_NOW,
     MERGE_JUDGE,
     CLONES_CHECKOUTS,
+    AUTONOMY,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
