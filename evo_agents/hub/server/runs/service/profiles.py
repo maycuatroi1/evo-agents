@@ -23,7 +23,8 @@ for. Its environment is the first of the axis's allowlist the worker takes (``pl
 for an axis that allows all. A run under a profile that is not its project's default that would run on Claude Code
 there goes only to a daemon that gives its agent a config dir of its own (``runs.AGENT_HOME``), and its claim says so
 (``own_home``). The claimed run carries the
-profile at its version (``run_profile``) for its worker. A run without a profile, one from before schema 0030, is
+profile at its version (``run_profile``) for its worker, and the person who dispatched it (``run_origin``), whom the
+worker names as co-author of the commits its agent authors. A run without a profile, one from before schema 0030, is
 claimed as before.
 """
 
@@ -41,7 +42,7 @@ from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs.models import RunProfile, available
+from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import Principal
@@ -392,6 +393,15 @@ async def own_home(conn: AsyncConnection, run_id: int) -> bool:
     query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
     default = (await conn.execute(query)).scalar_one_or_none()
     return default is False
+
+
+async def run_origin(conn: AsyncConnection, run_id: int) -> RunOrigin:
+    """The person who dispatched run ``run_id``, with their GitHub login and id, whom its worker names as co-author of
+    the commits its agent authors."""
+    r, u = tables.runs, tables.users
+    query = select(u.c.login, u.c.github_id).join_from(r, u, u.c.id == r.c.dispatched_by).where(r.c.id == run_id)
+    row = (await conn.execute(query)).one()
+    return RunOrigin(login=row.login, github_id=row.github_id)
 
 
 async def run_profile(conn: AsyncConnection, run_id: int) -> RunProfile | None:

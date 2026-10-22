@@ -84618,6 +84618,34 @@
           "title": "RunMount",
           "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
         },
+        "RunOrigin": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the person's GitHub login"
+            },
+            "github_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Github Id",
+              "description": "the person's GitHub user id; null for a user the hub never saw on GitHub"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "github_id"
+          ],
+          "title": "RunOrigin",
+          "description": "The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began\nthe chain of agents): the worker names them as the co-author of the commits of a run its agent authors."
+        },
         "RunOutput": {
           "properties": {
             "id": {
@@ -85371,6 +85399,23 @@
                 }
               ],
               "description": "the agent profile the run went under; null for a run from before schema 0030"
+            },
+            "own_home": {
+              "type": "boolean",
+              "title": "Own Home",
+              "description": "true for a run under a profile that is not its project's default: the agent of a claude-code run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+              "default": false
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunOrigin"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it"
             },
             "plugin_runtime": {
               "anyOf": [

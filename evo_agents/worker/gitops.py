@@ -442,9 +442,10 @@ async def staged_paths(cwd: Path) -> list[str]:
     return [path for path in out.split("\0") if path]
 
 
-async def commit_run(cwd: Path, message: str) -> Committed:
+async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> Committed:
     """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
-    has them (see the module's docstring), and commit what is left as ``message``."""
+    has them (see the module's docstring), and commit what is left as ``message``, with ``author`` (``Name <email>``)
+    as its author when given; the committer is this machine's git identity either way."""
     await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
     staged = await staged_paths(cwd)
     left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
@@ -453,7 +454,7 @@ async def commit_run(cwd: Path, message: str) -> Committed:
         await git(cwd, "reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))
     if len(left) == len(staged):
         return Committed(False, tuple(left))
-    await git(cwd, "commit", "--quiet", "-m", message)
+    await git(cwd, "commit", "--quiet", *(("--author", author) if author else ()), "-m", message)
     return Committed(True, tuple(left))
 
 

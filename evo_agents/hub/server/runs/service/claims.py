@@ -53,6 +53,7 @@ from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
     own_home,
     pick_runtime,
+    run_origin,
     run_packs,
     run_profile,
     runtime_rule,
@@ -676,6 +677,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         session_per_step=view.session_per_step,
         profile=await run_profile(conn, run_id),
         own_home=await own_home(conn, run_id),
+        origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
     )
 
