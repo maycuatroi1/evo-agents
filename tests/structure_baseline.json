@@ -3,7 +3,7 @@
   "modules": {
     "evo_agents/hub/judge.py": 1047,
     "evo_agents/hub/memory.py": 1124,
-    "evo_agents/hub/server/changes.py": 1560,
+    "evo_agents/hub/server/changes.py": 1559,
     "evo_agents/hub/server/curator.py": 1330,
     "evo_agents/worker/cli.py": 1125,
     "evo_agents/worker/interactive.py": 1376
@@ -20,7 +20,7 @@
     "evo_agents/hub/run_cli.py::register_runs": {"statements": 67},
     "evo_agents/hub/server/app.py::create_app": {"statements": 96},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
-    "evo_agents/hub/server/changes.py::_merge": {"statements": 61},
+    "evo_agents/hub/server/changes.py::_merge": {"statements": 57},
     "evo_agents/hub/server/kg.py::push_run": {"statements": 59},
     "evo_agents/hub/server/run_state.py::write_step": {"complexity": 16},
     "evo_agents/kg/build.py::run_pipeline": {"complexity": 48, "statements": 155},

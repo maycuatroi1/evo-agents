@@ -10266,6 +10266,7 @@
           "env_var",
           "url_prefix",
           "username",
+          "environment",
           "projects",
           "workers",
           "expires_at",
@@ -10322,6 +10323,17 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--environment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "test"
+          ]
         },
         {
           "flags": [
@@ -66384,7 +66396,8 @@
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "autonomy"
               ],
               "title": "Category"
             },
@@ -74645,7 +74658,8 @@
                     "loop_paused",
                     "goal_review",
                     "loop_brief",
-                    "plugin_notice"
+                    "plugin_notice",
+                    "autonomy"
                   ]
                 },
                 {
@@ -76045,7 +76059,8 @@
                 "question",
                 "triage",
                 "release",
-                "loop"
+                "loop",
+                "autonomy"
               ],
               "title": "Category"
             },
@@ -88847,6 +88862,18 @@
               "title": "Username",
               "description": "kind git: the user git sends with it"
             },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env: the environment it is labelled for (test)"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -88955,6 +88982,19 @@
               ],
               "title": "Username",
               "description": "kind git only: the user git sends with the value; oauth2 when left out"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "test"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is leased the env secrets labelled test alone (docs/autonomy-levels.md)"
             },
             "projects": {
               "items": {
@@ -89069,6 +89109,18 @@
               ],
               "title": "Username",
               "description": "kind git: the user git sends with it"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env: the environment it is labelled for (test)"
             },
             "projects": {
               "items": {

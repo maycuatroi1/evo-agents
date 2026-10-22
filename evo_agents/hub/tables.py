@@ -993,7 +993,7 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
-org_units, org_seats, autonomy_ceilings, autonomy_prefs = tables_org.org_tables(metadata, runs)  # 0099-0102
+org_units, org_seats, autonomy_ceilings, autonomy_prefs = tables_org.org_tables(metadata, runs, secrets)  # 0099-0103
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

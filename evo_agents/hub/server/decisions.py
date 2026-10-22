@@ -56,7 +56,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, and_, false, func, insert, literal, or_, select, true, update
+from sqlalchemy import BigInteger, and_, case, false, func, insert, literal, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
@@ -699,15 +699,20 @@ async def answer_decision(
     it raises the HTTPException the route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
     d, r, u = tables.decisions, tables.runs, tables.users
+    # a gate's decision of autonomy is the run's principal's to answer, any other the dispatcher's
+    gate = and_(d.c.category == runs.AUTONOMY_DECISION_CATEGORY, r.c.principal_id.is_not(None))
     query = (
-        select(d.c.plan_id, d.c.step_key, r.c.dispatched_by, u.c.login)
-        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == r.c.dispatched_by))
+        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, gate.label("gate"))
+        .select_from(
+            d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == case((gate, r.c.principal_id), else_=r.c.dispatched_by))
+        )
         .where(d.c.id == decision_id, d.c.project_id == access.project_id)
     )
     found = (await conn.execute(query)).one()
-    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.dispatched_by, found.login
+    plan_id, key, owner_id, owner = found.plan_id, found.step_key, found.id, found.login
     if owner_id != user.user_id:
-        raise HTTPException(403, f"only {owner}, who dispatched its run, may answer decision {decision_id}")
+        who = f"{owner}, the principal of its run" if found.gate else f"{owner}, who dispatched its run"
+        raise HTTPException(403, f"only {who}, may answer decision {decision_id}")
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
@@ -780,7 +785,9 @@ async def answer_decision(
 
 
 async def _hub_does(conn: AsyncConnection, user: Principal, decision_id: int, category: str, option: str) -> None:
-    """Do what the answer of a decision of the hub's own chose."""
+    """Do what the answer of a decision of the hub's own chose; a gate of autonomy reads the answer at its next pass."""
+    if category == runs.AUTONOMY_DECISION_CATEGORY:
+        return
     if category == runs.LOOP_DECISION_CATEGORY:
         from evo_agents.hub.server.loop.stall import (
             answer_loop,

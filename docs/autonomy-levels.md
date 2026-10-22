@@ -87,6 +87,48 @@ among its environments; a restricted run goes only to a daemon that reports the 
 A run at A5, or one without a snapshot, is claimed as before. `GET /v1/projects/<p>/runs/<id>` and
 `evo-agents hub run show --json` add `principal` and `autonomy`.
 
+## Enforcement: lease, merge, deploy and routes
+
+The hub holds five classes where it acts for a run, each read for the run's principal as the stricter of the snapshot
+and the value now. A run without a snapshot, and a principal at A5, act as before.
+
+**K7 at the lease** (`evo_agents/hub/server/lease_autonomy.py`). The credentials a run is leased follow K7; the
+runtime's own sign-in (an env secret of a model provider) is no part of it, so every run that runs gets it.
+
+| K7 | GitHub token | git secret | env secrets |
+|---|---|---|---|
+| auto, notify | as before | as before | as before |
+| auto:run_branch | writes only for a repo whose ruleset keeps the hub's App off its default branch (`pulls.check_ruleset`); a token for that repo alone that reads for every other | only for an origin on GitLab whose default branch no one may push to (gate 0 of the merge queue) | the runtime's alone |
+| auto:test_secrets | as run_branch | as run_branch | the runtime's, and those labelled `environment=test` |
+| deny | a token that reads, for each repo alone | none | the runtime's alone |
+
+A git secret withheld leaves its repo on GitHub to the App, and any other repo missing with its reason. A repo on
+GitHub whose ruleset cannot keep the App off its default branch gets a token that reads only, with the reason in the
+audit row: the hub cannot give a token that writes to a run branch alone there. A lease that withheld anything writes
+`autonomy.refused` naming the class, the mode, the source and what it kept back. `hub secret set --environment test`
+labels an env secret (schema 0103 adds `secrets.environment`).
+
+**K5 at the merge** (`evo_agents/hub/server/autonomy_gates.py`): the GitLab merge queue (`merge_gate.ready`) and the
+Curator's tier merge (`changes`). **K6 at the deploy and the release**: the PROD deploy of the policy (`post_merge`) and
+the release schedule when it lands a release (`release_land`).
+
+| Mode | What the hub does |
+|---|---|
+| auto | acts |
+| notify | acts, then sends the principal the notice `autonomy` (audit `autonomy.notified`) |
+| ask | opens a decision of category `autonomy` to the principal (audit `autonomy.asked`) and acts once they approve; a merge request waits judging, a pull request stays open, a deploy or a release waits. Refused, the act is left undone; a decision cancelled or expired with its run is asked again |
+| deny | leaves the act undone with the reason; a merge request of the queue is blocked |
+
+A K5 cell `notify:ask_on_risk_paths` asks when the merge request touches a risk path. An ask that a project policy sets
+(a repo in mode off, `prod_release` manual: source `policy:...`) is left to the flows that already hold that policy, so
+the gate acts as before. Only the run's principal answers a decision of category `autonomy`.
+
+**K8 and K12 at the routes** (`evo_agents/hub/server/route_autonomy.py`). A write with the credential of a run (the
+agent of a run on `/mcp`) to the routes of secrets and accounts (K8) or of grants, project and autonomy policies,
+agent profiles, the org and its ceilings (K12) reads the principal's mode: deny is 403 naming the class, the mode and
+the source; ask is 403 telling the agent to ask its principal; notify and auto leave the route's own rules to decide.
+Every refusal writes `autonomy.refused`.
+
 ## Commands
 
 | Command | What it does |
@@ -104,4 +146,5 @@ ceiling.
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
 caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0101 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`. Schema 0102 adds `principal_id` and `autonomy` to `runs`.
+`workers` of `autonomy_ceilings`. Schema 0102 adds `principal_id` and `autonomy` to `runs`. Schema 0103 adds `secrets.environment`, the decision category
+`autonomy` and the notice kind `autonomy`.

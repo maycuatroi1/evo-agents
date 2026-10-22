@@ -56,12 +56,13 @@ from evo_agents.hub.credentials import (
     GITHUB_HOST,
     MAX_SECRET_BYTES,
     MAX_SECRETS_PER_OWNER,
+    SECRET_ENVIRONMENTS,
     SECRET_KINDS,
     SECRET_NAME,
     env_name_refusal,
     normalize_origin,
 )
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.account_choice import clear_relogin
 from evo_agents.hub.server.account_oauth import (
     OAUTH_ENV_VAR,
@@ -93,7 +94,9 @@ NO_KEY = (
 )
 NO_SECRET = "you have no secret named {name} on this hub: see GET /v1/secrets"
 
-router = APIRouter(prefix="/v1/secrets", tags=["secrets"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1/secrets", tags=["secrets"], dependencies=[route_autonomy.K8], responses={401: {"model": ErrorBody}}
+)
 
 SecretName = Annotated[str, Path(pattern=f"^{SECRET_NAME.pattern}$", description="unique among the caller's secrets")]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
@@ -125,6 +128,11 @@ class SecretWrite(BaseModel):
         max_length=MAX_USERNAME_CHARS,
         pattern=LINE,
         description=f"kind git only: the user git sends with the value; {DEFAULT_GIT_USERNAME} when left out",
+    )
+    environment: Literal[SECRET_ENVIRONMENTS] | None = Field(
+        None,
+        description="kind env only: the environment it is for; a run whose principal's K7 is auto:test_secrets is "
+        "leased the env secrets labelled test alone (docs/autonomy-levels.md)",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
         min_length=1,
@@ -163,6 +171,7 @@ class Secret(BaseModel):
     env_var: str | None = Field(description="kind env: the variable it sets")
     url_prefix: str | None = Field(description="kinds git and forge: the https prefix of the origins it answers for")
     username: str | None = Field(description="kind git: the user git sends with it")
+    environment: str | None = Field(None, description="kind env: the environment it is labelled for (test)")
     projects: list[str] = Field(description="the projects whose runs get it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
     expires_at: datetime | None
@@ -199,6 +208,7 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
         s.c.env_var,
         s.c.url_prefix,
         s.c.username,
+        s.c.environment,
         bound_names(tables.projects, b.c.project_id).label("projects"),
         bound_names(tables.workers, b.c.worker_id).label("workers"),
         s.c.expires_at,
@@ -271,8 +281,9 @@ def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
         if refusal is not None:
             raise HTTPException(422, refusal)
         return body.env_var, None, None
-    if body.env_var is not None:
-        raise HTTPException(422, f"env_var belongs to a secret of kind env, not {body.kind}")
+    for field_name in ("env_var", "environment"):
+        if getattr(body, field_name) is not None:
+            raise HTTPException(422, f"{field_name} belongs to a secret of kind env, not {body.kind}")
     if body.url_prefix is None:
         raise HTTPException(
             422, f"a secret of kind {body.kind} needs url_prefix, the https prefix of the origins it answers for"
@@ -446,6 +457,7 @@ async def put_secret(
             env_var=env_var,
             url_prefix=url_prefix,
             username=username,
+            environment=body.environment,
             sealed=sealed.ciphertext,
             nonce=sealed.nonce,
             key_id=sealed.key_id,

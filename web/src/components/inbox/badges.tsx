@@ -22,6 +22,8 @@ import {
   PowerOff,
   Rocket,
   Send,
+  ShieldCheck,
+  ShieldQuestionMark,
   Sunrise,
   Tags,
   Target,
@@ -55,6 +57,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   release: Tags,
   // What the Loop asks a person after a work item failed a third time: retry it, drop it, or take it over.
   loop: IterationCw,
+  // What the hub asks the principal of a run before it merges, deploys or releases for it (K5, K6 at ask).
+  autonomy: ShieldQuestionMark,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {
@@ -90,6 +94,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   goal_review: { icon: Goal },
   loop_brief: { icon: IterationCw },
   plugin_notice: { icon: Puzzle },
+  autonomy: { icon: ShieldCheck },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

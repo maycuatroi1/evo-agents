@@ -49,7 +49,7 @@ from evo_agents.hub.accounts import (
     account_state,
 )
 from evo_agents.hub.credentials import SECRET_NAME
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, account_figures
 from evo_agents.hub.server.admin import ProjectName
@@ -65,7 +65,9 @@ NO_ACCOUNT = "you have no env secret named {name} on this hub: see GET /v1/accou
 AccountName = Annotated[str, Path(pattern=f"^{SECRET_NAME.pattern}$", description="one of the caller's env secrets")]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
-router = APIRouter(prefix="/v1", tags=["accounts"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1", tags=["accounts"], dependencies=[route_autonomy.K8], responses={401: {"model": ErrorBody}}
+)
 
 
 # Models

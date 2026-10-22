@@ -166,8 +166,14 @@ def run_columns(runs: Table) -> None:
     runs.append_constraint(_key("runs", "principal_id", "users", "RESTRICT"))
 
 
-def org_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table]:
-    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``, and the autonomy columns of
-    ``runs``."""
+def secret_columns(secrets: Table) -> None:
+    """The environment an env secret is labelled for, test alone or none (0103)."""
+    secrets.append_column(Column("environment", Text))
+
+
+def org_tables(metadata: MetaData, runs: Table, secrets: Table) -> tuple[Table, Table, Table, Table]:
+    """(org_units, org_seats, autonomy_ceilings, autonomy_prefs), added to ``metadata``, the autonomy columns of
+    ``runs`` and the environment label of ``secrets``."""
     run_columns(runs)
+    secret_columns(secrets)
     return units_table(metadata), seats_table(metadata), ceilings_table(metadata), prefs_table(metadata)

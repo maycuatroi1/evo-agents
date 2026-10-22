@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, profiles, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
@@ -62,7 +62,9 @@ READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 WRITE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 AVATAR_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422, 503)}
 
-router = APIRouter(prefix="/v1/projects", tags=["agents"], responses={401: {"model": ErrorBody}})
+router = APIRouter(
+    prefix="/v1/projects", tags=["agents"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
+)
 
 
 # Models
