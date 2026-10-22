@@ -1,4 +1,4 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive``
+"""``evo-agents hub srs list|show|import|export|submit|approve|reviews|withdraw|retire|archive|unarchive|findings|waive``
 (``evo_agents.hub.cli_srs``), as members run them against a hub that serves the core plugin srs: the commands and their
 ``--json`` keys are in the contract (seam hub-cli-v1), an import prints its preview and the problems that refuse it, an
 export writes the Markdown imported, approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins), a
@@ -31,7 +31,19 @@ needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 def test_the_srs_commands_are_in_the_contract():
     printed = commands()
-    verbs = ("list", "show", "import", "export", "submit", "approve", "withdraw", "retire", "archive", "unarchive")
+    verbs = (
+        "list",
+        "show",
+        "import",
+        "export",
+        "submit",
+        "approve",
+        "reviews",
+        "withdraw",
+        "retire",
+        "archive",
+        "unarchive",
+    )
     assert {f"hub srs {verb}" for verb in verbs} <= set(printed)
     listed = printed["hub srs list"]["json"]
     assert (listed["kind"], listed["schema"]) == ("array", "SrsDocumentSummary")
@@ -45,6 +57,9 @@ def test_the_srs_commands_are_in_the_contract():
     assert printed["hub srs show"]["json"]["with"]["--item"]["schema"] == "SrsItemDetail"
     options = {o["flags"][0]: o for o in printed["hub srs approve"]["options"]}
     assert options["--role"]["choices"] == ["ba", "qa", "dev"] and options["--project"]["required"]
+    assert options["--item"]["repeatable"]
+    assert printed["hub srs approve"]["json"]["with"]["--item"]["schema"] == "SrsVersionCases"
+    assert printed["hub srs reviews"]["json"]["schema"] == "SrsVersionCases"
     assert printed["hub srs export"]["json"] is None
     withdraw = printed["hub srs withdraw"]
     assert [p["metavar"] for p in withdraw["positionals"]] == ["SLUG", "N"]
@@ -160,6 +175,44 @@ def test_srs_import_export_submit_and_approve_from_the_command_line(hub, monkeyp
     assert approved["state"] == "approved"
     final = ok(srs(hub, monkeypatch, capsys, "owner", "list"))
     assert "demo-shop  srs   1       approved  1" in final.out
+
+
+@needs_pg
+def test_srs_approve_item_reviews_single_use_cases_in_order_and_reviews_prints_them(hub, monkeypatch, capsys):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1"))
+    stopped = srs(
+        hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1", "--item", "UC ORD-1", "--item", "UC NOPE"
+    )
+    assert stopped.code == 1 and stopped.out == ""
+    printed = ok(srs(hub, monkeypatch, capsys, "bao", "reviews", "demo-shop", "1"))
+    assert "demo-shop version 1 is in review (round 1)." in printed.out
+    assert "UC ORD-1  added   approved" in printed.out and "approve by bao on v1" in printed.out
+    assert "UC ORD-2  added   pending" in printed.out
+    asked = srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1", "--item", "UC ORD-2", "--request-changes")
+    assert asked.code == 2
+    done = as_json(
+        srs(
+            hub,
+            monkeypatch,
+            capsys,
+            "bao",
+            "approve",
+            "demo-shop",
+            "1",
+            "--item",
+            "UC ORD-2",
+            "--request-changes",
+            "--comment",
+            "No actor",
+            "--json",
+        )
+    )
+    assert_json_keys("hub srs approve", done, "--item")
+    assert {c["code"]: c["state"] for c in done["use_cases"]}["UC ORD-2"] == "changes_requested"
+    listed = as_json(srs(hub, monkeypatch, capsys, "alice", "reviews", "demo-shop", "1", "--json"))
+    assert_json_keys("hub srs reviews", listed)
+    assert (listed["number"], listed["state"]) == (1, "in_review")
 
 
 @needs_pg

@@ -4657,6 +4657,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Use Case
+         * @description Approve one use case of a version in review or ask for changes on it, under the conditions of a review of the
+         *     version; a later review of the same member on the use case replaces the earlier one when they are counted. 422 for
+         *     an item that is no use case the version needs reviewed (one it adds, changes or drops since the version approved
+         *     last) and for a request for changes with no note. An approval goes through the gate of a version's (409 while a
+         *     finding of level decide is open or @ba's review runs); a request for changes leaves the version in review and
+         *     blocks every approval of it. The version is approved by the review that makes every use case to review approved,
+         *     as its version-wide reviews do: it emits srs.version.approved as any approval. Answers the version with its use
+         *     cases.
+         */
+        post: operations["review_use_case_v1_x_srs__project__documents__slug__versions__number__items__ref__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
         parameters: {
             query?: never;
@@ -22310,6 +22337,61 @@ export interface components {
             changes: components["schemas"]["SrsChange"][];
         };
         /**
+         * SrsUseCase
+         * @description A use case a version needs reviewed, with its state and the reviews that count.
+         */
+        SrsUseCase: {
+            /** Key */
+            key: string;
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Change
+             * @description what the version does to it since the version approved last
+             * @enum {string}
+             */
+            change: "added" | "changed" | "removed";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "changes_requested";
+            /** Reviews */
+            reviews: components["schemas"]["SrsUseCaseReview"][];
+        };
+        /**
+         * SrsUseCaseReview
+         * @description A review of a use case that counts for the version, with the version it was recorded on.
+         */
+        SrsUseCaseReview: {
+            /** Reviewer */
+            reviewer: string;
+            /**
+             * Role
+             * @description the role the review counts for
+             */
+            role: ("ba" | "qa" | "dev") | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Body */
+            body: string;
+            /**
+             * Version
+             * @description the version it was recorded on: an earlier one when the use case reads the same
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * SrsVersion
          * @description A version of a document, never changed after it was saved, and the reviews of each round.
          */
@@ -22355,6 +22437,55 @@ export interface components {
             reviews: components["schemas"]["SrsReview"][];
         };
         /**
+         * SrsVersionCases
+         * @description A version with the use cases it needs reviewed: those it adds, changes (the use case, or a business rule under
+         *     it) or drops since the version approved last, every use case while none was approved; empty for a version that is
+         *     neither a draft nor in review.
+         */
+        SrsVersionCases: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
+        };
+        /**
          * SrsVersionDetail
          * @description A version with its content and what is wrong with it.
          */
@@ -22398,6 +22529,8 @@ export interface components {
             review_run: components["schemas"]["SrsReviewRun"] | null;
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
             /** Document */
             document: string;
             /** Preamble */
@@ -42255,6 +42388,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    review_use_case_v1_x_srs__project__documents__slug__versions__number__items__ref__reviews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+                /** @description the use case's code, an alias or its key */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersionCases"];
                 };
             };
             /** @description Unauthorized */

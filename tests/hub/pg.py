@@ -133,6 +133,8 @@ SRS_FINDING_TABLES = frozenset({"srs_findings"})
 SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
 # migration 0071: what the approval of a version did to the project's tasks, and @ba's run that splits them
 SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
+# migration 0098: the reviews of single use cases of a version of a BA document
+SRS_USE_CASE_REVIEW_TABLES = frozenset({"srs_use_case_reviews"})
 # migration 0073: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
 CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
 # migration 0074: the registry of a project's signal keys, its signals, and the ingest keys services write them with

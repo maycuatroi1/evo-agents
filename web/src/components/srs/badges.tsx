@@ -27,7 +27,7 @@ import { useTranslations } from "next-intl";
 import { Identifier, Tag } from "@/components/data/identifier";
 import { type StatusLook, StatusPill, type StatusPillProps } from "@/components/status/status-badge";
 
-import type { ItemKind, SrsDiffItem, VersionState } from "./api";
+import type { ItemKind, SrsDiffItem, UseCaseState, VersionState } from "./api";
 
 /**
  * The SRS pages' pills and tags. Only these pages show a version's state or an item's change, so their looks live here
@@ -62,6 +62,18 @@ export const CHANGE_LOOKS = {
 export function ChangeBadge({ change, ...props }: StatusPillProps & { change: SrsDiffItem["change"] }) {
   const t = useTranslations("srs.change");
   return <StatusPill look={CHANGE_LOOKS[change]} label={t(change)} data-status={change} data-testid="srs-change" {...props} />;
+}
+
+/** Where a use case stands in the review of its version: waiting for approvals, approved, or held by a request for changes. */
+export const CASE_LOOKS = {
+  pending: { tone: "neutral", icon: CircleDashed },
+  approved: { tone: "success", icon: CircleCheck },
+  changes_requested: { tone: "attention", icon: Undo2 },
+} as const satisfies Record<UseCaseState, StatusLook>;
+
+export function CaseStateBadge({ state, ...props }: StatusPillProps & { state: UseCaseState }) {
+  const t = useTranslations("srs.review.cases.state");
+  return <StatusPill look={CASE_LOOKS[state]} label={t(state)} data-status={state} data-testid="srs-case-state" {...props} />;
 }
 
 export const KIND_ICONS: Record<ItemKind, LucideIcon> = {

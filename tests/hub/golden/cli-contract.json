@@ -10677,6 +10677,14 @@
         },
         {
           "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -10700,7 +10708,28 @@
           "review_run",
           "reviews"
         ],
-        "schema": "SrsVersion"
+        "schema": "SrsVersion",
+        "with": {
+          "--item": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "parent_number",
+              "state",
+              "round",
+              "author",
+              "drafted_by_run",
+              "summary",
+              "created_at",
+              "submitted_at",
+              "decided_at",
+              "review_run",
+              "reviews",
+              "use_cases"
+            ],
+            "schema": "SrsVersionCases"
+          }
+        }
       }
     },
     "hub srs archive": {
@@ -11059,6 +11088,61 @@
           "dropped"
         ],
         "schema": "SrsRetireResult"
+      }
+    },
+    "hub srs reviews": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "review_run",
+          "reviews",
+          "use_cases"
+        ],
+        "schema": "SrsVersionCases"
       }
     },
     "hub srs show": {
@@ -39693,6 +39777,159 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Review Use Case",
+          "description": "Approve one use case of a version in review or ask for changes on it, under the conditions of a review of the\nversion; a later review of the same member on the use case replaces the earlier one when they are counted. 422 for\nan item that is no use case the version needs reviewed (one it adds, changes or drops since the version approved\nlast) and for a request for changes with no note. An approval goes through the gate of a version's (409 while a\nfinding of level decide is open or @ba's review runs); a request for changes leaves the version in review and\nblocks every approval of it. The version is approved by the review that makes every use case to review approved,\nas its version-wide reviews do: it emits srs.version.approved as any approval. Answers the version with its use\ncases.",
+          "operationId": "review_use_case_v1_x_srs__project__documents__slug__versions__number__items__ref__reviews_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "the use case's code, an alias or its key",
+                "title": "Ref"
+              },
+              "description": "the use case's code, an alias or its key"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsReviewIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersionCases"
                   }
                 }
               }
@@ -89584,6 +89821,124 @@
           ],
           "title": "SrsSave"
         },
+        "SrsUseCase": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "change": {
+              "type": "string",
+              "enum": [
+                "added",
+                "changed",
+                "removed"
+              ],
+              "title": "Change",
+              "description": "what the version does to it since the version approved last"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "changes_requested"
+              ],
+              "title": "State"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCaseReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "code",
+            "title",
+            "change",
+            "state",
+            "reviews"
+          ],
+          "title": "SrsUseCase",
+          "description": "A use case a version needs reviewed, with its state and the reviews that count."
+        },
+        "SrsUseCaseReview": {
+          "properties": {
+            "reviewer": {
+              "type": "string",
+              "title": "Reviewer"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ba",
+                    "qa",
+                    "dev"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "the role the review counts for"
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "request_changes"
+              ],
+              "title": "Decision"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version it was recorded on: an earlier one when the use case reads the same"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reviewer",
+            "role",
+            "decision",
+            "body",
+            "version",
+            "created_at"
+          ],
+          "title": "SrsUseCaseReview",
+          "description": "A review of a use case that counts for the version, with the version it was recorded on."
+        },
         "SrsVersion": {
           "properties": {
             "number": {
@@ -89704,6 +90059,134 @@
           "title": "SrsVersion",
           "description": "A version of a document, never changed after it was saved, and the reviews of each round."
         },
+        "SrsVersionCases": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "parent_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Number",
+              "description": "the version it was built on"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "superseded",
+                "withdrawn"
+              ],
+              "title": "State"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round",
+              "description": "how many times it was submitted"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "drafted_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drafted By Run",
+              "description": "the run of the agent that drafted it, when one did"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "parent_number",
+            "state",
+            "round",
+            "author",
+            "drafted_by_run",
+            "summary",
+            "created_at",
+            "submitted_at",
+            "decided_at",
+            "review_run",
+            "reviews",
+            "use_cases"
+          ],
+          "title": "SrsVersionCases",
+          "description": "A version with the use cases it needs reviewed: those it adds, changes (the use case, or a business rule under\nit) or drops since the version approved last, every use case while none was approved; empty for a version that is\nneither a draft nor in review."
+        },
         "SrsVersionDetail": {
           "properties": {
             "number": {
@@ -89805,6 +90288,13 @@
               "type": "array",
               "title": "Reviews"
             },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            },
             "document": {
               "type": "string",
               "title": "Document"
@@ -89842,6 +90332,7 @@
             "decided_at",
             "review_run",
             "reviews",
+            "use_cases",
             "document",
             "preamble",
             "items",

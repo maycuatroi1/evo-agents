@@ -7082,7 +7082,18 @@
       "compare": "So sánh",
       "missingTitle": "Không có mục {ref}",
       "missingText": "Version {version} của tài liệu này không có mục nào mang mã, mã phụ hay khoá đó.",
-      "createTask": "Tạo task"
+      "createTask": "Tạo task",
+      "review": {
+        "title": "Duyệt use case này ở v{version}",
+        "draft": "v{version} đang là bản nháp: use case chỉ được duyệt sau khi version gửi duyệt.",
+        "reviewers": "Các lượt duyệt đang tính",
+        "open": "Mở trang duyệt v{version}",
+        "state": {
+          "pending": "Đang chờ đủ lượt duyệt theo chính sách.",
+          "approved": "Đã duyệt. v{version} được duyệt khi mọi use case cần duyệt của nó đều được duyệt.",
+          "changes_requested": "Có người yêu cầu sửa: chưa duyệt được v{version} cho tới khi xử lý xong."
+        }
+      }
     },
     "versions": {
       "oneVersion": "Mới có một version: chưa có gì để so.",
@@ -7219,6 +7230,36 @@
         "openChat": "Mở chat chốt",
         "reviewTitle": "Duyệt chờ @ba rà soát xong vòng {round}",
         "reviewText": "Duyệt mở lại khi run kết thúc. Bạn vẫn yêu cầu sửa được."
+      },
+      "cases": {
+        "title": "Use case cần duyệt",
+        "summary": "Đã duyệt {approved} trên {total}",
+        "summaryAsked": "Đã duyệt {approved} trên {total}, {asked} đang bị yêu cầu sửa",
+        "auto": "Khi mọi use case dưới đây đủ lượt duyệt theo chính sách, v{version} được duyệt cùng chúng, kèm các thay đổi ngoài use case: mục, màn hình, yêu cầu và phần còn lại. Duyệt hoặc yêu cầu sửa từng use case ngay tại đây.",
+        "empty": "v{version} không đổi use case nào, nên không use case nào cần lượt duyệt riêng: duyệt cả version là version được duyệt.",
+        "holdsTitle": "Chưa duyệt được v{version}",
+        "holdsText": "Có use case đang bị yêu cầu sửa. Cho tới khi người duyệt duyệt lại nó, mọi lượt duyệt version đều không đi qua, kể cả lượt duyệt cả version.",
+        "listLabel": "Các use case của v{version} cần duyệt",
+        "state": {
+          "pending": "Chờ duyệt",
+          "approved": "Đã duyệt",
+          "changes_requested": "Yêu cầu sửa"
+        },
+        "reviewsLabel": "Các lượt duyệt đang tính cho {name}",
+        "noReviews": "Chưa có lượt duyệt nào được tính.",
+        "fromVersion": "giữ từ v{version}, use case vẫn như cũ",
+        "you": "bạn",
+        "approveFor": "Duyệt {name}",
+        "requestFor": "Yêu cầu sửa {name}",
+        "approving": "Đang duyệt",
+        "noteLabel": "Cần sửa gì ở {name} (bắt buộc)",
+        "send": "Gửi yêu cầu",
+        "cancel": "Hủy",
+        "roleLabel": "Lượt duyệt use case của bạn tính cho",
+        "roleAuto": "Để hub chọn",
+        "approvedToast": "Đã duyệt {name}",
+        "versionApprovedToast": "Đã duyệt {name}; v{version} đã được duyệt",
+        "requestedToast": "Đã yêu cầu sửa {name}"
       }
     },
     "findings": {
