@@ -26,7 +26,9 @@ export type Person = Account & { name: string };
 export const MAYA: Person = { login: DEMO_ADMIN_LOGIN, id: ADMIN_GITHUB_ID, name: "Maya Lindqvist" };
 export const TOMAS: Person = { login: "tomas-reyes", id: 52_318_604, name: "Tomás Reyes" };
 export const PRIYA: Person = { login: "priya-raman", id: 61_045_977, name: "Priya Raman" };
-export const PEOPLE = [MAYA, TOMAS, PRIYA];
+/** The newcomer Maya invites: the invite page, then the Get started list once she accepted. */
+export const ELENA: Person = { login: "elena-varga", id: 70_284_513, name: "Elena Varga" };
+export const PEOPLE = [MAYA, TOMAS, PRIYA, ELENA];
 
 export const PROJECT = "larkspur";
 export const API = "larkspur-api";

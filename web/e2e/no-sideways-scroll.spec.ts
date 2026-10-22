@@ -40,7 +40,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets, runs), the org chart three units deep, Insights with its charts and a wide table,
- * Home, the Monitor, chats and an SRS version's review with @ba's findings, seeded with long unbroken names, at 375, 768
+ * Home, the Inbox and a decision in it, the sign-in page, the Monitor, chats and an SRS version's review with @ba's
+ * findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
  * into its two scroll regions and the Monitor puts its list beside the grid.
  */
@@ -269,6 +270,31 @@ test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page,
   await claimRun(step);
   await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: shown("needs-you-item") }]);
+});
+
+for (const width of WIDTHS) {
+  test(`the Inbox and a decision in it never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    // Long unbroken names in the question, its context and an option.
+    await seedPlanRunPlan(me, project);
+    const { live, run } = await planRunUnderway(me, project, `${LONG}-plan`, { waiting: true });
+    const decision = await askDecision(live, run.id, `${LONG}${LONG}?`, "4", {
+      context: `Step 4 deploys \`${LONG}${LONG}\` to **staging** from ${LONG}/${LONG}.`,
+      options: [
+        { key: "deploy", label: `Deploy ${LONG}${LONG}`, description: `${LONG}${LONG}` },
+        { key: "wait", label: "Wait until tomorrow" },
+      ],
+    });
+    await noSidewaysScroll(page, [width], [
+      { path: "/inbox", ready: shown("notification") },
+      { path: `/inbox?decision=${decision}`, ready: (p) => expect(p.getByTestId("decision-sheet").getByTestId("decision-form")).toBeVisible() },
+    ]);
+  });
+}
+
+test("the sign-in page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page }) => {
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/login", ready: (p) => expect(p.getByRole("heading", { level: 1 })).toBeVisible() }]);
 });
 
 for (const width of WIDTHS) {

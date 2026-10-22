@@ -85,7 +85,7 @@ export default async function LoginPage() {
             <span className="text-lg font-semibold tracking-tight">{name}</span>
           </div>
           <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">{t("heading", { name })}</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-balance">{t("heading", { name })}</h1>
             <p className="text-sm text-pretty text-muted-foreground">{t("description")}</p>
           </div>
 
