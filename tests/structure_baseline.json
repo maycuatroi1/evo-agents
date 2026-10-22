@@ -5,7 +5,7 @@
     "evo_agents/hub/memory.py": 1124,
     "evo_agents/hub/server/changes.py": 1560,
     "evo_agents/hub/server/curator.py": 1330,
-    "evo_agents/worker/cli.py": 1200,
+    "evo_agents/worker/cli.py": 1125,
     "evo_agents/worker/interactive.py": 1376
   },
   "functions": {
@@ -28,9 +28,7 @@
     "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 37, "statements": 104},
     "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21},
     "evo_agents/schema.py::Validator._check_node": {"complexity": 27},
-    "evo_agents/worker/cli.py::cmd_step": {"complexity": 19, "statements": 76},
-    "evo_agents/worker/cli.py::cmd_step.work": {"complexity": 18, "statements": 69},
-    "evo_agents/worker/cli.py::register": {"statements": 95},
+    "evo_agents/worker/cli.py::register": {"statements": 89},
     "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 52},
     "evo_agents/worker/interactive.py::claude_transcript_events": {"complexity": 17},
     "evo_agents/worker/runtimes/claude_code.py::events_of": {"complexity": 17}
