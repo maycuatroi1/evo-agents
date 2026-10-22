@@ -1069,6 +1069,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/sources/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Source
+         * @description Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the
+         *     hub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before).
+         */
+        delete: operations["forget_source_v1_kg__project__sources__source__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/tools/{tool}": {
         parameters: {
             query?: never;
@@ -21513,6 +21534,37 @@ export interface components {
              */
             errors: number;
         };
+        /** SourceForgotten */
+        SourceForgotten: {
+            build: components["schemas"]["Build"] | null;
+            /**
+             * Queued
+             * @description false when a build of the project was waiting already, which counts as queued
+             */
+            queued: boolean;
+            /** Source */
+            source: string;
+            /**
+             * Ingested
+             * @description runs of the source taken out of the project's corpus
+             */
+            ingested: number;
+            /**
+             * Pending
+             * @description runs of the source that waited for their blobs, dropped
+             */
+            pending: number;
+            /**
+             * Logs
+             * @description their logs nothing else refers to, deleted from the blob store by the next prune
+             */
+            logs: number;
+            /**
+             * Declared
+             * @description whether the knowledge config on the hub still declares the source: a machine holding its runs then pushes them again
+             */
+            declared: boolean;
+        };
         /** SourceRead */
         SourceRead: {
             /**
@@ -28889,6 +28941,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_source_v1_kg__project__sources__source__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description a source's id */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceForgotten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

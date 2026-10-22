@@ -4841,6 +4841,50 @@
         "schema": "Builds"
       }
     },
+    "hub kg forget-source": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "sources"
+        ]
+      }
+    },
     "hub kg health": {
       "positionals": [],
       "options": [
@@ -18521,6 +18565,114 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/sources/{source}": {
+        "delete": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Forget Source",
+          "description": "Take every run of a source off the hub, ingested or pending, and queue a build without them: how a source the\nhub holds runs of leaves knowledge.yaml (PUT config refuses to drop it before).",
+          "operationId": "forget_source_v1_kg__project__sources__source__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$",
+                "description": "a source's id",
+                "title": "Source"
+              },
+              "description": "a source's id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SourceForgotten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -87226,6 +87378,60 @@
             "errors"
           ],
           "title": "SkillStat"
+        },
+        "SourceForgotten": {
+          "properties": {
+            "build": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Build"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "queued": {
+              "type": "boolean",
+              "title": "Queued",
+              "description": "false when a build of the project was waiting already, which counts as queued"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "ingested": {
+              "type": "integer",
+              "title": "Ingested",
+              "description": "runs of the source taken out of the project's corpus"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending",
+              "description": "runs of the source that waited for their blobs, dropped"
+            },
+            "logs": {
+              "type": "integer",
+              "title": "Logs",
+              "description": "their logs nothing else refers to, deleted from the blob store by the next prune"
+            },
+            "declared": {
+              "type": "boolean",
+              "title": "Declared",
+              "description": "whether the knowledge config on the hub still declares the source: a machine holding its runs then pushes them again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "build",
+            "queued",
+            "source",
+            "ingested",
+            "pending",
+            "logs",
+            "declared"
+          ],
+          "title": "SourceForgotten"
         },
         "SourceRead": {
           "properties": {

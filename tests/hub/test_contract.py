@@ -35,6 +35,7 @@ BUILT_HERE = {
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
     "hub kg push": lambda: kg_cli.push_json([]),
     "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
+    "hub kg forget-source": lambda: kg_cli.forget_json("demo", []),
     "hub sessions backfill": lambda: transcript_sync.Report(HUB_URL).as_json(),
     "hub sessions sync": lambda: transcript_sync.Report(HUB_URL).as_json(),
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
