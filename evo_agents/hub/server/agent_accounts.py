@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.account_providers import Category, Provider, category_of, provider_of
 from evo_agents.hub.accounts import (
     ACCOUNT_STATES,
     MAX_PRIORITY,
@@ -46,6 +47,7 @@ from evo_agents.hub.accounts import (
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_NAME, env_name_refusal
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.account_oauth import drop_tokens
+from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, agent_account_figures, figured
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -112,9 +114,13 @@ class AgentAccountChange(BaseModel):
 class AgentAccount(BaseModel):
     """An account of an agent as an admin sees it: everything but the value."""
 
+    # every member of its project reads it too, with the figures a member's own account has (``account_views``)
+
     id: int = Field(description="the id of its secret, which audit lines name it by")
     name: str
     env_var: str = Field(description="the variable it sets")
+    provider: Provider = Field(description="who it signs in to, read from its variable (``account_providers``)")
+    category: Category = Field(description="model: the runtime's own sign-in, whose runs cost; service: any other")
     workers: list[str] = Field(description="the workers it is bound to")
     weight: int
     priority: int
@@ -126,6 +132,17 @@ class AgentAccount(BaseModel):
     state: Literal[ACCOUNT_STATES]
     created_at: datetime
     updated_at: datetime = Field(description="when its value was last written")
+    last_usage: AccountUsage | None = Field(description="what a run's CLI last said of its usage; null before any")
+    last_usage_at: datetime | None = Field(description="when a run reported that usage")
+    runs_24h: int = Field(description="the runs that took it in the last 24 hours")
+    runs_7d: int = Field(description="the runs that took it in the last 7 days")
+    cost_24h_usd: float | None = Field(
+        description="what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
+    )
+    cost_7d_usd: float | None = Field(
+        description="what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
+    )
+    held_by: list[HeldBy] = Field(description="the runs a worker holds now with it")
 
 
 class AgentAccountWritten(AgentAccount):
@@ -135,11 +152,13 @@ class AgentAccountWritten(AgentAccount):
 # Reading
 
 
-def _accounts(profile_id: int, name: str | None = None):
+def account_rows(profile_ids: list[int], name: str | None = None):
+    """The live accounts of the profiles ``profile_ids`` (``name`` alone, when given), by variable and name."""
     s, a, b = tables.secrets, tables.accounts, tables.secret_bindings
     statement = (
         select(
             s.c.id,
+            s.c.profile_id,
             s.c.name,
             s.c.env_var,
             bound_names(tables.workers, b.c.worker_id).label("workers"),
@@ -155,21 +174,27 @@ def _accounts(profile_id: int, name: str | None = None):
             func.now().label("now"),
         )
         .outerjoin_from(s, a, a.c.secret_id == s.c.id)
-        .where(s.c.profile_id == profile_id, s.c.deleted_at.is_(None))
+        .where(s.c.profile_id.in_(profile_ids), s.c.deleted_at.is_(None))
         .order_by(s.c.env_var, s.c.name)
     )
     return statement if name is None else statement.where(s.c.name == name)
 
 
-def view_of(row) -> dict:
+def view_of(row, figures: Figures | None) -> dict:
+    """The fields of ``AgentAccount`` from a row of ``account_rows`` and the account's figures."""
     values = dict(row._mapping)
     now = values.pop("now")
+    del values["profile_id"]
     state = account_state(row.paused_at, row.cooldown_until, row.expires_at, now)
-    return {**values, "state": state}
+    provider = provider_of(row.env_var)
+    category = category_of(provider)
+    return {**values, "state": state, "provider": provider, "category": category, **figured(figures, category)}
 
 
 async def _view(conn: AsyncConnection, profile_id: int, name: str) -> dict:
-    return view_of((await conn.execute(_accounts(profile_id, name))).one())
+    row = (await conn.execute(account_rows([profile_id], name))).one()
+    figures = await agent_account_figures(conn, [profile_id], [row.id])
+    return view_of(row, figures.get(row.id))
 
 
 # Checks
