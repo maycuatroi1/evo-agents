@@ -74,6 +74,7 @@ from datetime import datetime, timedelta
 
 from evo_agents.hub.outputs import OUTPUTS_DIR
 from evo_agents.hub.plans import step_key
+from evo_agents.hub.record_rule import record_rule
 
 PROTOCOL_HEADER = "X-Evo-Worker-Protocol"  # on every /v1/worker/* request; any other value is answered with 426
 PROTOCOL_VERSION = "1"
@@ -802,12 +803,7 @@ def _plan_rules() -> list[str]:
         "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
         "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
         "yours too, with no question to the owner.",
-        "- Record progress only with `evo-agents worker step`: `evo-agents worker step KEY in_progress --repo REPO` "
-        "when you start a step, and `evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND` "
-        "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "
-        "worktree and refuses done when one exits other than 0; then it commits what is left there and pushes the "
-        "repo's branch. `evo-agents worker step KEY pending --evidence TEXT` hands a step back with what is done of "
-        "it. Do not call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
+        record_rule("KEY", "a step"),
         *_decision_lines("its step"),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step KEY`, with {fewest} to {most} options. It prints "
@@ -941,13 +937,7 @@ def _step_session_rules(key: str) -> list[str]:
         f"- {PLAN_FILE} holds the whole plan as this run was claimed, and `evo-agents worker plan` prints it as the "
         "hub holds it now. The handoff at the end of this prompt says what the sessions and runs before this one did; "
         "read the plan for what it left out.",
-        "- Record progress only with `evo-agents worker step`: "
-        f"`evo-agents worker step {key} in_progress --repo REPO` when you start, and "
-        f"`evo-agents worker step {key} done --repo REPO --evidence TEXT --verify COMMAND` (--verify once for each "
-        "command) when it is done. The worker runs each verify command again in that repo's worktree and refuses done "
-        "when one exits other than 0; then it commits what is left there and pushes the repo's branch. "
-        f"`evo-agents worker step {key} pending --evidence TEXT` hands the step back with what is done of it. Do not "
-        "call the hub's plan_step tool, `evo harness step` or `evo-agents hub plan`.",
+        record_rule(key, "the step"),
         *_decision_lines("the step"),
         "- To ask: `evo-agents worker ask --category CATEGORY --question TEXT --context-file FILE "
         f"--option KEY=LABEL[:DESCRIPTION] --recommended KEY --step {key}`, with {fewest} to {most} options. It "
