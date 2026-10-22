@@ -4,9 +4,10 @@ the in-memory hub, whose end of WS /v1/worker/runs/{id}/browser the test reads a
 
 - The broker connects as soon as the run's Chromium listens and says the mode and the tabs (STATE); it screencasts only
   while someone views (VIEW), frames of at most 1280x800, the next one only once the viewer acked the last.
-- Agent mode: the viewer picks the tab it watches and nothing else it sends reaches the browser. Human mode (the run
-  interactive, or waiting on a login decision): mouse, keys, composed and pasted text, back, forward, reload and a URL
-  of http or https drive the tab watched; any other scheme is refused with a notice, and a tab on file: is closed.
+- Agent mode: the viewer picks the tab it watches and nothing else it sends reaches the browser; a tab it watches behind
+  the agent's, where Chromium paints nothing, comes as a still. Human mode (the run interactive, or waiting on a login
+  decision): mouse, keys, composed and pasted text, back, forward, reload and a URL of http or https drive the tab
+  watched; any other scheme is refused with a notice, and a tab on file: is closed.
 - A popup is followed, and its closing brings the tab that opened it back.
 - The broker closes its end with 1000 when the browser closes, connects again after a drop, and not after a refusal.
 - In the daemon: a run dispatched with browser connects its broker as soon as its browser is built and closes it as
@@ -83,6 +84,14 @@ def test_browser_view_url_box_opens_http_and_https_alone():
         assert live.openable(refused) is None, refused
     assert live.allowed("") and live.allowed("about:blank") and live.allowed("blob:https://lumen.test/1")
     assert not live.allowed("file:///etc/hosts") and not live.allowed("chrome://version")
+
+
+def test_browser_view_reads_a_stills_size_from_its_jpeg_header():
+    app0 = b"\xff\xe0\x00\x10JFIF\x00" + bytes(9)
+    start = b"\xff\xc0\x00\x11\x08" + (800).to_bytes(2, "big") + (1280).to_bytes(2, "big") + bytes(12)
+    assert live.jpeg_size(b"\xff\xd8" + app0 + b"\xff" + start) == (1280, 800)
+    assert live.jpeg_size(b"\xff\xd8\xff\xda\x00\x0c" + bytes(12)) is None, "image data before a size"
+    assert live.jpeg_size(b"\x89PNG\r\n\x1a\n" + bytes(16)) is None
 
 
 def test_browser_view_worker_end_is_on_the_hubs_worker_routes():
@@ -318,16 +327,22 @@ def test_browser_view_agent_mode_lets_the_viewer_pick_the_tab_it_watches(install
             made = await view.browser_call("Target.createTarget", {"url": view.site + "/moving"})
             found["agent_tab"] = await view.state(lambda body: len(body["tabs"]) == 2)
             await view.view(True)
-            await view.screen()
+            found["behind"] = await view.screen()  # the tab watched is behind the agent's, where nothing paints
             await view.send({"type": "tab", "id": made["targetId"]})
             found["picked"] = await view.state(lambda body: body["active"] == made["targetId"])
             seen = len(view.screens)
-            await view.quiet(1.0)
+            await view.screen()
+            await view.screen()  # a second frame: the screencast, not a still
             found.update(first=first, frames=len(view.screens) - seen)
+            await view.send({"type": "tab", "id": first["active"]})
+            found["back"] = await view.state(lambda body: body["active"] == first["active"])
+            found["still"] = await view.screen()
 
     asyncio.run(go())
     assert found["agent_tab"]["active"] == found["first"]["active"], "a tab the agent opens is not followed"
-    assert found["picked"]["mode"] == frames.AGENT and found["frames"] > 0
+    assert found["picked"]["mode"] == frames.AGENT and found["frames"] >= 2
+    for still in (found["behind"], found["still"]):
+        assert 0 < still["width"] <= live.MAX_WIDTH and 0 < still["height"] <= live.MAX_HEIGHT, still
 
 
 def test_browser_view_waiting_on_a_login_decision_opens_in_human_mode(installed, tmp_path):  # noqa: F811

@@ -12,7 +12,10 @@ The broker watches one tab of the browser at a time: the first, then the tab a p
 the viewer picks; when that tab closes, the one that opened it or the last one left. While the hub says someone views
 (VIEW), it screencasts that tab (Page.startScreencast, JPEG of QUALITY, at most MAX_WIDTH x MAX_HEIGHT) and acks each
 frame once the viewer drew it (ACK), or ACK_WAIT seconds after it went, so Chromium sends the next; nobody viewing, no
-screencast. It sends STATE, the mode and the tabs, each time they change.
+screencast. Chromium paints no tab in the background, so when the tab watched is behind another (the agent brought its
+own tab to the front, or the viewer picked one in agent mode, where the broker brings no tab forward), the viewer gets
+one still of it (Page.captureScreenshot), and the screencast again once it comes to the front. It sends STATE, the
+mode and the tabs, each time they change.
 
 The mode is ``mode(state, login)``: human while the run is interactive (Take control is the run's takeover, and Hand
 back its handback) or waits on a login decision (VIEW's login), agent otherwise. In agent mode the viewer watches and
@@ -105,6 +108,26 @@ def openable(text: str) -> str | None:
     except ValueError:
         return None
     return url if split.scheme.lower() in OPEN_SCHEMES and split.hostname else None
+
+
+_START_OF_FRAME = frozenset({0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF})
+
+
+def jpeg_size(data: bytes) -> tuple[int, int] | None:
+    """The width and height a JPEG's start of frame says; None for bytes that are not a JPEG with one."""
+    index = 2 if data[:2] == b"\xff\xd8" else len(data)
+    while index + 9 <= len(data) and data[index] == 0xFF:
+        marker = data[index + 1]
+        if marker == 0xFF:  # a fill byte before a marker
+            index += 1
+        elif marker in _START_OF_FRAME:
+            height, width = data[index + 5 : index + 7], data[index + 7 : index + 9]
+            return int.from_bytes(width, "big"), int.from_bytes(height, "big")
+        elif marker == 0xDA:  # the image data starts: no size before it
+            return None
+        else:
+            index += 2 + int.from_bytes(data[index + 2 : index + 4], "big")
+    return None
 
 
 class CdpError(Exception):
@@ -201,6 +224,7 @@ class LiveView:
         self._task: asyncio.Task | None = None
         self._events = {
             "Page.screencastFrame": self._frame,
+            "Page.screencastVisibilityChanged": self._visibility,
             "Target.targetCreated": self._created,
             "Target.targetInfoChanged": self._changed,
             "Target.targetDestroyed": self._destroyed,
@@ -463,8 +487,9 @@ class LiveView:
             await self.cdp.call("Page.stopScreencast", session=self.session)
 
     def _frame(self, params: dict, session: str | None) -> None:
-        """A screencast frame: sent to the viewer when it drew the last one, held until it did otherwise, and acked
-        to Chromium once the viewer drew it, so the viewer sets the pace."""
+        """A screencast frame, or a still (no ``sessionId``: Chromium waits on no ack for it): sent to the viewer when
+        it drew the last one, held until it did otherwise, and acked to Chromium once the viewer drew it, so the viewer
+        sets the pace."""
         number = params.get("sessionId")
         tab = self.tabs.get(self.active or "")
         shown = tab is not None and (self.mode == frames.AGENT or allowed(tab["url"]))
@@ -476,6 +501,29 @@ class LiveView:
             self.held = (session, number, params)
         else:
             self._show(session, number, params)
+
+    def _visibility(self, params: dict, session: str | None) -> None:
+        """The tab watched went to the background, or was there when its screencast started: Chromium paints it no
+        more, so the viewer gets a still of it."""
+        if params.get("visible") is False and session == self.session and self.casting:
+            self._spawn(self._still(session))
+
+    async def _still(self, session: str) -> None:
+        """One picture of the tab watched while it is in the background, sent as a screen frame with nothing to ack to
+        Chromium; its header gives its size in pixels, the CSS pixels of the worker's Chromium (scale factor 1). The
+        broker brings no tab forward for it, since that would send the agent's tab to the background; a picture over
+        MAX_WIDTH x MAX_HEIGHT (a screen the agent emulates) is dropped."""
+        shot = await self.cdp.call("Page.captureScreenshot", {"format": "jpeg", "quality": QUALITY}, session=session)
+        data = shot.get("data") or ""
+        try:
+            size = jpeg_size(base64.b64decode(data, validate=True))
+        except (binascii.Error, ValueError):
+            size = None
+        if size is None or size[0] > MAX_WIDTH or size[1] > MAX_HEIGHT:
+            log.info("browser view still dropped", extra={"run_id": self.run_id, "size": size})
+            return
+        metadata = {"deviceWidth": size[0], "deviceHeight": size[1], "offsetTop": 0, "pageScaleFactor": 1}
+        self._frame({"data": data, "metadata": metadata}, session)
 
     def _show(self, session: str | None, number, params: dict) -> None:
         metadata = params.get("metadata") or {}
