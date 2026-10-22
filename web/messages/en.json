@@ -14,6 +14,102 @@
     "access": "You only see the projects an administrator has granted to your account.",
     "cli": "On your machine, sign the CLI in with <code>evo-agents hub login</code>."
   },
+  "invite": {
+    "title": "Invitation",
+    "heading": "{inviter} invites you to {hub}",
+    "facts": {
+      "invitedBy": "Invited by",
+      "gives": "Gives",
+      "project": "Project",
+      "role": "Role",
+      "visibility": "Visibility",
+      "expires": "Expires"
+    },
+    "register": "The right to register one project of your own on this hub",
+    "hidden": "This link is for one GitHub login. Its project and role show once that login signs in.",
+    "signInHint": "Sign in with GitHub to accept it. You come back to this page.",
+    "github": "Sign in with GitHub",
+    "loginUnavailable": "This hub cannot sign anyone in with GitHub right now. Try again later, or tell {inviter}.",
+    "signedInAs": "Signed in as {login}",
+    "accept": "Accept the invitation",
+    "accepting": "Accepting…",
+    "notForYou": "This link was made for another GitHub login, not {login}. Sign out, then sign in with the login it was made for.",
+    "signOut": "Sign out",
+    "signingOut": "Signing out…",
+    "signOutFailed": "Couldn't sign out",
+    "unknownTitle": "This invite link is not valid",
+    "unknownDescription": "The hub does not know this link. Check that you opened all of it, or ask the person who sent it for a new one.",
+    "closed": {
+      "accepted": "This invite link was used already",
+      "revoked": "This invite link was revoked",
+      "expired": "This invite link has expired"
+    },
+    "closedDescription": "A link works once, before it expires. Ask {inviter} for a new one.",
+    "acceptedTitle": "You accepted the invitation",
+    "acceptedJoin": "You now work on project {project} with the {role} role.",
+    "acceptedRegister": "You may register one project of your own on this hub, with the steps below.",
+    "acceptedRegistered": "You registered project {project} with this link.",
+    "acceptedToast": "Invitation accepted",
+    "errors": {
+      "failed": "Couldn't accept the invitation",
+      "forbidden": "This link is for another GitHub login. Nothing was granted.",
+      "notFound": "The hub no longer knows this link. Ask {inviter} for a new one.",
+      "conflict": "The visibility level of this link is no longer one of the project's. Ask {inviter} for a new link.",
+      "gone": "This link was used, revoked or expired in the meantime. Ask {inviter} for a new one."
+    },
+    "openHub": "Open the hub",
+    "start": {
+      "title": "Get started",
+      "description": "Run these in a terminal on the machine where you work. Each command has a copy button.",
+      "commands": "Commands",
+      "install": {
+        "title": "Install the evo-agents CLI",
+        "hint": "It needs uv. The extras add the knowledge graph builder and the worker.",
+        "label": "install command"
+      },
+      "login": {
+        "title": "Sign the CLI in to this hub",
+        "hint": "It opens GitHub in your browser to confirm. Once per machine.",
+        "label": "sign-in command"
+      },
+      "plugins": {
+        "title": "Install the evo-hub and evo-kg plugins",
+        "hint": "For Claude Code, or for Codex, which takes the evo-hub plugin.",
+        "claude": "Claude Code",
+        "codex": "Codex",
+        "label": "{agent} plugin command {number}"
+      },
+      "project": {
+        "title": "Make a harness and register your project",
+        "hint": "Run both in the directory that holds your repos. Registering spends the right this link gave you and makes you the project's admin.",
+        "name": "Project name",
+        "nameHint": "Optional. Without one, the project takes the directory's name.",
+        "invalid": "Use lowercase letters, digits and dashes, starting with a letter or a digit.",
+        "initLabel": "harness command",
+        "registerLabel": "register command"
+      },
+      "worker": {
+        "title": "Pair a worker",
+        "hint": "Make a pairing code, then run the join command it shows on the machine that will run plans. Then keep the worker running as a service.",
+        "afterRegister": "Pair it once your project is registered: a worker serves the projects you can write to.",
+        "pair": "Make a pairing code",
+        "credentials": "The worker runs agents with the Claude Code, Codex or opencode login of its machine, and pushes with the git credentials of that machine.",
+        "serviceLabel": "service command"
+      },
+      "run": {
+        "title": "Run a plan",
+        "hint": "Open the project's plans, pick one and press Run plan. Your worker takes the run.",
+        "open": "Open the plans of {project}",
+        "noProject": "Once your project is registered, open it from the hub's home.",
+        "home": "Open the hub"
+      },
+      "read": {
+        "title": "Read the project",
+        "hint": "As a reader you see its memories, plans, skills and knowledge graph, up to your visibility.",
+        "open": "Open {project}"
+      }
+    }
+  },
   "nav": {
     "label": "Main navigation",
     "home": "Home",
@@ -400,10 +496,11 @@
     },
     "empty": {
       "title": "No project has been granted to you yet",
-      "description": "A hub administrator grants roles on projects. Send them your login, {login}, then reload this page.",
-      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page.",
+      "description": "A hub administrator grants roles on projects, or sends you an invite link. Send them your login, {login}, then reload this page.",
+      "adminDescription": "You administer the hub but hold no role on a project. Grant yourself one in Administration, then reload this page. To bring others in, make them invite links.",
       "admin": "Open Administration",
-      "copyLogin": "Copy your login"
+      "copyLogin": "Copy your login",
+      "invites": "Make an invite link"
     },
     "authorWaiting": {
       "title": "Waiting for your reply",
@@ -554,6 +651,7 @@
       "members": "Members",
       "tokens": "Tokens",
       "audit": "Audit",
+      "invites": "Invites",
       "plugins": "Plugins",
       "diagnostics": "Diagnostics",
       "branding": "Branding",
@@ -762,6 +860,89 @@
       "successTitle": "Token {id} of {login} revoked",
       "failed": "Couldn't revoke token {id}",
       "openMember": "Open member"
+    },
+    "invites": {
+      "title": "Invite links",
+      "caption": "Invite links",
+      "sub": "A link lets someone join a project, or register a project of their own, by signing in with GitHub. Each works once.",
+      "count": "{count, plural, one {# link} other {# links}}",
+      "new": "New invite link",
+      "emptyTitle": "No invite links yet",
+      "emptyDescription": "Make one to bring someone onto a project, or to let them register a project of their own.",
+      "columns": {
+        "id": "ID",
+        "kind": "Kind",
+        "gives": "Gives",
+        "forLogin": "For",
+        "createdBy": "Made by",
+        "expires": "Expires",
+        "status": "Status",
+        "acceptedBy": "Accepted by",
+        "actions": "Actions"
+      },
+      "kinds": {
+        "join": "Join a project",
+        "register": "Register a project"
+      },
+      "statuses": {
+        "open": "Open",
+        "accepted": "Accepted",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      },
+      "anyone": "Anyone with the link",
+      "registerGives": "One project of their own",
+      "rightUsed": "Used for {project}",
+      "rightUnused": "Right not used yet",
+      "nobody": "Nobody",
+      "mobileTitle": "{kind} #{id}",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke invite link {id}",
+      "form": {
+        "title": "New invite link",
+        "description": "Pick what the link gives. It works once, for whoever opens it first or for one GitHub login.",
+        "kind": "The link gives",
+        "kindHints": {
+          "join": "A role on one project of this hub.",
+          "register": "The right to register one project of their own, as its admin."
+        },
+        "project": "Project",
+        "projectPlaceholder": "Pick a project",
+        "projectRequired": "Pick a project.",
+        "noProjects": "The hub has no project yet. Make a register link instead, or register a project first.",
+        "role": "Role",
+        "visibility": "Visibility",
+        "visibilityHint": "The highest level of the project's ladder this person sees.",
+        "days": "Expires after (days)",
+        "daysHint": "From 1 to 30 days.",
+        "daysInvalid": "Enter a whole number of days from 1 to 30.",
+        "forLogin": "For one GitHub login (optional)",
+        "forLoginHint": "Only this login can accept the link, and only it sees the project and role. Leave it empty for anyone with the link.",
+        "cancel": "Cancel",
+        "create": "Make the link",
+        "creating": "Making…",
+        "notFound": "Project {project} is no longer on the hub. Pick another project."
+      },
+      "created": {
+        "title": "Invite link made",
+        "description": "Copy it now and send it to the person you invite. The hub keeps only a hash of it, so it is not shown again.",
+        "label": "invite link",
+        "done": "Done"
+      },
+      "revokeDialog": {
+        "title": "Revoke invite link {id}?",
+        "open": "Nobody can accept it any more. Whoever opens it sees that it was revoked.",
+        "right": "{login} accepted this link and has not registered a project with it yet: revoking takes that right back.",
+        "audit": "This cannot be undone, and it is audited.",
+        "cancel": "Cancel",
+        "confirm": "Revoke link",
+        "pending": "Revoking…",
+        "notFound": "The hub no longer has this link. The list was reloaded.",
+        "conflict": "This link can no longer be revoked: it was used, revoked or has expired. The list was reloaded.",
+        "success": "Nobody can accept it any more.",
+        "successTitle": "Invite link {id} revoked",
+        "failed": "Couldn't revoke invite link {id}"
+      }
     },
     "audit": {
       "title": "Audit trail",

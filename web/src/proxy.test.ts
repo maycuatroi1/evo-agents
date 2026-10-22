@@ -22,6 +22,18 @@ describe("proxy", () => {
     }
   });
 
+  it("lets an invite link's page through without a session, and nothing under it", () => {
+    for (const path of [`/invite/evn_${"a".repeat(43)}`, "/invite/not-a-token"]) {
+      const response = proxy(request(path));
+      expect(response.headers.get("location"), path).toBeNull();
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    }
+    for (const path of ["/invite", "/invite/", "/invite/a/b", "/invites/x", "/p/invite/x"]) {
+      expect(proxy(request(path)).status, path).toBe(307);
+    }
+  });
+
   it("treats a malformed session cookie as none", () => {
     expect(proxy(request("/", "evs_short")).status).toBe(307);
   });

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { hasSession, LOGIN_PATH, PUBLIC_PATHS, SESSION_COOKIE } from "@/lib/config";
+import { hasSession, isPublicPath, LOGIN_PATH, SESSION_COOKIE } from "@/lib/config";
 import { contentSecurityPolicy, createNonce, STATIC_SECURITY_HEADERS } from "@/lib/security";
 
 /** A run's event stream (server-sent events), one of the two API routes this proxy sees. */
@@ -9,9 +9,10 @@ export const RUN_STREAM = /^\/v1\/projects\/[^/]+\/runs\/[0-9]+\/stream$/;
 export const CHAT_STREAM = /^\/v1\/chats\/[0-9]+\/stream$/;
 
 /**
- * Runs before every page: sends a visitor without a session cookie to the sign-in page, and gives each response
- * a fresh CSP nonce and the security headers. Whether the session is still valid, and what it may see, is the
- * API's decision: a page that gets a 401 from the API sends the visitor to the sign-in page itself.
+ * Runs before every page: sends a visitor without a session cookie to the sign-in page (except from the sign-in page
+ * itself and an invite link's page), and gives each response a fresh CSP nonce and the security headers. Whether the
+ * session is still valid, and what it may see, is the API's decision: a page that gets a 401 from the API sends the
+ * visitor to the sign-in page itself.
  *
  * Where no reverse proxy sends /v1 to the API itself (locally, Playwright, deploy/hub/docker-compose.dev.yml), the web
  * forwards it, and Next.js gzips what it forwards: a gzip stream holds a run's server-sent events back until its
@@ -31,7 +32,7 @@ export function proxy(request: NextRequest) {
   const csp = contentSecurityPolicy({ nonce, dev: process.env.NODE_ENV === "development", https });
 
   let response: NextResponse;
-  if (!PUBLIC_PATHS.has(pathname) && !hasSession(request.cookies.get(SESSION_COOKIE)?.value)) {
+  if (!isPublicPath(pathname) && !hasSession(request.cookies.get(SESSION_COOKIE)?.value)) {
     response = NextResponse.redirect(new URL(LOGIN_PATH, request.url));
   } else {
     const headers = new Headers(request.headers);
