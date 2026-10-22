@@ -13,9 +13,11 @@ claude plugin marketplace add https://github.com/maycuatroi1/evo-agents
 claude plugin install evo-hub@evo-agents
 ```
 
-The hooks run `uvx --offline --from evo-ak==<version> evo-agents hub hook ...` (`hooks/hooks.json`), so the evo-ak
-release the plugin names must be in uv's cache; `evo-agents` on the PATH is the same package. Every hook exits 0 within
-its deadline, whatever the hub does. `docs/hub.md` (Local runs, Outputs of runs, Memories) has the whole of it.
+The hooks run `uvx --offline --from evo-ak==<version> evo-agents hub hook ...` (`hooks/hooks.json`), the evo-ak
+release the plugin names, from uv's cache. When uvx cannot run it (the plugin updated itself in an open session whose MCP
+server has not cached the new release, or the release never reached PyPI), the hook runs `evo-agents hub hook ...` from
+the PATH, the same package, and says so in one line on stderr; with no `evo-agents` there either, its stderr line says
+the hook did not run. Every hook exits 0 within its deadline, whatever the hub does. `docs/hub.md` (Local runs, Outputs of runs, Memories) has the whole of it.
 
 ## Hooks
 
