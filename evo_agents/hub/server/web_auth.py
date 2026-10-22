@@ -2,10 +2,12 @@
 
 GET /v1/auth/web/login makes a state and a PKCE S256 verifier, keeps both in a signed cookie that lives for
 LOGIN_WINDOW seconds and goes only to the callback, and redirects to GitHub with redirect_uri set to
-EVO_HUB_PUBLIC_URL + CALLBACK. GET /v1/auth/web/callback compares the state GitHub returns with the cookie's in
-constant time, exchanges the code with the client secret and the verifier, asks GitHub whose token it got, drops
-that token, and sets the session cookie (HttpOnly, Secure, SameSite=Lax, Path=/) on a new ``web`` row of tokens
-before redirecting to /. A state that does not match answers 400 and creates nothing; either way the login cookie
+EVO_HUB_PUBLIC_URL + CALLBACK. Its ``next`` is the page of the hub to come back to, an invite link's for one; the
+cookie keeps it when ``return_path`` takes it as a relative path inside the hub, and any other value is ignored.
+GET /v1/auth/web/callback compares the state GitHub returns with the cookie's in constant time, exchanges the code
+with the client secret and the verifier, asks GitHub whose token it got, drops that token, and sets the session
+cookie (HttpOnly, Secure, SameSite=Lax, Path=/) on a new ``web`` row of tokens before redirecting to that page, or
+to / without one. A state that does not match answers 400 and creates nothing; either way the login cookie
 is spent. POST /v1/auth/web/logout revokes the session and deletes the cookie, and GET /v1/auth/web/csrf hands out
 the X-Evo-CSRF value the session's writes need.
 
@@ -20,7 +22,7 @@ import logging
 import re
 import secrets
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -52,6 +54,7 @@ SCOPE = "read:user"  # reading the login needs nothing more
 AFTER_LOGIN = "/"
 RESTART = "start again at /v1/auth/web/login"
 _ERROR_CODE = re.compile(r"[a-z_]{1,64}")
+_RETURN_PATH = re.compile(r"/(?![/\\])[\x21-\x7e]{0,2047}")  # one "/", then printable ASCII without spaces
 
 router = APIRouter(prefix="/v1/auth/web", tags=["auth"])
 UNCONFIGURED = {503: {"model": ErrorBody, "description": "web sign-in is not configured"}}
@@ -73,6 +76,15 @@ def web_config(request: Request) -> HubConfig:
 WebConfig = Annotated[HubConfig, Depends(web_config)]
 
 
+def return_path(value: object) -> str | None:
+    """``value`` when it is a path inside the hub to come back to after signing in: one "/" first and never "//", no
+    backslash, no scheme or host, printable ASCII, 2048 characters at most; None for anything else."""
+    if not isinstance(value, str) or not _RETURN_PATH.fullmatch(value) or "\\" in value:
+        return None
+    parts = urlsplit(value)
+    return value if not parts.scheme and not parts.netloc else None
+
+
 def _set_login_cookie(response: Response, value: str) -> None:
     response.set_cookie(
         LOGIN_COOKIE, value, max_age=LOGIN_WINDOW, path=CALLBACK, secure=True, httponly=True, samesite="lax"
@@ -86,7 +98,13 @@ def _refuse(request: Request, status: int, message: str) -> Response:
 
 
 @router.get("/login", status_code=302, response_class=RedirectResponse, responses=UNCONFIGURED)
-async def web_login(config: WebConfig) -> RedirectResponse:
+async def web_login(
+    config: WebConfig,
+    next_path: Annotated[
+        str | None,
+        Query(alias="next", description="the page of the hub to come back to, a relative path; any other is ignored"),
+    ] = None,
+) -> RedirectResponse:
     """Leave for GitHub's authorize page with a fresh state and PKCE challenge."""
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)  # 86 characters, inside RFC 7636's 43 to 128
@@ -103,6 +121,8 @@ async def web_login(config: WebConfig) -> RedirectResponse:
     )
     response = RedirectResponse(f"{config.github_url}/login/oauth/authorize?{query}", status_code=302, headers=NO_STORE)
     payload = {"state": state, "verifier": verifier}
+    if return_path(next_path):
+        payload["next"] = next_path
     _set_login_cookie(response, sign(config.session_secret, LOGIN_PURPOSE, payload, LOGIN_WINDOW))
     return response
 
@@ -141,7 +161,7 @@ async def web_callback(
         return _refuse(request, exc.status_code, exc.detail)
     async with request.app.state.engine.begin() as conn:
         signed = await sign_in(conn, config, user, WEB, None)
-    response = RedirectResponse(AFTER_LOGIN, status_code=303, headers=NO_STORE)
+    response = RedirectResponse(return_path(saved.get("next")) or AFTER_LOGIN, status_code=303, headers=NO_STORE)
     set_session_cookie(response, signed.token)
     response.delete_cookie(LOGIN_COOKIE, path=CALLBACK, secure=True, httponly=True, samesite="lax")
     return response

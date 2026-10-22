@@ -88,6 +88,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
+| invite links | `POST` and `GET /v1/admin/invites`, `POST /v1/admin/invites/{id}/revoke`, for hub admins; `POST /v1/invites/accept`, for any member signed in (section Signing in, Invite links) |
 | org chart | `GET /v1/org`, `GET /v1/org/runs`, `POST /v1/org/units`, `PATCH /v1/org/units/{slug}`, `POST .../units/{slug}/archive`, `POST /v1/org/seats`, `PATCH /v1/org/seats/{seat_id}`, `POST .../seats/{seat_id}/end`, `PUT /v1/org/ceilings`: the units, seats and autonomy ceilings of the hub's people and agents (`docs/org-chart.md`) |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
@@ -282,7 +283,9 @@ relative path is refused, because hooks start in whatever directory the session 
 `~/.evo/hub/token` only.
 
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
-session cookie (HttpOnly, Secure, SameSite=Lax). Web sign-in needs four variables: the client id and secret, the
+session cookie (HttpOnly, Secure, SameSite=Lax), then sends you back to the page named by `?next=` on the login
+route. Only a relative path of the hub is taken there (one leading `/`, not `//` or `/\`, no scheme or host,
+printable ASCII, at most 2048 characters); anything else is ignored and the callback goes to `/`. Web sign-in needs four variables: the client id and secret, the
 session secret, and the public URL. Until all four are set, its routes answer 503 while the CLI's device flow keeps
 working with the client id alone. When the client secret is set, the hub also checks with GitHub that a CLI's token
 was issued to this App, so a personal token or another App's token signs nobody in.
@@ -305,13 +308,49 @@ bytes the blob store holds and the deletions still pending, graph builds that fa
 and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page. The trail keeps
 `EVO_HUB_AUDIT_DAYS` days of rows (365 by default, at least 30): the worker's daily `hub.prune_audit` deletes older ones.
 
+### Invite links
+
+A hub admin can hand someone a one-time link instead of granting a login by name. A link of kind `join` names a
+project, a role and a max level on that project's ladder; accepting it gives that grant, as `hub admin grant` would,
+with the admin who made the link as its granter. A link of kind `register` names nothing: accepting it gives the
+right to register one new project. `--for LOGIN` binds a link to one GitHub login (compared without case); without
+it, any member signed in may accept it. A link stays open 7 days unless `--days` asks otherwise, 30 at most.
+
+```sh
+evo-agents hub admin invite create --project demo --role writer --max-level internal --for alice
+evo-agents hub admin invite create --register --days 14
+evo-agents hub admin invite list            # --json: id, kind, project, role, for_login, created_by, expires_at, status, accepted_by, ...
+evo-agents hub admin invite revoke 3
+```
+
+The link is `EVO_HUB_PUBLIC_URL` followed by `/invite/` and a token of 256 random bits (`evn_...`). The hub prints it
+once, in the answer to `POST /v1/admin/invites` (sent `Cache-Control: no-store`), and keeps only the SHA-256 of the
+token; no list, audit row or log holds the token. The member opens the link, signs in (the web passes the page as
+`?next=`), and accepts it with `POST /v1/invites/accept`. A link works once: of two accepts at the same time, one
+gives the grant and the other gets 410. A link accepted, revoked or expired answers 410, a token the hub does not
+know 404, a link bound to another login 403; none of them grants anything, and the message says to ask a hub admin
+for a new link. Accepting never lowers a grant the member holds already: they keep the higher role and the higher
+level of the two. The agent of a run accepts no link.
+
+The right of a register link lasts until it is used or revoked. `PUT /v1/projects/{project}` (`evo-agents hub project
+register`) of a project the hub does not have takes it in place of a hub admin: in one transaction the hub creates the
+project, grants its holder the `admin` role at the project's highest level, and marks the right used with the
+project's name. Registering a project that exists already, or a second new one, takes the right no longer, and a
+member without one gets 403 as before. Holding a link or a right shows nothing of any other project.
+
+`invite list` shows each link's status: `open`, `accepted`, `revoked` or `expired`. `invite revoke` closes an open
+link, or the unused right of an accepted register link; it takes back no grant (that is `hub admin revoke`). Making,
+accepting and revoking a link each write one audit row, `invite.create`, `invite.accept` and `invite.revoke`, naming
+the link's id and what it gives. Making, listing and revoking links take a hub admin; anyone else gets 403.
+
 ## Projects and who sees what
 
 A project on the hub is a harness. `evo-agents hub project register` (run in the harness, or with its path) sends
 what the hub needs from `knowledge.yaml` and `harness.yaml`: the label ladder (levels and locations), the sinks with
 their clearances, the default label of the project's memories and plans (that of its harness source), its repos, and
 where the harness and repos sit relative to a workspace. Registering a new project takes a hub admin; registering it
-again after the harness changed takes a hub admin or the project's admin role. `evo-agents hub registry pull` writes
+again after the harness changed takes a hub admin or the project's admin role. The holder of an unused right from a
+register invite link may register one new project and becomes its admin (Signing in, Invite links). `evo-agents hub registry pull` writes
 the projects you see into this machine's harness registry, placed under your workspace.
 
 A grant gives a login one role on a project, `reader`, `writer` or `admin` (each may do what the ones before it
@@ -990,7 +1029,9 @@ an agent's, and gives `memory_revisions` the provenance of a run's write (`run_i
 `origin_id`, `hop`, `chat_id`, `chat_message_id`); going back to 0100 deletes the agents' memories and drops the
 columns. Schema 0102 adds `memories.read_at`, `archived_at` and `stale_at`; schema 0103 adds `proposals.promotion`,
 `memory_revisions.proposal_id`, `memories.promoted_at` and `promoted_into`, and the ledger action `promoted`; going
-back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents).
+back from each drops what it added (Memories, skills and knowledge graphs, Memories of agents). Schema 0104 adds
+`invites`, the invite links (Signing in, Invite links); going back to 0103 drops it, and with it the open links and
+the rights to register a project not used yet, while the grants and projects they gave stay.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
