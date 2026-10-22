@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, profiles, runs
+from evo_agents.hub import author, profiles, question_runs, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -24,6 +24,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     ReleaseSpec,
     RunBudget,
     RunEnvironment,
+    RunOrigin,
     RunPack,
     RunProfile,
     RunRepo,
@@ -490,6 +491,16 @@ class RunSpec(BaseModel):
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
+    own_home: bool = Field(
+        False,
+        description="true for a run under a profile that is not its project's default: the agent of a claude-code "
+        "run gets a Claude Code config dir of its own in the run's directory instead of the owner's",
+    )
+    origin: RunOrigin | None = Field(
+        None,
+        description="the person who dispatched the run, whom the worker names as co-author of the commits of a chat "
+        "run and of a run under a profile that is not its project's default; null from a hub that does not send it",
+    )
     plugin_runtime: PluginRuntime | None = Field(
         None,
         description="for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the "
@@ -837,6 +848,13 @@ class StateReport(BaseModel):
         "the run as its failure_cause, and ignored with any other state",
     )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
+    answer: str | None = Field(
+        None,
+        min_length=1,
+        max_length=question_runs.MAX_ANSWER_CHARS,
+        description="with done of a question run, and only then (422 otherwise): the agent's answer, which goes to "
+        "the core plugin that asked",
+    )
 
     @model_validator(mode="after")
     def _bounded(self):

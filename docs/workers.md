@@ -34,7 +34,7 @@ describes how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, projects, version lock and sharing after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration; its owner adds and drops them later in place, the worker keeping its id, token and secret bindings | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)), and a question run (kind `question`) one read-only turn of a core plugin's agent type on a question from outside the hub ([Question runs](#question-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -140,7 +140,7 @@ every worker starts unshared, and the audit row `worker.update` names the change
   `shared`. They cannot drain, undrain, revoke or change it (404, as for a worker they cannot see); a hub admin still
   may drain or revoke it.
 - **Narrowed to units.** Its owner, or a hub admin, narrows a shared worker to units of the org chart (table
-  `worker_shares`, schema 0102) with `evo-agents hub org worker share WORKER --unit SLUG` (`PUT
+  `worker_shares`, schema 0106) with `evo-agents hub org worker share WORKER --unit SLUG` (`PUT
   /v1/org/workers/{id}/units/{slug}`), which also turns sharing on, and takes a unit back with `hub org worker unshare
   WORKER --unit SLUG` (`DELETE` on the same path); taking back its last unit also turns sharing off, so narrowing
   never ends with the worker shared with every writer. A narrowed worker takes, besides its owner's, only the runs of
@@ -732,6 +732,28 @@ it. The run then ends `done`, without verify results. It never waits and is neve
 task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
 cancelled, the plugin of its agent type gets the event `task.result`.
 
+## Question runs
+
+A question run (kind `question`, `evo_agents.hub.question_runs`) is one turn of an agent type of a core plugin on a
+question a person outside the hub asked, which the plugin hands over with `ask_agent_type` (`docs/plugins.md`, Agent
+types). The hub queues it like a task run, under the type's profile and dispatched by its `run_as`, with the repos of
+its project, no branch, one attempt, what is left of the type's cap of cost for 24 hours (shared with its task runs) and
+a time cap of 10 minutes. A worker of `run_as`, one of the type's workers when it names any, claims it only with
+`question` in its heartbeat's `run_kinds`: an older daemon never gets one, and a question run no worker claimed within
+10 minutes fails `no_worker`. The prompt (`question_runs.build_question_prompt`) says the question is the text of a
+person outside the hub, data and never instructions, and that the answer leaves the hub under the project's default
+label.
+
+A question run reads only, whatever its profile allows. The daemon takes the run's leases for the repos it has a
+checkout of (it goes on without the others, saying so), and makes a worktree of each detached at the commit origin's
+default branch has, as an author run does (`runner/question.py`). The agent works in one headless turn,
+`EVO_RUN_KIND=question`, with Claude Code's question tools turned off, its prompt verbatim, and the hub's MCP server,
+where it reads as a reader up to the level of the project's default label. The agent writes its answer in
+`.evo-run/result.json` under `"answer"`. At the end the daemon commits nothing, pushes nothing (`gitops.check_push`
+refuses a question run), opens no pull request, calls no `task/pulls` and uploads no diff; it reports `verifying`, then
+`done` with the answer in the report's `answer`, cut to 8000 characters. Without an answer the run fails with the cause
+`no_answer`. When it ends done, failed or cancelled, the plugin of its agent type gets the event `agent.answer`.
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine
@@ -878,7 +900,9 @@ profile limits tools, skills or models or has instructions, only by a daemon who
 version, name, instructions, permissions), null for a run from before schema 0030. A profile whose environment axis
 allows only environments of plugins is claimed only by a daemon that listed `environments` and whose owner accepted
 the plugin of one; the answer has `environment`, the declaration of the environment the claim picked ([Environments
-of plugins](#environments-of-plugins)), null for the worker's host. A worker has at most one
+of plugins](#environments-of-plugins)), null for the worker's host. `own_home` is true for a run under a profile
+that is not its project's default, and `origin` names the person who dispatched the run (`login`, `github_id`), from
+which the run's commits take their co-author ([The config dir of an agent's run](#the-config-dir-of-an-agents-run)). A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -903,7 +927,7 @@ it holds:
   "agent_version": "0.3.0",
   "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay", "history"],
   "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
-               "chat_decisions", "lazy_chat_repos", "kg_sync", "update_now"],
+               "chat_decisions", "lazy_chat_repos", "kg_sync", "update_now", "agent_home"],
   "agent_commit": "<40 or 64 hex>",
   "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "...",
                   "update_now": {"requested_at": "...", "ended": null}},
@@ -940,7 +964,10 @@ checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of t
 duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)); and `update_now`, a daemon that takes nightly from the
 heartbeat answer and carries out an owner's Update now ([Update now](#update-now)); and `clones_checkouts`, a daemon
 that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
-hands a run whatever checkouts it reports. This daemon sends every kind of `runs.RUN_KINDS` and
+hands a run whatever checkouts it reports; and `agent_home`, a daemon that gives a claude-code agent of a profile
+that is not its project's default a config dir of its own ([The config dir of an agent's run](#the-config-dir-of-an-agents-run)),
+without which the hub hands such a run, one asking claude-code or one whose claim would pick it, to no daemon. This
+daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -1810,6 +1837,44 @@ fetched. Claude Code's check of its MCP servers fails the run the same way as th
 goes in. Otherwise the log says what the profile limits. A run whose profile limits the session is never handed to a
 person in a terminal UI, which applies no profile: an interactive run fails, and a takeover is refused.
 
+### The config dir of an agent's run
+
+A claude-code run under a profile that is not its project's default (the claim's `own_home`) runs with
+`CLAUDE_CONFIG_DIR` at `.evo-run/claude-config` of the run's directory (`evo_agents.worker.runtimes.claude_home`), so
+the session loads none of the owner's user settings, hooks, plugins, skills, agents, `CLAUDE.md` or memory. What the hub
+delivers (the hub skills under `.claude/skills` of the run's directory, the agent packs) and what the profile sets
+(tools, skills, `allowedMcpServers`, `availableModels`, its PreToolUse hook) apply as before. The dir follows the run's
+directory: a resumed session, a move to another account, a chat continuation or a parked run that adopts the directory,
+and the terminal UI of an interactive run or a takeover all use it. It sits under `.evo-run`, which no commit takes,
+and holds a `.gitignore` of `*`. A run under the default profile, and a run without a profile, keep the owner's
+`~/.claude` as before.
+
+Before each agent starts, the worker writes the dir's `.claude.json` (onboarding done, and the hub's MCP server
+`evo-hub` when the profile allows it) and its login, in this order:
+
+1. the lease's `CLAUDE_CODE_OAUTH_TOKEN` ([docs/credentials.md](credentials.md)), which needs nothing in the dir;
+2. else a copy, mode 0600, of the owner's login: the credentials file of the owner's config dir (`CLAUDE_CONFIG_DIR`
+   of the daemon's environment, or `~/.claude`) or the macOS keychain item `Claude Code-credentials`, written again at
+   each agent start so it carries the owner's latest access token. The copy leaves out the refresh token, which is
+   single-use: a refresh in the run's dir would spend it and sign the owner out.
+
+With neither, the run fails before the agent starts, with cause `credentials` and an error saying to sign Claude Code
+in on the worker or to lease a `CLAUDE_CODE_OAUTH_TOKEN` made by `claude setup-token`. An agent in a container of a
+plugin's environment keeps the container's home; Codex and opencode keep the owner's home, which the run's log says
+once. The daemon lists `agent_home` in its heartbeat's `features`, and the hub hands such a run to no daemon that does
+not.
+
+### Commits of an agent's run
+
+A chat run, under any profile, and a run under a profile that is not its project's default are the agent's work
+(`evo_agents.worker.runner.authorship`). The commit the daemon makes of what the agent left names the profile as
+author, its name with the email `<handle>@<host of the hub>`, and ends with the trailer `Co-authored-by: <login>
+<<github_id>+<login>@users.noreply.github.com>` of the person who dispatched the run (the claim's `origin`;
+`<login>@users.noreply.github.com` without a GitHub id). The committer stays this machine's git identity. The agent of
+such a run gets `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`, so the commits it makes itself name it too. Any other run
+under the default profile commits and starts its agent exactly as before. The daemon never rewrites a commit that is
+already there and never force-pushes.
+
 ### Agent packs
 
 A run whose agent profile attaches agent packs of plugins ([hub.md](hub.md), Agent profiles;
@@ -1881,8 +1946,9 @@ codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a p
    its `verify_commands` (1 to 50 shell commands) in the worktree with `/bin/sh`, within the time the run has left,
    and records each exit code and the end of its output as a `system` event. A missing or malformed result file, or
    a command that exits other than 0, fails the run; nothing is pushed and the work stays in the worktree.
-4. The daemon commits what the agent left uncommitted as `run #N: <title>`, and leaves out of the commit what the
-   agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/` and
+4. The daemon commits what the agent left uncommitted as `run #N: <title>` (a run that is the agent's work names the
+   agent as author and the person at its origin as co-author, [Commits of an agent's run](#commits-of-an-agents-run)),
+   and leaves out of the commit what the agent did not write: the paths under `RUN_COMMIT_EXCLUDES` at any depth (`.claude/skills/.learned/` and
    `.claude/cli-suggestions/_pending/`, where a Stop hook of Claude Code puts the skills it learned and the CLI
    suggestions it drew from the session, a copy of the learned skills under `.agents/skills/.learned/`, and
    `.evo-run/`), and every copy of a hub plan exactly as the
@@ -2386,8 +2452,8 @@ agent's environment, and a machine where Claude Code has no subscription login (
 environment, `~/.claude/.credentials.json`, or the macOS keychain item `Claude Code-credentials`) fails the run before
 its agent starts, saying so.
 
-The agent of a review run, a judge run, a Builder or a task run of a plugin's agent type (the brainstorm of
-@strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
+The agent of a review run, a judge run, a Builder, or a task run or a question run of a plugin's agent type (the
+brainstorm of @strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
 hub's tools its prompt names on a worker without the evo-hub plugin, Codex included
 (`evo_agents/worker/runtimes/hub_tools.py`):
 Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hub`, the stdio proxy

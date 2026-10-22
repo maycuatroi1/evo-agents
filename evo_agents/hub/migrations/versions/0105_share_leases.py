@@ -1,7 +1,7 @@
 """Leases under a credential share: credential_leases.principal_id and share_id, run_accounts.how "shared".
 
-Revision ID: 0101
-Revises: 0100
+Revision ID: 0105
+Revises: 0104
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.tables_accounts`` and ``evo_agents.hub.accounts`` as of this revision,
@@ -22,8 +22,8 @@ Going back moves each "shared" choice to "pool", the tier it would have come fro
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0101"
-down_revision = "0100"
+revision = "0105"
+down_revision = "0104"
 branch_labels = None
 depends_on = None
 

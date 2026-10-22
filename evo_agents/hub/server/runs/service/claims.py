@@ -51,7 +51,9 @@ from evo_agents.hub.server.runs.models import (
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import (
     claim_clause,
+    own_home,
     pick_runtime,
+    run_origin,
     run_packs,
     run_profile,
     runtime_rule,
@@ -174,6 +176,7 @@ def _claimable(
     author_runs: bool = False,
     chat_runs: bool = False,
     task_runs: bool = False,
+    question_runs: bool = False,
     release_runs: bool = False,
     step_sessions: bool = False,
     clones: bool = False,
@@ -194,7 +197,7 @@ def _claimable(
     leaves out the other repos it has no checkout of. A chat run is pinned to the worker the hub picked for it and
     needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
     has any, a daemon that says it runs task runs (``task_runs``) and, when its agent type names workers, to be one of
-    them. A release run needs a checkout of its one repo and a daemon that says it runs release runs
+    them; a question run likewise, with a daemon that says it runs question runs (``question_runs``). A release run needs a checkout of its one repo and a daemon that says it runs release runs
     (``release_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
     A worker whose daemon clones the repos it lacks (``clones``, runs.CLONES_CHECKOUTS) needs no checkout of any of
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
@@ -237,7 +240,10 @@ def _claimable(
                     r.c.kind == "chat",
                     true(),
                 ),  # pinned to the worker the hub picked, which works without a repo it lacks
-                (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
+                (
+                    r.c.kind.in_(("task", "question")),
+                    or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed)),
+                ),
                 else_=own_repo,
             )
         )
@@ -252,7 +258,8 @@ def _claimable(
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
         query = query.where(r.c.kind.not_in(left_out))
-    query = query.where(or_(r.c.kind != "task", _task_worker(worker_id)) if task_runs else r.c.kind != "task")
+    typed = [kind for kind, runs_it in (("task", task_runs), ("question", question_runs)) if runs_it]
+    query = query.where(or_(r.c.kind.not_in(("task", "question")), and_(r.c.kind.in_(typed), _task_worker(worker_id))))
     if not steady:
         query = query.where(~lost_here(worker_id))
     if profile_gate is not None:
@@ -284,7 +291,7 @@ def _dispatcher_clause(worker_id: int, owner_id: int, shared: bool):
 
 
 def _task_worker(worker_id: int):
-    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it among the
+    """Whether worker ``worker_id`` may take the task or question run: its agent type names no worker, or names it among the
     workers of the run's dispatcher (the type's run_as), never a shared worker of another member by the same name."""
     w, t, r = tables.workers, tables.project_agent_types, tables.runs
     own = (w.c.id == worker_id) & (w.c.owner_id == r.c.dispatched_by)
@@ -410,6 +417,7 @@ async def _try_claim(
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
             task_runs="task" in (kinds or ()),
+            question_runs="question" in (kinds or ()),
             release_runs="release" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             clones=clones,
@@ -561,7 +569,16 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
     return None
 
 
-OWN_PROMPTS = ("review", "chat", "task", "judge", "replay", "history", "release")  # whose prompt their module builds
+OWN_PROMPTS = (
+    "review",
+    "chat",
+    "task",
+    "judge",
+    "replay",
+    "history",
+    "release",
+    "question",
+)  # whose prompt their module builds
 
 
 async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = ()) -> str:
@@ -580,6 +597,10 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.task_dispatch import task_prompt
 
         return await task_prompt(conn, view)
+    if view.kind == "question":
+        from evo_agents.hub.server.question_dispatch import question_prompt
+
+        return await question_prompt(conn, view)
     if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
         from evo_agents.hub.server.changes import judge_prompt
         from evo_agents.hub.server.merge_judge import merge_prompt
@@ -601,7 +622,9 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
     """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
     author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
-    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``."""
+    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``. The prompt of a run
+    under an agent profile that is not its project's default ends with the index of its memories
+    (``memory_upkeep.with_index``)."""
     view = await run_view(conn, run_id)
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
@@ -648,6 +671,9 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
+    from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
+
+    prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
     return RunSpec(
         id=view.id,
         kind=view.kind,
@@ -677,6 +703,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         verify=verify,
         session_per_step=view.session_per_step,
         profile=await run_profile(conn, run_id),
+        own_home=await own_home(conn, run_id),
+        origin=await run_origin(conn, run_id),
         release=await _release_spec(conn, view),
     )
 

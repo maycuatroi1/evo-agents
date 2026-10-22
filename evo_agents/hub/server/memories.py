@@ -33,7 +33,8 @@ GET /v1/memories lists what the caller sees in (updated_at, id) order with an op
 request, which is what a sync needs. GET /v1/memories/search ranks the full-text matches of name and body
 (configuration simple, websearch syntax). GET /v1/memories/{id} is one memory. GET /v1/memories/{id}/revisions lists
 its revisions newest first, and GET .../revisions/{revision} is one with its body; a revision whose type and label the
-caller could not read is left out, as the memory itself would be.
+caller could not read is left out, as the memory itself would be. An agent's memory shows its upkeep
+(``memory_state``); POST /v1/memories/{id}/restore brings back one archived (``memory_upkeep``).
 
 Sizes are bounded: a body is at most MAX_BODY bytes of UTF-8, a request at most MAX_REQUEST bytes (read before
 parsing), a page at most MAX_LIMIT memories and about PAGE_BYTES of bodies, and one request examines at most
@@ -42,8 +43,6 @@ SCAN_ROWS rows the caller cannot see.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import functools
 import hashlib
 import json
@@ -56,7 +55,6 @@ import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import (
     BigInteger,
@@ -92,10 +90,14 @@ from evo_agents.hub.memory import (
     body_problem,
     name_problem,
 )
+from evo_agents.hub.profiles import HANDLE_PATTERN
+from evo_agents.hub.server import memory_agents, memory_paging, memory_state
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.memory_agents import AgentHandle, Provenance
 from evo_agents.hub.server.memory_audience import Reader, label_audience, raised, with_audience
+from evo_agents.hub.server.memory_paging import MAX_ID, BoundedRoute
 from evo_agents.hub.server.projects import PRINTABLE, LabelIn, ProjectAccess, project_access
 from evo_agents.hub.server.security import WEB, CurrentUser, Principal
 from evo_agents.kg.policy import audience_below
@@ -106,7 +108,6 @@ log = logging.getLogger(__name__)
 PUT = "memory.put"  # audit actions; the target is memory:<id>
 DELETE = "memory.delete"
 AUDIENCE = "memory.audience"  # an admin lowered the audience
-MAX_REQUEST = 6 * MAX_BODY + 64 * 1024  # a body escaped as JSON at worst (\u0001 for every byte), and the rest
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 SEARCH_LIMIT = 50
@@ -114,9 +115,7 @@ PAGE_BYTES = 4 * 1024 * 1024  # bodies in one page, past which it ends early
 SCAN_ROWS = 5000
 BATCH = 200  # rows read at a time while filtering by the read rule
 MAX_REVISION = 2**31 - 1
-MAX_ID = 2**63 - 1
 LOCK_CLASS = 0x6D656D  # pg_advisory_xact_lock namespace serializing the writes of one memory key
-TOO_LARGE = f"a request is at most {MAX_REQUEST // 1024} KiB, a memory at most {MAX_BODY // 1024} KiB"
 
 Sink = Annotated[
     str,
@@ -140,29 +139,6 @@ REFUSALS = {
     413: {"model": ErrorBody},
     422: {"model": ErrorBody},
 }
-
-
-class BoundedRoute(APIRoute):
-    """Reads at most MAX_REQUEST bytes of a request before FastAPI parses it: a larger one is a 413, whether it says
-    its length or not, and is never held in memory whole."""
-
-    def get_route_handler(self):
-        handler = super().get_route_handler()
-
-        async def bounded(request: Request):
-            declared = request.headers.get("content-length")
-            if declared is not None and (not declared.isdigit() or int(declared) > MAX_REQUEST):
-                raise HTTPException(413, TOO_LARGE)
-            chunks, size = [], 0
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > MAX_REQUEST:
-                    raise HTTPException(413, TOO_LARGE)
-                chunks.append(chunk)
-            request._body = b"".join(chunks)  # what Request.body() returns from now on
-            return await handler(request)
-
-        return bounded
 
 
 router = APIRouter(
@@ -199,6 +175,9 @@ class MemoryIn(BaseModel):
         max_length=MAX_AUDIENCE,
         description="what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience",
     )
+    agent: str | None = Field(
+        None, pattern=HANDLE_PATTERN, description="scope project only: the agent profile whose memory it is"
+    )
 
     @model_validator(mode="after")
     def _check(self):
@@ -209,8 +188,8 @@ class MemoryIn(BaseModel):
             if not _printable(self.location):
                 problems.append("a project location is printable text without a slash or a backslash")
         else:
-            if self.project is not None or self.label is not None:
-                problems.append("a personal memory has no project and no label")
+            if self.project is not None or self.label is not None or self.agent is not None:
+                problems.append("a personal memory has no project, no label and no agent")
             if not PERSONAL_LOCATION.fullmatch(self.location):
                 problems.append("a personal location is [~A-Za-z0-9-] then [A-Za-z0-9-] characters")
         if problems:
@@ -218,7 +197,7 @@ class MemoryIn(BaseModel):
         return self
 
 
-class Memory(BaseModel):
+class Memory(memory_state.MemoryState):
     id: int
     scope: str
     project: str | None
@@ -226,6 +205,7 @@ class Memory(BaseModel):
     name: str
     type: str
     owner: str = Field(description="the login of the person who created it")
+    agent: str | None = Field(None, description="the handle of the agent profile whose memory it is; else null")
     label: dict
     body: str = Field(description="the whole file; empty for a tombstone")
     revision: int
@@ -262,6 +242,7 @@ class Row:
     memory: Memory
     owner_id: int
     project_id: int | None
+    profile_id: int | None = None  # the agent's namespace, None for none
 
 
 SHARED = ("project", "reference")  # SHARED_TYPES, in the order the queries name them
@@ -270,8 +251,8 @@ OWNED = ("user", "feedback")
 
 def _memories(*extra) -> Select:
     """The memories with what a Memory shows, column by field name, then owner_id, project_id and ``extra``: the
-    project's name and the logins of the owner and of the last writer joined in."""
-    m, p = tables.memories, tables.projects
+    project's name, the logins of the owner and of the last writer and the handle of the agent joined in."""
+    m, p, ap = tables.memories, tables.projects, tables.agent_profiles
     owner, writer = tables.users.alias("o"), tables.users.alias("u")
     return select(
         m.c.id,
@@ -281,6 +262,7 @@ def _memories(*extra) -> Select:
         m.c.name,
         m.c.type,
         owner.c.login.label("owner"),
+        ap.c.handle.label("agent"),
         m.c.label,
         m.c.body,
         m.c.revision,
@@ -290,9 +272,12 @@ def _memories(*extra) -> Select:
         writer.c.login.label("updated_by"),
         m.c.owner_id,
         m.c.project_id,
+        m.c.profile_id,
+        *memory_state.columns(),
         *extra,
     ).select_from(
         m.outerjoin(p, p.c.id == m.c.project_id)
+        .outerjoin(ap, ap.c.id == m.c.profile_id)
         .join(owner, owner.c.id == m.c.owner_id)
         .join(writer, writer.c.id == m.c.updated_by)
     )
@@ -304,7 +289,7 @@ def _memories(*extra) -> Select:
 
 
 @functools.cache
-def _listed(deleted: bool, **reach: bool) -> Select:
+def _listed(deleted: bool, **reach) -> Select:
     """A batch of the memories ``_reach(**reach)`` selects after (:after_at, :after_id), in (updated_at, id)
     order; tombstones too when ``deleted``."""
     m = tables.memories
@@ -316,7 +301,7 @@ def _listed(deleted: bool, **reach: bool) -> Select:
 
 
 @functools.cache
-def _searched(**reach: bool) -> Select:
+def _searched(**reach) -> Select:
     """A batch of the live memories ``_reach(**reach)`` selects whose name or body matches :q, best first, from
     row :offset."""
     m = tables.memories
@@ -332,12 +317,11 @@ def _searched(**reach: bool) -> Select:
 
 
 @functools.cache
-def _at_key(shared: bool) -> Select:
+def _at_key(kind: str) -> Select:
     """The memory at the key :scope, :project_id, :location and :name, locked: the shared one of the project when
-    ``shared``, else the caller's (:user_id) own."""
+    ``kind`` is shared, the caller's (:user_id) own when owned, the agent's (:profile_id) when agent."""
     m = tables.memories
     user_id = bindparam("user_id", type_=BigInteger)
-    kind = one_of(m.c.type, SHARED) if shared else and_(one_of(m.c.type, OWNED), m.c.owner_id == user_id)
     return (
         _memories()
         .where(
@@ -345,15 +329,17 @@ def _at_key(shared: bool) -> Select:
             m.c.project_id.is_not_distinct_from(bindparam("project_id", type_=BigInteger)),
             m.c.location == bindparam("location", type_=String),
             m.c.name == bindparam("name", type_=String),
-            or_(kind, and_(m.c.scope == "personal", m.c.owner_id == user_id)),
+            memory_agents.key_condition(kind),
+            or_(memory_agents.key_kind(kind), and_(m.c.scope == "personal", m.c.owner_id == user_id)),
         )
         .with_for_update(of=m)
     )
 
 
-def _key(body: MemoryIn, user: Principal, project_id: int | None) -> dict:
-    """The parameters of ``_at_key`` for the key ``body`` names."""
+def _key(body: MemoryIn, user: Principal, project_id: int | None, profile_id: int | None = None) -> dict:
+    """The parameters of ``_at_key`` for the key ``body`` names, in namespace ``profile_id``."""
     return {
+        "profile_id": profile_id,
         "scope": body.scope,
         "project_id": project_id,
         "location": body.location,
@@ -374,6 +360,7 @@ _CHANGED = (
         revision=tables.memories.c.revision + 1,
         updated_at=func.now(),
         updated_by=bindparam("writer_id", type_=BigInteger),
+        **memory_state.FRESH,
     )
     .where(tables.memories.c.id == bindparam("memory_id", type_=BigInteger))
 )
@@ -392,8 +379,8 @@ def _changed(memory_id: int, kind: str, label: dict, body: str, deleted: bool, u
 
 
 def _row(found) -> Row:
-    """A row of ``_memories()`` as the memory, its owner's id and its project's id, by column name."""
-    return Row(Memory(**found._mapping), found.owner_id, found.project_id)
+    """A row of ``_memories()`` as the memory, its owner's, project's and agent's ids, by column name."""
+    return Row(Memory(**found._mapping), found.owner_id, found.project_id, found.profile_id)
 
 
 def _through(user: Principal, sink: str | None) -> str | None:
@@ -416,7 +403,9 @@ def _visible(
         return False
     if memory.scope == "personal":
         return row.owner_id == user.user_id and user.scope is None
-    if memory.type not in SHARED_TYPES and row.owner_id != user.user_id:
+    if not memory_agents.readable(row.profile_id, memory.type, user):
+        return False
+    if memory.type not in SHARED_TYPES and row.owner_id != user.user_id and row.profile_id is None:
         return False
     access = accesses.get(memory.project)
     if access is None:
@@ -456,17 +445,18 @@ async def _accesses(conn, user: Principal, project: str | None) -> dict[str, Pro
     return {name: access for name, access in found.items() if access is not None and access.role}
 
 
-def _reach(*, personal: bool, scope: bool, project: bool, location: bool) -> list:
+def _reach(*, personal: bool, scope: bool, project: bool, location: bool, namespace: str) -> list:
     """The conditions on the memories that may be visible before labels count: one's (:user_id) personal memories
     when ``personal`` (never for the agent of a run) and, in the projects :reach_projects one holds a grant on, the
-    shared memories and one's own; then the :scope, :project_id and :location the caller narrowed to, those the
-    other flags name."""
+    shared memories, one's own and the agents' of ``namespace`` (``memory_agents.reach``); then the :scope,
+    :project_id and :location the caller narrowed to, those the other flags name."""
     m = tables.memories
     user_id = bindparam("user_id", type_=BigInteger)
     in_projects = and_(
         m.c.scope == "project",
         one_of(m.c.project_id, name="reach_projects"),
-        or_(one_of(m.c.type, SHARED), m.c.owner_id == user_id),
+        or_(one_of(m.c.type, SHARED), m.c.owner_id == user_id, m.c.profile_id.is_not(None)),
+        memory_agents.namespace_condition(namespace),
     )
     candidate = or_(and_(m.c.scope == "personal", m.c.owner_id == user_id), in_projects) if personal else in_projects
     reach = [candidate]
@@ -479,16 +469,19 @@ def _reach(*, personal: bool, scope: bool, project: bool, location: bool) -> lis
     return reach
 
 
-def _reached(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location) -> tuple[dict, dict]:
-    """The shape of ``_reach`` for the caller and the filters given, and its parameters."""
+def _reached(user: Principal, accesses: dict[str, ProjectAccess], scope, project, location, reach) -> tuple[dict, dict]:
+    """The shape of ``_reach`` for the caller, the filters given and the namespaces ``reach`` (namespace, id), and
+    its parameters."""
     narrowed = accesses[project].project_id if project is not None and project in accesses else None
     shape = {
         "personal": user.scope is None,  # the agent of a run reads no personal memory
         "scope": scope is not None,
         "project": narrowed is not None,
         "location": location is not None,
+        "namespace": reach[0],
     }
     bound = {
+        "namespace_id": reach[1],
         "user_id": user.user_id,
         "reach_projects": [access.project_id for access in accesses.values()],
         "scope": scope,
@@ -496,27 +489,6 @@ def _reached(user: Principal, accesses: dict[str, ProjectAccess], scope, project
         "location": location,
     }
     return shape, bound
-
-
-# Cursors: the (updated_at, id) of the last row a page examined, base64url JSON. They only position a listing in
-# rows the caller's filters select, so they need no signature.
-
-
-def _cursor(updated_at: datetime, memory_id: int) -> str:
-    return base64.urlsafe_b64encode(json.dumps([updated_at.isoformat(), memory_id]).encode()).decode().rstrip("=")
-
-
-def _after(cursor: str | None) -> tuple[str, int]:
-    if cursor is None:
-        return "-infinity", 0
-    try:
-        moment, memory_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
-        if not isinstance(moment, str) or type(memory_id) is not int or not 0 <= memory_id <= MAX_ID:
-            raise ValueError
-        datetime.fromisoformat(moment)
-    except (ValueError, TypeError, binascii.Error, UnicodeDecodeError):
-        raise HTTPException(422, "cursor is not one this hub handed out: start the listing again without it") from None
-    return moment, memory_id
 
 
 def _size(memory: Memory) -> int:
@@ -534,17 +506,19 @@ async def list_memories(
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     sink: ReadSink = None,
+    agent: AgentHandle = None,
 ) -> Page:
     """The memories the caller sees, oldest change first."""
     if project is not None and scope == "personal":
         raise HTTPException(422, "a personal memory has no project: leave out project or scope")
-    after_at, after_id = _after(cursor)
+    after_at, after_id = memory_paging.after(cursor)
     sink = _through(user, sink)
     async with request.app.state.engine.begin() as conn:
+        *reach, project = await memory_agents.reach(conn, user, agent, project)
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Page(items=[], next_cursor=None)  # a hub admin without a grant
-        shape, bound = _reached(user, accesses, scope, project, location)
+        shape, bound = _reached(user, accesses, scope, project, location, reach)
         listed = _listed(deleted, **shape)
         items: list[Memory] = []
         budget, scanned, following, reader = PAGE_BYTES, 0, None, Reader(conn, user)
@@ -558,7 +532,7 @@ async def list_memories(
                     items.append(row.memory)
                     budget -= _size(row.memory)
                 if len(items) >= limit or budget <= 0 or scanned >= SCAN_ROWS:
-                    following = _cursor(after_at, after_id)
+                    following = memory_paging.cursor(after_at, after_id)
                     break
             if following or len(rows) < BATCH:
                 break
@@ -576,6 +550,7 @@ async def search_memories(
     location: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
     limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT)] = 10,
     sink: ReadSink = None,
+    agent: AgentHandle = None,
 ) -> Results:
     """The memories the caller sees whose name or text matches ``q`` (full text, configuration simple), best
     first."""
@@ -583,10 +558,11 @@ async def search_memories(
         raise HTTPException(422, "q holds a NUL character")
     sink = _through(user, sink)
     async with request.app.state.engine.begin() as conn:
+        *reach, project = await memory_agents.reach(conn, user, agent, project)
         accesses = await _accesses(conn, user, project)
         if project is not None and not accesses:
             return Results(items=[])  # a hub admin without a grant
-        shape, bound = _reached(user, accesses, scope, project, location)
+        shape, bound = _reached(user, accesses, scope, project, location, reach)
         searched = _searched(**shape)
         found: list[Found] = []
         budget, reader = PAGE_BYTES, Reader(conn, user)
@@ -640,6 +616,7 @@ async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: R
         reader = Reader(conn, user)
         row, _ = await _readable(conn, user, memory_id, _through(user, sink), reader=reader)
         await reader.gave([row.memory.label])
+        await memory_state.opened(conn, user, row.profile_id, memory_id)
     return row.memory
 
 
@@ -653,15 +630,16 @@ def _conflict(request: Request, message: str, current: Memory | None) -> JSONRes
 _LOCK = select(func.pg_advisory_xact_lock(LOCK_CLASS, bindparam("lock_key", type_=Integer)))
 
 
-def _lock_key(body: MemoryIn, user: Principal, project_id: int | None) -> int:
+def _lock_key(body: MemoryIn, user: Principal, project_id: int | None, profile_id: int | None) -> int:
     owner = user.user_id if body.scope == "personal" or body.type not in SHARED_TYPES else 0
-    key = json.dumps([body.scope, project_id, owner, body.location, body.name]).encode()
-    return int.from_bytes(hashlib.sha256(key).digest()[:4], "big", signed=True)
+    place = [body.scope, project_id, owner, body.location, body.name] + ([profile_id] if profile_id else [])
+    return int.from_bytes(hashlib.sha256(json.dumps(place).encode()).digest()[:4], "big", signed=True)
 
 
-# The revision row of memory :written_id as it now is, by :actor; the parameters name no column of memory_revisions.
+# The revision row of memory :written_id as it now is, by :actor, with its provenance (``memory_agents``); the
+# parameters name no column of memory_revisions.
 _REVISION = insert(tables.memory_revisions).from_select(
-    ["memory_id", "revision", "type", "label", "body", "deleted", "actor_id"],
+    ["memory_id", "revision", "type", "label", "body", "deleted", "actor_id", *memory_agents.COLUMNS],
     select(
         tables.memories.c.id,
         tables.memories.c.revision,
@@ -670,13 +648,15 @@ _REVISION = insert(tables.memory_revisions).from_select(
         tables.memories.c.body,
         tables.memories.c.deleted,
         bindparam("actor", type_=BigInteger),
+        *memory_agents.provenance_parameters(),
     ).where(tables.memories.c.id == bindparam("written_id", type_=BigInteger)),
 )
 
 
 async def _written(conn: AsyncConnection, user: Principal, memory_id: int, action: str) -> Memory:
     """After a change: its revision row, its audit row, and the memory as it now is."""
-    await conn.execute(_REVISION, {"written_id": memory_id, "actor": user.user_id})
+    written = {"written_id": memory_id, "actor": user.user_id, **memory_agents.provenance(user)}
+    await conn.execute(_REVISION, written)
     await record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=f"memory:{memory_id}")
     return (await _load(conn, memory_id)).memory
 
@@ -692,9 +672,59 @@ async def _has_repo(conn: AsyncConnection, project_id: int, name: str) -> bool:
     return (await conn.execute(found)).first() is not None
 
 
+async def _target(conn: AsyncConnection, body: MemoryIn, user: Principal) -> tuple[ProjectAccess | None, int | None]:
+    """The writer's access to the project of ``body`` (the write rule's role, a location of the project) and the
+    namespace it writes into (``memory_agents.namespace``); (None, None) for a personal memory."""
+    if body.scope != "project":
+        return None, None
+    access = await project_access(conn, user, body.project)
+    if not has_role(access.role, "writer"):
+        access.push_label(None)  # raises the write rule's 403, which checks the role first
+    if body.location != HARNESS and not await _has_repo(conn, access.project_id, body.location):
+        raise HTTPException(
+            422,
+            f"location must be {HARNESS} or a repo of project {body.project}: see `evo-agents hub project list --json`",
+        )
+    return access, await memory_agents.namespace(conn, user, access.project_id, body.project, body.agent)
+
+
+def _key_kind(body: MemoryIn, profile_id: int | None) -> str:
+    if profile_id is not None:
+        return "agent"
+    return "shared" if body.scope == "project" and body.type in SHARED_TYPES else "owned"
+
+
+async def _fenced(conn: AsyncConnection, body: MemoryIn, user: Principal, key: dict, current: Row | None) -> None:
+    """The fences of a run (``memory_agents.check_write``), and for the agent of a profile that is not its project's
+    default, no new memory at the name of a live shared one, which it would seem to change."""
+    profile_id = key["profile_id"]
+    await memory_agents.check_write(conn, user, body.type, current and current.memory.id, profile_id, body.project)
+    if current is None and profile_id is not None and user.scope is not None:
+        shared = (await conn.execute(_at_key("shared"), {**key, "profile_id": None})).one_or_none()
+        if shared is not None and not shared.deleted:
+            raise HTTPException(
+                403,
+                f"{memory_agents.promotion(user.scope, body.project)}. Project {body.project} holds a shared memory "
+                f"{body.name} at {body.location}: write yours under another name; nothing was written",
+            )
+
+
+def _revision_conflict(request: Request, body: MemoryIn, held: Memory | None) -> JSONResponse | None:
+    """The 409 of a write whose if_revision is not the revision the hub holds, else None."""
+    if body.if_revision is None and held and not held.deleted:
+        message = f"{body.name} exists on the hub at revision {held.revision}: send the revision you last saw as "
+        return _conflict(request, message + "if_revision to change it", held)
+    if body.if_revision is not None and held is None:
+        return _conflict(request, f"the hub holds no {body.name} here: send it without if_revision to create it", None)
+    if body.if_revision is not None and body.if_revision != held.revision:
+        message = f"{body.name} changed on the hub: it is at revision {held.revision}, not {body.if_revision}"
+        return _conflict(request, message, held)
+    return None
+
+
 @router.put("", response_model=Written, responses={**REFUSALS, 409: {"model": Conflict}})
 async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = AGENT_SINK) -> Written | JSONResponse:
-    """Create or change the memory at the key ``body`` names."""
+    """Create or change the memory at the key ``body`` names, in the namespace of ``body.agent`` or the run's."""
     if body.scope == "personal" and user.scope is not None:
         raise HTTPException(
             403,
@@ -702,21 +732,11 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
             "memory is its owner's",
         )
     async with request.app.state.engine.begin() as conn:
-        access = None
-        if body.scope == "project":
-            access = await project_access(conn, user, body.project)
-            if not has_role(access.role, "writer"):
-                access.push_label(None)  # raises the write rule's 403, which checks the role first
-            if body.location != HARNESS and not await _has_repo(conn, access.project_id, body.location):
-                raise HTTPException(
-                    422,
-                    f"location must be {HARNESS} or a repo of project {body.project}: see `evo-agents hub project "
-                    "list --json`",
-                )
+        access, profile_id = await _target(conn, body, user)
         project_id = access.project_id if access else None
-        await conn.execute(_LOCK, {"lock_key": _lock_key(body, user, project_id)})
-        at_key = _at_key(body.scope == "project" and body.type in SHARED_TYPES)
-        found = (await conn.execute(at_key, _key(body, user, project_id))).one_or_none()
+        await conn.execute(_LOCK, {"lock_key": _lock_key(body, user, project_id, profile_id)})
+        key = _key(body, user, project_id, profile_id)
+        found = (await conn.execute(_at_key(_key_kind(body, profile_id)), key)).one_or_none()
         current = _row(found) if found else None
         accesses = {body.project: access} if access else {}
         audience = await Reader(conn, user).audience(current.memory.label) if current else frozenset()
@@ -727,6 +747,7 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
                 "nothing was written. Use another name",
                 None,
             )
+        await _fenced(conn, body, user, key, current)
         if access is None:
             label = {}
         elif body.label is not None:
@@ -737,29 +758,16 @@ async def put(request: Request, body: MemoryIn, user: CurrentUser, sink: Sink = 
         label = with_audience(label, await raised(conn, user, held.label if held else None, body.audience))
         if held and not held.deleted and (held.body, held.type, held.label) == (body.body, body.type, label):
             return Written(**held.model_dump(), created=False, changed=False)
-        if body.if_revision is None and held and not held.deleted:
-            return _conflict(
-                request,
-                f"{body.name} exists on the hub at revision {held.revision}: send the revision you last saw as "
-                "if_revision to change it",
-                held,
-            )
-        if body.if_revision is not None and held is None:
-            return _conflict(
-                request, f"the hub holds no {body.name} here: send it without if_revision to create it", None
-            )
-        if body.if_revision is not None and body.if_revision != held.revision:
-            return _conflict(
-                request,
-                f"{body.name} changed on the hub: it is at revision {held.revision}, not {body.if_revision}",
-                held,
-            )
+        conflict = _revision_conflict(request, body, held)
+        if conflict is not None:
+            return conflict
         try:
             if held is None:
                 m = tables.memories
                 inserted = insert(m).values(
                     scope=body.scope,
                     project_id=project_id,
+                    profile_id=profile_id,
                     location=body.location,
                     name=body.name,
                     type=body.type,
@@ -798,6 +806,7 @@ async def delete(
         held = row.memory
         if access is not None:
             access.push_label(held.label)  # the write rule
+        await memory_agents.check_write(conn, user, held.type, held.id, row.profile_id, held.project)
         if held.deleted:
             return Written(**held.model_dump(), created=False, changed=False)
         if if_revision != held.revision:
@@ -852,8 +861,10 @@ MAX_REVISIONS = 200
 
 
 def _revisions(*extra) -> Select:
-    """The revisions of memories with what a RevisionSummary shows, column by field name, then ``extra``."""
+    """The revisions of memories with what a RevisionSummary shows, column by field name, its provenance
+    (``memory_agents.provenance_columns``), then ``extra``."""
     r, u = tables.memory_revisions, tables.users
+    provenance, joined = memory_agents.provenance_columns()
     return select(
         r.c.revision,
         r.c.type,
@@ -862,8 +873,9 @@ def _revisions(*extra) -> Select:
         func.octet_length(r.c.body).label("size"),
         u.c.login.label("actor"),
         r.c.created_at,
+        *provenance,
         *extra,
-    ).join_from(r, u, u.c.id == r.c.actor_id)
+    ).select_from(joined(r.join(u, u.c.id == r.c.actor_id)))
 
 
 def _history(memory_id: int, before: int | None) -> Select:
@@ -883,6 +895,7 @@ class RevisionSummary(BaseModel):
     size: int = Field(description="bytes of the body in UTF-8")
     actor: str = Field(description="the login of who wrote this revision")
     created_at: datetime
+    provenance: Provenance | None = Field(None, description="the run or the promotion that wrote it; null for neither")
 
 
 class Revisions(BaseModel):
@@ -898,13 +911,16 @@ class MemoryRevision(RevisionSummary):
 
 def _as_of(row: Row, kind: str, label: dict) -> Row:
     """``row`` as it was at a revision of type ``kind`` labelled ``label``: what the read rule judges a revision by."""
-    return Row(row.memory.model_copy(update={"type": kind, "label": label}), row.owner_id, row.project_id)
+    return Row(
+        row.memory.model_copy(update={"type": kind, "label": label}), row.owner_id, row.project_id, row.profile_id
+    )
 
 
 async def _revision_visible(
     row: Row, values, reader: Reader, access: ProjectAccess | None, sink: str | None
 ) -> RevisionSummary | None:
-    summary = RevisionSummary(**values._mapping)
+    fields = {name: values._mapping[name] for name in ("revision", "type", "label", "deleted", "size", "actor")}
+    summary = RevisionSummary(**fields, created_at=values.created_at, provenance=memory_agents.provenance_of(values))
     accesses = {row.memory.project: access} if access is not None else {}
     audience = await reader.audience(summary.label)
     return (

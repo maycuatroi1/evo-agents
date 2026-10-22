@@ -1,9 +1,100 @@
 {
   "api_version": [
     1,
-    1
+    2
   ],
   "names": {
+    "ANSWER_EVENT": {
+      "kind": "constant",
+      "value": "'agent.answer'"
+    },
+    "AgentAnswer": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "question_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "ref",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "agent_type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "state",
+          "annotation": "Literal['pending', 'done', 'failed', 'cancelled', 'refused']",
+          "default": null
+        },
+        {
+          "name": "text",
+          "annotation": "str | None",
+          "default": null
+        },
+        {
+          "name": "label",
+          "annotation": "Mapping[str, Any]",
+          "default": null
+        },
+        {
+          "name": "failure_cause",
+          "annotation": "str | None",
+          "default": null
+        }
+      ]
+    },
+    "AgentQuestion": {
+      "kind": "dataclass",
+      "frozen": true,
+      "fields": [
+        {
+          "name": "question_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "run_id",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "project",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "agent_type",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "ref",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "made",
+          "annotation": "bool",
+          "default": null
+        }
+      ]
+    },
     "AgentRef": {
       "kind": "dataclass",
       "frozen": true,
@@ -365,6 +456,22 @@
       "metadata": [
         "Path(pattern='^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$')"
       ]
+    },
+    "MAX_ANSWER_CHARS": {
+      "kind": "constant",
+      "value": "8000"
+    },
+    "MAX_ASKER_CHARS": {
+      "kind": "constant",
+      "value": "200"
+    },
+    "MAX_QUESTION_BYTES": {
+      "kind": "constant",
+      "value": "4096"
+    },
+    "MAX_REF_CHARS": {
+      "kind": "constant",
+      "value": "200"
     },
     "Member": {
       "kind": "dataclass",
@@ -822,6 +929,60 @@
       ],
       "returns": "ProposalAnswer"
     },
+    "ask_agent_type": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "project",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "agent_type",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "question",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "asker",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "ref",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "cleared",
+          "kind": "keyword_only",
+          "annotation": "Clearance",
+          "default": null
+        }
+      ],
+      "returns": "AgentQuestion"
+    },
     "audit": {
       "kind": "async function",
       "params": [
@@ -1229,6 +1390,30 @@
         }
       ],
       "returns": "Outgoing"
+    },
+    "read_agent_answer": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "question_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        }
+      ],
+      "returns": "AgentAnswer"
     },
     "read_message": {
       "kind": "async function",

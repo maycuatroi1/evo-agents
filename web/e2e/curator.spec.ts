@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { answerAs, BLOCKED, fireNight, seedCurator, TITLES } from "./support/curator";
+import { answerAs, BLOCKED, fireNight, MERGED, promotionNight, seedCurator, TITLES } from "./support/curator";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -292,6 +292,48 @@ test("a proposal's ledger says what happened to it, line by line, with the figur
   await expect(lines.nth(1).getByTestId("ledger-what")).toHaveText(`${me.login} accepted it: Go.`);
   await expect(lines.nth(2)).toHaveAttribute("data-action", "planned");
   await expect(lines.nth(2)).toHaveAttribute("data-actor", "curator");
+});
+
+test("a memory proposal shows what it promotes and the memory after the merge, and the shared memory says where it came from", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("scout");
+  const { source, shared, proposal } = await promotionNight(me, project, uniqueName("night"), handle);
+  expect(proposal.state).toBe("accepted"); // tier 0, and the charter's auto_merge names it
+
+  await open(page, `/p/${project}/curator/proposals/${proposal.id}`);
+  await expect(main(page).getByTestId("proposal-header").getByRole("heading", { level: 1 })).toHaveText(`Promote what @${handle} learned about claims`);
+  await expect(main(page).getByTestId("proposal-draft")).toHaveCount(0); // no plan: the promotion in its place
+  const promotion = main(page).getByTestId("proposal-promotion");
+  await expect(promotion.getByRole("heading", { level: 2 })).toHaveText("Promotion");
+  const sources = promotion.getByTestId("promotion-sources").locator("li");
+  await expect(sources).toHaveCount(1);
+  await expect(sources.first()).toHaveAttribute("data-memory-id", String(source.id));
+  await expect(sources.first().getByRole("link", { name: `Memory #${source.id}, revision 1` })).toHaveAttribute(
+    "href",
+    `/p/${project}/memories/${source.id}?revision=1`,
+  );
+  await expect(sources.first().getByRole("link", { name: `@${handle}` })).toHaveAttribute("href", `/p/${project}/agents/${handle}`);
+  await expect(promotion.getByTestId("promotion-target")).toHaveAttribute("data-target", "merge");
+  await expect(promotion.getByTestId("promotion-target")).toHaveText(`Merged into shared memory #${shared.id}, at revision 1`);
+  await expect(promotion.getByTestId("promotion-merged")).toContainText(MERGED);
+  const written = promotion.getByTestId("promotion-written-link");
+  await expect(written).toHaveText(`shared memory #${shared.id}, revision 2`);
+  await expect(written).toHaveAttribute("href", `/p/${project}/memories/${shared.id}?revision=2`);
+  // Its evidence is the agent's memory at the revision it read; its ledger says the hub promoted it.
+  await expect(main(page).getByTestId("evidence-memory-link")).toHaveAttribute("href", `/p/${project}/memories/${source.id}?revision=1`);
+  const promoted = main(page).getByTestId("proposal-ledger").locator('[data-testid="ledger-line"][data-action="promoted"]');
+  await expect(promoted.getByTestId("ledger-action")).toHaveText("Promoted");
+  await expectNoSeriousViolations(page, "a memory proposal");
+
+  // The shared memory's new revision names the proposal that wrote it; the agent's memory says where it went.
+  await written.click();
+  await expect(page).toHaveURL(new RegExp(`/p/${project}/memories/${shared.id}`));
+  await expect(main(page).getByTestId("provenance-proposal").first()).toHaveAttribute("href", `/p/${project}/curator/proposals/${proposal.id}`);
+  await open(page, `/p/${project}/memories/${source.id}`);
+  await expect(main(page).getByTestId("memory-status")).toHaveAttribute("data-memory-status", "promoted");
+  await expect(main(page).getByTestId("memory-promoted-into")).toHaveAttribute("href", `/p/${project}/memories/${shared.id}`);
+  await expect(main(page).getByTestId("memory-agent")).toHaveText(`@${handle}`);
 });
 
 test("the Inbox lists the tier 2 proposal beside the decisions, and an admin answers it in a sheet", async ({ page, member }) => {

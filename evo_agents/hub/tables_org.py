@@ -16,7 +16,7 @@ autonomy_ceilings holds every revision of the ceiling of a unit or a seat, never
 id of the unit or the seat, the revision (1 and up within the scope), the level (A0 to A5), the writer's note, who
 wrote it (NULL for the root's first, which schema 0099 wrote) and when. A scope's ceiling is its highest revision.
 
-worker_shares (0102, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
+worker_shares (0106, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
 added the row and when (``evo_agents.hub.server.worker_shares``).
 """
 

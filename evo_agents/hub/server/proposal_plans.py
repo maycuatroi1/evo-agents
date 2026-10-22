@@ -138,10 +138,12 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
 
 
 async def _refusal(conn: AsyncConnection, proposal) -> str | None:
-    """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it is tier 3, or it has a change
-    already; None when it does."""
+    """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it promotes memories, it is tier
+    3, or it has a change already; None when it does."""
     if proposal.state != "accepted":
         return f"proposal {proposal.id} is {proposal.state}: only an accepted proposal becomes the Curator's plan"
+    if proposal.promotion is not None:
+        return f"proposal {proposal.id} promotes agents' memories: accepting it wrote them, and it becomes no plan"
     if proposal.tier not in judge.PLANNED_TIERS:
         return (
             f"proposal {proposal.id} is tier {proposal.tier}: the night shift builds tiers {judge.PLANNED_TIERS[0]} "

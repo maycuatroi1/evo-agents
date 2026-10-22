@@ -18,9 +18,13 @@ export type Chat = components["schemas"]["Chat"];
 export type ChatPage = components["schemas"]["ChatPage"];
 export type GroupMessage = components["schemas"]["GroupMessage"];
 
-/** What a daemon of this release says it runs, and the feature that says it applies agent profiles. */
+/**
+ * What a daemon of this release says it runs, the feature that says it applies agent profiles, and the one that says it
+ * gives the Claude Code agent of a profile other than the project's default a config dir of its own (`runs.AGENT_HOME`),
+ * without which the hub hands it no run of such a profile.
+ */
 export const CHAT_RUN_KINDS = ["step", "plan", "review", "judge", "author", "chat"];
-export const FEATURES = ["agent_profiles"];
+export const FEATURES = ["agent_profiles", "agent_home"];
 
 async function workerPost(live: LiveWorker, path: string, body: unknown): Promise<unknown> {
   const response = await fetch(`${API_URL}${path}`, {

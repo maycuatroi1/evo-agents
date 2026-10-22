@@ -551,7 +551,7 @@ Anthropic's own binary.
 
 The owner of a secret or an account may share it with one member, a unit of the org chart and every unit below it,
 or everyone on the hub, for some of the projects it is bound to (`POST /v1/secrets/{name}/shares`, table
-`credential_shares` of migration 0100):
+`credential_shares` of migration 0104):
 
 ```
 evo-agents hub account share claude-a --login someone-else --project demo --level A2 --budget-usd 50 \
@@ -583,7 +583,7 @@ it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` h
 #### Leasing under a share
 
 A run's principal is the member who dispatched it; each lease records it (`credential_leases.principal_id`, migration
-0101). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
+0105). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
 principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
 must still be bound to the project; a run of the Curator and a release run never take one
 (`evo_agents/hub/server/share_leases.py`).
