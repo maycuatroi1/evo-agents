@@ -94,8 +94,9 @@ Every write runs in one transaction under one lock of the whole chart, so two wr
 rules above: one root, no cycle, one live primary seat per person. Each writes one audit row whose action starts with
 `org.`, with the person who made it and the target, old and new values, and the unit's new revision, for example
 `seat:12 unit=lab role=member->lead revision=4`. The actions are `org.unit_create`, `org.unit_edit`,
-`org.unit_archive`, `org.seat_add`, `org.seat_edit`, `org.seat_end` and `org.ceiling_set`. The note of a ceiling stays
-in its revision and is not copied into the audit row. The web's `/admin/audit` lists them.
+`org.unit_archive`, `org.seat_add`, `org.seat_edit` and `org.seat_end`; a ceiling writes `autonomy.ceiling_set` (see
+[autonomy levels](autonomy-levels.md)). The note of a ceiling stays in its revision and is not copied into the audit
+row. The web's `/admin/audit` lists them.
 
 ## Seats that end
 

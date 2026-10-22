@@ -1,0 +1,81 @@
+# Autonomy levels
+
+The hub sorts what a run may do into twelve classes of action, gives each class a mode, and bundles the modes into
+six levels, A0 to A5. A person picks the level they prefer; the org chart's ceilings (`docs/org-chart.md`), the
+project policy and the agent profile's seat bound it. The catalog is `evo_agents.hub.autonomy_levels`, standard
+library only.
+
+## Classes, modes and levels
+
+| Class | Action |
+|---|---|
+| K1 | read code, documents, the graph and logs within the grants |
+| K2 | edit and run commands in the run's workspace |
+| K3 | commit and push the run's branch, never forced |
+| K4 | open a pull or merge request, comment, label |
+| K5 | merge into the default or target branch |
+| K6 | deploy, publish, tag a release |
+| K7 | use a credential that writes or reaches a real environment |
+| K8 | create, rotate or revoke a credential |
+| K9 | delete or overwrite data for good |
+| K10 | send out on a person's behalf |
+| K11 | spend money beyond the runtime's allowance |
+| K12 | change grants, ceilings, policies or profiles |
+
+The modes, strictest first: `deny`, `ask` (open a decision and wait), `notify` (act, then send a notice), `auto` (act;
+the ledger records it). K1 to K4 and K7 never take `ask`.
+
+| Class | A0 | A1 | A2 | A3 | A4 | A5 |
+|---|---|---|---|---|---|---|
+| K1 | auto | auto | auto | auto | auto | auto |
+| K2, K3, K4 | deny | auto | auto | auto | auto | auto |
+| K5 | deny | ask | notify, ask on the merge queue's risk paths | auto | auto | auto |
+| K6 | deny | deny | ask | notify | auto | auto |
+| K7 | deny | auto, only the credentials that push the run's branch | auto, those and the secrets labelled for a test environment | auto | auto | auto |
+| K8, K9 | deny | deny | deny | ask | notify | auto |
+| K10 | deny | deny | ask | ask | notify | auto |
+| K11 | deny | deny | deny | ask | notify, within budget | auto, within budget |
+| K12 | deny | deny | deny | deny | ask | auto, never above the writer's own level |
+
+A cell's condition is written after a colon: `notify:ask_on_risk_paths` (K5), `auto:run_branch` and
+`auto:test_secrets` (K7). K11 always acts within budget and K12 never above the writer's own level.
+
+## The effective mode
+
+Each class takes the strictest mode of seven sources, and the hub names the source that set it:
+
+1. the person's preference (`pref:<login>`); a person who set none prefers A5;
+2. the ceiling of their primary seat (`seat:<id>`);
+3. the ceilings of its unit and every unit above it (`unit:<slug>`);
+4. the project policy of the repo, when one is named (`policy:<project>/<repo>`): `mode: off` caps K5 at ask,
+   `prod_release: manual` caps K6 at ask;
+5. the seat of the agent profile and its units, when one is named;
+6. the credential shared with the run (`credential_share`), which limits nothing yet;
+7. the instance (`instance`), which limits no class; the floors S1 to S5 hold whatever the mode, and K9 waits for a
+   backup made within 24 hours.
+
+On a tie the first source in that order is named. The effective level is the lowest level a source sets; the org
+chart's effective ceiling is this same computation over sources 2 and 3. The environments and workers a run may use
+are the intersection of the lists the ceilings of sources 2, 3 and 5 give; a ceiling without a list sets no limit.
+
+A preference above the ceilings is stored as written, and the ceilings still decide. A ceiling never allows a class
+above the writer's own effective mode on it: a lead whose unit caps K6 at ask cannot give a cohort below K6 notify.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `evo-agents hub autonomy show [--login L] [--agent H --project P] [--repo R] [--json]` | the effective level and each class with its mode and source; `--json` prints principal, project, agent, level, classes, environments, workers |
+| `evo-agents hub autonomy set --level A2 [--class K6=deny]... [--reset]` | your own preference; class overrides merge onto those before, `--reset` drops them (A5 unless `--level`) |
+| `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision, whole: what it leaves out it drops |
+
+A person sees their own autonomy, a lead those of the people in the units they lead, a hub admin everyone's; anyone
+else gets 403. Every write adds an audit row: `autonomy.pref_set` for a preference, `autonomy.ceiling_set` for a
+ceiling.
+
+## Routes and schema
+
+`GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
+caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0100 adds the
+table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
+`workers` of `autonomy_ceilings`.

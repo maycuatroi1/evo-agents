@@ -164,7 +164,7 @@ def org_audit(db) -> list[tuple]:
     query = (
         select(a.c.action, a.c.target, u.c.login, a.c.project_id)
         .join_from(a, u, u.c.id == a.c.actor_id)
-        .where(a.c.action.like("org.%"))
+        .where(a.c.action.like("org.%") | (a.c.action == "autonomy.ceiling_set"))
         .order_by(a.c.id)
     )
     return sql(db, query)
@@ -472,14 +472,16 @@ def test_orgchart_audit_every_change_names_the_actor_the_target_and_the_values_b
     call(hub, "lena", "POST", f"/seats/{seat['id']}/end")
     call(hub, "admin", "PATCH", "/units/lab", {"name": "The lab"})
     rows = org_audit(hub_db)
-    assert all(project is None for *_, project in rows) and all(action.startswith("org.") for action, *_ in rows)
+    assert all(project is None for *_, project in rows) and all(
+        action.startswith(("org.", "autonomy.")) for action, *_ in rows
+    )
     lab_seat = f"seat:{lead_seat} unit=lab login=lena role=lead primary=true revision=2"
     assert [(action, target, login) for action, target, login, _ in rows] == [
         ("org.unit_create", "unit:lab parent=root kind=team revision=1", live.ADMIN),
         ("org.seat_edit", f"seat:{rows[1][1].split()[0][5:]} unit=root primary=true->false revision=2", live.ADMIN),
         ("org.seat_add", lab_seat, live.ADMIN),
         ("org.unit_create", "unit:intern-2026 parent=lab kind=cohort ends_on=2026-12-31 revision=1", "lena"),
-        ("org.ceiling_set", "ceiling unit:intern-2026 level=none->A1 revision=1", "lena"),
+        ("autonomy.ceiling_set", "ceiling unit:intern-2026 level=none->A1 revision=1", "lena"),
         ("org.seat_edit", rows[5][1], "lena"),
         ("org.seat_add", f"seat:{seat['id']} unit=intern-2026 login=ivan role=intern primary=true revision=2", "lena"),
         (
@@ -487,7 +489,7 @@ def test_orgchart_audit_every_change_names_the_actor_the_target_and_the_values_b
             f"seat:{seat['id']} unit=intern-2026 role=intern->member ends_on=none->2026-12-01 revision=3",
             "lena",
         ),
-        ("org.ceiling_set", f"ceiling seat:{seat['id']} level=none->A0 revision=1", "lena"),
+        ("autonomy.ceiling_set", f"ceiling seat:{seat['id']} level=none->A0 revision=1", "lena"),
         ("org.seat_end", f"seat:{seat['id']} unit=intern-2026 ended=none->now revision=4", "lena"),
         ("org.unit_edit", "unit:lab name=Lab->The lab revision=3", live.ADMIN),
     ]

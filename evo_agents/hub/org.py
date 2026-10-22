@@ -26,7 +26,9 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-LEVELS = ("A0", "A1", "A2", "A3", "A4", "A5")
+from evo_agents.hub import autonomy_levels
+from evo_agents.hub.autonomy_levels import LEVELS, Source, rank
+
 LOWEST, HIGHEST = LEVELS[0], LEVELS[-1]
 COHORT_LEVEL = "A1"  # a cohort created without a level gets this ceiling (the member's answer 3 of 2026-10-22)
 ROOT_SLUG = "root"
@@ -42,11 +44,6 @@ MAX_NAME_CHARS = 200
 MAX_NOTE_CHARS = 1000
 
 
-def rank(level: str) -> int:
-    """The place of ``level`` on the ladder, A0 being 0."""
-    return LEVELS.index(level)
-
-
 @dataclass(frozen=True)
 class Unit:
     id: int
@@ -58,6 +55,9 @@ class Unit:
     archived_at: datetime | None = None
     revision: int = 1
     ceiling: str | None = None  # the level of its newest ceiling revision; None without one
+    overrides: dict[str, str] = field(default_factory=dict, hash=False)  # its class overrides, Kn: mode
+    environments: tuple[str, ...] = ()  # the environments it allows; empty: no limit
+    workers: tuple[str, ...] = ()  # the workers it allows; empty: no limit
 
 
 @dataclass(frozen=True)
@@ -74,6 +74,9 @@ class Seat:
     ends_on: date | None = None
     ended_at: datetime | None = None
     ceiling: str | None = None
+    overrides: dict[str, str] = field(default_factory=dict, hash=False)
+    environments: tuple[str, ...] = ()
+    workers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -153,45 +156,88 @@ class Chart:
 def lowest(chain: Iterable[tuple[str, str | None]]) -> Effective:
     """The lowest level of ``chain``, (source, level or None) from the seat up to the root, with its source; the
     nearest of those that set the same level. A chain that sets none is A5, its source the last of it."""
-    found: Effective | None = None
-    last = ""
-    for source, level in chain:
-        last = source
-        if level is not None and (found is None or rank(level) < rank(found.level)):
-            found = Effective(level, source)
-    return found if found is not None else Effective(HIGHEST, last)
+    return level_of([Source(name, level) for name, level in chain])
 
 
-def unit_chain(chart: Chart, unit_id: int) -> list[tuple[str, str | None]]:
-    return [(f"unit:{unit.slug}", unit.ceiling) for unit in chart.ancestors(unit_id)]
+def level_of(sources: list[Source]) -> Effective:
+    """The level of the effective autonomy of ``sources`` (``autonomy_levels.effective``), with its source."""
+    reached = autonomy_levels.effective(sources)
+    return Effective(reached.level, reached.level_source)
+
+
+def _source(name: str, holder: Unit | Seat, detail: str) -> Source:
+    return Source(name, holder.ceiling, holder.overrides, holder.environments, holder.workers, detail)
+
+
+def unit_sources(chart: Chart, unit_id: int) -> list[Source]:
+    """The ceilings of the unit and every unit above it, nearest first."""
+    return [_source(f"unit:{unit.slug}", unit, f"{unit.kind} {unit.name}") for unit in chart.ancestors(unit_id)]
+
+
+def seat_sources(chart: Chart, seat: Seat, today: date) -> list[Source]:
+    """The ceiling of the seat and those of its units; the seat alone at A0 once it ended."""
+    if chart.ended(seat, today):
+        return [Source(f"seat:{seat.id}", LOWEST, detail="the seat ended")]
+    return [_source(f"seat:{seat.id}", seat, f"{seat.role} seat"), *unit_sources(chart, seat.unit_id)]
+
+
+def person_sources(chart: Chart, user_id: int, today: date) -> list[Source]:
+    """Sources 2 and 3 of a person: their primary seat and its units, those of the root without one."""
+    seat = chart.primary_seat(user_id, today)
+    if seat is None:
+        return unit_sources(chart, chart.root.id)
+    return seat_sources(chart, seat, today)
+
+
+def profile_sources(chart: Chart, profile_id: int, today: date) -> list[Source] | None:
+    """Source 5: the live seat of an agent profile and its units; None when it holds none."""
+    for seat in chart.seats.values():
+        if seat.profile_id == profile_id and not chart.ended(seat, today):
+            return seat_sources(chart, seat, today)
+    return None
+
+
+def autonomy_sources(
+    chart: Chart,
+    user_id: int,
+    today: date,
+    pref: Source,
+    *,
+    policy: Source | None = None,
+    profile: tuple[str, int] | None = None,
+) -> list[Source]:
+    """The seven sources of a principal's effective autonomy (``autonomy_levels.effective``), in order: their
+    preference, their primary seat, its units up to the root, the project policy of the repo (when one is named), the
+    seat of the agent profile (handle, id) and its units (when one is named), the shared credential, the instance."""
+    sources = [pref, *person_sources(chart, user_id, today)]
+    if policy is not None:
+        sources.append(policy)
+    if profile is not None:
+        handle, profile_id = profile
+        held = profile_sources(chart, profile_id, today)
+        sources += held if held is not None else [Source(f"profile:{handle}", detail="holds no seat")]
+    return [*sources, autonomy_levels.credential_source(), autonomy_levels.instance_source()]
 
 
 def unit_effective(chart: Chart, unit_id: int) -> Effective:
     """The lowest ceiling of the unit and the units above it."""
-    return lowest(unit_chain(chart, unit_id))
+    return level_of(unit_sources(chart, unit_id))
 
 
 def seat_effective(chart: Chart, seat: Seat, today: date) -> Effective:
     """The level a seat gives: A0 once it ended, else the lowest ceiling of it and its units."""
-    if chart.ended(seat, today):
-        return Effective(LOWEST, f"seat:{seat.id}")
-    return lowest([(f"seat:{seat.id}", seat.ceiling), *unit_chain(chart, seat.unit_id)])
+    return level_of(seat_sources(chart, seat, today))
 
 
 def effective(chart: Chart, user_id: int, today: date) -> Effective:
     """The effective ceiling of a person: that of their primary seat, A0 when it ended, the root's without one."""
-    seat = chart.primary_seat(user_id, today)
-    if seat is None:
-        return unit_effective(chart, chart.root.id)
-    return seat_effective(chart, seat, today)
+    return level_of(person_sources(chart, user_id, today))
 
 
 def profile_effective(chart: Chart, profile_id: int, today: date) -> Effective | None:
     """The effective ceiling of an agent profile's live seat; None when it holds none (it acts for whoever runs it)."""
-    for seat in chart.seats.values():
-        if seat.profile_id == profile_id and not chart.ended(seat, today):
-            return seat_effective(chart, seat, today)
-    return None
+    sources = profile_sources(chart, profile_id, today)
+    return None if sources is None else level_of(sources)
 
 
 # Seats that ended (criterion a5)
@@ -294,8 +340,11 @@ def seat_refusal(chart: Chart, actor: Actor, unit: Unit, role: str, today: date,
     return f"{what} in {unit.slug} needs a hub admin or a lead of {unit.slug} or a unit above it"
 
 
-def ceiling_refusal(chart: Chart, actor: Actor, scope: str, target, level: str, today: date) -> str | None:
-    """Why ``actor`` may not set ``level`` as the ceiling of ``target`` (a Unit or a Seat); None when they may."""
+def ceiling_refusal(
+    chart: Chart, actor: Actor, scope: str, target, level: str, today: date, overrides: dict[str, str] | None = None
+) -> str | None:
+    """Why ``actor`` may not set ``level``, with its class ``overrides``, as the ceiling of ``target`` (a Unit or a
+    Seat); None when they may."""
     if actor.admin:
         return None
     if scope == UNIT:
@@ -305,7 +354,9 @@ def ceiling_refusal(chart: Chart, actor: Actor, scope: str, target, level: str, 
     else:
         unit = chart.units[target.unit_id]
         refused = seat_refusal(chart, actor, unit, target.role, today, what=f"setting the ceiling of seat {target.id}")
-    return refused if refused is not None else level_refusal(chart, actor, level, today)
+    if refused is not None:
+        return refused
+    return level_refusal(chart, actor, level, today) or class_refusal(chart, actor, level, overrides or {}, today)
 
 
 def level_refusal(chart: Chart, actor: Actor, level: str, today: date) -> str | None:
@@ -319,6 +370,30 @@ def level_refusal(chart: Chart, actor: Actor, level: str, today: date) -> str | 
             f"(from {own.source}); {level} asked"
         )
     return None
+
+
+def view_refusal(chart: Chart, actor: Actor, user_id: int, login: str, today: date) -> str | None:
+    """Why ``actor`` may not see the autonomy of ``login``: they are neither that person, nor a hub admin, nor the lead
+    of the unit of that person's primary seat (the root's without one) or of a unit above it; None when they may."""
+    if actor.admin or actor.user_id == user_id:
+        return None
+    seat = chart.primary_seat(user_id, today)
+    unit_id = chart.root.id if seat is None else seat.unit_id
+    if any(chart.within(unit_id, led.id) for led in _led(chart, actor, today)):
+        return None
+    return (
+        f"the autonomy of {login} is shown to them, a lead of a unit above them and a hub admin; {actor.login} is none"
+    )
+
+
+def class_refusal(chart: Chart, actor: Actor, level: str, overrides: dict[str, str], today: date) -> str | None:
+    """Why ``actor`` may not set a ceiling of ``level`` with ``overrides``: a class it allows lies above the mode the
+    actor's own ceilings and the instance give them on that class (the rule without escalation, by class)."""
+    if actor.admin:
+        return None
+    own = autonomy_levels.effective([*person_sources(chart, actor.user_id, today), autonomy_levels.instance_source()])
+    found = autonomy_levels.escalation(autonomy_levels.cells(level, overrides), own)
+    return None if found is None else f"{actor.login} may not set a ceiling where {found}"
 
 
 # Checks of the shape of the tree
