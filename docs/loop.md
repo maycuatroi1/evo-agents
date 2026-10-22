@@ -212,7 +212,8 @@ People decide the direction of the project at three gates, gathered on its decis
    tripped, and the Loop's own breaker.
 
 After the gates the board lists what the Loop's chain waits on: its decisions of category `loop`, the decisions and
-questions of the runs it handed out, merge requests held for a person, the merge queue's audit samples, and the SRS
+questions of the runs it handed out, merge requests held for a person (one held at gate 3 names the command an admin
+passes it with, `docs/merge-queue.md`, The gates), the merge queue's audit samples, and the SRS
 versions its use cases drafted that wait for their review, with their settle chats. The review of an SRS version and
 the settle chat are no fourth gate: the rules of the plugin srs stay as they are. The Curator's morning brief has a
 part of the Loop (the runs it handed out and the work items it finished in the last 24 hours, and those waiting for a

@@ -323,3 +323,28 @@ def test_merge_gate_the_reasons_name_their_gate_and_fit_a_row():
     assert len(merge_gate.reason_line("x " * 5000)) == merge_gate.MAX_REASON_CHARS
     text = merge_gate.comment("gate 3 (score hacking): ...")
     assert "is blocked at gate 3" in text and "after a new push" in text
+
+
+def test_merge_gate_a_hold_at_gate_3_is_for_a_person_and_an_admin_may_pass_it():
+    held = merge_gate.gate_reason(3, "the diff shows signs of score hacking (ci_changed), first at .gitlab-ci.yml")
+    assert merge_gate.held_at(held) == 3 and merge_gate.held_at("its turn (rebase): dev moved") is None
+    assert merge_gate.pass_refusal("blocked", held, "plan") is None
+    assert merge_gate.pass_refusal("blocked", held, "label") is None
+    red = merge_gate.gate_reason(1, "its head pipeline ended failed")
+    assert merge_gate.pass_refusal("blocked", red, "plan") == (
+        "it is held at gate 1 (pipeline), which a new push moves, not a person"
+    )
+    assert "it is gating and held at no gate" in merge_gate.pass_refusal("gating", held, "plan")
+    assert "held at no gate" in merge_gate.pass_refusal(
+        "blocked", "its turn (merge): GitLab would not merge it", "task"
+    )
+    assert "a revert of the hub" in merge_gate.pass_refusal(
+        "blocked", merge_gate.gate_reason(3, "a revert: x"), "revert"
+    )
+    assert merge_gate.pass_line("lumen-admin", "the goal adds the test job") == (
+        "passed by lumen-admin, an admin of the project: the goal adds the test job"
+    )
+    passable = merge_gate.comment(held, passable=True)
+    assert "This hold is for a person" in passable and "evo-agents hub merge pass" in passable
+    assert merge_gate.comment(red).endswith("The hub gates it again after a new push.")
+    assert "admin" not in merge_gate.comment(red)

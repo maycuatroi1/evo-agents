@@ -5403,6 +5403,88 @@
         "schema": "MergeQueueView"
       }
     },
+    "hub merge pass": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "iid",
+          "metavar": "IID",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "repo",
+          "iid",
+          "source",
+          "target_branch",
+          "source_branch",
+          "run_id",
+          "plan_id",
+          "steps",
+          "change_id",
+          "profile",
+          "model",
+          "title",
+          "web_url",
+          "state",
+          "reason",
+          "head_sha",
+          "fingerprint",
+          "risk",
+          "verdict",
+          "judge_run_id",
+          "queued_at",
+          "merged_at",
+          "created_at",
+          "updated_at",
+          "events",
+          "before_sha",
+          "rebases",
+          "after_sha",
+          "reverts_id",
+          "uat_result",
+          "prod_result"
+        ],
+        "schema": "QueuedMergeRequest"
+      }
+    },
     "hub merge resume": {
       "positionals": [
         {
@@ -54073,6 +54155,111 @@
           }
         }
       },
+      "/v1/projects/{project}/merge-queue/{queue_id}/pass": {
+        "post": {
+          "tags": [
+            "merge queue"
+          ],
+          "summary": "Pass Hold",
+          "description": "An admin of the project passes the hold of a merge request at a gate that holds it for a person (gate 3, score\nhacking), with a reason: it is gated again at the same head, and the queue goes on from that gate; the later gates,\nthe Judges, its turn and its pipeline still apply, and a new push takes the pass back.",
+          "operationId": "pass_hold_v1_projects__project__merge_queue__queue_id__pass_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "queue_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Queue Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldPass"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/QueuedMergeRequest"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
         "post": {
           "tags": [
@@ -67682,6 +67869,22 @@
             "hidden"
           ],
           "title": "HistoryStatus"
+        },
+        "HoldPass": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why the hold may go on: the ledger and the audit keep it with the admin's login"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "HoldPass"
         },
         "Inbox": {
           "properties": {

@@ -31,7 +31,8 @@ the merge requests at their gates wait, those ready or in their turn are paused,
 
 A gate that does not pass leaves the merge request ``gating`` with why when it waits for something on GitLab (its
 pipeline, the project's settings, the end of its draft), or ``blocked`` with why; a blocked one moves only after a
-new push. Each new reason, and each gate passed at a head, is a line of the ledger (merge_events), and the hub
+new push, or, held at gate 3 for a person, once an admin passes it (``evo_agents.hub.server.merge_pass``). Each new
+reason, and each gate passed at a head, is a line of the ledger (merge_events), and the hub
 comments on the merge request once for each reason that blocks it or each setting it misses. GitLab failing leaves
 the repo for the next pass. A merge request out of scope, or of a project without a policy, is never written to, as
 before the policy (criterion a9). ``evo_agents.hub.server.merge_view`` shows the queue.
@@ -764,13 +765,18 @@ class RepoPass:
             await post_merge.revert_gated(self, row_id, mr, files)
             return
         hacked = self.hacked(files, body)
+        passed_by = None
         if hacked is not None:
-            async with self.engine.begin() as conn:
-                row = await row_of(conn, row_id, lock=True)
-                await hold(conn, row, 3, hacked, blocked=True)
-            return
+            from evo_agents.hub.server.merge_pass import passes  # it reads the rows through this module
+
+            passed_by = await passes(self.engine, row_id, hacked, sha=mr.sha)  # an admin's pass of this head
+            if passed_by is None:
+                async with self.engine.begin() as conn:
+                    row = await row_of(conn, row_id, lock=True)
+                    await hold(conn, row, 3, hacked, blocked=True)
+                return
         risk = await self.risk(judge.changed_paths(files))
-        await self.passed(row_id, mr, merge_gate.patch_fingerprint(files), risk)
+        await self.passed(row_id, mr, merge_gate.patch_fingerprint(files), risk, passed_by)
 
     def hacked(self, files: list[judge.FileDiff], body: dict | None) -> str | None:
         """Gate 3: why the diff ``files`` of a merge request on plan ``body`` shows signs of score hacking; None when
@@ -805,14 +811,16 @@ class RepoPass:
             unknown=unknown,
         )
 
-    async def passed(self, row_id: int, mr: MergeRequest, fingerprint: str, risk: dict) -> None:
-        """Gates 0 to 3 passed at the head: the Judges next, unless their verdicts hold for this patch."""
+    async def passed(self, row_id: int, mr: MergeRequest, fingerprint: str, risk: dict, passed_by=None) -> None:
+        """Gates 0 to 3 passed at the head (gate 3 by an admin's pass, ``passed_by``: the line's reason and detail):
+        the Judges next, unless their verdicts hold for this patch."""
         async with self.engine.begin() as conn:
             row = await row_of(conn, row_id, lock=True)
             if row.state != "gating" or row.head_sha != mr.sha:
                 return
             for gate in range(4):
-                await record(conn, row, "gate", gate=gate, passed=True, sha=mr.sha)
+                why, detail = passed_by if gate == 3 and passed_by is not None else (None, None)
+                await record(conn, row, "gate", gate=gate, passed=True, reason=why, sha=mr.sha, detail=detail)
             verdict = row.verdict if (row.verdict or {}).get("fingerprint") == fingerprint else None
             await set_row(
                 conn,
@@ -882,8 +890,10 @@ class RepoPass:
             return
         if row.state != "blocked" and not (row.state == "gating" and row.reason.startswith("gate 0 ")):
             return
+        passable = merge_gate.pass_refusal(row.state, row.reason, row.source) is None
         try:
-            await self.gl.comment(self.path, row.iid, merge_gate.comment(row.reason, waits=row.state != "blocked"))
+            note = merge_gate.comment(row.reason, waits=row.state != "blocked", passable=passable)
+            await self.gl.comment(self.path, row.iid, note)
         except GitLabRefused as exc:
             log.warning("the merge queue could not comment", extra={"row": row_id, "why": str(exc)})
             return

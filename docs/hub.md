@@ -106,7 +106,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | goals | `GET /v1/projects/{project}/goals` (`?status=`), `GET .../goals/{ref}` (`?revision=`), `.../goals/{ref}/revisions`, `PUT .../goals/{ref}`, `POST .../goals/{ref}/close`: reading needs a grant on the project, writing the admin role (section Goals) |
 | loop | `GET /v1/projects/{project}/loop`, `GET .../loop/items` (`?state=`, `?kind=`, `?goal=`, `?open=`, `?limit=`), `GET .../loop/items/{id}`, `GET .../loop/goals`: reading needs a grant on the project; `POST .../loop/resume` the admin role (section Goals, `docs/loop.md`) |
 | decision board | `GET /v1/projects/{project}/decision-board`: what waits for a person, the three gates first; reading needs a grant on the project (section Goals, The decision board) |
-| merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
+| merge queue | `GET /v1/projects/{project}/merge-queue`, `.../merge-queue/figures`; `POST .../merge-queue/samples/{id}`, `.../merge-queue/{id}/release`, `.../merge-queue/{id}/revert`, `.../merge-queue/{id}/pass`, `.../merge-queue/repos/{repo}/resume` for an admin of the project; the judge run's `GET /v1/worker/runs/{id}/merge-judge` and `POST .../merge-verdict` (`docs/merge-queue.md`) |
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
@@ -1723,7 +1723,9 @@ high risk), and merges the merge requests of a target branch one at a time: reba
 the sha the pipeline passed on. After the merge it follows the UAT check, runs the PROD deploy as `prod_release` says
 (`immediate`, `after_uat`, `manual`), reverts the culprit of a failed check first in the queue, rolls PROD back when the
 PROD check fails, draws audit samples, and trips the breaker of a repo on the policy's thresholds; only an admin resets
-it. A project without a policy, and every repo in mode `off`, keep their merge requests open for a person, as before.
+it. Gate 3 (score hacking) holds a merge request for a person: an admin passes the hold with a reason, the queue goes on
+from that gate at the same head, and a new push takes the pass back (`docs/merge-queue.md`, The gates). A project
+without a policy, and every repo in mode `off`, keep their merge requests open for a person, as before.
 
 ```sh
 evo-agents hub policy show --project demo                    # every key now, (default) where the policy sets none
@@ -1732,6 +1734,7 @@ evo-agents hub policy history --project demo
 evo-agents hub policy diff 2 4 --project demo
 evo-agents hub merge list --project demo                     # each repo's breaker, then the merge requests
 evo-agents hub merge resume lumen-api --project demo         # an admin resets the repo's breaker
+evo-agents hub merge pass lumen-api 11 --reason "..." --project demo  # an admin passes a hold at gate 3
 ```
 
 The web shows it on the project's Merge queue page (`/p/{project}/merge-queue`), with the tabs Figures and Policy.
@@ -1798,8 +1801,9 @@ waits for a person, the three gates first: the goals (the month's review once th
 (each baseline still proposed with an item to decide, its overdue test cards among them, and each open proposal of a
 claim) and the policy (each pending @builder proposal of kind `policy` or `goal`, each repo of the merge queue whose
 breaker tripped, and the Loop's breaker); then what the Loop's chain waits on: its decisions of category `loop`, the
-decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person and
-its repos to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
+decisions of a run it handed out and an author run of its asking in its chat, its merge requests held for a person
+(one blocked at a gate says how it goes on: an admin passes a hold at gate 3, a new push moves any other) and its repos
+to merge by hand, the merge queue's audit samples not answered, and the SRS versions its use cases drafted
 that wait for their review, with their settle chats. The SRS review and the settle chat are no fourth gate: the rules
 of the plugin srs stay. Each item has its group and kind, a title, since when, who may decide it (`decided_by`:
 `admin`, `writer`, `run_owner`, `srs_reviewer` or `chat_member`, and `deciders`, the logins that may now), the page
