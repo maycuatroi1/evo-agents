@@ -431,6 +431,11 @@ describe("plan runs", () => {
     expect(planRunLock(runs.slice(3), "rollout", 1)).toBeNull();
   });
 
+  it("locks Run plan on a plan of the Curator, which only the night shift runs", () => {
+    expect(planRunLock([], "curator-38-worker-tool-prerequisites", 2)).toEqual({ kind: "curator" });
+    expect(planRunLock([], "rollout", 2)).toBeNull();
+  });
+
   it("finds the plan's active plan run, and names its phase", () => {
     const runs = [run({ id: 2, kind: "plan", state: "done" }), run({ id: 3, kind: "plan", state: "parked" })];
     expect(activePlanRun(runs, "rollout")?.id).toBe(3);

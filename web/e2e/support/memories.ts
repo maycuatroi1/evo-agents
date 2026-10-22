@@ -1,6 +1,7 @@
 import { type ApiClient, call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
 
+import { STACK_URL } from "./env";
 import { type Account, bearerClient, machineToken, type Registration, registration } from "./hub";
 
 /**
@@ -19,6 +20,8 @@ export type MemoryInput = {
   type?: MemoryType;
   level?: string;
   ifRevision?: number;
+  /** The handle of the project's agent whose memory it is (a non-default profile); a shared memory without it. */
+  agent?: string;
 };
 
 /** A project whose hub sink clears every level, with two repos: memories at any label can be pushed to it. */
@@ -53,6 +56,7 @@ export async function putMemory(api: ApiClient, input: MemoryInput): Promise<Mem
         body: input.body,
         label: personal ? null : { level: input.level ?? "internal", integrity: "U" },
         if_revision: input.ifRevision ?? null,
+        ...(input.agent ? { agent: input.agent } : {}),
       },
     }),
   );
@@ -61,4 +65,17 @@ export async function putMemory(api: ApiClient, input: MemoryInput): Promise<Mem
 /** A memory file as Claude Code writes one: frontmatter with name, description and type, then the text. */
 export function memoryFile(title: string, description: string, text: string, type: MemoryType = "project"): string {
   return `---\nname: ${title}\ndescription: ${description}\nmetadata:\n  type: ${type}\n---\n${text}\n`;
+}
+
+/**
+ * Mark an agent's memory as the daily upkeep would (hub_stack POST /memories/state): archived, stale, and read by a run
+ * of the agent two hours ago.
+ */
+export async function markAgentMemory(memoryId: number, state: { archived?: boolean; stale?: boolean; read?: boolean }): Promise<void> {
+  const response = await fetch(`${STACK_URL}/memories/state`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ memory_id: memoryId, ...state }),
+  });
+  if (!response.ok) throw new Error(`hub_stack /memories/state: ${response.status} ${await response.text()}`);
 }

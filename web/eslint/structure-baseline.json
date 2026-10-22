@@ -7,7 +7,6 @@
     "src/components/inbox/decision-view.tsx": 579,
     "src/components/inbox/mobile-decision.tsx": 442,
     "src/components/kg/build-status.tsx": 429,
-    "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
     "src/components/runs/queries.ts": 428,
     "src/components/runs/run-chat.tsx": 456,

@@ -109,11 +109,13 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry, loop_tick, release_pass
+        from evo_agents.hub.server.app import init_sentry, loop_tick, memory_upkeep, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency, release_pass=release_pass, loop_tick=loop_tick)
+    return worker.main(
+        config, args.concurrency, release_pass=release_pass, loop_tick=loop_tick, memory_upkeep=memory_upkeep
+    )
 
 
 @_server_command

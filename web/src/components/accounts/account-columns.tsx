@@ -13,7 +13,7 @@ import { At } from "./account-cells";
 import { preloadLogin } from "./login-lazy";
 import { isClaudeAccount } from "./model";
 import { ProviderLogo } from "./provider-logo";
-import type { Account } from "./queries";
+import type { Account, AccountFigures } from "./queries";
 
 /** The cells the model and the service tables of the Accounts page have in common. */
 
@@ -37,7 +37,7 @@ export type Actions = {
  * The first cell: the provider's logo, the account's name, then its provider's name as text, its variable, and
  * "weight N, priority M" only when `ranked` (the visitor has two or more accounts for the variable).
  */
-export function AccountCell({ account, ranked }: { account: Account; ranked: boolean }) {
+export function AccountCell({ account, ranked }: { account: AccountFigures; ranked: boolean }) {
   const t = useTranslations("accounts");
   const sub = [t(`providers.${account.provider}`), account.env_var, ranked ? t("rank", { weight: account.weight, priority: account.priority }) : null]
     .filter(Boolean)
@@ -67,7 +67,7 @@ export function RunsCell({ day, week }: { day: number; week: number }) {
  * What a model account's runs cost over 24 hours and 7 days: "Cost" for an API key, and "API value" for a Claude
  * subscription, whose runs are not billed per run, with the tooltip that says so.
  */
-export function CostCell({ account }: { account: Account }) {
+export function CostCell({ account }: { account: AccountFigures }) {
   const t = useTranslations("accounts");
   const format = useFormatter();
   if (account.cost_24h_usd === null || account.cost_7d_usd === null) return <span className="text-fg-subtle">-</span>;
@@ -99,7 +99,7 @@ export function CostCell({ account }: { account: Account }) {
 }
 
 /** The runs holding the account now; nothing at all when there is none. */
-export function HeldByCell({ held }: { held: Account["held_by"] }) {
+export function HeldByCell({ held }: { held: AccountFigures["held_by"] }) {
   const t = useTranslations("accounts");
   if (held.length === 0) return null;
   return (

@@ -7,7 +7,7 @@ what out: the run's project (a profile of another project needs the dispatcher t
 writer there too, and its project axis to name this one), the runtime (a plugin's runtime as one of the core's; any,
 which takes a runtime of the core, needs the axis to allow one), the model (none named on a profile that limits
 models takes the first it allows), the worker it is pinned to or, unpinned, at least one worker of the dispatcher's
-the profile allows, the account picked by hand, the environment (at least one of the axis's allowlist registered in
+the profile allows, the account picked by hand (and one for a variable the agent has accounts of its own for), the environment (at least one of the axis's allowlist registered in
 the project, ``plugin_environments.check``), and for an author run the skill create-exec-plan. A deleted profile takes
 no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
 (``profiles.needs_worker``), that could never take an environment the profile allows, or that could never build the
@@ -20,8 +20,11 @@ that needs it, when its daemon says it applies profiles, and for one that attach
 builds them (``runs.AGENT_PACKS``) and its owner accepted each pack's plugin. A run asking for any runtime gets the first of the worker's
 runtimes of the core that the profile allows (``pick_runtime``); a run of a plugin's runtime keeps the one it asked
 for. Its environment is the first of the axis's allowlist the worker takes (``plugin_environments.pick``), the host
-for an axis that allows all. The claimed run carries the
-profile at its version (``run_profile``) for its worker. A run without a profile, one from before schema 0030, is
+for an axis that allows all. A run under a profile that is not its project's default that would run on Claude Code
+there goes only to a daemon that gives its agent a config dir of its own (``runs.AGENT_HOME``), and its claim says so
+(``own_home``). The claimed run carries the
+profile at its version (``run_profile``) for its worker, and the person who dispatched it (``run_origin``), whom the
+worker names as co-author of the commits its agent authors. A run without a profile, one from before schema 0030, is
 claimed as before.
 """
 
@@ -40,7 +43,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs.models import RunProfile, available
+from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import Principal
@@ -186,6 +189,33 @@ def _rest(profile: Profile, asked: Asked) -> None:
     _pinned_packs(profile, pinned)
 
 
+async def _own_account(conn: AsyncConnection, profile: Profile, asked: Asked) -> None:
+    """422 when an account is picked by hand for a variable the agent has accounts of its own for
+    (``agent_accounts``): its runs take those, whoever dispatches them, and never the dispatcher's."""
+    if not asked.picked:
+        return
+    s = tables.secrets
+    owned = set(
+        (
+            await conn.execute(
+                select(s.c.env_var).where(
+                    s.c.profile_id == profile.id,
+                    s.c.kind == "env",
+                    s.c.deleted_at.is_(None),
+                    s.c.env_var.in_([picked.env_var for picked in asked.picked]),
+                )
+            )
+        ).scalars()
+    )
+    for picked in asked.picked:
+        if picked.env_var in owned:
+            raise _refuse(
+                profile,
+                f"has accounts of its own for {picked.env_var}, which its runs take instead of yours: account "
+                f"{picked.name} cannot be picked for it",
+            )
+
+
 def _pinned_packs(profile: Profile, pinned) -> None:
     """409 when the run is pinned to a worker that could never build the agent packs the profile attaches."""
     if pinned is None:
@@ -242,6 +272,7 @@ async def choose(
     model = _model(profile, asked.model)
     await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
+    await _own_account(conn, profile, asked)
     return Chosen(profile, model)
 
 
@@ -318,8 +349,40 @@ def claim_clause(
     if runs.AGENT_PROFILES not in (features or ()):
         conditions += [_all(permissions, axis) for axis in ("tool", "skill", "model")]
         conditions.append(func.coalesce(v.c.body["instructions"].astext, "") == "")
+    if runs.AGENT_HOME not in (features or ()):
+        conditions.append(_default_or_not_claude(permissions, runtimes))
     held = run_autonomy.claim_clause(name, runtimes, features, environments, runtime_rule())
     return and_(or_(r.c.profile_id.is_(None), exists().where(*conditions)), held)
+
+
+CLAUDE = "claude-code"
+
+
+def _default_or_not_claude(permissions, runtimes: list[str]):
+    """Whether a worker whose daemon gives no agent a config dir of its own (``runs.AGENT_HOME``) may take the run
+    being claimed (correlated): one under its project's default profile, or one that does not run on Claude Code here,
+    neither asking for it nor, asking for any, getting it from ``pick_runtime`` among the worker's ``runtimes``."""
+    r, ap = tables.runs, tables.agent_profiles
+    default = select(ap.c.is_default).where(ap.c.id == r.c.profile_id).correlate(r).scalar_subquery()
+    allow = permissions["runtime"]["allow"]
+    if CLAUDE not in runtimes:
+        picks_claude = literal(False)
+    else:
+        before = runtimes[: runtimes.index(CLAUDE)]
+        allows_claude = or_(_all(permissions, "runtime"), allow.has_any(literal([CLAUDE], ARRAY(Text))))
+        picks_claude = (
+            allows_claude
+            if not before
+            else and_(
+                ~_all(permissions, "runtime"),
+                allow.has_any(literal([CLAUDE], ARRAY(Text))),
+                ~allow.has_any(literal(before, ARRAY(Text))),
+            )
+        )
+    return or_(
+        func.coalesce(default, False),
+        and_(r.c.runtime != CLAUDE, or_(r.c.runtime != "any", ~picks_claude)),
+    )
 
 
 def runtime_rule(axis: str = "runtime"):
@@ -352,6 +415,24 @@ def pick_runtime(asked: str, runtimes: list[str], rule: dict | None) -> str:
         return asked
     allow = profiles.allowed({"runtime": rule}, "runtime") if rule else None
     return next(name for name in runtimes if allow is None or name in allow)
+
+
+async def own_home(conn: AsyncConnection, run_id: int) -> bool:
+    """Whether run ``run_id`` went under a profile that is not its project's default, whose claude-code agent gets a
+    config dir of its own (``runs.AGENT_HOME``); False for a run without a profile."""
+    r, ap = tables.runs, tables.agent_profiles
+    query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
+    default = (await conn.execute(query)).scalar_one_or_none()
+    return default is False
+
+
+async def run_origin(conn: AsyncConnection, run_id: int) -> RunOrigin:
+    """The person who dispatched run ``run_id``, with their GitHub login and id, whom its worker names as co-author of
+    the commits its agent authors."""
+    r, u = tables.runs, tables.users
+    query = select(u.c.login, u.c.github_id).join_from(r, u, u.c.id == r.c.dispatched_by).where(r.c.id == run_id)
+    row = (await conn.execute(query)).one()
+    return RunOrigin(login=row.login, github_id=row.github_id)
 
 
 async def run_profile(conn: AsyncConnection, run_id: int) -> RunProfile | None:

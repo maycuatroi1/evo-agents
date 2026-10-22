@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAvatarByApi } from "./support/agents";
+import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAgentAccountByApi, putAvatarByApi } from "./support/agents";
 import {
   baselinePath,
   canvasesPath,
@@ -32,11 +32,11 @@ import {
   signedInPerson,
 } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
-import { seedCurator } from "./support/curator";
+import { promotionNight, seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
-import { apiOf, memoryFile, putMemory } from "./support/memories";
+import { apiOf, markAgentMemory, memoryFile, putMemory } from "./support/memories";
 import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { dayFromNow, seatByApi, seatOf, unitByApi } from "./support/org";
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
@@ -216,8 +216,8 @@ async function seedAccounts(me: Member) {
 
 /**
  * Agents of the first project of `me`, made its admin: one that limits five axes (credentials to none), with an
- * avatar, instructions and a run under it, which a worker of `me` carrying the label it allows makes possible, and one
- * deleted; returns the first's handle.
+ * avatar, instructions, an account of its own and a run under it, which a worker of `me` carrying the label it allows
+ * makes possible, and one deleted; returns the first's handle.
  */
 async function seedAgents(me: Member) {
   const project = me.projects[0];
@@ -242,7 +242,8 @@ async function seedAgents(me: Member) {
   await createAgentByApi(me, project, { handle: gone, name: "Old helper", color: "#0891b2" });
   const api = await apiOf(me);
   await api.DELETE("/v1/projects/{project}/agents/{handle}", { params: { path: { project, handle: gone } } });
-  await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  const gpu = await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  await putAgentAccountByApi(me, project, handle, "openai-key", { env_var: "OPENAI_API_KEY", value: secretValue("a11y"), workers: [gpu.name] });
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"], { profile: handle, runtime: "claude-code" });
   return handle;
@@ -958,6 +959,75 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("agent-version-row")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("agent-runs-table")).toBeVisible();
       await expect(page.locator("#main").getByTestId("agents-read-only")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agent-accounts-table")).toBeVisible();
+    },
+  },
+  {
+    name: "agent page's accounts with the add form and its errors, then the delete confirmation, for an admin",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentPath(project, handle));
+      const card = page.locator("#main").getByTestId("agent-accounts");
+      await expect(card.getByTestId("agent-accounts-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "agent page with its accounts");
+      await card.getByTestId("agent-account-add").click();
+      const dialog = page.getByTestId("agent-account-dialog");
+      await dialog.getByTestId("agent-account-dialog-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("agent-account-name-error")).toBeVisible();
+      await expect(dialog.getByTestId("agent-account-workers")).toBeVisible();
+      await expectNoSeriousViolations(page, "add agent account form");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await card.getByTestId("agent-account-delete").click();
+      await expect(page.getByTestId("agent-account-delete-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts with the agents' accounts group",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await seedAgents(me);
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("accounts-group-agent").getByTestId("agent-account-agent")).toBeVisible();
+    },
+  },
+  {
+    name: "an agent's memories on its page and in the project's list, and an archived one with Restore, read by an admin",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      const handle = uniqueName("keeper");
+      await createAgentByApi(me, project, { handle, name: "Keeper" });
+      const api = await apiOf(me);
+      const read = await putMemory(api, { project, agent: handle, name: "claims.md", body: memoryFile("Claims", "Retries", "x") });
+      const archived = await putMemory(api, { project, agent: handle, name: "old.md", body: memoryFile("Old", "Before", "y") });
+      await markAgentMemory(read.id, { read: true, stale: true });
+      await markAgentMemory(archived.id, { archived: true });
+      await open(page, agentPath(project, handle));
+      await expect(page.locator("#main").getByTestId("agent-memories-table").locator("[data-memory-name]")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "an agent's memories");
+      await open(page, `/p/${project}/memories?agent=${handle}`);
+      await expect(page.locator("#main").getByTestId("facet-agent")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("memories-table").locator("[data-memory-name]")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "the memories of an agent");
+      await open(page, `/p/${project}/memories/${archived.id}`);
+      await expect(page.locator("#main").getByTestId("memory-restore")).toBeVisible();
+    },
+  },
+  {
+    name: "a Curator's memory proposal with its promotion, and the shared memory it wrote, read by a writer",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      const { shared, proposal } = await promotionNight(owner, project, uniqueName("a11y"), uniqueName("scout"));
+      await open(page, `/p/${project}/memories/${shared.id}`);
+      await expect(page.locator("#main").getByTestId("provenance-proposal").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "a memory a promotion wrote");
+      await open(page, `/p/${project}/curator/proposals/${proposal.id}`);
+      await expect(page.locator("#main").getByTestId("proposal-promotion")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("promotion-written-link")).toBeVisible();
     },
   },
   {

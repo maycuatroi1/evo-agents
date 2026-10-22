@@ -345,7 +345,8 @@ def test_plugin_mcp_tool_shows_to_a_run_agent_only_when_its_profile_tool_axis_al
         assert made.status_code == 201, made.text
     worker = add_worker(client, hub["owner"], "mac-mini")
     beat = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "runs": []}
-    beat["features"] = [runs.AGENT_PROFILES]  # its daemon applies profiles, so it claims a run whose tools are cut
+    # its daemon applies profiles, so it claims a run whose tools are cut, and gives its agent a home of its own
+    beat["features"] = [runs.AGENT_PROFILES, runs.AGENT_HOME]
     assert client.post("/v1/worker/heartbeat", json=beat, headers=worker["headers"]).status_code == 200
     agent = {"Authorization": worker["headers"]["Authorization"]}
     seen = {}

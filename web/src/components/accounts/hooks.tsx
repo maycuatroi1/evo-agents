@@ -51,17 +51,21 @@ export function useDeletePolicy() {
   });
 }
 
-/** What to say when a write fails, by status; the hub's own message goes below as a detail. It never carries a value. */
+/**
+ * What to say when a write fails, by status; the hub's own message goes below as a detail. It never carries a value.
+ * `overrides` gives a status words of the caller's own (the accounts of an agent say who may change them).
+ */
 export function useFailure() {
   const t = useTranslations("accounts.errors");
   return useCallback(
-    (error: unknown): Failure => {
+    (error: unknown, overrides: Partial<Record<number, string>> = {}): Failure => {
       const info = isApiError(error) ? error.info : null;
       const status = info?.status ?? 0;
       const detail = info?.message ? t("apiMessage", { message: info.message }) : null;
       const requestId = info?.requestId ?? null;
       const text =
-        status === 0
+        overrides[status] ??
+        (status === 0
           ? t("network")
           : status === 403
             ? t("forbidden")
@@ -69,7 +73,7 @@ export function useFailure() {
               ? t("notFound")
               : status === 422
                 ? t("invalid")
-                : t("server");
+                : t("server"));
       return { text, detail: status === 0 ? null : detail, requestId, status };
     },
     [t],

@@ -5,6 +5,7 @@ import { isMoney, ledgerTone, outcomeFigures, releaseOf, replayOf, revertProposa
 describe("a line of the ledger", () => {
   it("marks merges, passed Judges and kept outcomes in success, failures and reverts in danger, an open change in attention", () => {
     expect(ledgerTone({ action: "merged", outcome: null, verdict: null })).toBe("success");
+    expect(ledgerTone({ action: "promoted", outcome: null, verdict: null })).toBe("success");
     expect(ledgerTone({ action: "judged", outcome: null, verdict: { passed: true } })).toBe("success");
     expect(ledgerTone({ action: "judged", outcome: null, verdict: { passed: false } })).toBe("danger");
     expect(ledgerTone({ action: "build_failed", outcome: null, verdict: null })).toBe("danger");

@@ -48,10 +48,12 @@ from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
 
-# The hub worker runs the tick of a project's Loop and the release pass, but evo_agents.hub.worker imports no server
-# module beyond its job list (docs/structure.md, section Package boundaries): the hub worker command takes both from
-# here and hands them down.
+# The hub worker runs the tick of a project's Loop, the release pass and the upkeep of agents' memories, but
+# evo_agents.hub.worker imports no server module beyond its job list (docs/structure.md, section Package boundaries):
+# the hub worker command takes them from here and hands them down.
 from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
+from evo_agents.hub.server.memory_upkeep import router as restore_routes
+from evo_agents.hub.server.memory_upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
@@ -207,6 +209,7 @@ def create_app(config: HubConfig) -> FastAPI:
         admin.router,
         projects.router,
         blobs.router,
+        restore_routes,  # POST /v1/memories/{id}/restore
     ):
         app.include_router(routes)
 
@@ -348,6 +351,8 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import (
         account_views,
         accounts,
+        agent_account_views,
+        agent_accounts,
         agent_packs,
         agent_profiles,
         agent_types,
@@ -388,6 +393,8 @@ def create_app(config: HubConfig) -> FastAPI:
         account_views.router,
         rate_limits.worker_router,
         agent_profiles.router,
+        agent_accounts.router,
+        agent_account_views.router,
         agent_packs.router,
         agent_types.router,
         task_dispatch.router,

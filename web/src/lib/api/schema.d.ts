@@ -494,6 +494,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories/{memory_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Memory
+         * @description Bring back an agent's memory the daily upkeep archived: into the index and the searches of its agent's runs
+         *     again, as if just opened, with the audit row ``memory.restore``. A writer of its project who reads it, never the
+         *     agent of a run; a memory not archived is left as it is.
+         */
+        post: operations["restore_memory_v1_memories__memory_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plans": {
         parameters: {
             query?: never;
@@ -690,7 +712,7 @@ export interface paths {
         get: operations["list_memories_v1_memories_get"];
         /**
          * Put
-         * @description Create or change the memory at the key ``body`` names.
+         * @description Create or change the memory at the key ``body`` names, in the namespace of ``body.agent`` or the run's.
          */
         put: operations["put_v1_memories_put"];
         post?: never;
@@ -5718,6 +5740,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Account
+         * @description The account ``name`` of agent ``handle`` with its figures; 404 when the agent has no live account of that name.
+         */
+        get: operations["get_agent_account_v1_projects__project__agents__handle__accounts__name__get"];
+        /**
+         * Put Agent Account
+         * @description Give the agent the account ``name``, or replace it whole; the value is sealed and never shown again.
+         */
+        put: operations["put_agent_account_v1_projects__project__agents__handle__accounts__name__put"];
+        post?: never;
+        /**
+         * Delete Agent Account
+         * @description Delete the account: its value and bindings go, and its leases not given back are revoked.
+         */
+        delete: operations["delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change Agent Account
+         * @description Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it.
+         */
+        patch: operations["change_agent_account_v1_projects__project__agents__handle__accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Accounts
+         * @description The live accounts of agent ``handle``, by variable and name, with their figures; never a value.
+         */
+        get: operations["list_agent_accounts_v1_projects__project__agents__handle__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Agent Accounts
+         * @description The live accounts of the agents of every project the caller holds a grant on, by project, handle, variable and
+         *     name; a hub admin's grants alone count, as for reading a profile.
+         */
+        get: operations["list_all_agent_accounts_v1_agent_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agent-packs": {
         parameters: {
             query?: never;
@@ -8005,6 +8100,263 @@ export interface components {
              * @description when it was deleted: it takes no new run, and reads as before
              */
             deleted_at: string | null;
+        };
+        /**
+         * AgentAccount
+         * @description An account of an agent as an admin sees it: everything but the value.
+         */
+        AgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+        };
+        /** AgentAccountChange */
+        AgentAccountChange: {
+            /**
+             * Value
+             * @description renew: a new value for the same account
+             */
+            value?: string | null;
+            /**
+             * Workers
+             * @description replaces the workers it is bound to
+             */
+            workers?: string[] | null;
+            /**
+             * Expires At
+             * @description its new end; null drops the end
+             */
+            expires_at?: string | null;
+            /** Weight */
+            weight?: number | null;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, so no new run takes it; false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AgentAccountWrite */
+        AgentAccountWrite: {
+            /**
+             * Env Var
+             * @description the variable of the agent's environment it sets, upper case, never one that steers the shell, git or the worker (PATH, HOME, EVO_*, GIT_* ...)
+             */
+            env_var: string;
+            /**
+             * Value
+             * Format: password
+             * @description the secret itself, 1 to 16384 bytes of UTF-8; written once, never shown again
+             */
+            value: string;
+            /**
+             * Workers
+             * @description names of the workers it is bound to: yours that are not revoked, or a member's shared worker; each serves the agent's project
+             */
+            workers: string[];
+            /**
+             * Expires At
+             * @description after this no run gets it; in the future
+             */
+            expires_at?: string | null;
+            /**
+             * Weight
+             * @description its share in a weighted pool; 1 when new
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner; 0 when new
+             */
+            priority?: number | null;
+        };
+        /** AgentAccountWritten */
+        AgentAccountWritten: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Created
+             * @description false when an account of this name was replaced
+             */
+            created: boolean;
         };
         /**
          * AgentAxis
@@ -12332,7 +12684,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "session" | "transcript" | "run" | "code";
+            kind: "session" | "transcript" | "run" | "code" | "memory";
             /**
              * Session Id
              * @description session, transcript: the session
@@ -12383,6 +12735,16 @@ export interface components {
              * @description code: the commit the worktree was at
              */
             commit?: string | null;
+            /**
+             * Memory Id
+             * @description memory: a memory of the project
+             */
+            memory_id?: number | null;
+            /**
+             * Revision
+             * @description memory: one of its revisions
+             */
+            revision?: number | null;
         };
         /** FacetCluster */
         FacetCluster: {
@@ -12575,6 +12937,31 @@ export interface components {
         };
         /** Found */
         Found: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -12592,6 +12979,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -13907,7 +14299,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release";
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release" | "promoted";
             /**
              * Actor
              * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
@@ -13978,6 +14370,125 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * ListedAgentAccount
+         * @description An account of an agent, with the project and the agent it belongs to.
+         */
+        ListedAgentAccount: {
+            /**
+             * Id
+             * @description the id of its secret, which audit lines name it by
+             */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Workers
+             * @description the workers it is bound to
+             */
+            workers: string[];
+            /** Weight */
+            weight: number;
+            /** Priority */
+            priority: number;
+            /** Paused At */
+            paused_at: string | null;
+            /** Cooldown Until */
+            cooldown_until: string | null;
+            /** Cooldown Reason */
+            cooldown_reason: string | null;
+            /** Last Leased At */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /** Project */
+            project: string;
+            /**
+             * Handle
+             * @description the agent's handle, @ left out
+             */
+            handle: string;
+            /**
+             * Agent Name
+             * @description the agent's display name
+             */
+            agent_name: string;
+            /**
+             * Color
+             * @description the agent's colour, on which the web draws its initial
+             */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the agent's avatar on this hub; null: draw the initial
+             */
+            icon_url: string | null;
         };
         /** Live */
         Live: {
@@ -14471,6 +14982,31 @@ export interface components {
         };
         /** Memory */
         Memory: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -14488,6 +15024,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -14558,6 +15099,11 @@ export interface components {
              * @description what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience
              */
             audience?: string[] | null;
+            /**
+             * Agent
+             * @description scope project only: the agent profile whose memory it is
+             */
+            agent?: string | null;
         };
         /** MemoryRevision */
         MemoryRevision: {
@@ -14589,6 +15135,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @description the run or the promotion that wrote it; null for neither */
+            provenance?: components["schemas"]["Provenance"] | null;
             /** Memory Id */
             memory_id: number;
             /**
@@ -18147,6 +18695,49 @@ export interface components {
              */
             skills?: components["schemas"]["RuntimeSkillStat"][];
         };
+        /**
+         * PromotionIn
+         * @description What a proposal of kind memory promotes: its sources are its evidence naming agents' memories.
+         */
+        PromotionIn: {
+            target: components["schemas"]["PromotionTarget"];
+            /**
+             * Body
+             * @description the whole memory after the merge
+             */
+            body: string;
+        };
+        /**
+         * PromotionTarget
+         * @description The shared memory a promotion writes: one of the project by id and current revision, or a new one.
+         */
+        PromotionTarget: {
+            /**
+             * Memory Id
+             * @description a shared memory of the project to merge into
+             */
+            memory_id?: number | null;
+            /**
+             * Revision
+             * @description its current revision
+             */
+            revision?: number | null;
+            /**
+             * Location
+             * @description a new one: harness or a repo
+             */
+            location?: string | null;
+            /**
+             * Name
+             * @description a new one: its file name, ending in .md
+             */
+            name?: string | null;
+            /**
+             * Type
+             * @description a new one: project or reference
+             */
+            type?: ("project" | "reference") | null;
+        };
         /** Proposal */
         Proposal: {
             /** Id */
@@ -18230,11 +18821,18 @@ export interface components {
             }[];
             /**
              * Plan
-             * @description the draft plan
+             * @description the draft plan; empty for a promotion
              */
             plan: {
                 [key: string]: unknown;
             };
+            /**
+             * Promotion
+             * @description kind memory: what it promotes, and the shared memory it wrote
+             */
+            promotion?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Note
              * @description the owner's note with the answer
@@ -18314,11 +18912,13 @@ export interface components {
             evidence?: components["schemas"]["EvidenceIn"][];
             /**
              * Plan
-             * @description the draft plan: plan.schema.json, in outcome steps
+             * @description the draft plan: plan.schema.json, in outcome steps; none to promote
              */
-            plan: {
+            plan?: {
                 [key: string]: unknown;
-            };
+            } | null;
+            /** @description kind memory: in place of a plan */
+            promotion?: components["schemas"]["PromotionIn"] | null;
         };
         /** ProposalList */
         ProposalList: {
@@ -18401,6 +19001,53 @@ export interface components {
             project: string;
             /** Repos */
             repos: components["schemas"]["RepoCheck"][];
+        };
+        /**
+         * Provenance
+         * @description Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories
+         *     into it.
+         */
+        Provenance: {
+            /**
+             * Run
+             * @description the run whose agent wrote it; null for a promotion
+             */
+            run: number | null;
+            /**
+             * Proposal
+             * @description the Curator's proposal whose promotion wrote it
+             */
+            proposal?: number | null;
+            /**
+             * Agent
+             * @description the handle of the profile the run ran under
+             */
+            agent: string | null;
+            /**
+             * Agent Version
+             * @description the version of that profile
+             */
+            agent_version: number | null;
+            /**
+             * Origin
+             * @description the login of the person at the run's origin, who dispatched it
+             */
+            origin: string | null;
+            /**
+             * Hop
+             * @description the run's hop in its chat: 1 for a person's mention, more agent to agent
+             */
+            hop: number | null;
+            /**
+             * Chat
+             * @description the chat of the run
+             */
+            chat: number | null;
+            /**
+             * Chat Message
+             * @description the chat message that started the run
+             */
+            chat_message: number | null;
         };
         /** PruneRequest */
         PruneRequest: {
@@ -19702,6 +20349,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @description the run or the promotion that wrote it; null for neither */
+            provenance?: components["schemas"]["Provenance"] | null;
         };
         /** Revisions */
         Revisions: {
@@ -20582,7 +21231,7 @@ export interface components {
             id: number;
             /**
              * Name
-             * @description the secret's name, or github-app:<account>
+             * @description the secret's name, github-app:<account>, or @<handle>:<name> for an account of an agent
              */
             name: string;
             /**
@@ -20703,6 +21352,23 @@ export interface components {
              * @description a tmpfs's size; null: the engine's default
              */
             size_mb?: number | null;
+        };
+        /**
+         * RunOrigin
+         * @description The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began
+         *     the chain of agents): the worker names them as the co-author of the commits of a run its agent authors.
+         */
+        RunOrigin: {
+            /**
+             * Login
+             * @description the person's GitHub login
+             */
+            login: string;
+            /**
+             * Github Id
+             * @description the person's GitHub user id; null for a user the hub never saw on GitHub
+             */
+            github_id: number | null;
         };
         /** RunOutput */
         RunOutput: {
@@ -21100,6 +21766,14 @@ export interface components {
             session_per_step: boolean;
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
+            /**
+             * Own Home
+             * @description true for a run under a profile that is not its project's default: the agent of a claude-code run gets a Claude Code config dir of its own in the run's directory instead of the owner's
+             * @default false
+             */
+            own_home: boolean;
+            /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
+            origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
             plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
             /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */
@@ -26036,6 +26710,31 @@ export interface components {
         };
         /** Written */
         evo_agents__hub__server__memories__Written: {
+            /**
+             * Read At
+             * @description an agent's memory: when the agent of a run last opened it
+             */
+            read_at?: string | null;
+            /**
+             * Archived At
+             * @description an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it
+             */
+            archived_at?: string | null;
+            /**
+             * Stale At
+             * @description an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph
+             */
+            stale_at?: string | null;
+            /**
+             * Promoted At
+             * @description an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision
+             */
+            promoted_at?: string | null;
+            /**
+             * Promoted Into
+             * @description the shared memory it was promoted into, while it exists
+             */
+            promoted_into?: number | null;
             /** Id */
             id: number;
             /** Scope */
@@ -26053,6 +26752,11 @@ export interface components {
              * @description the login of the person who created it
              */
             owner: string;
+            /**
+             * Agent
+             * @description the handle of the agent profile whose memory it is; else null
+             */
+            agent?: string | null;
             /** Label */
             label: {
                 [key: string]: unknown;
@@ -27618,6 +28322,76 @@ export interface operations {
             };
         };
     };
+    restore_memory_v1_memories__memory_id__restore_post: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Memory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_plans_v1_projects__project__plans_get: {
         parameters: {
             query?: {
@@ -28421,6 +29195,8 @@ export interface operations {
                 limit?: number;
                 /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
                 sink?: string | null;
+                /** @description only the memories of this agent profile (its handle, @ left out); left out, those of no agent */
+                agent?: string | null;
             };
             header?: never;
             path?: never;
@@ -28549,6 +29325,8 @@ export interface operations {
                 limit?: number;
                 /** @description the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone */
                 sink?: string | null;
+                /** @description only the memories of this agent profile (its handle, @ left out); left out, those of no agent */
+                agent?: string | null;
             };
             header?: never;
             path?: never;
@@ -47465,6 +48243,417 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_agent_account_v1_projects__project__agents__handle__accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_agent_account_v1_projects__project__agents__handle__accounts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccountWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_agent_account_v1_projects__project__agents__handle__accounts__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_agent_account_v1_projects__project__agents__handle__accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agent_accounts_v1_projects__project__agents__handle__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_agent_accounts_v1_agent_accounts_get: {
+        parameters: {
+            query?: {
+                /** @description only the agents of this project */
+                project?: string | null;
+                /** @description only the agent of this handle */
+                handle?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListedAgentAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

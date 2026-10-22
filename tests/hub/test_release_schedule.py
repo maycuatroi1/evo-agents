@@ -31,7 +31,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import jobs, releases, runs, tables
 from evo_agents.hub.release_cli import CHECK_KEYS, STATUS_KEYS
-from evo_agents.hub.server.app import create_app, loop_tick
+from evo_agents.hub.server.app import create_app, loop_tick, memory_upkeep
 from evo_agents.hub.server.release_check import fire_release_schedules, release_pass
 from evo_agents.hub.server.release_github import ls_refs, parse_refs
 from evo_agents.hub.worker import queue
@@ -548,7 +548,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker"
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
-    assert handed == [{"release_pass": release_pass, "loop_tick": loop_tick}]
+    assert handed == [{"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}]
 
 
 # From the command line
@@ -664,7 +664,7 @@ def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(wo
     gone = select(*(func.to_regclass(f"public.{name}") for name in pg.RELEASE_TABLES))
     assert sql(db, gone) == [(None,) * len(pg.RELEASE_TABLES)]
     assert sql(db, select(func.count()).select_from(r).where(r.c.kind == "release")) == [(0,)]
-    at_0066 = {key: value for key, value in copy.items() if key not in ("principal_id", "autonomy")}  # of 0102
+    at_0066 = {key: value for key, value in copy.items() if key not in ("principal_id", "autonomy")}  # of 0106
     refused(db, errors.CheckViolation, insert(r).values(**{**at_0066, "state": "cancelled", "finished_at": func.now()}))
     move_to(db, "0067")
     assert sql(db, select(func.count()).select_from(s)) == [(0,)]

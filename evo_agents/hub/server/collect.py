@@ -72,7 +72,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, facet_job, review, runs, tables
 from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, facet_figures, kg_health, product_figures, runtime_figures
+from evo_agents.hub.server import audit, facet_figures, kg_health, memory_promotion, product_figures, runtime_figures
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
@@ -644,8 +644,9 @@ async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, len
 
 async def review_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
-    (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses and
-    the playbook of the Curator."""
+    (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses,
+    the playbook of the Curator, and the agents' memories it may promote (``memory_promotion.for_prompt``)."""
+
     r, c = tables.runs, tables.charters
     row = (
         await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
@@ -664,6 +665,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
     goals = await project_goals.curator_goals(conn, row.project_id, view.project)
     plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
+    memories = await memory_promotion.for_prompt(conn, view.id, row.project_id, row.dispatched_by)
     return review.build_review_prompt(
         view.project,
         row.schedule_night,
@@ -674,6 +676,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         earlier=earlier,
         playbook=playbook,
         plugins=plugins,
+        memories=memories,
     )
 
 

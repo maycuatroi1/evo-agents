@@ -39,7 +39,7 @@ from urllib.parse import urlsplit
 
 SECRET_KINDS = ("env", "git", "forge")  # a variable of the agent's environment, what git asks for, or the hub's own
 LEASED_KINDS = ("env", "git")  # the kinds a run is leased; a forge secret never leaves the hub (FORGE_KIND)
-# The environment an env secret is labelled for (secrets.environment, schema 0103): a run whose K7 is
+# The environment an env secret is labelled for (secrets.environment, schema 0107): a run whose K7 is
 # auto:test_secrets is leased those labelled test (evo_agents.hub.server.lease_autonomy)
 TEST_ENVIRONMENT = "test"
 SECRET_ENVIRONMENTS = (TEST_ENVIRONMENT,)
@@ -155,6 +155,12 @@ def github_repo(origin: str) -> tuple[str, str] | None:
         return None
     parts = url.path.strip("/").split("/")
     return (parts[0], parts[1]) if len(parts) == 2 and all(parts) else None
+
+
+def agent_lease_name(handle: str, name: str) -> str:
+    """The name of the lease of account ``name`` of agent ``handle`` (``@<handle>:<name>``): a secret's name never starts
+    with ``@`` (SECRET_NAME), so it cannot be a member's secret's, and the leases of an answer have distinct names."""
+    return f"@{handle}:{name}"
 
 
 @dataclass(frozen=True)

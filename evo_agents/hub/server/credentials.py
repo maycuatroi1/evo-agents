@@ -37,6 +37,16 @@ names ``github-app`` (a repo it would cover is missing, with the profile as the 
 and version it was handed out under; the credential.lease audit row names them (``profile=@<handle>:v<n>``) unless
 the profile is the project's default.
 
+The accounts of a run's agent (``agent_accounts``; a run under a named profile that is not the project's default,
+never a run of the Curator) win over the dispatcher's, variable by variable: for each variable the agent has a live
+account bound to this worker for (past its end or not), the run is leased one of those, chosen as ``account_choice``
+says by DEFAULT_POLICY, weight and priority, and never a secret of the dispatcher for that variable, whatever the
+profile's credential axis says about it; when every one of them is paused, cooling or past its end, the run is not
+leased the dispatcher's instead (``account_choice`` says why in an event). Every other variable is the dispatcher's as
+above, and on a worker the agent has no account on nothing changes. An account's lease is named ``@<handle>:<name>``
+(``credentials.agent_lease_name``), the audit row names it by id and handle (`` agent-accounts=12@<handle>``), and it
+is opened with the agent's own associated data (``sealing.agent_secret_aad``).
+
 The answer is {leases, missing, repos}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value
 included; each repo of the run with its origin, its path and the project that registered them, which a worker without a
 checkout of it clones from; and for each of the run's repos whose origin nothing covers, the repo, its origin and why:
@@ -76,15 +86,13 @@ value.
 from __future__ import annotations
 
 import logging
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import BigInteger, and_, distinct, exists, func, insert, or_, select, update
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy import and_, exists, func, insert, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, releases, runs, tables
 from evo_agents.hub.access import has_role
@@ -94,6 +102,7 @@ from evo_agents.hub.credentials import (
     LEASED_KINDS,
     RELEASE_ENV_VARS,
     Lease,
+    agent_lease_name,
     github_permissions,
     github_repo,
     github_workflows,
@@ -115,12 +124,19 @@ from evo_agents.hub.server.credential_models import (
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
+from evo_agents.hub.server.lease_ending import (  # noqa: F401  (re-exported: callers read credentials.<name>)
+    drop_expired,
+    end_leases,
+    end_member_leases,
+    revoke_tokens,
+    revoker,
+)
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.repo_origins import RepoOrigin, repo_origins
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
+from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 if TYPE_CHECKING:
@@ -131,7 +147,6 @@ log = logging.getLogger(__name__)
 
 GITHUB_GIT_USERNAME = "x-access-token"  # the user git sends with an installation token, as GitHub documents it
 MAX_TARGET_CHARS = 2000  # credential_leases.target
-REVOKE_BATCH = 500  # GitHub tokens one pass of revoke_tokens takes
 REFRESH = timedelta(seconds=GITHUB_TOKEN_REFRESH_SECONDS)
 NO_KEY = "this hub keeps no secrets and leases nothing: it needs {missing} (docs/credentials.md)"
 NO_APP = "no git secret covers it, and this hub has no GitHub App: {missing} not set (docs/credentials.md)"
@@ -167,6 +182,13 @@ class _Run:
     profile: str | None = None  # its handle
     profile_default: bool = False  # the project's default profile, which the audit leaves unnamed
     credentials: dict | None = None  # its credential axis at that version
+    profile_project_id: int | None = None  # the project of the profile: where its accounts are bound
+
+    @property
+    def agent_owned(self) -> bool:
+        """Whether the run goes under an agent with a name, whose accounts it is leased (see the module): not a run of
+        the Curator, not the project's default profile, which has none."""
+        return self.profile_id is not None and not self.profile_default and self.curator is None
 
     @property
     def target(self) -> str:
@@ -201,6 +223,14 @@ class _Secret:
     sealed: Sealed
     expires_at: datetime | None
     on_worker: bool  # bound to this worker, not to any worker of its owner
+    agent: str | None = None  # the handle of the agent profile that owns it (``agent_accounts``); None: a member's
+    profile_id: int | None = None  # that profile
+
+    @property
+    def lease_name(self) -> str:
+        """The name its lease carries: the secret's, or ``@<handle>:<name>`` for an agent's account, which no secret of a
+        member can have, so no two leases of an answer share a name."""
+        return self.name if self.agent is None else agent_lease_name(self.agent, self.name)
 
 
 @dataclass(frozen=True)
@@ -221,6 +251,8 @@ class _Survey:
     tokens: list[_HeldToken]
     places: dict[str, RepoOrigin] = field(default_factory=dict)  # repo -> where its origin and path come from
     env: list[_Secret] = field(default_factory=list)
+    ended: tuple[str, ...] = ()  # variables whose accounts of the agent all ended: leased from no one
+    leased: dict[str, _Secret] = field(default_factory=dict)  # lease name -> the secret leased under it
     git: dict[str, _Secret] = field(default_factory=dict)  # repo -> the secret that answers for its origin
     github: dict[str, tuple[str, str]] = field(default_factory=dict)  # repo -> (owner, repo) on github.com
     missing: dict[str, str] = field(default_factory=dict)  # repo -> why nothing covers its origin
@@ -270,6 +302,7 @@ def _run_row(run_id: int, *, lock: bool):
             ap.c.handle.label("profile"),
             func.coalesce(ap.c.is_default, False).label("profile_default"),
             credentials.label("credentials"),
+            ap.c.project_id.label("profile_project_id"),
         )
         .join_from(r, projects, projects.c.id == r.c.project_id)
         .join(users, users.c.id == r.c.dispatched_by)
@@ -322,6 +355,32 @@ def _bound_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool
             or_(s.c.expires_at.is_(None), live),
             bound,
         )
+        .order_by(s.c.name)
+    )
+    return statement.with_for_update(read=True, of=s) if lock else statement
+
+
+def _agent_accounts(run: _Run, worker_id: int, *, lock: bool):
+    """The accounts of the run's agent bound to this worker, live (not deleted) and past their end or not, by name. With
+    ``lock`` their rows are shared-locked."""
+    s, b = tables.secrets, tables.secret_bindings
+    bound = exists().where(
+        b.c.secret_id == s.c.id, b.c.project_id == run.profile_project_id, b.c.worker_id == worker_id
+    )
+    statement = (
+        select(
+            s.c.id,
+            s.c.name,
+            s.c.kind,
+            s.c.env_var,
+            s.c.sealed,
+            s.c.nonce,
+            s.c.key_id,
+            s.c.expires_at,
+            s.c.environment,
+            func.coalesce(s.c.expires_at <= func.now(), False).label("ended"),
+        )
+        .where(s.c.profile_id == run.profile_id, s.c.kind == "env", s.c.deleted_at.is_(None), bound)
         .order_by(s.c.name)
     )
     return statement.with_for_update(read=True, of=s) if lock else statement
@@ -395,6 +454,7 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
         profile=row.profile,
         profile_default=row.profile_default,
         credentials=row.credentials,
+        profile_project_id=row.profile_project_id,
     )
 
 
@@ -423,6 +483,17 @@ async def survey_run(
     allowed = _allowed(run.curator)
     k7 = await lease_autonomy.k7(conn, run.id)
     rows = [row for row in rows if _leasable(run, allowed, row)]
+    accounts = []
+    if run.agent_owned:  # its own accounts for the variables it has any for on this worker (the module)
+        accounts = [
+            row
+            for row in await conn.execute(_agent_accounts(run, worker_id, lock=lock))
+            if not run.release or row.env_var in RELEASE_ENV_VARS
+        ]
+    withheld = [row for row in [*rows, *accounts] if not lease_autonomy.secret_allowed(k7, *row_k7(row))]
+    rows = [row for row in rows if lease_autonomy.secret_allowed(k7, *row_k7(row))]
+    accounts = [row for row in accounts if lease_autonomy.secret_allowed(k7, *row_k7(row))]
+    claimed = {row.env_var for row in accounts}
     secrets = [
         _Secret(
             id=row.id,
@@ -436,7 +507,24 @@ async def survey_run(
             on_worker=row.on_worker,
         )
         for row in rows
-        if lease_autonomy.secret_allowed(k7, row.kind, row.env_var, row.environment)
+        if not (row.kind == "env" and row.env_var in claimed)
+    ]
+    secrets += [
+        _Secret(
+            id=row.id,
+            name=row.name,
+            kind=row.kind,
+            env_var=row.env_var,
+            url_prefix=None,
+            username=None,
+            sealed=Sealed(row.sealed, row.nonce, row.key_id),
+            expires_at=row.expires_at,
+            on_worker=True,
+            agent=run.profile,
+            profile_id=run.profile_id,
+        )
+        for row in accounts
+        if not row.ended
     ]
     tokens = [
         _HeldToken(
@@ -449,9 +537,15 @@ async def survey_run(
     ]
     origins = {repo: places[repo].origin if repo in places else None for repo in run.repos}
     survey = _Survey(run, origins, secrets, tokens, places, k7=k7)
-    survey.withheld = [f"env:{row.name}" for row in rows if row.id not in {secret.id for secret in secrets}]
+    survey.withheld = [f"env:{row.name}" for row in withheld]
+    survey.ended = tuple(sorted(claimed - {row.env_var for row in accounts if not row.ended}))
     _choose(survey)
     return worker_id, survey
+
+
+def row_k7(row) -> tuple[str, str | None, str | None]:
+    """(kind, env var, environment) of a secret's row, what K7 reads of it (``lease_autonomy.secret_allowed``)."""
+    return row.kind, row.env_var, row.environment
 
 
 def _allowed(policy: CuratorPolicy | None) -> set[tuple[str, str]] | None:
@@ -515,7 +609,7 @@ def _secret_lease(lease_id: int, secret: _Secret, value: str) -> Lease:
         lease_id,
         secret.kind,
         "secret",
-        secret.name,
+        secret.lease_name,
         env_var=secret.env_var,
         url_prefix=secret.url_prefix,
         username=secret.username,
@@ -550,7 +644,9 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
         cl.c.revoked_at.is_(None),
     )
     held = {(row.secret_id, row.target): row.id for row in await conn.execute(live)}
-    survey.env = await choose_accounts(conn, survey.run, survey.secrets, {secret_id for secret_id, _ in held})
+    survey.env = await choose_accounts(
+        conn, survey.run, survey.secrets, {secret_id for secret_id, _ in held}, survey.ended
+    )
     chosen: list[tuple[_Secret, str]] = [(secret, secret.env_var) for secret in survey.env]
     for secret in dict.fromkeys(survey.git.values()):
         origins = [survey.origins[repo] for repo, found in survey.git.items() if found == secret]
@@ -558,7 +654,12 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
     leases = []
     for secret, target in chosen:
         try:
-            value = sealer.open(secret.sealed, secret_aad(survey.run.owner_id, secret.name, secret.kind))
+            aad = (
+                secret_aad(survey.run.owner_id, secret.name, secret.kind)
+                if secret.agent is None
+                else agent_secret_aad(secret.profile_id, secret.name)
+            )
+            value = sealer.open(secret.sealed, aad)
         except Unsealable as exc:
             log.warning("a secret does not open; it is not leased", extra={"secret": secret.name, "why": str(exc)})
             for repo, found in list(survey.git.items()):
@@ -582,6 +683,7 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
         else:  # a refresh gave the secret a new end: the lease the run holds follows it
             await conn.execute(update(cl).where(cl.c.id == lease_id).values(expires_at=secret.expires_at))
         leases.append(_secret_lease(lease_id, secret, value))
+        survey.leased[secret.lease_name] = secret
     return leases
 
 
@@ -690,7 +792,8 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     ended = {secret.id: secret for secret in survey.secrets}  # with the OAuth accounts whose token has ended
     rejected: set[int] = set()
     if sealer is not None:  # before the leases are recorded: an access token near its end is traded for a new one
-        rejected = await refresh_due(engine, sealer, survey.run.owner_id, survey.secrets)
+        members = [secret for secret in survey.secrets if secret.agent is None]  # an agent's accounts never sign in
+        rejected = await refresh_due(engine, sealer, survey.run.owner_id, members)
     curator = survey.run.curator is not None
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
@@ -720,7 +823,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                         survey.missing[repo] = reasons.get(repo) or (
                             f"GitHub made no token for {'/'.join(survey.github[repo])}; ask again"
                         )
-            target = _lease_target(survey.run, leases, {secret.name: secret.id for secret in survey.secrets})
+            target = _lease_target(survey.run, leases, survey.leased)
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -742,7 +845,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
         "run_id": run_id,
         "worker_id": worker_id,
         "leases": len(leases),
-        "secrets": sorted({lease.name for lease in leases if lease.provider == "secret"}),
+        "secrets": sorted({lease.name for lease in leases if lease.provider == "secret" and lease.name[0] != "@"}),
         "github_tokens": sum(lease.provider == "github-app" for lease in leases),
         "missing": len(missing),
     }
@@ -770,12 +873,19 @@ def _ids(values) -> str:
     return ",".join(str(value) for value in sorted(set(values))) or "-"
 
 
-def _lease_target(run: _Run, leases: list[Lease], secret_ids: dict[str, int]) -> str:
-    """How a credential.lease audit row names an ask: the run, the secrets by id (their names are their owner's, and
-    the audit is read by hub admins), the App's accounts and the repos."""
-    secrets = _ids(secret_ids[lease.name] for lease in leases if lease.provider == "secret")
+def _lease_target(run: _Run, leases: list[Lease], leased: dict[str, _Secret]) -> str:
+    """How a credential.lease audit row names an ask: the run, the secrets of its dispatcher by id (their names are
+    their owner's, and the audit is read by hub admins), the accounts of its agent by id with the agent's handle
+    (`` agent-accounts=12@reviewer``, after the repos, only when there is one), the App's accounts and the repos."""
+    secrets = [leased[lease.name] for lease in leases if lease.provider == "secret"]
+    own = _ids(secret.id for secret in secrets if secret.agent is None)
+    agents = ",".join(
+        f"{secret.id}@{secret.agent}"
+        for secret in sorted((s for s in secrets if s.agent is not None), key=lambda s: s.id)
+    )
     accounts = _names(lease.name.partition(":")[2] for lease in leases if lease.provider == "github-app")
-    return f"{run.target} secrets={secrets} github-app={accounts} repos={_names(run.repos)}{run.profile_text()}"
+    named = f" agent-accounts={agents}" if agents else ""  # the row of a run without one reads as it always did
+    return f"{run.target} secrets={own} github-app={accounts} repos={_names(run.repos)}{named}{run.profile_text()}"
 
 
 # Giving back
@@ -797,172 +907,3 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
     await revoke_tokens(state.engine, state.sealer, revoker(state), run_id=run_id)
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)
-
-
-def _end_leases(run_id: int | None, worker_id: int | None):
-    """One statement: mark revoked the leases not given back yet of run ``run_id`` and of worker ``worker_id`` (either
-    may be None), in a data-modifying CTE, and per run they were of, its project, plan and step, how many leases ended,
-    the secrets among them and how many GitHub tokens."""
-    cl, r, projects = tables.credential_leases, tables.runs, tables.projects
-    ending = update(cl).values(revoked_at=func.greatest(func.now(), cl.c.issued_at)).where(cl.c.revoked_at.is_(None))
-    if run_id is not None:
-        ending = ending.where(cl.c.run_id == run_id)
-    if worker_id is not None:
-        ending = ending.where(cl.c.worker_id == worker_id)
-    ended = ending.returning(cl.c.run_id, cl.c.provider, cl.c.secret_id).cte("ended")
-    secrets = func.array_remove(func.array_agg(distinct(ended.c.secret_id)), None, type_=ARRAY(BigInteger))
-    return (
-        select(
-            ended.c.run_id,
-            r.c.project_id,
-            projects.c.name.label("project"),
-            r.c.plan_id,
-            r.c.step_key,
-            func.count().label("leases"),
-            secrets.label("secrets"),
-            func.count().filter(ended.c.provider == "github-app").label("tokens"),
-        )
-        .join_from(ended, r, r.c.id == ended.c.run_id)
-        .join(projects, projects.c.id == r.c.project_id)
-        .group_by(ended.c.run_id, r.c.project_id, projects.c.name, r.c.plan_id, r.c.step_key)
-        .order_by(ended.c.run_id)
-    )
-
-
-async def end_leases(
-    conn: AsyncConnection,
-    *,
-    run_id: int | None = None,
-    worker_id: int | None = None,
-    actor_id: int | None = None,
-    token_id: int | None = None,
-    by: str,
-) -> int:
-    """Mark revoked, in the caller's transaction, the leases not given back yet of run ``run_id``, of worker
-    ``worker_id``, or of that worker's run, and add a credential.revoke audit row per run naming ``by``; the actor is
-    None for the hub itself. Their GitHub tokens keep their sealed values for ``revoke_tokens``, which revokes them at
-    GitHub once the transaction commits. Returns how many leases were marked."""
-    if run_id is None and worker_id is None:
-        raise ValueError("end_leases needs a run, a worker or both")
-    rows = (await conn.execute(_end_leases(run_id, worker_id))).all()
-    for row in rows:
-        target = (
-            f"{run_target(row.project, row.plan_id, row.step_key, row.run_id)} leases={row.leases} "
-            f"secrets={_ids(row.secrets)} github-app={row.tokens} by={by}"
-        )
-        await audit.record(
-            conn,
-            actor_id=actor_id,
-            token_id=token_id,
-            action=audit.CREDENTIAL_REVOKE,
-            target=target,
-            project_id=row.project_id,
-        )
-    return sum(row.leases for row in rows)
-
-
-async def end_member_leases(
-    conn: AsyncConnection, *, user_id: int, project_id: int, actor_id: int | None, token_id: int | None, by: str
-) -> list[int]:
-    """Mark revoked, in the caller's transaction, every lease still out of the runs member ``user_id`` dispatched in
-    project ``project_id``, as ``end_leases`` does for each run: the member no longer holds writer there. Returns the
-    runs, whose GitHub tokens the caller revokes once the transaction commits (``revoke_tokens``)."""
-    cl, r = tables.credential_leases, tables.runs
-    leased = (
-        select(cl.c.run_id)
-        .distinct()
-        .join_from(cl, r, r.c.id == cl.c.run_id)
-        .where(cl.c.revoked_at.is_(None), r.c.project_id == project_id, r.c.dispatched_by == user_id)
-        .order_by(cl.c.run_id)
-    )
-    run_ids = list((await conn.execute(leased)).scalars())
-    for run_id in run_ids:
-        await end_leases(conn, run_id=run_id, actor_id=actor_id, token_id=token_id, by=by)
-    return run_ids
-
-
-def _pending_tokens(run_id: int | None, worker_id: int | None, batch: int):
-    """The first ``batch`` leases marked revoked that still hold a sealed GitHub token that has not expired, of run
-    ``run_id`` and of worker ``worker_id`` when given."""
-    cl = tables.credential_leases
-    statement = select(cl.c.id).where(
-        cl.c.sealed_value.is_not(None), cl.c.revoked_at.is_not(None), cl.c.expires_at > func.now()
-    )
-    if run_id is not None:
-        statement = statement.where(cl.c.run_id == run_id)
-    if worker_id is not None:
-        statement = statement.where(cl.c.worker_id == worker_id)
-    return statement.order_by(cl.c.id).limit(batch)
-
-
-def _take_token(lease_id: int):
-    """The sealed token of lease ``lease_id``, its row locked, unless another pass holds it or dropped it."""
-    cl = tables.credential_leases
-    return (
-        select(cl.c.sealed_value, cl.c.nonce, cl.c.key_id)
-        .where(cl.c.id == lease_id, cl.c.sealed_value.is_not(None), cl.c.revoked_at.is_not(None))
-        .with_for_update(skip_locked=True)
-    )
-
-
-def _drop_sealed(*where):
-    cl = tables.credential_leases
-    return update(cl).values(sealed_value=None, nonce=None, key_id=None).where(*where)
-
-
-def revoker(state) -> GitHubApp | None:
-    """The client that revokes the leased GitHub tokens: either App's, since a token is revoked with itself."""
-    return state.github_app or getattr(state, "curator_app", None)
-
-
-async def revoke_tokens(
-    engine: AsyncEngine,
-    sealer: Sealer | None,
-    app: GitHubApp | None,
-    *,
-    run_id: int | None = None,
-    worker_id: int | None = None,
-    batch: int = REVOKE_BATCH,
-) -> dict:
-    """Revoke at GitHub the tokens of leases marked revoked that still hold their sealed value and have not expired,
-    of run ``run_id`` or worker ``worker_id`` when given, each in a transaction of its own that holds its row: the
-    sealed value is dropped once GitHub revoked the token or no longer takes it. GitHub failing stops the pass and
-    leaves the rest to the next one; a value that does not open is dropped, and its token ends at its expiry. Returns
-    how many tokens were revoked, already gone, left for later and dropped unopened."""
-    counts: Counter[str] = Counter()
-    if sealer is None or app is None:
-        return {"revoked": 0, "gone": 0, "left": 0, "unopened": 0}
-    cl = tables.credential_leases
-    async with engine.begin() as conn:
-        pending = list((await conn.execute(_pending_tokens(run_id, worker_id, batch))).scalars())
-    for index, lease_id in enumerate(pending):
-        async with engine.begin() as conn:
-            row = (await conn.execute(_take_token(lease_id))).one_or_none()
-            if row is None:  # revoked meanwhile by another pass, or being revoked now
-                continue
-            try:
-                token = sealer.open(Sealed(row.sealed_value, row.nonce, row.key_id), lease_aad(lease_id))
-            except Unsealable as exc:
-                why = {"lease_id": lease_id, "why": str(exc)}
-                log.warning("a leased GitHub token does not open; it ends at its expiry", extra=why)
-                await conn.execute(_drop_sealed(cl.c.id == lease_id))
-                counts["unopened"] += 1
-                continue
-            try:
-                revoked = await app.revoke(token)
-            except GitHubUnavailable as exc:
-                counts["left"] += len(pending) - index
-                log.warning("GitHub tokens left to revoke later", extra={"left": counts["left"], "why": str(exc)})
-                break
-            await conn.execute(_drop_sealed(cl.c.id == lease_id))
-            counts["revoked" if revoked else "gone"] += 1
-    report = {key: counts.get(key, 0) for key in ("revoked", "gone", "left", "unopened")}
-    if pending:
-        log.info("leased GitHub tokens revoked", extra={**report, "run_id": run_id, "worker_id": worker_id})
-    return report
-
-
-async def drop_expired(conn: AsyncConnection) -> int:
-    """Drop the sealed values of the GitHub tokens past their end, which GitHub no longer takes; how many."""
-    cl = tables.credential_leases
-    return (await conn.execute(_drop_sealed(cl.c.sealed_value.is_not(None), cl.c.expires_at <= func.now()))).rowcount

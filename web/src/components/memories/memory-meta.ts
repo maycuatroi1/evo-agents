@@ -75,3 +75,18 @@ export function labelNames(label: Record<string, unknown>): LabelNames {
   return { level: text("level"), location: text("location"), integrity: text("integrity") };
 }
 
+
+/**
+ * Where an agent's memory stands: promoted into a shared memory by the Curator, archived by the daily upkeep (nobody
+ * opened it for 30 days), stale (a path it cites left the graph), else active. A shared memory is always active.
+ */
+export type MemoryStatus = "active" | "stale" | "archived" | "promoted";
+
+type StatusFields = { promoted_at?: string | null; archived_at?: string | null; stale_at?: string | null };
+
+export function memoryStatus(memory: StatusFields): MemoryStatus {
+  if (memory.promoted_at) return "promoted";
+  if (memory.archived_at) return "archived";
+  if (memory.stale_at) return "stale";
+  return "active";
+}
