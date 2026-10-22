@@ -8704,7 +8704,8 @@
     "source": {
       "sent": "Agent gửi",
       "tool": "Từ kết quả tool",
-      "outputs": "Thư mục output"
+      "outputs": "Thư mục output",
+      "attached": "Đính kèm trong tin nhắn"
     },
     "strip": {
       "question": "File của câu hỏi này",
@@ -9075,5 +9076,20 @@
       "srs_reviewer": "Người duyệt SRS",
       "chat_member": "Thành viên của chat"
     }
+  },
+  "attachments": {
+    "attach": "Đính kèm file, tối đa {max}",
+    "list": "File sẽ gửi",
+    "drop": "Thả file vào đây để đính kèm",
+    "progress": "Đang tải lên {name}",
+    "remove": "Bỏ {name}",
+    "retry": "Tải lên lại {name}",
+    "failed": "Tải lên thất bại",
+    "failedBig": "Quá {max}",
+    "failedNetwork": "Không kết nối được hub",
+    "tooBig": "Không đính kèm {names}: mỗi file tối đa {max}.",
+    "tooMany": "Một tin nhắn mang tối đa {max} file: không đính kèm {names}.",
+    "notReady": "Có file chưa tải lên được: hãy tải lại hoặc bỏ file đó rồi gửi.",
+    "files": "File của tin nhắn này"
   }
 }
