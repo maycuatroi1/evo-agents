@@ -17,7 +17,8 @@ an address from these rows, or from GitHub's noreply address, which needs none.
 credential_shares holds each share an owner gave of a secret or an account (``evo_agents.hub.credential_shares``): to
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
-holds the projects each share is for.
+holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
+made for and the share it came under (0101).
 """
 
 from __future__ import annotations
@@ -125,8 +126,9 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
     return accounts, account_policies, run_accounts, email_table(metadata)
 
 
-def share_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """(credential_shares, credential_share_projects), added to ``metadata`` (0100)."""
+def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, Table]:
+    """(credential_shares, credential_share_projects), added to ``metadata`` (0100); the principal and share columns
+    added to ``credential_leases`` (0101)."""
 
     def key(table: str, column: str, target: str, ondelete: str) -> ForeignKeyConstraint:
         return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
@@ -169,4 +171,10 @@ def share_tables(metadata: MetaData) -> tuple[Table, Table]:
         PrimaryKeyConstraint("share_id", "project_id", name="credential_share_projects_pkey"),
         Index("credential_share_projects_project_idx", "project_id"),
     )
+    credential_leases.append_column(Column("principal_id", BigInteger))  # who the lease was made for
+    credential_leases.append_column(Column("share_id", BigInteger))  # the share it came under; null for one's own
+    credential_leases.append_constraint(key("credential_leases", "principal_id", "users", ondelete="SET NULL"))
+    credential_leases.append_constraint(key("credential_leases", "share_id", "credential_shares", ondelete="SET NULL"))
+    leases = credential_leases.c
+    Index("credential_leases_share_idx", leases.share_id, postgresql_where=leases.share_id.is_not(None))
     return shares, projects

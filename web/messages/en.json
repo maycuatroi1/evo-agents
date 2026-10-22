@@ -3978,7 +3978,8 @@
           "worker": "Bound to the worker",
           "charter": "Named by the charter",
           "pool": "From the pool",
-          "cooling": "All cooling: the first to be back"
+          "cooling": "All cooling: the first to be back",
+          "shared": "Shared by another member"
         },
         "gone": "a deleted account",
         "failovers": "{count, plural, =0 {No failover} one {# failover} other {# failovers}}",

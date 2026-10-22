@@ -52,6 +52,7 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.secrets import NO_SECRET, audit_target
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.share_leases import end_share_leases
 from evo_agents.hub.server.share_views import CredentialShare, share_of, share_query
 
 log = logging.getLogger(__name__)
@@ -280,12 +281,13 @@ async def revoke_share(request: Request, share_id: ShareId, user: CurrentUser, r
         if row.revoked_at is not None:
             raise HTTPException(409, f"share {share_id} is revoked already")
         await conn.execute(update(cs).values(revoked_at=func.now(), revoked_by=user.user_id).where(cs.c.id == share_id))
+        ended = await end_share_leases(conn, share_id)  # a lease under way waits on the share's row, then ends here
         by = "owner" if row.owner_id == user.user_id else "admin"
         target = f"share:{share_id} {audit_target(row.secret_id)} by={by}"
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SHARE_REVOKE, target=target
         )
         share = await _share(conn, share_id)
-    log.info("credential share revoked", extra={"share": share_id, "login": user.login, "by": by})
+    log.info("credential share revoked", extra={"share": share_id, "login": user.login, "by": by, "leases": ended})
     response.headers.update(NO_STORE)
     return share

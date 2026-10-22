@@ -5516,7 +5516,8 @@ export interface paths {
         };
         /**
          * Get Account
-         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         * @description The caller's account ``name`` with its figures, or with ``owner`` the one that member shared with the caller;
+         *     404 for a name that is neither.
          */
         get: operations["get_account_v1_accounts__name__get"];
         put?: never;
@@ -7757,6 +7758,11 @@ export interface components {
              * @description its shares not revoked, newest first
              */
             shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
         };
         /** AccountCandidate */
         AccountCandidate: {
@@ -17602,6 +17608,32 @@ export interface components {
              */
             changed: boolean;
         };
+        /** PrincipalCost */
+        PrincipalCost: {
+            /**
+             * Principal
+             * @description the member the runs were made for, by login; null for one now gone
+             */
+            principal: string | null;
+            /** Runs 24H */
+            runs_24h: number;
+            /** Runs 7D */
+            runs_7d: number;
+            /**
+             * Runs Month
+             * @description the runs that took it since the month began, UTC
+             */
+            runs_month: number;
+            /** Cost 24H Usd */
+            cost_24h_usd: number;
+            /** Cost 7D Usd */
+            cost_7d_usd: number;
+            /**
+             * Cost Month Usd
+             * @description what those runs cost since the month began, in USD, an estimate
+             */
+            cost_month_usd: number;
+        };
         /** Problem */
         Problem: {
             /** Path */
@@ -19987,10 +20019,10 @@ export interface components {
             account: string | null;
             /**
              * How
-             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling, shared by another member
              * @enum {string}
              */
-            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            how: "manual" | "worker" | "charter" | "pool" | "cooling" | "shared";
             /**
              * Failovers
              * @description the times the run moved to another account
@@ -46379,7 +46411,10 @@ export interface operations {
     };
     get_account_v1_accounts__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the member who shared the account with the caller; omit for one's own */
+                owner?: string | null;
+            };
             header?: never;
             path: {
                 /** @description one of the caller's env secrets */

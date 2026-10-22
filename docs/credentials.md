@@ -580,6 +580,30 @@ Without the acknowledgement the hub answers 409 with that warning, and the comma
 it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` holding the warning after the row
 `share.create`. Every write adds a `share.` audit row that names the secret by id, never by value.
 
+#### Leasing under a share
+
+A run's principal is the member who dispatched it; each lease records it (`credential_leases.principal_id`, migration
+0101). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
+principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
+must still be bound to the project; a run of the Curator and a release run never take one
+(`evo_agents/hub/server/share_leases.py`).
+
+The principal's own secrets come first: a shared account is taken only when none of their own for the variable is
+ready (`run_accounts.how` is `shared`), and a shared git secret only for an origin none of their own covers. A share
+lends nothing when its owner paused the account or it cools down (the owner's runs go first and may still take it
+cooling), when the highest usage among the windows of its last report whose reset has not passed reaches
+`usage_ceiling_pct` (unknown usage lends), when `max_running` runs hold it, or when this month's cost (UTC) of the
+runs under it plus an estimate for each run still running without a cost and for this one exceeds `budget_usd`. The
+estimate is the mean cost of the share's runs this month, else 1.00 USD, never under 0.01 USD. A run that holds a
+lease under a share keeps it. When a refused share leaves the run with nothing for a variable or origin, a `system`
+event of the run says why, naming the share by id alone.
+
+Revoking a share ends the leases out under it at once; a share that ended or no longer covers a run ends them at the
+run's next ask and on every pass of the reaper. `hub account show NAME --json` carries `cost_by_principal`: per
+member, runs and cost over 24 hours, 7 days and this month. The owner sees every row; a member it was shared with
+reads it with `--owner LOGIN` (`GET /v1/accounts/{name}?owner=LOGIN`) and sees their own row, runs and holders alone.
+The share's `level` is stored only, until the autonomy levels apply it.
+
 ## Plugins
 
 A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).

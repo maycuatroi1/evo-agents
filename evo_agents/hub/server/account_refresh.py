@@ -38,14 +38,15 @@ def is_due(expires_at: datetime | None, now: datetime) -> bool:
     return expires_at is not None and expires_at <= now + REFRESH_WINDOW
 
 
-async def refresh_due(engine: AsyncEngine, sealer: Sealer, owner_id: int, secrets) -> set[int]:
-    """Refresh each of ``secrets`` (env secrets of ``owner_id``) that is an OAuth account whose access token is due;
-    the ids of those whose refresh token the endpoint refused, which now need a new sign-in."""
+async def refresh_due(engine: AsyncEngine, sealer: Sealer, secrets) -> set[int]:
+    """Refresh each of ``secrets`` (env secrets, each with its owner_id: a run's owner's, or one shared with them) that
+    is an OAuth account whose access token is due; the ids of those whose refresh token the endpoint refused, which
+    now need a new sign-in."""
     now = datetime.now(UTC)
     rejected: set[int] = set()
     for secret in secrets:
         if secret.kind == "env" and secret.env_var == OAUTH_ENV_VAR and is_due(secret.expires_at, now):
-            if await _refresh(engine, sealer, owner_id, secret.id) == REJECTED:
+            if await _refresh(engine, sealer, secret.owner_id, secret.id) == REJECTED:
                 rejected.add(secret.id)
     return rejected
 
