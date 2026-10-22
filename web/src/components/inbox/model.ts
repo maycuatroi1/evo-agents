@@ -175,6 +175,13 @@ export function isHubDecision(decision: Pick<Decision, "category">): boolean {
   return (HUB_DECISION_CATEGORIES as readonly string[]).includes(decision.category);
 }
 
+/** The words of the link to the run a decision names: a triage run, a release run, an author run (no plan), a plan's run. */
+export function runLinkWords(decision: Pick<Decision, "category" | "plan_id">) {
+  if (decision.category === "triage") return "triageRunLink" as const;
+  if (decision.category === "release") return "releaseRunLink" as const;
+  return decision.plan_id === null ? ("authorRunLink" as const) : ("runLink" as const);
+}
+
 /** What keeps an answer from going: nothing chosen or written, no option for a decision of the hub's, words too long. */
 export function answerProblem(option: string | null, text: string, hub = false): AnswerProblem {
   if (option === null && text.trim() === "") return "empty";
