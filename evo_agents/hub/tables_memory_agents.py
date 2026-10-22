@@ -16,6 +16,11 @@ The upkeep of an agent's memories (0100, ``evo_agents.hub.server.memory_upkeep``
 of a run last opened it (memory_get), archived_at when the daily job archived it, nobody having opened it for 30 days
 (out of the index and the searches of runs until a writer restores it), and stale_at when the job found that a path it
 cites (code:REPO:PATH) is gone from the project's knowledge graph; all NULL for a memory of no agent.
+
+The Curator's promotion of an agent's memories (0101, ``evo_agents.hub.server.memory_promotion``): memories.promoted_at
+is when an accepted proposal wrote an agent's memory into a shared one, promoted_into that shared memory (NULL once it
+is deleted); memory_revisions.proposal_id names the proposal whose promotion wrote a revision, a plain id kept as
+history.
 """
 
 from __future__ import annotations
@@ -33,6 +38,13 @@ def memory_agent_tables(memories: Table, memory_revisions: Table) -> None:
     memories.append_column(Column("profile_id", BigInteger))
     for stamp in UPKEEP:
         memories.append_column(Column(stamp, DateTime(timezone=True)))
+    memories.append_column(Column("promoted_at", DateTime(timezone=True)))
+    memories.append_column(Column("promoted_into", BigInteger))
+    memories.append_constraint(
+        ForeignKeyConstraint(
+            ["promoted_into"], ["memories.id"], ondelete="SET NULL", name="memories_promoted_into_fkey"
+        )
+    )
     memories.append_constraint(
         ForeignKeyConstraint(
             ["profile_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="memories_profile_id_fkey"
@@ -68,6 +80,7 @@ def memory_agent_tables(memories: Table, memory_revisions: Table) -> None:
         ("hop", SmallInteger),
         ("chat_id", BigInteger),
         ("chat_message_id", BigInteger),
+        ("proposal_id", BigInteger),
     ):
         memory_revisions.append_column(Column(name, kind))
     memory_revisions.append_constraint(

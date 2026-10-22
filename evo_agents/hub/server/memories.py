@@ -895,7 +895,7 @@ class RevisionSummary(BaseModel):
     size: int = Field(description="bytes of the body in UTF-8")
     actor: str = Field(description="the login of who wrote this revision")
     created_at: datetime
-    provenance: Provenance | None = Field(None, description="the run whose agent wrote it; null for no run")
+    provenance: Provenance | None = Field(None, description="the run or the promotion that wrote it; null for neither")
 
 
 class Revisions(BaseModel):

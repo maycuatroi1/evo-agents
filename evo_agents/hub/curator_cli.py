@@ -122,6 +122,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "finding_ids",
     "evidence",
     "plan",
+    "promotion",
     "note",
     "change",
 )

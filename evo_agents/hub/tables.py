@@ -910,6 +910,7 @@ proposals = Table(
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
+    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0101)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
     ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),

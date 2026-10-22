@@ -19,7 +19,8 @@ Fences of a run, each a 403 whose message the agent reads through /mcp:
 - one run writes at most MAX_RUN_WRITES memories; changing one it wrote already is no new one.
 
 Provenance: each revision a run writes records the run, the profile and version it runs under, the person at its
-origin (the run's owner, runs.dispatched_by), its hop, and its chat and chat message (``provenance``).
+origin (the run's owner, runs.dispatched_by), its hop, and its chat and chat message (``provenance``). A revision of
+a shared memory an accepted proposal promoted agents' memories into names the proposal (``memory_promotion``).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from evo_agents.hub.server.security import Principal, RunScope
 
 MAX_RUN_WRITES = 5  # memories one run writes
 NONE, OWN, BOTH = "none", "own", "both"  # the namespaces a read reaches: no agent's, one agent's, or both
-LIVE = "live"  # what a run's agent reaches naming its own namespace: its memories less those archived
+LIVE = "live"  # what a run's agent reaches naming its own namespace: its memories less those archived or promoted
 AGENT_TYPES = ("project", "reference", "feedback")  # what an agent's memory may be
 
 AgentHandle = Annotated[
@@ -51,9 +52,11 @@ AgentHandle = Annotated[
 
 
 class Provenance(BaseModel):
-    """Where a revision came from, when the agent of a run wrote it."""
+    """Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories
+    into it."""
 
-    run: int = Field(description="the run whose agent wrote it")
+    run: int | None = Field(description="the run whose agent wrote it; null for a promotion")
+    proposal: int | None = Field(None, description="the Curator's proposal whose promotion wrote it")
     agent: str | None = Field(description="the handle of the profile the run ran under")
     agent_version: int | None = Field(description="the version of that profile")
     origin: str | None = Field(description="the login of the person at the run's origin, who dispatched it")
@@ -110,10 +113,10 @@ async def reach(
 
 def namespace_condition(namespace: str):
     """The condition on memories.profile_id of a listing or a search reaching ``namespace``, :namespace_id bound. The
-    agent of a run (BOTH, LIVE) reaches none of its memories the daily upkeep archived."""
+    agent of a run (BOTH, LIVE) reaches none of its memories the daily upkeep archived or the Curator promoted."""
     m = tables.memories
     named = m.c.profile_id == bindparam("namespace_id", type_=BigInteger)
-    live = and_(named, m.c.archived_at.is_(None))
+    live = and_(named, m.c.archived_at.is_(None), m.c.promoted_at.is_(None))
     none = m.c.profile_id.is_(None)
     return {NONE: none, OWN: named, LIVE: live, BOTH: or_(none, live)}[namespace]
 
@@ -223,6 +226,7 @@ def provenance(user: Principal) -> dict:
         scope.hop,
         scope.chat_id,
         scope.chat_message_id,
+        None,
     )
     return dict(zip(PARAMETERS, values, strict=True))
 
@@ -236,6 +240,7 @@ COLUMNS = {
     "hop": ("prov_hop", SmallInteger),
     "chat_id": ("prov_chat", BigInteger),
     "chat_message_id": ("prov_message", BigInteger),
+    "proposal_id": ("prov_proposal", BigInteger),
 }
 PARAMETERS = tuple(parameter for parameter, _ in COLUMNS.values())
 
@@ -258,6 +263,7 @@ def provenance_columns():
         r.c.hop.label("prov_hop"),
         r.c.chat_id.label("prov_chat"),
         r.c.chat_message_id.label("prov_message"),
+        r.c.proposal_id.label("prov_proposal"),
     )
 
     def join(source):
@@ -267,9 +273,9 @@ def provenance_columns():
 
 
 def provenance_of(values) -> Provenance | None:
-    """The provenance of a revision row of ``provenance_columns``; None when no run wrote it."""
+    """The provenance of a revision row of ``provenance_columns``; None when neither a run nor a promotion wrote it."""
     v = values._mapping
-    if v["prov_run"] is None:
+    if v["prov_run"] is None and v["prov_proposal"] is None:
         return None
     return Provenance(
         run=v["prov_run"],
@@ -279,4 +285,5 @@ def provenance_of(values) -> Provenance | None:
         hop=v["prov_hop"],
         chat=v["prov_chat"],
         chat_message=v["prov_message"],
+        proposal=v["prov_proposal"],
     )

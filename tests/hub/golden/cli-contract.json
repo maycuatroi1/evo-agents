@@ -3402,6 +3402,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -3480,6 +3481,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -3715,6 +3717,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -3775,6 +3778,7 @@
           "finding_ids",
           "evidence",
           "plan",
+          "promotion",
           "note",
           "change"
         ],
@@ -5237,7 +5241,9 @@
           "updated_by",
           "read_at",
           "archived_at",
-          "stale_at"
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
         ],
         "schema": "Memory"
       }
@@ -5432,7 +5438,9 @@
           "updated_by",
           "read_at",
           "archived_at",
-          "stale_at"
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
         ],
         "schema": "Memory"
       }
@@ -5505,7 +5513,9 @@
           "updated_by",
           "read_at",
           "archived_at",
-          "stale_at"
+          "stale_at",
+          "promoted_at",
+          "promoted_into"
         ],
         "schema": "Memory"
       }
@@ -13015,7 +13025,15 @@
             "--plan-file"
           ],
           "value": "string",
-          "required": true,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--promote-file"
+          ],
+          "value": "string",
+          "required": false,
           "repeatable": false
         },
         {
@@ -65951,7 +65969,8 @@
                 "session",
                 "transcript",
                 "run",
-                "code"
+                "code",
+                "memory"
               ],
               "title": "Kind"
             },
@@ -66099,6 +66118,34 @@
               ],
               "title": "Commit",
               "description": "code: the commit the worktree was at"
+            },
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "memory: a memory of the project"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "memory: one of its revisions"
             }
           },
           "type": "object",
@@ -66596,6 +66643,31 @@
               ],
               "title": "Stale At",
               "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
             },
             "id": {
               "type": "integer",
@@ -69609,7 +69681,8 @@
                 "left_open",
                 "closed",
                 "outcome",
-                "skill_release"
+                "skill_release",
+                "promoted"
               ],
               "title": "Action"
             },
@@ -71161,6 +71234,31 @@
               "title": "Stale At",
               "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
             },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -71425,7 +71523,7 @@
                   "type": "null"
                 }
               ],
-              "description": "the run whose agent wrote it; null for no run"
+              "description": "the run or the promotion that wrote it; null for neither"
             },
             "memory_id": {
               "type": "integer",
@@ -78945,6 +79043,106 @@
           ],
           "title": "ProjectToolStats"
         },
+        "PromotionIn": {
+          "properties": {
+            "target": {
+              "$ref": "#/components/schemas/PromotionTarget"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 262144,
+              "minLength": 1,
+              "title": "Body",
+              "description": "the whole memory after the merge"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "body"
+          ],
+          "title": "PromotionIn",
+          "description": "What a proposal of kind memory promotes: its sources are its evidence naming agents' memories."
+        },
+        "PromotionTarget": {
+          "properties": {
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "a shared memory of the project to merge into"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision",
+              "description": "its current revision"
+            },
+            "location": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location",
+              "description": "a new one: harness or a repo"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "a new one: its file name, ending in .md"
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "project",
+                    "reference"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type",
+              "description": "a new one: project or reference"
+            }
+          },
+          "type": "object",
+          "title": "PromotionTarget",
+          "description": "The shared memory a promotion writes: one of the project by id and current revision, or a new one."
+        },
         "Proposal": {
           "properties": {
             "id": {
@@ -79133,7 +79331,20 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Plan",
-              "description": "the draft plan"
+              "description": "the draft plan; empty for a promotion"
+            },
+            "promotion": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promotion",
+              "description": "kind memory: what it promotes, and the shared memory it wrote"
             },
             "note": {
               "anyOf": [
@@ -79369,18 +79580,35 @@
               "title": "Evidence"
             },
             "plan": {
-              "additionalProperties": true,
-              "type": "object",
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Plan",
-              "description": "the draft plan: plan.schema.json, in outcome steps"
+              "description": "the draft plan: plan.schema.json, in outcome steps; none to promote"
+            },
+            "promotion": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PromotionIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind memory: in place of a plan"
             }
           },
           "type": "object",
           "required": [
             "lens",
             "kind",
-            "title",
-            "plan"
+            "title"
           ],
           "title": "ProposalIn"
         },
@@ -79599,9 +79827,28 @@
         "Provenance": {
           "properties": {
             "run": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Run",
-              "description": "the run whose agent wrote it"
+              "description": "the run whose agent wrote it; null for a promotion"
+            },
+            "proposal": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal",
+              "description": "the Curator's proposal whose promotion wrote it"
             },
             "agent": {
               "anyOf": [
@@ -79687,7 +79934,7 @@
             "chat_message"
           ],
           "title": "Provenance",
-          "description": "Where a revision came from, when the agent of a run wrote it."
+          "description": "Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories\ninto it."
         },
         "PruneRequest": {
           "properties": {
@@ -82878,7 +83125,7 @@
                   "type": "null"
                 }
               ],
-              "description": "the run whose agent wrote it; null for no run"
+              "description": "the run or the promotion that wrote it; null for neither"
             }
           },
           "type": "object",
@@ -97182,6 +97429,31 @@
               ],
               "title": "Stale At",
               "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
+            "promoted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted At",
+              "description": "an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out of the index and the searches of runs from then on, until a new revision"
+            },
+            "promoted_into": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Promoted Into",
+              "description": "the shared memory it was promoted into, while it exists"
             },
             "id": {
               "type": "integer",

@@ -198,6 +198,7 @@ def test_every_memory_revision_a_run_writes_records_its_provenance(hub, agents):
     version = live.sql(hub.db, select(tables.runs.c.profile_version).where(tables.runs.c.id == run_id))[0][0]
     assert revision["provenance"] == {
         "run": run_id,
+        "proposal": None,  # no promotion wrote it (test_memory_promotion)
         "agent": "scout",
         "agent_version": version,
         "origin": "alice",

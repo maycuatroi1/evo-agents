@@ -15,7 +15,8 @@ writer of its project restores it (POST /v1/memories/{id}/restore, ``evo-agents 
 memory that cites code as the Reviewer's evidence does (``code:REPO:PATH[:LINE]``, ``review.parse_evidence``) is stale
 while the project's latest knowledge graph has no file at one of those paths, read as the person who owns the memory
 (``change_tiers.impact_as_owner``); a project without a graph, or whose graph cannot be read now, keeps the marks it
-had.
+had. A memory the Curator promoted into a shared one (``memory_promotion``) is out of the index, and the job leaves it
+alone.
 """
 
 from __future__ import annotations
@@ -84,6 +85,7 @@ _INDEXED = (
         tables.memories.c.profile_id == bindparam("profile_id", type_=BigInteger),
         ~tables.memories.c.deleted,
         tables.memories.c.archived_at.is_(None),
+        tables.memories.c.promoted_at.is_(None),
     )
     .order_by(tables.memories.c.updated_at.desc(), tables.memories.c.id.desc())
     .limit(INDEX_ROWS)
@@ -143,7 +145,11 @@ def citations(body: str) -> set[str]:
     return found
 
 
-_LIVE = (tables.memories.c.profile_id.is_not(None), ~tables.memories.c.deleted)  # the memories of agents, not deleted
+_LIVE = (
+    tables.memories.c.profile_id.is_not(None),
+    ~tables.memories.c.deleted,
+    tables.memories.c.promoted_at.is_(None),
+)  # the memories of agents, neither deleted nor promoted
 
 _ARCHIVED = (
     update(tables.memories)

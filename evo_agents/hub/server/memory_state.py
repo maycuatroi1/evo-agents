@@ -1,10 +1,11 @@
 """What a memory shows of its upkeep (plan agent-profile-workspace, criterion a3), for ``evo_agents.hub.server.memories``:
-when the agent of a run last opened it, when the daily job archived it, and when that job found it stale
-(``evo_agents.hub.server.memory_upkeep``). The three are an agent's memory's alone; a memory of no agent shows none.
+when the agent of a run last opened it, when the daily job archived it, when that job found it stale
+(``evo_agents.hub.server.memory_upkeep``), and when the Curator promoted it into which shared memory
+(``evo_agents.hub.server.memory_promotion``). They are an agent's memory's alone; a memory of no agent shows none.
 
 The agent of a run opening an agent's memory with memory_get counts as a read (``opened``); a memory listed in the
-index of a prompt, or found by a search, does not. A new revision of a memory, whoever writes it, clears its archive and
-its stale mark (``FRESH``): the job reads it again the next day.
+index of a prompt, or found by a search, does not. A new revision of a memory, whoever writes it, clears its archive,
+its stale mark and its promotion (``FRESH``): the job reads it again the next day, and the next review considers it.
 """
 
 from __future__ import annotations
@@ -29,15 +30,21 @@ class MemoryState(BaseModel):
     stale_at: datetime | None = Field(
         None, description="an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
     )
+    promoted_at: datetime | None = Field(
+        None,
+        description="an agent's memory: when an accepted proposal of the Curator promoted it into a shared memory; out "
+        "of the index and the searches of runs from then on, until a new revision",
+    )
+    promoted_into: int | None = Field(None, description="the shared memory it was promoted into, while it exists")
 
 
 def columns() -> tuple:
     """The columns of memories a MemoryState shows."""
     m = tables.memories
-    return m.c.read_at, m.c.archived_at, m.c.stale_at
+    return m.c.read_at, m.c.archived_at, m.c.stale_at, m.c.promoted_at, m.c.promoted_into
 
 
-FRESH = {"archived_at": None, "stale_at": None}  # what a new revision sets
+FRESH = {"archived_at": None, "stale_at": None, "promoted_at": None, "promoted_into": None}  # what a new revision sets
 
 _OPENED = (
     update(tables.memories)
