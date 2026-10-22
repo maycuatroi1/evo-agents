@@ -47,8 +47,15 @@ async def person_audience(conn: AsyncConnection, user_id: int) -> frozenset[str]
 async def reader_audience(conn: AsyncConnection, user: Principal) -> frozenset[str]:
     """The audience ``user`` reads a knowledge graph with now: its person's, or for the agent of a chat run, what both
     people the run is cleared for hold."""
-    people = [user.user_id]
-    if user.scope is not None and user.scope.kind == CHAT_RUN:
-        people = await run_clearers(conn, user.scope.run_id) or people
+    scope = user.scope
+    return await agent_audience(conn, user.user_id, scope.run_id if scope else None, scope.kind if scope else None)
+
+
+async def agent_audience(conn: AsyncConnection, owner_id: int, run_id: int | None, kind: str | None) -> frozenset[str]:
+    """The audience the agent of run ``run_id`` of ``kind``, owned by ``owner_id``, reads with now: what both people a
+    chat run is cleared for hold, else its owner's; the owner's alone without a run."""
+    people = [owner_id]
+    if run_id is not None and kind == CHAT_RUN:
+        people = await run_clearers(conn, run_id) or people
     audiences = [await person_audience(conn, person) for person in people]
     return frozenset.intersection(*audiences)
