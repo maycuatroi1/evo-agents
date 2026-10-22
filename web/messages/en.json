@@ -5169,6 +5169,7 @@
       "answerText": "In their words:",
       "delivered": "The agent got the answer",
       "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
+      "hubTook": "The hub did what the answer chose.",
       "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
       "onlyOwner": "Only {owner}, who dispatched run #{run}, can answer this decision.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",
@@ -5184,7 +5185,9 @@
       "authorRunLink": "Author run #{id}",
       "authorRun": "author run #{id}",
       "triageRunLink": "Triage run #{id}",
-      "triageRun": "triage run #{id}"
+      "releaseRunLink": "Release run #{id}",
+      "triageRun": "triage run #{id}",
+      "releaseRun": "release run #{id}"
     },
     "answer": {
       "title": "Answer decision #{id}",
@@ -5206,10 +5209,13 @@
       "failed": "Couldn't send the answer",
       "legend": "Your answer",
       "note": "Note for the agent (optional)",
+      "hubNote": "Note (optional)",
       "notePlaceholder": "Add a note for the agent",
       "textPlaceholder": "Write your answer for the agent",
+      "hubPlaceholder": "Kept with the answer",
       "foot": "The agent continues as soon as you answer.",
       "footParked": "The run resumes on the same worker as soon as you answer.",
+      "footHub": "The hub does what the option says as soon as you answer.",
       "takeOver": "Take over",
       "takeOverLabel": "Take over run #{run} in the terminal"
     },
