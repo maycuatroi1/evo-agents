@@ -1,7 +1,9 @@
 """What a run may reach: the leases it takes for its repos, and the preflight that checks them before its agent starts.
 
-Once its leases are taken, a run clones each of its repos this worker has no checkout of (``clones``). Then, before
-anything is fetched or the agent starts, it checks what it needs
+Once its leases are taken, a run clones each of its repos this worker has no checkout of (``clones``). A best-effort
+repo (each repo of a task run or a chat run, an author run's but its harness) the run still has no checkout of, or
+that the project lists no origin for, is left out of it, noted and named in its prompt (``leaves_out``); the run goes
+on without it. Then, before anything is fetched or the agent starts, it checks what it needs
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
 pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
 claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
@@ -63,6 +65,39 @@ async def take_credentials(
     origins = {name: urls for name, urls in zip(names, found, strict=True) if urls is not None}
     await run.credentials.take(run.daemon.hub, origins, stop=run.daemon.hard_stop)
     await clones.ensure(run, names if clone is None else repo_names(clone), best_effort=best_effort)
+
+
+def leaves_out(run: Run, name: str) -> str | None:
+    """Why a best-effort repo ``name`` of the run (a task run's, a chat run's, an author run's but its harness) is left
+    out of it, as the run goes on without it: this worker has no checkout of it (``clones.ensure`` could not set one
+    up), or the project lists no origin for it, so no credential is leased for it. None when the run works in it. A
+    required repo is never left out: the preflight fails on it (``check``)."""
+    if run.daemon.checkout_for(run.project, name) is None:
+        return "checkout"
+    if name in run.credentials.unlisted:
+        return "origin"
+    return None
+
+
+def left_out_notes(run: Run, missing: list[str], unlisted: list[str]) -> None:
+    """Note the best-effort repos the run goes on without, by why (``leaves_out``)."""
+    if missing:
+        run.note(f"No checkout of {', '.join(missing)} on this worker: the agent works without them.")
+    if unlisted:
+        run.note(
+            f"Project {run.project} lists no origin for {', '.join(unlisted)}, so no credential is leased for them: "
+            "the agent works without them."
+        )
+
+
+def left_out_lines(missing: list[str], unlisted: list[str]) -> list[str]:
+    """What a run's prompt adds of the best-effort repos it goes on without."""
+    extra = []
+    if missing:
+        extra += ["", f"Repos of the project this worker has no checkout of: {', '.join(missing)}."]
+    if unlisted:
+        extra += ["", f"Repos of the project it lists no origin for, left out of this run: {', '.join(unlisted)}."]
+    return extra
 
 
 def run_path(run: Run) -> str | None:

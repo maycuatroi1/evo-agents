@@ -235,6 +235,47 @@ def test_preflight_an_author_run_whose_harness_has_no_origin_fails_with_that_cau
     assert "beta" not in run["error"], "beta has its origin"
 
 
+def test_preflight_a_task_run_goes_on_without_a_repo_the_project_lists_no_origin_for(machine):  # noqa: F811
+    """A task run's repos are best effort: one the project lists no origin for is left out of the run, as one with no
+    checkout here is, rather than failing its preflight; a plan run's repo still fails it (above)."""
+    machine.scenarios({"task": [{"sh": "ls"}, {"say": "Looked."}]})
+    found = {}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha", "beta"])
+        missing = {"repo": "beta", "origin": None, "reason": "project demo lists no origin for beta"}
+        hub.leases[run_id] = {"leases": [], "missing": [missing]}
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    texts = hub.texts(run_id)
+    left = "Project demo lists no origin for beta, so no credential is leased for them: the agent works without them."
+    assert left in texts and "Preflight passed: 1 repo(s)." in texts
+    (listed,) = [entry for entry in machine.commands() if entry["run"] == run_id]
+    assert listed["stdout"].split() == ["alpha"], "no worktree of beta"
+    (start,) = machine.starts()
+    assert start["prompt"].endswith("Repos of the project it lists no origin for, left out of this run: beta.\n")
+
+
+def test_preflight_an_author_run_goes_on_without_a_repo_other_than_its_harness_without_origin(machine):  # noqa: F811
+    found = {}
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha", "beta"], [ticket])
+        missing = {"repo": "beta", "origin": None, "reason": "project demo lists no origin for beta"}
+        hub.leases[run_id] = {"leases": [], "missing": [missing]}
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    texts = found["hub"].texts(found["run"])
+    left = "Project demo lists no origin for beta, so no credential is leased for them: the agent works without them."
+    assert left in texts and "Preflight passed: 1 repo(s)." in texts
+
+
 @pytest.fixture
 def hermetic(machine):  # noqa: F811
     """The machine with no credential of its own: git reads no global or system configuration."""
