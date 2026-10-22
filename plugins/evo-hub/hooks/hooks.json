@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook session-start || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook session-start || true",
             "timeout": 30
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook stop || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook stop || true",
             "timeout": 25
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook post-tool-use || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook post-tool-use || true",
             "timeout": 10
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook local-tool || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook local-tool || true",
             "timeout": 15
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook user-prompt || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook user-prompt || true",
             "timeout": 20
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook session-end || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook session-end || true",
             "timeout": 20
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.33.2 evo-agents hub hook local-ask || true",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.34.0 evo-agents hub hook local-ask || true",
             "timeout": 15
           }
         ]
