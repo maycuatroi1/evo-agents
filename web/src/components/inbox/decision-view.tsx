@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, CircleCheck, Clock, Eraser, Terminal } from "lucide-react";
+import { ChevronDown, CircleCheck, Eraser, Terminal } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 
 import { answerNotice } from "./answer-notice";
 import { DecisionCategoryBadge } from "./badges";
-import { ClosedNote, DecisionFiles, NoFormNote } from "./decision-notes";
+import { ClosedNote, DecisionFiles, DeliveryNote, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
 import {
@@ -35,6 +35,7 @@ import {
   answerBody,
   answerProblem,
   isHubDecision,
+  runLinkWords,
   type AnswerProblem,
   chosenOption,
   initialOption,
@@ -107,7 +108,7 @@ export function DecisionWhere({ decision, link, className }: { decision: Decisio
       <span className="font-mono">{decision.project}</span>
       {" / "}
       {decision.plan_id === null ? (
-        <span data-testid="decision-run-title">{title ?? t(decision.category === "triage" ? "triageRun" : "authorRun", { id: decision.run_id })}</span>
+        <span data-testid="decision-run-title">{title ?? t(decision.category === "triage" ? "triageRun" : decision.category === "release" ? "releaseRun" : "authorRun", { id: decision.run_id })}</span>
       ) : (
         <>
           <Link href={planHref(decision.project, decision.plan_id)} className={cn(link, "font-mono font-normal")} data-testid="decision-plan-link">
@@ -148,7 +149,7 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
       {where === "inbox" ? (
         <>
           <Link href={runHref(decision.project, decision.run_id)} className={cn(HEAD_LINK, "tabular-nums")} data-testid="decision-run-link">
-            {decision.category === "triage" ? t("triageRunLink", { id: decision.run_id }) : decision.plan_id === null ? t("authorRunLink", { id: decision.run_id }) : t("runLink", { id: decision.run_id })}
+            {t(runLinkWords(decision), { id: decision.run_id })}
           </Link>
           <DecisionWhere decision={decision} link={HEAD_LINK} className="min-w-0" />
         </>
@@ -254,21 +255,7 @@ export function AnswerSummary({ decision }: { decision: Decision }) {
           <Prose className="max-w-none">{decision.answer_text}</Prose>
         </div>
       ) : null}
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="decision-delivery" data-delivered={decision.delivered_at ? "true" : "false"}>
-        {decision.delivered_at ? (
-          <>
-            <CircleCheck className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-            <span>
-              {t("delivered")} <Ago value={decision.delivered_at} never="-" />
-            </span>
-          </>
-        ) : (
-          <>
-            <Clock className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-            <span>{t("notDelivered")}</span>
-          </>
-        )}
-      </p>
+      <DeliveryNote decision={decision} when={<Ago value={decision.delivered_at} never="-" />} />
       {resumed !== null ? (
         <p className="text-sm text-pretty" data-testid="decision-resumed">
           {t.rich("resumed", {
@@ -432,13 +419,13 @@ export function AnswerFields({ form, screen = false }: { form: AnswerFormState; 
       </fieldset>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-text`} className={cn("font-medium text-muted-foreground", screen ? "text-sm" : "text-xs")}>
-          {option !== null ? t("note") : t("text")}
+          {isHubDecision(form.decision) ? t("hubNote") : option !== null ? t("note") : t("text")}
         </Label>
         <Textarea
           id={`${ids}-text`}
           value={form.text}
           rows={3}
-          placeholder={option !== null ? t("notePlaceholder") : t("textPlaceholder")}
+          placeholder={isHubDecision(form.decision) ? t("hubPlaceholder") : option !== null ? t("notePlaceholder") : t("textPlaceholder")}
           onChange={(event) => form.write(event.target.value)}
           className={cn(
             "max-h-64 resize-y",
@@ -472,7 +459,7 @@ export function AnswerHint({ form, className }: { form: AnswerFormState; classNa
   const t = useTranslations("inbox.answer");
   return (
     <p className={cn("text-xs text-pretty text-fg-subtle", className)} data-testid="decision-form-hint">
-      {form.parked ? t("footParked") : t("foot")}
+      {isHubDecision(form.decision) ? t("footHub") : form.parked ? t("footParked") : t("foot")}
     </p>
   );
 }
