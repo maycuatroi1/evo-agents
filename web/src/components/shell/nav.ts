@@ -4,6 +4,7 @@ import {
   BookOpen,
   Bot,
   Brain,
+  Building2,
   ChartColumn,
   FolderKanban,
   GitMerge,
@@ -35,7 +36,7 @@ import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
 /**
  * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas, then the pages
  * its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide areas
- * (chats, workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
+ * (chats, org chart, workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
  * the Iconography table of web/DESIGN.md. An item that names a `feature` leaves the sidebar and the palette while a
  * hub admin has that feature off, for the hub or for the project shown.
@@ -57,6 +58,7 @@ export type NavLabel =
   | "releases"
   | "agents"
   | "chats"
+  | "org"
   | "memories"
   | "skills"
   | "kg"
@@ -123,6 +125,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
 
 export const HUB_NAV: readonly HubNavItem[] = [
   { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats", feature: "chats" },
+  { label: "org", icon: Building2, href: "/org" },
   { label: "workers", icon: Server, href: "/workers" },
   { label: "secrets", icon: LockKeyhole, href: "/secrets" },
   { label: "accounts", icon: UserRoundCog, href: "/accounts" },
