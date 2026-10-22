@@ -2868,7 +2868,7 @@
       "sending": "Sending",
       "send": "Send",
       "keys": "Enter sends, Shift Enter adds a line.",
-      "blank": "Write something first.",
+      "blank": "Write something or attach a file first.",
       "long": "A message is at most {max} bytes of UTF-8.",
       "mention": {
         "label": "Agents, projects and people to mention",
@@ -2881,7 +2881,20 @@
         }
       },
       "replying": "Replying to {name}",
-      "cancelReply": "Cancel the reply"
+      "cancelReply": "Cancel the reply",
+      "files": {
+        "attach": "Attach files",
+        "label": "Files to send",
+        "remove": "Remove {name}",
+        "uploading": "Uploading",
+        "drop": "Drop the files to attach them",
+        "wait": "Wait until the files are uploaded",
+        "failed": "A file could not be uploaded: remove it or attach it again.",
+        "tooBig": "{names}: a file is at most {max}.",
+        "tooBigOne": "Over {max}",
+        "empty": "{names}: the file is empty.",
+        "tooMany": "A message carries at most {max} files: {count, plural, one {# file was} other {# files were}} left out."
+      }
     },
     "thread": {
       "title": "Thread",
@@ -8614,14 +8627,16 @@
     "source": {
       "sent": "Sent by the agent",
       "tool": "From a tool's result",
-      "outputs": "Output folder"
+      "outputs": "Output folder",
+      "attached": "Attached to the message"
     },
     "strip": {
       "question": "Files of this question",
       "message": "Files of this message",
       "notice": "Files of this notice",
       "calls": "Files of these calls",
-      "recorded": "Files the hub recorded"
+      "recorded": "Files the hub recorded",
+      "attached": "Files attached to this message"
     },
     "viewer": {
       "kind": {

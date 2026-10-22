@@ -7,7 +7,7 @@ import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { baseName, downloadHref, type RunOutput } from "@/lib/outputs";
+import { baseName, downloadHref, type ShownFile } from "@/lib/outputs";
 
 import { SafeMarkdown } from "./markdown";
 import { OutputView, ZOOMS } from "./output-views";
@@ -23,12 +23,12 @@ import { SOURCE_ICON } from "./output-source";
  * under 640 px. Loaded on demand (`next/dynamic`), so a page that never opens a file carries none of it.
  */
 export type OutputViewerProps = {
-  outputs: readonly RunOutput[];
+  outputs: readonly ShownFile[];
   /** The output shown; null closes the viewer. An id the list no longer holds (deleted) closes it too. */
   openId: number | null;
   onOpenChange: (id: number | null) => void;
   /** What the surface adds for the output shown; `show` moves the viewer to another output, or closes it (null). */
-  actions?: (output: RunOutput, show: (id: number | null) => void) => ReactNode;
+  actions?: (output: ShownFile, show: (id: number | null) => void) => ReactNode;
   /** What takes focus once the viewer closes: the button that opened it, when it is still on the page. */
   returnFocus?: () => HTMLElement | null;
 };
@@ -45,7 +45,7 @@ export function OutputViewer({ outputs, openId, onOpenChange, actions, returnFoc
   const phone = useIsMobile();
   const index = openId === null ? -1 : outputs.findIndex((output) => output.id === openId);
   // What the dialog shows while it closes: the last output it showed.
-  const [last, setLast] = useState<RunOutput | null>(null);
+  const [last, setLast] = useState<ShownFile | null>(null);
   const current = index >= 0 ? outputs[index] : null;
   if (current && current !== last) setLast(current);
   const output = current ?? last;

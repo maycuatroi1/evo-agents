@@ -24,6 +24,8 @@ from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.agent_profiles import icon_url
 from evo_agents.hub.server.chat_access import ChatAccess, LabelReader
+from evo_agents.hub.server.chat_file_views import ChatFile
+from evo_agents.hub.server.chat_file_views import by_message as files_by_message
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.output_views import by_message as outputs_by_message
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
@@ -131,6 +133,10 @@ class GroupMessage(BaseModel):
     outputs: list[RunOutput] = Field(
         default_factory=list,
         description="the files of its run it carries, oldest first, each with the chat's URL of its bytes",
+    )
+    files: list[ChatFile] = Field(
+        default_factory=list,
+        description="the files its person attached, in the order they were uploaded, each with the chat's URL of its bytes",
     )
 
 
@@ -437,6 +443,7 @@ async def messages_view(
     reactions = await _reactions(conn, ids, reader.user_id)
     replies = await _reply_counts(conn, ids)
     files = await _outputs(conn, shown)
+    attached = await files_by_message(conn, [row.id for row in shown if row.author_user_id is not None])
     return [
         GroupMessage(
             id=row.id,
@@ -453,6 +460,7 @@ async def messages_view(
             created_at=row.created_at,
             progress=(progress or {}).get(row.id, []),
             outputs=files.get(row.id, []),
+            files=attached.get(row.id, []),
         )
         for row in shown
     ]

@@ -2384,7 +2384,8 @@
           "label",
           "created_at",
           "progress",
-          "outputs"
+          "outputs",
+          "files"
         ],
         "schema": "GroupMessage"
       }
@@ -2448,7 +2449,8 @@
           "label",
           "created_at",
           "progress",
-          "outputs"
+          "outputs",
+          "files"
         ],
         "schema": "GroupMessage"
       }
@@ -13171,6 +13173,28 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker chat file": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--out"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -48971,6 +48995,302 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/files": {
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Upload File",
+          "description": "Upload a file to attach to a message of the chat: the request's body is the file. The message that names it in\n``file_ids`` carries it.",
+          "operationId": "upload_file_v1_chats__chat_id__files_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "name",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "the file's name",
+                "title": "Name"
+              },
+              "description": "the file's name"
+            },
+            {
+              "name": "content-type",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the file's media type",
+                "title": "Content-Type"
+              },
+              "description": "the file's media type"
+            },
+            {
+              "name": "content-length",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the file's size in bytes",
+                "title": "Content-Length"
+              },
+              "description": "the file's size in bytes"
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatFile"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/files/{file_id}/content": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "File Content",
+          "description": "The bytes of a file a message of the chat carries, for a member who reads that message.",
+          "operationId": "file_content_v1_chats__chat_id__files__file_id__content_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "file_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "File Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "answer it as an attachment, which a browser saves",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "answer it as an attachment, which a browser saves"
+            },
+            {
+              "name": "Range",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one byte range, bytes=first-last",
+                "title": "Range"
+              },
+              "description": "one byte range, bytes=first-last"
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the bytes the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the bytes the browser holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the output's bytes, in its own media type",
+              "content": {
+                "application/octet-stream": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "206": {
+              "content": {
+                "application/octet-stream": {}
+              },
+              "description": "the byte range asked for"
+            },
+            "304": {
+              "description": "the bytes the browser holds, named by If-None-Match, are the output's"
+            },
+            "416": {
+              "description": "the range asked for lies outside the output"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
@@ -49778,6 +50098,92 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ChatReading"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/files/{file_id}": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "File Link",
+          "description": "A presigned GET of a file a person attached to a chat message, for the agent of the run when it may read that\nmessage (as ``read`` rules), behind ``evo-agents worker chat file``.",
+          "operationId": "file_link_v1_worker_runs__run_id__chat_files__file_id__post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "file_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "File Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentFileLink"
                   }
                 }
               }
@@ -57734,6 +58140,61 @@
           "title": "AgentEdit",
           "description": "What to change; a field left out stays as it is."
         },
+        "AgentFileLink": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "a presigned GET of the bytes, working until expires_at"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "chat_id",
+            "message_id",
+            "name",
+            "media_type",
+            "size",
+            "sha256",
+            "url",
+            "expires_at"
+          ],
+          "title": "AgentFileLink"
+        },
         "AgentHanded": {
           "properties": {
             "message": {
@@ -64322,6 +64783,82 @@
           ],
           "title": "ChatEvents"
         },
+        "ChatFile": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "the file's name, as its uploader's browser named it"
+            },
+            "media_type": {
+              "type": "string",
+              "title": "Media Type",
+              "description": "type/subtype, as the uploader's browser named it"
+            },
+            "viewer": {
+              "type": "string",
+              "enum": [
+                "image",
+                "video",
+                "audio",
+                "pdf",
+                "text",
+                "html",
+                "none"
+              ],
+              "title": "Viewer",
+              "description": "what the web opens it with; none offers a download only"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "bytes"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "uploaded_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Uploaded By",
+              "description": "the login of the member who uploaded it; null once they are gone"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "where this hub answers its bytes to the chat's members; ?download=true to save it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "media_type",
+            "viewer",
+            "size",
+            "sha256",
+            "uploaded_by",
+            "created_at",
+            "url"
+          ],
+          "title": "ChatFile"
+        },
         "ChatImageChange": {
           "properties": {
             "image_url": {
@@ -64574,9 +65111,9 @@
           "properties": {
             "body": {
               "type": "string",
-              "minLength": 1,
               "title": "Body",
-              "description": "at most 16384 bytes of UTF-8"
+              "description": "at most 16384 bytes of UTF-8; blank only with files",
+              "default": ""
             },
             "reply_to": {
               "anyOf": [
@@ -64591,12 +65128,20 @@
               ],
               "title": "Reply To",
               "description": "the message it answers: it goes in its thread"
+            },
+            "file_ids": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "File Ids",
+              "description": "the files it carries, each uploaded to the chat by the sender (POST .../files) and not sent yet"
             }
           },
           "type": "object",
-          "required": [
-            "body"
-          ],
           "title": "ChatMessageIn"
         },
         "ChatPage": {
@@ -68801,6 +69346,14 @@
               "type": "array",
               "title": "Outputs",
               "description": "the files of its run it carries, oldest first, each with the chat's URL of its bytes"
+            },
+            "files": {
+              "items": {
+                "$ref": "#/components/schemas/ChatFile"
+              },
+              "type": "array",
+              "title": "Files",
+              "description": "the files its person attached, in the order they were uploaded, each with the chat's URL of its bytes"
             }
           },
           "type": "object",
@@ -82527,6 +83080,15 @@
             "body": {
               "type": "string",
               "title": "Body"
+            },
+            "files": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Files",
+              "description": "the files its person attached: id, name, media_type and size of each"
             }
           },
           "type": "object",

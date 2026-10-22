@@ -286,7 +286,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A claim's edit, undo of a rev, compared revs, a conflict at an old rev; @strategist's judgings | `PencilLine`, `Undo2`, `GitCompareArrows`, `GitMerge`; `Scale` |
 | Signals, a project's measures and feedback; a key of kind number, of kind feedback; a series over time | `RadioTower`; `Hash`, `MessageSquareQuote`; `ChartLine` |
 | A run's outputs: the Outputs tab, its preview on a phone, the notice run_outputs | `Images` |
-| An output's source: sent by the agent, a tool's result, the run's output folder | `Paperclip`, `Wrench`, `FolderOpen` |
+| An output's source: sent by the agent, a tool's result, the run's output folder, a person's attachment to a chat message | `Paperclip`, `Wrench`, `FolderOpen`, `Paperclip` |
+| The chat composer's Attach files; a file uploading, refused; Remove it | `Paperclip`; `LoaderCircle`, `TriangleAlert`; `X` |
 | An output's kind: image, video, audio, PDF and text, code and JSON, CSV, HTML page, other; an image that did not load | `ImageIcon`, `Film`, `AudioLines`, `FileText`, `FileCode`, `FileSpreadsheet`, `AppWindow`, `File`; `ImageOff` |
 | The viewer: previous, next; zoom out, in, fit; download; show in trace; delete; an HTML page's sandbox | `ChevronLeft`, `ChevronRight`; `ZoomOut`, `ZoomIn`, `Maximize2`; `Download`; `ListTree`; `Trash2`; `ShieldCheck` |
 | Notices, the kinds of notice a member turns off | `BellRing` |
@@ -988,7 +989,15 @@ Shared pieces built on them:
   grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
   Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
   @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
-  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Members
+  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Files
+  (`composer-files.tsx`) come with Attach files (`Paperclip`, first in the bar, a hidden file input that takes
+  several), a paste that holds files (its text still goes in) or a drop on the box (a `brand` edge and "Drop the files
+  to attach them" over it while files are dragged over): each uploads at once (`POST /v1/chats/{id}/files`, the bytes
+  as the body) and shows as a chip under the text with its name and size, a spinner while it uploads, the hub's reason
+  in `danger` when it could not, and Remove (which stops an upload). A file over 25 MiB, an empty one and the files
+  past ten are refused before they are sent, the reason under the box. A message may then have no text; Send is
+  disabled while a file uploads and refuses while a chip failed, and the chips go once the message is sent (its
+  `file_ids`). Members
   (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
   project, or takes one out), the people (any member adds one with New chat's people picker, or by login; the creator
   takes others out; each may Leave, confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its
@@ -1382,7 +1391,9 @@ Shared pieces built on them:
   readers), so on a run's page, in the Inbox's sheet and on the phone's screen; the Inbox's row of a question and of
   the notice run_outputs (`Images`, "Files from a run") show their chips under the body. An agent's chat message shows
   the files of its run under its bubble, on its side, and a `message_changed` event of the chat replaces the message
-  held, so files that came after it show. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
+  held, so files that came after it show. A person's message shows the files they attached the same way, in a strip of
+  its own ("Files attached to this message", source Attached to the message in the viewer), and one of files only has
+  no bubble; a reply's quote and Replying to name its files when it has no words. The Inbox's header has Notices (`notice-settings.tsx`, the dialog loaded when
   first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
   with a toast. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
   tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.

@@ -2868,7 +2868,7 @@
       "sending": "Đang gửi",
       "send": "Gửi",
       "keys": "Enter để gửi, Shift Enter để xuống dòng.",
-      "blank": "Hãy viết gì đó trước.",
+      "blank": "Hãy viết gì đó hoặc đính kèm file trước.",
       "long": "Một tin dài tối đa {max} byte UTF-8.",
       "mention": {
         "label": "Agent, dự án và người có thể nhắc",
@@ -2881,7 +2881,20 @@
         }
       },
       "replying": "Đang trả lời {name}",
-      "cancelReply": "Huỷ trả lời"
+      "cancelReply": "Huỷ trả lời",
+      "files": {
+        "attach": "Đính kèm file",
+        "label": "File sẽ gửi",
+        "remove": "Bỏ {name}",
+        "uploading": "Đang tải lên",
+        "drop": "Thả file vào đây để đính kèm",
+        "wait": "Hãy chờ các file tải lên xong",
+        "failed": "Có file chưa tải lên được: hãy bỏ nó hoặc đính kèm lại.",
+        "tooBig": "{names}: mỗi file tối đa {max}.",
+        "tooBigOne": "Quá {max}",
+        "empty": "{names}: file rỗng.",
+        "tooMany": "Một tin mang tối đa {max} file: {count, plural, other {# file}} không được đính kèm."
+      }
     },
     "thread": {
       "title": "Thread",
@@ -8614,14 +8627,16 @@
     "source": {
       "sent": "Agent gửi",
       "tool": "Từ kết quả tool",
-      "outputs": "Thư mục output"
+      "outputs": "Thư mục output",
+      "attached": "Đính kèm vào tin nhắn"
     },
     "strip": {
       "question": "File của câu hỏi này",
       "message": "File của tin nhắn này",
       "notice": "File của thông báo này",
       "calls": "File của các lệnh gọi này",
-      "recorded": "File hub đã ghi nhận"
+      "recorded": "File hub đã ghi nhận",
+      "attached": "File đính kèm của tin nhắn này"
     },
     "viewer": {
       "kind": {

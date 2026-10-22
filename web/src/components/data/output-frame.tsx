@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { baseName, downloadHref, type RunOutput } from "@/lib/outputs";
+import { baseName, downloadHref, type ShownFile } from "@/lib/outputs";
 
 import { OutputKindIcon } from "./output-tile";
 
@@ -16,7 +16,7 @@ export function Centered({ children }: { children: ReactNode }) {
 }
 
 /** A file the viewer cannot show: its icon, why, and its download. */
-export function NoPreview({ output, children, icon }: { output: RunOutput; children: ReactNode; icon?: LucideIcon }) {
+export function NoPreview({ output, children, icon }: { output: ShownFile; children: ReactNode; icon?: LucideIcon }) {
   const t = useTranslations("outputs.viewer");
   const Icon = icon;
   return (

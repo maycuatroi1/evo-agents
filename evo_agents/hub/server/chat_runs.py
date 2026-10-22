@@ -712,12 +712,13 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
 # The prompt
 
 
-def _message(row, profiles_by_id: dict) -> dict:
+def _message(row, profiles_by_id: dict, files: dict) -> dict:
     if row.author_profile_id is not None:
         author = f"@{profiles_by_id[row.author_profile_id].handle} (agent)"
     else:
         author = row.author_login or "hub"
-    return {"id": row.id, "author": author, "at": row.created_at, "body": row.body}
+    attached = [rules.file_fact(f.id, f.name, f.media_type, f.size) for f in files.get(row.id, [])]
+    return {"id": row.id, "author": author, "at": row.created_at, "body": row.body, "files": attached}
 
 
 def _clearers(found: ChatRun) -> list[int]:
@@ -754,6 +755,7 @@ async def chat_prompt(
     shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``). On a daemon
     that lists ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke
     it or a message of the thread the prompt shows names before the others not open (``_listing``)."""
+    from evo_agents.hub.server.chat_file_views import by_message as files_by_message
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -776,7 +778,9 @@ async def chat_prompt(
     # the dispatcher clears what the prompt shows, and so does the member whose worker runs it, when another
     readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
     authors = await profiles_by_id(conn, [row.author_profile_id for row in rows if row.author_profile_id])
-    shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
+    visible = [row for row in rows if all(reader.sees(row.label) for reader in readers)]
+    files = await files_by_message(conn, [row.id for row in visible])
+    shown = {row.id: _message(row, authors, files) for row in visible}
     in_thread = [shown[row.id]["body"] for row in rows if row.id in shown and root_id in (row.id, row.thread_root_id)]
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
     root = shown.pop(root_id, None) if root_id != found.message_id else None

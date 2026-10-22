@@ -112,7 +112,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | signals | `POST /v1/signals/{project}` (an ingest key's or a writer's batch), `GET /v1/projects/{project}/signals`, `GET` and `POST .../signal-keys`, `POST .../signal-keys/{name}/archive`, `GET` and `POST .../signal-ingest-keys`, `POST .../signal-ingest-keys/{id}/revoke` (`docs/signals.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `POST .../files`, `GET .../files/{file}/content`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -622,6 +622,22 @@ people the plugin's rules name are added (each gets `chat_added`, from "the hub"
 why in its first message, which is the hub's and mentions the agent; the run that mention starts acts for the type's
 run_as, as any run a message of the hub wakes. Opening one is audited as `chat.create` in the agent's project.
 
+**Files.** A member attaches files to a message (`evo_agents/hub/server/chat_files.py`): they upload each first,
+`POST .../files?name=NAME` with the file's bytes as the request's body and its media type as `Content-Type`
+(`application/octet-stream` without one), at most 25 MiB (413 over it, 422 for an empty file or a name that is no
+file's), audited as `chat.file` with its SHA-256, never its name, and answered as a ChatFile (`id`, `name`,
+`media_type`, `viewer`, `size`, `sha256`, `uploaded_by`, `created_at`, `url`). The message that names them in
+`file_ids` (at most 10, each uploaded to that chat by its sender and carried by no message yet, 422 otherwise) carries
+them, and a message with files may have no text; each message of a person lists its files as `files`. `GET
+.../files/{file}/content` serves the bytes, under the headers of a run's outputs (the content policy, nosniff, a range,
+an attachment with `download=true`), to a member who reads the message carrying it, or to its uploader before it is
+sent; anyone else gets a 404. The bytes are a blob of the blob store that `chat_files` refers to; a file no message
+carried a day after its upload is deleted when its uploader next uploads one, its blob recorded for deletion once
+nothing refers to it. The prompt of a chat run names each file of a message with the command that saves it, `evo-agents
+worker chat file ID` (`docs/workers.md`, Chat runs), which the agent's run may use for a file of a message it reads.
+Schema 0101 adds `chat_files` and lets a message's body be empty; going back gives an empty body the text `(files)` and
+drops the table.
+
 **Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
 422 for another format; `DELETE .../image`), audited as `chat.image` and sent to the chat's stream as `image_changed`,
@@ -702,7 +718,8 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
 | `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
-| `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
+| `POST .../files` (`name`, the body the file), `GET .../files/{file}/content`: a message's files | | a member |
+| `POST .../messages` (`body`, `reply_to`, `file_ids`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
 
