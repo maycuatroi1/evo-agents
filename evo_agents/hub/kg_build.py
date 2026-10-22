@@ -221,7 +221,7 @@ def drop_forgotten(project: Project, ingests: list[Ingest]) -> int:
     the plugins' sources and fetch the logs again. How many such runs there were."""
     corpus = project.corpus()
     try:
-        merged = {row[0] for row in corpus.db.execute("SELECT run_id FROM runs WHERE json_extract(detail, '$.hub')")}
+        merged = corpus.hub_run_ids()
     finally:
         corpus.close()
     forgotten = merged - {ingest.run_id for ingest in ingests}

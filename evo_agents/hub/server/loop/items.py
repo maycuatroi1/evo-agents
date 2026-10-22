@@ -30,8 +30,8 @@ MAX_ITEMS = 500  # the most work items one read lists
 DEFAULT_ITEMS = 200
 MAX_DEPTH = 8  # how far up a work item's chain is followed to its first (a use_case, a build, a deliver: 3)
 STAGES = ("claim", "use_case", "task", "plan", "run")  # the ancestors a reader may be kept from
-# The figures of each reason a work item shows (``admit.refusal`` and the engine's transitions write them into its
-# detail, which keeps those of earlier reasons too)
+# The figures of each reason a work item shows (``admit.refusal`` writes those of admission into its detail in the
+# place of those of its reason before; the engine's transitions add theirs)
 FIGURES = {
     "concurrency": ("cycle", "running", "max_running", "repos", "repo_max_running"),
     "rate": ("dispatched", "dispatches_per_hour"),

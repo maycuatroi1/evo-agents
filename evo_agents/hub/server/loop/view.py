@@ -25,6 +25,7 @@ from evo_agents.hub import goals, tables
 from evo_agents.hub.autonomy import AUTO, WEEKDAYS, repo_policy
 from evo_agents.hub.chats import chat_link as chats_link
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
+from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
 from evo_agents.hub.server.loop.model import (
@@ -61,6 +62,7 @@ PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # the zones Pos
 CHECK_JOBS = ("uat_check", "prod_check")  # a repo naming either waits for them after a merge
 MAX_HOPS = 20  # how far a run handed out is followed through the runs that resume it or retry it
 RELEASED = ("merged", "not-needed")  # the status of a repo of a plan once a person merged it, or it needs nothing
+CLOSED_MERGE = "closed"  # merge_gate.STATES: it left the queue; merged by a person when its ledger says so
 
 
 # Goals
@@ -396,8 +398,24 @@ async def _runs(conn: AsyncConnection, project_id: int, items: Sequence[ItemView
     return found
 
 
+async def _merged_outside(conn: AsyncConnection, ids: Sequence[int]) -> dict[int, tuple]:
+    """Each merge request of ``ids`` the queue closed because GitLab says a person merged it -> (the merge commit
+    GitLab named, when the queue saw it), from the newest line ``closed`` of its ledger."""
+    if not ids:
+        return {}
+    e = tables.merge_events
+    query = select(e.c.queue_id, e.c.detail, e.c.created_at).where(e.c.queue_id.in_(ids), e.c.kind == "closed")
+    newest_line = {row.queue_id: row for row in await conn.execute(query.order_by(e.c.id))}
+    return {
+        queue_id: (row.detail.get(MERGE_SHA), row.created_at)
+        for queue_id, row in newest_line.items()
+        if (row.detail or {}).get(GITLAB_STATE) == "merged"
+    }
+
+
 async def _merges(conn: AsyncConnection, project_id: int, items: Sequence[ItemView]) -> dict[str, tuple]:
-    """The merge requests of the merge queue of each deliver's plan, each with whether its repo names a check job."""
+    """The merge requests of the merge queue of each deliver's plan, each with whether its repo names a check job, and
+    whether a person merged it on GitLab while the queue had it (``MergeView.outside``)."""
     plans = sorted({item.plan_id for item in items if item.kind == DELIVER and item.plan_id and not item.finished})
     if not plans:
         return {}
@@ -406,13 +424,18 @@ async def _merges(conn: AsyncConnection, project_id: int, items: Sequence[ItemVi
         q.c.project_id == project_id, q.c.plan_id.in_(plans)
     )
     rows = list(await conn.execute(query.order_by(q.c.id)))
+    outside = await _merged_outside(conn, [row.id for row in rows if row.state == CLOSED_MERGE])
     held = await newest(conn, project_id)
     body = None if held is None else held.body
     found: dict[str, list[MergeView]] = defaultdict(list)
     for row in rows:
         jobs = repo_policy(body, row.repo)["jobs"]
         checked = any(jobs.get(job) for job in CHECK_JOBS)
-        found[row.plan_id].append(MergeView(row.id, row.repo, row.state, row.after_sha, row.merged_at, checked))
+        merge = MergeView(row.id, row.repo, row.state, row.after_sha, row.merged_at, checked)
+        if row.id in outside:
+            sha, seen = outside[row.id]
+            merge = replace(merge, after_sha=sha if isinstance(sha, str) else None, merged_at=seen, outside=True)
+        found[row.plan_id].append(merge)
     return {plan_id: tuple(merges) for plan_id, merges in found.items()}
 
 

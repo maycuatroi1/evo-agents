@@ -190,7 +190,9 @@ async def stream(
     chat_id, user = followed
     streams: ChatStreams = request.app.state.chat_streams
     streams.start()
-    engine = request.app.state.engine
+    # one snapshot per look: under read committed, a reader who left between the check of access and the read of the
+    # events would get the event of their leaving before the end
+    engine = request.app.state.engine.execution_options(isolation_level="REPEATABLE READ")
     seen = last_event_id if last_event_id is not None else after
     sent: list[ChatProgress] | None = None  # the progress this stream sent last
     with streams.subscribe(chat_id) as wakeup:
