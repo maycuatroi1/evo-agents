@@ -146,6 +146,7 @@ function RunPage({ run }: { run: Run }) {
   const traceContext = useMemo<TraceContext>(
     () => ({
       runId: run.id,
+      project: run.project,
       owner: run.dispatched_by,
       viewer: viewer?.login ?? null,
       describe,
@@ -155,7 +156,7 @@ function RunPage({ run }: { run: Run }) {
       webOfBranch,
       showDecision: authoring ? showDecision : undefined,
     }),
-    [run.id, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
+    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
