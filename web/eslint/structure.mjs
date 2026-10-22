@@ -1,10 +1,10 @@
 // Size and dependency-direction rules for web/src, run by `pnpm lint`.
 //
 // Layers, top to bottom: the routes under src/app (and the files at the root of src, such as proxy.ts); the feature
-// folders under src/components; the shared parts (components/ui, shell, states, data, feedback, live, status and the
-// files at the root of components); then lib, hooks and i18n. A file imports its own folder and the layers below it,
-// never a layer above it nor another feature folder. src/test holds helpers that only test files import. A file has at
-// most 400 lines; test files, src/test and the generated schema.d.ts are exempt.
+// folders under src/components; the shared parts (components/ui, shell, states, data, feedback, live, status,
+// sharing and the files at the root of components); then lib, hooks and i18n. A file imports its own folder and the
+// layers below it, never a layer above it nor another feature folder. src/test holds helpers that only test files
+// import. A file has at most 400 lines; test files, src/test and the generated schema.d.ts are exempt.
 //
 // structure-baseline.json, next to this file, lists what was already over on the day these rules landed: the files
 // longer than 400 lines, each frozen at its length then, and the imports against the direction above. The list may
@@ -20,7 +20,7 @@ import { builtinRules } from "eslint/use-at-your-own-risk";
 
 const MAX_LINES = 400;
 export const BASELINE_FILE = "eslint/structure-baseline.json";
-const SHARED_PARTS = ["ui", "shell", "states", "data", "feedback", "live", "status"];
+const SHARED_PARTS = ["ui", "shell", "states", "data", "feedback", "live", "status", "sharing"];
 
 export const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCES = ["src/**/*.{ts,tsx}"];
@@ -170,8 +170,8 @@ const policies = [
     message:
       "This file in components/{{from.element.captured.feature}} imports {{to.file.path}} from another feature " +
       "folder. A feature folder may import its own files, the shared parts (components/ui, shell, states, data, " +
-      "feedback, live, status and the files at the root of components) and lib, hooks or i18n. Move what both " +
-      `features use down into a shared part or lib, or let the page under src/app compose the two. ${NO_GROWTH}`,
+      "feedback, live, status, sharing and the files at the root of components) and lib, hooks or i18n. Move what " +
+      `both features use down into a shared part or lib, or let the page under src/app compose the two. ${NO_GROWTH}`,
   },
   {
     from: element("shared"),
@@ -208,8 +208,9 @@ const policies = [
 
 const defaultMessage =
   "This file imports {{to.file.path}} against the direction of web/src: src/app, then the feature folders under " +
-  "components, then the shared parts (components/ui, shell, states, data, feedback, live, status), then lib, hooks " +
-  "and i18n. Import only from your own folder or a layer below it; eslint/structure.mjs describes the layers.";
+  "components, then the shared parts (components/ui, shell, states, data, feedback, live, status, sharing), then " +
+  "lib, hooks and i18n. Import only from your own folder or a layer below it; eslint/structure.mjs describes the " +
+  "layers.";
 
 /** The flat-config entries for web/src, with the exemptions the baseline grants. */
 export function structureConfig(baseline = readBaseline()) {
