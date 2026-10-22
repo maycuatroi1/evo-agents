@@ -159,7 +159,9 @@ the sources whose interval has passed since their last ok run; `--all` does that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
 removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
-gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
+gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand). To drop from
+knowledge.yaml a source the hub holds runs of, take them off first with `evo-agents hub kg forget-source --project
+demo --source old-repo`, then push; the other way round the push is refused (`docs/hub.md`, Dropping a source).
 
 Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
 with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
