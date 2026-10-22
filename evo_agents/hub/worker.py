@@ -67,6 +67,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.memory_upkeep``, daily: the memories of agent profiles nobody opened for 30 days archived, and those citing
+  code the project's knowledge graph no longer has marked stale (``evo_agents.hub.server.memory_upkeep``), handed
+  down by the ``hub worker`` command (``HubContext.memory_upkeep``), as the release pass is.
 - ``hub.prune_signals``, daily: the signals measured more than EVO_HUB_SIGNAL_DAYS days ago, 400 by default
   (``evo_agents.hub.signals``).
 - ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
@@ -160,6 +163,9 @@ class HubContext:
     # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way; None ticks
     # no Loop
     loop_tick: Callable[[AsyncEngine, int], Awaitable[dict]] | None = None
+    # the server's upkeep of agents' memories (evo_agents.hub.server.memory_upkeep), handed down the same way; None
+    # keeps none
+    memory_upkeep: Callable[[AsyncEngine, BlobStore, Path], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -424,6 +430,17 @@ async def prune_transcripts(context: JobContext, timestamp: int | None = None) -
     return await prune(found.engine, found.blobs, found.config.transcript_days)
 
 
+@queue.periodic(cron="27 5 * * *")
+@queue.task(name=jobs.MEMORY_UPKEEP, pass_context=True, lock=jobs.MEMORY_UPKEEP, queueing_lock=jobs.MEMORY_UPKEEP)
+async def memory_upkeep(context: JobContext, timestamp: int | None = None) -> dict:
+    found = hub(context)
+    kept = getattr(found, "memory_upkeep", None)
+    if kept is None:
+        log.warning("no memory upkeep was handed to this worker: no agent's memory is archived or marked stale")
+        return {"no_memory_upkeep": 1}
+    return await kept(found.engine, found.blobs, found.data_dir)
+
+
 @queue.periodic(cron="3 5 * * *")
 @queue.task(name=jobs.PRUNE_SIGNALS, pass_context=True, queueing_lock=jobs.PRUNE_SIGNALS)
 async def prune_signals(context: JobContext, timestamp: int | None = None) -> dict:
@@ -510,10 +527,12 @@ async def work(**options) -> bool:
     return bool(received)
 
 
-async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
+async def run(
+    config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None
+) -> int:
     """Migrate, then run jobs until a signal stops the worker. The exit status: 0 when a signal stopped it, 1 when
-    it could not start or stopped by itself. ``release_pass`` and ``loop_tick`` are the server's
-    (``HubContext.release_pass``, ``HubContext.loop_tick``)."""
+    it could not start or stopped by itself. ``release_pass``, ``loop_tick`` and ``memory_upkeep`` are the server's
+    (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -569,6 +588,7 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
                     curator_app,
                     release_pass,
                     loop_tick,
+                    memory_upkeep,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -593,7 +613,8 @@ async def run(config: HubConfig, concurrency: int = 1, *, release_pass=None, loo
     return 0
 
 
-def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None) -> int:
+def main(config: HubConfig, concurrency: int = 1, *, release_pass=None, loop_tick=None, memory_upkeep=None) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
-    return asyncio.run(run(config, concurrency, release_pass=release_pass, loop_tick=loop_tick))
+    passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
+    return asyncio.run(run(config, concurrency, **passes))

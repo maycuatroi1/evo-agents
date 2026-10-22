@@ -1,10 +1,11 @@
-"""``evo-agents hub memory push|pull|search|list``: the client commands over ``evo_agents.hub.memory``.
+"""``evo-agents hub memory push|pull|search|list|restore``: the client commands over ``evo_agents.hub.memory``.
 
 ``push`` and ``pull`` take a working directory (default: the current one) or ``--all``, ``--dry-run`` to say what
 would change without writing anything here or on the hub, and ``--prune`` to let deletions cross. They print one
 summary line and the notes that need a person; ``--quiet`` prints nothing but conflicts and errors, on stderr, for
 the hooks that run them at every session. ``list --agent H`` shows the memories of agent profile H, which no pull
-brings here. Exit status 1 when a file could not be synced, 0 otherwise, conflicts
+brings here, and ``restore ID`` brings back one of those the hub archived, nobody having opened it for 30 days.
+Exit status 1 when a file could not be synced, 0 otherwise, conflicts
 included: a conflict is resolved by keeping both versions. Run inside a Claude Code session (CLAUDE_CODE_SESSION_ID),
 ``push`` sends the audience of the session's label with each file, as the Stop hook does (``evo_agents.hub.hooks``).
 """
@@ -38,6 +39,9 @@ MEMORY_KEYS = (
     "created_at",
     "updated_at",
     "updated_by",
+    "read_at",
+    "archived_at",
+    "stale_at",
 )
 
 COUNTS = {
@@ -161,6 +165,20 @@ def cmd_memory_list(args) -> int:
 
 
 @_client_command
+def cmd_memory_restore(args) -> int:
+    hub, _ = _signed_in()
+    memory = hub.call("POST", f"/v1/memories/{args.id}/restore")
+    if args.json:
+        _print_json(memory)
+        return 0
+    print(
+        f"Memory {memory['id']} ({memory['name']}) of @{memory.get('agent')} is active: back in the index and the "
+        "searches of its agent's runs."
+    )
+    return 0
+
+
+@_client_command
 def cmd_memory_push(args) -> int:
     return _sync(args, "push")
 
@@ -249,3 +267,8 @@ def register_memory(hsub) -> None:
     )
     json_option(shown, returns_array(*MEMORY_KEYS, schema="Memory"))
     shown.set_defaults(func=cmd_memory_list)
+
+    back = msub.add_parser("restore", help="bring back an agent's memory the hub archived, as a writer of its project")
+    back.add_argument("id", metavar="ID", type=int, help="the memory's id (`hub memory list --agent`)")
+    json_option(back, returns_object(*MEMORY_KEYS, schema="Memory"))
+    back.set_defaults(func=cmd_memory_restore)

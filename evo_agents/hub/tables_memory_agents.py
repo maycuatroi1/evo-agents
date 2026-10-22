@@ -11,20 +11,28 @@ memory_revisions takes where each revision came from when the agent of a run wro
 memory_agents``): the run, the profile and version it ran under, the person at its origin (runs.dispatched_by), its
 hop, and its chat and chat message; all NULL for a write that came from no run. The run and the chat are plain ids,
 kept as the history of the memory whatever happens to them; memory_revisions_run_idx counts what one run wrote.
+
+The upkeep of an agent's memories (0100, ``evo_agents.hub.server.memory_upkeep``): memories.read_at is when the agent
+of a run last opened it (memory_get), archived_at when the daily job archived it, nobody having opened it for 30 days
+(out of the index and the searches of runs until a writer restores it), and stale_at when the job found that a path it
+cites (code:REPO:PATH) is gone from the project's knowledge graph; all NULL for a memory of no agent.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, ForeignKeyConstraint, Index, Integer, SmallInteger, Table
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKeyConstraint, Index, Integer, SmallInteger, Table
 
 SHARED = ("project", "reference")
 OWNED = ("user", "feedback")
+UPKEEP = ("read_at", "archived_at", "stale_at")  # 0100
 
 
 def memory_agent_tables(memories: Table, memory_revisions: Table) -> None:
     """Add the namespace, the keys that take it in and the provenance columns to ``memories`` and
     ``memory_revisions``."""
     memories.append_column(Column("profile_id", BigInteger))
+    for stamp in UPKEEP:
+        memories.append_column(Column(stamp, DateTime(timezone=True)))
     memories.append_constraint(
         ForeignKeyConstraint(
             ["profile_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="memories_profile_id_fkey"
