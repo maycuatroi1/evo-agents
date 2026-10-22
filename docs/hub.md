@@ -1209,6 +1209,45 @@ its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked aga
 that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
 and in the `--json` of `hub chat send|react`.
 
+## Attachments of messages
+
+An attachment is a file a person attaches to a message (`evo_agents.hub.attachments`): to a run's agent (`POST
+/v1/projects/{p}/runs/{id}/messages`) or in a group chat (`POST /v1/chats/{id}/messages`). It has a name, a media
+type, a size, a SHA-256, its uploader and its target, one run or one chat. Its bytes are a blob of kind `attachment`.
+Schema 0105 holds them (`attachments`) and the run inbox rows that carry them (`run_inbox_attachments`), and lets a
+message of files alone have no text; going back gives each empty body the text `(files)` and drops both tables.
+
+- **Uploading.** The sender uploads each file first, its bytes as the request's body, streamed into the blob store
+  with their SHA-256: `POST /v1/projects/{p}/runs/{id}/attachments?name=NAME`, the run's owner while the run takes
+  messages (queued or held by its worker, or a parked author or chat run, which the reply resumes; 409 otherwise),
+  or `POST /v1/chats/{id}/attachments?name=NAME`, a member of the chat. The Content-Type is the media type; a missing
+  or generic one takes the type the name's extension says. The answer is the upload with its `id`.
+- **Sending.** A message names its uploads in `attachment_ids`; with one, its text may be empty. Each must be an
+  upload of the sender for that very run or chat that no message holds yet, else 422 names it; the hub ties them to
+  the message in the transaction that writes it, so an upload goes with one message once. The run's `user_message`
+  event, the message the API answers, the worker's inbox (`POST /v1/worker/runs/{id}/inbox`), the chat's messages
+  (`GroupMessage.attachments`, each with its `url`), the claim of the chat run a message starts and the chat read of a
+  run's agent name the files. A chat message that reaches a chat run's inbox carries its files there too.
+- **Limits.** 50 MiB a file (413 past it) and 10 files a message (422); a name is a file's own name, at most 255
+  characters, no slash or control character.
+- **Reading.** The bytes go out as an output's do ("Outputs of runs", Serving): `nosniff`, a safe Content-Disposition,
+  one byte range, and a sandbox for HTML and SVG. `GET .../runs/{id}/attachments/{aid}/content` serves a file of a
+  message to the run to its readers; `GET /v1/chats/{id}/attachments/{aid}/content` serves a file of a chat message to
+  a member who reads that message (its label). The agent of a run reads, with its worker's token, `GET
+  /v1/worker/runs/{id}/attachments/{aid}/content`: a file of a message its inbox took, or of a chat message it may
+  read. Until it is sent, an upload is its uploader's alone. Anyone else gets 404.
+- **Deleting.** The uploader deletes an upload not sent yet (`DELETE .../runs/{id}/attachments/{aid}` or `DELETE
+  /v1/chats/{id}/attachments/{aid}`, 204; 409 once a message holds it).
+- **Retention.** An upload no message took within 24 hours goes (hub.cleanup_uploads). The files of the messages to a
+  run go with its events, `EVO_HUB_RUN_LOG_DAYS` after the run ended (hub.prune_run_events). The files of chat
+  messages stay with the chat. A blob goes once nothing refers to it (the blob collection counts
+  `attachments.sha256`).
+
+`evo-agents hub run send RUN [TEXT] --attach FILE` and `evo-agents hub chat send CHAT [TEXT] --attach FILE` upload
+each file (`--attach` repeated, up to 10) before the message, after checking them all here, and TEXT may be left out
+with one; `hub run chat` and `hub chat show` print the names of a message's files. hub-cli-v1 gained `--attach` and
+`attachments` in the `--json` of `hub run send` and `hub chat send|react`.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three

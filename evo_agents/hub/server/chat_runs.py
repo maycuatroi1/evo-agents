@@ -38,6 +38,7 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
+from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
@@ -48,6 +49,7 @@ from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
+from evo_agents.hub.server.runs.models.attachment_parts import as_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
 from evo_agents.hub.server.security import MACHINE
@@ -221,8 +223,10 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
     text = rules.inbox_text(hand.author, hand.message_id, hand.body)
     left = insert(i).values(run_id=run_id, sent_by=hand.dispatcher_id, body=text).returning(i.c.id)
     inbox_id = (await conn.execute(left)).scalar_one()
+    files = (await attachment_store.of_messages(conn, [hand.message_id])).get(hand.message_id, [])
+    await attachment_store.link_inbox(conn, inbox_id, files)  # the chat message's files go with it
     event = {"text": text, "from": hand.dispatcher, "message_id": inbox_id, "chat_message_id": hand.message_id}
-    await write_user_message(conn, run_id, event)
+    await write_user_message(conn, run_id, event | ({"attachments": as_event(files)} if files else {}))
 
 
 CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")

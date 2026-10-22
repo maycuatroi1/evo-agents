@@ -446,17 +446,31 @@ class Hub:
     def __repr__(self) -> str:
         return f"Hub({self.url!r})"
 
-    def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
-        """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise. ``timeout``
-        replaces the hub's own for this request, for one whose work grows with its size, such as a blob commit."""
+    def _headers(self) -> dict:
         headers = {**self.headers, "Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        return headers
+
+    def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
+        """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise. ``timeout``
+        replaces the hub's own for this request, for one whose work grows with its size, such as a blob commit."""
+        headers = self._headers()
         data = None
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
         status, raw = _send(method, self.url + path, headers, data, self.timeout if timeout is None else timeout)
+        return self._answer(status, raw)
+
+    def upload(self, path: str, file: Path, media_type: str, *, timeout: float | None = None):
+        """POST the bytes of ``file``, streamed, as ``media_type`` to ``path``; the decoded JSON answer, as ``call``."""
+        headers = {**self._headers(), "Content-Type": media_type, "Content-Length": str(file.stat().st_size)}
+        with open(file, "rb") as handle:
+            status, raw = _send("POST", self.url + path, headers, handle, self.timeout if timeout is None else timeout)
+        return self._answer(status, raw)
+
+    def _answer(self, status: int, raw: bytes):
         payload = _json(raw)
         if 300 <= status < 400:
             raise HubError(f"the hub at {self.url} answered {status} with a redirect, which is not followed", status)
