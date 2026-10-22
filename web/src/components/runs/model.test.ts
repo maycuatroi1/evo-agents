@@ -15,6 +15,7 @@ import {
   harnessRepo,
   isCheckpoint,
   modelSuggestions,
+  pinRefused,
   planRunLock,
   planRunPhase,
   planRunScope,
@@ -320,6 +321,20 @@ describe("workers for a dispatch", () => {
     expect(dispatchOutlook(1, [bare], request, null)).toMatchObject({ kind: "none", fits: [{ problem: { kind: "checkout" } }] });
     expect(dispatchOutlook(1, [free, busy], request, 2)).toMatchObject({ kind: "pinned", fit: { fit: "busy" } });
     expect(dispatchOutlook(1, [free], request, 99)).toEqual({ kind: "noWorker" });
+  });
+
+  it("knows the hub refuses runs pinned to a worker that lacks what they need, not to one that drains", () => {
+    const free = worker({ id: 1 });
+    const draining = worker({ id: 2, status: "draining", drained_at: "2026-10-05T07:00:00Z" });
+    const offline = worker({ id: 3, status: "offline" });
+    expect(pinRefused(dispatchOutlook(1, [free], { ...request, runtime: "opencode" }, 1))).toBe(true);
+    expect(pinRefused(dispatchOutlook(1, [free], { ...request, repos: ["web"] }, 1))).toBe(true);
+    expect(pinRefused(dispatchOutlook(1, [free], { ...request, sessionPerStep: true }, 1))).toBe(true);
+    expect(pinRefused(dispatchOutlook(1, [draining], request, 2))).toBe(false);
+    expect(pinRefused(dispatchOutlook(1, [offline], request, 3))).toBe(false);
+    expect(pinRefused(dispatchOutlook(1, [free], request, 1))).toBe(false);
+    // Unpinned runs no worker can take wait in the queue for any worker that comes to fit.
+    expect(pinRefused(dispatchOutlook(1, [free], { ...request, runtime: "opencode" }, null))).toBe(false);
   });
 });
 

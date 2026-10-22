@@ -162,6 +162,15 @@ export function dispatchOutlook(
   return { kind: "none", fits };
 }
 
+/**
+ * Whether the hub refuses the runs of `outlook` (409, nothing dispatched): they are pinned to a worker that cannot claim
+ * them as its heartbeat reports them (a runtime, checkout or session per step it lacks), as the hub's `dispatch.unfit`
+ * checks it. Runs pinned to a busy, offline or draining worker wait in the queue instead.
+ */
+export function pinRefused(outlook: DispatchOutlook): boolean {
+  return outlook.kind === "pinned" && outlook.fit.fit === "no" && outlook.fit.problem?.kind !== "draining";
+}
+
 /** Whether `outlook` says nothing is wrong: a worker takes the runs now, or there is nothing to dispatch yet. */
 export function outlookFine(outlook: DispatchOutlook): boolean {
   return outlook.kind === "now" || outlook.kind === "nothing" || (outlook.kind === "pinned" && outlook.fit.fit === "now");

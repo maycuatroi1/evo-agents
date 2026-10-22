@@ -63,6 +63,7 @@ from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
+NO_QUESTION_OUTPUTS = "run {run} is a question run: it sends no outputs, only the answer in its report of done"
 
 OutputId = Annotated[int, Path(ge=1, le=MAX_ID)]
 READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
@@ -234,7 +235,10 @@ async def delete_output(
 def _worker_reach(user: Principal, run_id: int) -> Reach:
     async def reach(conn: AsyncConnection) -> Target:
         project = (await claimed_run(conn, user, run_id))[4]
-        return await target_of(conn, run_id, project)
+        target = await target_of(conn, run_id, project)
+        if target.kind == "question":  # nothing but its answer leaves a question run
+            raise HTTPException(404, NO_QUESTION_OUTPUTS.format(run=run_id))
+        return target
 
     return reach
 
