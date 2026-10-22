@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, profiles, runs
+from evo_agents.hub import author, profiles, question_runs, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -848,6 +848,13 @@ class StateReport(BaseModel):
         "the run as its failure_cause, and ignored with any other state",
     )
     summary: str | None = Field(None, max_length=8000, description="the agent's summary, for the evidence")
+    answer: str | None = Field(
+        None,
+        min_length=1,
+        max_length=question_runs.MAX_ANSWER_CHARS,
+        description="with done of a question run, and only then (422 otherwise): the agent's answer, which goes to "
+        "the core plugin that asked",
+    )
 
     @model_validator(mode="after")
     def _bounded(self):

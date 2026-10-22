@@ -245,6 +245,7 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
                 await conn.execute(update(r).values(**news).where(r.c.id == run_id))
             return await run_view(conn, run_id)
         await _check_move(conn, run_id, row, body)
+        await _check_answer(conn, run_id, kind, body)
         error = await _moved_columns(conn, run_id, name, body, columns)
         reason = _move_reason(body, name, error, cancel_requested_at)
         await move_run(
@@ -338,6 +339,20 @@ async def _moved_columns(conn, run_id: int, name: str, body: StateReport, column
     return error
 
 
+async def _check_answer(conn, run_id: int, kind: str, body: StateReport) -> None:
+    """422 for an answer in a report of another kind of run than question or another state than done, and for a
+    question run done without one; a question run's answer is kept with its question for the end of the run."""
+    question = kind == "question" and body.state == "done"
+    if body.answer is not None and not question:
+        raise HTTPException(422, f"run {run_id}: only the report of done of a question run carries an answer")
+    if question and (body.answer is None or not body.answer.strip()):
+        raise HTTPException(422, f"run {run_id} is a question run: report done with its answer, or failed (no_answer)")
+    if question:
+        from evo_agents.hub.server.question_dispatch import keep_answer  # it queues runs through this package
+
+        await keep_answer(conn, run_id, body.answer)
+
+
 def _move_reason(body: StateReport, name: str, error: str | None, cancel_requested_at) -> str:
     """Why the run moved, as its state event says: the owner's cancel or the worker ``name`` stopping it, the
     error, or the state the worker reported."""
@@ -351,7 +366,7 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release"):
+    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question"):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

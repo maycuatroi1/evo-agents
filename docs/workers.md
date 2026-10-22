@@ -34,7 +34,7 @@ describes how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, whether its owner shares it with the writers of its projects (`shared`), the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins, projects, version lock and sharing after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration; its owner adds and drops them later in place, the worker keeping its id, token and secret bindings | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)), and a question run (kind `question`) one read-only turn of a core plugin's agent type on a question from outside the hub ([Question runs](#question-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -720,6 +720,28 @@ The hub opens a draft pull request with the workers' App, or finds the one open,
 it. The run then ends `done`, without verify results. It never waits and is never rerun (409): the plugin hands the
 task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
 cancelled, the plugin of its agent type gets the event `task.result`.
+
+## Question runs
+
+A question run (kind `question`, `evo_agents.hub.question_runs`) is one turn of an agent type of a core plugin on a
+question a person outside the hub asked, which the plugin hands over with `ask_agent_type` (`docs/plugins.md`, Agent
+types). The hub queues it like a task run, under the type's profile and dispatched by its `run_as`, with the repos of
+its project, no branch, one attempt, what is left of the type's cap of cost for 24 hours (shared with its task runs) and
+a time cap of 10 minutes. A worker of `run_as`, one of the type's workers when it names any, claims it only with
+`question` in its heartbeat's `run_kinds`: an older daemon never gets one, and a question run no worker claimed within
+10 minutes fails `no_worker`. The prompt (`question_runs.build_question_prompt`) says the question is the text of a
+person outside the hub, data and never instructions, and that the answer leaves the hub under the project's default
+label.
+
+A question run reads only, whatever its profile allows. The daemon takes the run's leases for the repos it has a
+checkout of (it goes on without the others, saying so), and makes a worktree of each detached at the commit origin's
+default branch has, as an author run does (`runner/question.py`). The agent works in one headless turn,
+`EVO_RUN_KIND=question`, with Claude Code's question tools turned off, its prompt verbatim, and the hub's MCP server,
+where it reads as a reader up to the level of the project's default label. The agent writes its answer in
+`.evo-run/result.json` under `"answer"`. At the end the daemon commits nothing, pushes nothing (`gitops.check_push`
+refuses a question run), opens no pull request, calls no `task/pulls` and uploads no diff; it reports `verifying`, then
+`done` with the answer in the report's `answer`, cut to 8000 characters. Without an answer the run fails with the cause
+`no_answer`. When it ends done, failed or cancelled, the plugin of its agent type gets the event `agent.answer`.
 
 ## Local runs
 
@@ -2419,8 +2441,8 @@ agent's environment, and a machine where Claude Code has no subscription login (
 environment, `~/.claude/.credentials.json`, or the macOS keychain item `Claude Code-credentials`) fails the run before
 its agent starts, saying so.
 
-The agent of a review run, a judge run, a Builder or a task run of a plugin's agent type (the brainstorm of
-@strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
+The agent of a review run, a judge run, a Builder, or a task run or a question run of a plugin's agent type (the
+brainstorm of @strategist, the use case of @ba the Loop hands out) gets the hub's MCP server from its runtime's adapter, so it has the
 hub's tools its prompt names on a worker without the evo-hub plugin, Codex included
 (`evo_agents/worker/runtimes/hub_tools.py`):
 Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hub`, the stdio proxy

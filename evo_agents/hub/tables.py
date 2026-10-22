@@ -234,7 +234,7 @@ memory_revisions = Table(
     ForeignKeyConstraint(["memory_id"], ["memories.id"], ondelete="CASCADE", name="memory_revisions_memory_id_fkey"),
     PrimaryKeyConstraint("memory_id", "revision", name="memory_revisions_pkey"),
 )
-tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0100)
+tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0101)
 
 plans = Table(
     "plans",
@@ -911,7 +911,7 @@ proposals = Table(
     Column("label", JSONB, nullable=False),
     _stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
-    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0102)
+    Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
     ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="proposals_answered_by_fkey"),
     ForeignKeyConstraint(["duplicate_of"], ["proposals.id"], ondelete="RESTRICT", name="proposals_duplicate_of_fkey"),
     ForeignKeyConstraint(["revert_of"], ["proposals.id"], ondelete="SET NULL", name="proposals_revert_of_fkey"),
@@ -965,7 +965,7 @@ hub_settings, builder_proposals, autonomy_policies = tables_settings.settings_ta
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)  # the outputs of runs (0089)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
-srs, tasks, canvas = tables_plugins.core_plugin_tables(metadata)  # srs (0046), tasks (0047), canvas (0073)
+srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 signal_keys, signals, signal_ingest_keys, hub_events = tables_signals.signal_tables(metadata)  # 0074, 0077
 goals, goal_revisions = tables_goals.goal_tables(metadata)  # the goals of a project (0091)
 loop_states, loop_items, loop_item_events = tables_loop.loop_tables(metadata)  # the Loop of a project (0093)
