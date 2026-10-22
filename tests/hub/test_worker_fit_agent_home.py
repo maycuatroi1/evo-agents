@@ -6,8 +6,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from evo_agents.hub import runs
-from evo_agents.hub.server.runs.service.worker_fit import lacks_agent_home, unfit_worker, worker_problems
+import pytest
+
+pytest.importorskip("fastapi", reason="the fit of a worker needs the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.hub import runs  # noqa: E402
+from evo_agents.hub.server.runs.service.worker_fit import lacks_agent_home, unfit_worker, worker_problems  # noqa: E402
 
 AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime")
 OLD = tuple(feature for feature in runs.WORKER_FEATURES if feature != runs.AGENT_HOME)
