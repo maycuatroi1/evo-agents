@@ -1,7 +1,7 @@
 """Autonomy levels: the class overrides, environments and workers of a ceiling, and autonomy_prefs.
 
-Revision ID: 0100
-Revises: 0099
+Revision ID: 0101
+Revises: 0100
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.autonomy_levels`` and ``evo_agents.hub.tables_org`` as of this
@@ -23,8 +23,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0100"
-down_revision = "0099"
+revision = "0101"
+down_revision = "0100"
 branch_labels = None
 depends_on = None
 

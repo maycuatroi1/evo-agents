@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.1: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.2: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -21,9 +21,13 @@ large, a handle it made itself) is a ValueError.
   ``chats:write`` or ``chats:read``.
 - The plugin's own: ``plugin_config`` (its effective config, x-secret fields unsealed), ``granted``, ``audit``, and
   ``chat_history_items`` for a source of the knowledge graph.
+- Its agent types: ``ask_agent_type`` asks one a question for a person outside the hub, in a read-only question run,
+  and ``read_agent_answer`` reads its ``AgentAnswer``; the plugin gets ``ANSWER_EVENT`` when the run ends.
 
 Version 1.1 added ``Caller``, ``linked_channel``, ``unlink_by_login``, ``audit``, ``Clearance.below``, ``NOT_YOURS``
-and ``RESTRICTED_ANSWER``, what the core plugin telegram needed to run on this module alone.
+and ``RESTRICTED_ANSWER``, what the core plugin telegram needed to run on this module alone. Version 1.2 added
+``ask_agent_type``, ``read_agent_answer``, ``AgentQuestion``, ``AgentAnswer``, ``ANSWER_EVENT``, ``MAX_QUESTION_BYTES``,
+``MAX_ASKER_CHARS``, ``MAX_REF_CHARS`` and ``MAX_ANSWER_CHARS``.
 
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
@@ -78,6 +82,17 @@ from evo_agents.hub.server.core_plugin_api._channels import (
     unlink_by_login,
     unlink_channel,
 )
+from evo_agents.hub.server.core_plugin_api._questions import (
+    ANSWER_EVENT,
+    MAX_ANSWER_CHARS,
+    MAX_ASKER_CHARS,
+    MAX_QUESTION_BYTES,
+    MAX_REF_CHARS,
+    AgentAnswer,
+    AgentQuestion,
+    ask_agent_type,
+    read_agent_answer,
+)
 from evo_agents.hub.server.core_plugin_api._types import (
     AgentRef,
     ChatMessage,
@@ -110,7 +125,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 1)
+API_VERSION: tuple[int, int] = (1, 2)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
@@ -129,10 +144,17 @@ def require(major: int, minor: int) -> None:
 
 
 __all__ = [
+    "ANSWER_EVENT",
     "API_VERSION",
+    "MAX_ANSWER_CHARS",
+    "MAX_ASKER_CHARS",
+    "MAX_QUESTION_BYTES",
+    "MAX_REF_CHARS",
     "NOT_YOURS",
     "RESTRICTED_ANSWER",
     "SESSION_ENDED",
+    "AgentAnswer",
+    "AgentQuestion",
     "AgentRef",
     "Caller",
     "Channel",
@@ -166,6 +188,7 @@ __all__ = [
     "agents",
     "answer_decision",
     "answer_proposal",
+    "ask_agent_type",
     "audit",
     "begin",
     "chat_history_items",
@@ -182,6 +205,7 @@ __all__ = [
     "plugin_config",
     "plugin_environment",
     "prepare",
+    "read_agent_answer",
     "read_message",
     "redeem_link_code",
     "require",

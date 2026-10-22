@@ -102,6 +102,6 @@ ceiling.
 ## Routes and schema
 
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
-caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0100 adds the
+caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0101 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`. Schema 0101 adds `principal_id` and `autonomy` to `runs`.
+`workers` of `autonomy_ceilings`. Schema 0102 adds `principal_id` and `autonomy` to `runs`.

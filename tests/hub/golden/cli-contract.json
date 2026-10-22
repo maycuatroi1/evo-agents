@@ -9441,6 +9441,7 @@
             "replay",
             "history",
             "release",
+            "question",
             "local"
           ]
         },
@@ -22164,6 +22165,7 @@
                       "replay",
                       "history",
                       "release",
+                      "question",
                       "local"
                     ],
                     "type": "string"
@@ -76171,6 +76173,7 @@
                 "replay",
                 "history",
                 "release",
+                "question",
                 "local"
               ],
               "title": "Kind"
@@ -85036,6 +85039,7 @@
                 "replay",
                 "history",
                 "release",
+                "question",
                 "local"
               ],
               "title": "Kind",
@@ -87570,7 +87574,8 @@
                 "task",
                 "replay",
                 "history",
-                "release"
+                "release",
+                "question"
               ],
               "title": "Kind"
             },
@@ -93538,6 +93543,20 @@
               ],
               "title": "Summary",
               "description": "the agent's summary, for the evidence"
+            },
+            "answer": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer",
+              "description": "with done of a question run, and only then (422 otherwise): the agent's answer, which goes to the core plugin that asked"
             }
           },
           "type": "object",

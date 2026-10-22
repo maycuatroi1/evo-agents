@@ -213,7 +213,7 @@ async def stamp(conn: AsyncConnection, values: dict, who: For | None = None) -> 
 async def recheck(conn: AsyncConnection, run_id: int, *, repo: str | None = None) -> Reached | None:
     """The autonomy of run ``run_id`` at a gate: the stricter of its snapshot and the value now, on ``repo`` when the
     gate acts on one (the run's repos without it), written back when stricter than the snapshot. None for a run
-    without a snapshot (a local run, one queued before schema 0101): the gate acts as before."""
+    without a snapshot (a local run, one queued before schema 0102): the gate acts as before."""
     from evo_agents.hub.server.org_store import user_by_login
 
     r = tables.runs

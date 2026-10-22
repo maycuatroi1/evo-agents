@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import question_runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server.security import Principal, RunScope
@@ -24,7 +24,7 @@ NOT_HELD = (
 def _held_run(token_id: int, run_id: int):
     """The run ``run_id`` that the live worker of token ``token_id`` holds: its state, its project, the grant of its
     owner there (role and max_level None without one), its kind, and its owner, the member who dispatched it, by id and
-    login. That is the worker's owner, or another writer of the project on a shared worker (``docs/workers.md``)."""
+    login, and the project's ladder and default label. That is the worker's owner, or another writer of the project on a shared worker (``docs/workers.md``)."""
     workers, runs, projects, grants, users = tables.workers, tables.runs, tables.projects, tables.grants, tables.users
     return (
         select(
@@ -35,6 +35,8 @@ def _held_run(token_id: int, run_id: int):
             runs.c.kind,
             runs.c.dispatched_by,
             users.c.login,
+            projects.c.levels,
+            projects.c.default_label,
         )
         .select_from(
             workers.join(runs, runs.c.worker_id == workers.c.id)
@@ -49,14 +51,17 @@ def _held_run(token_id: int, run_id: int):
 async def run_principal(conn: AsyncConnection, user: Principal, run_id: int) -> Principal:
     """The agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's owner, the member who
     dispatched it, never a hub admin, within the run's scope (its project, the owner's grant there with its role capped
-    at writer). On a shared worker the owner of the run may be another member than the worker's. HTTPException 403 when
-    that worker does not hold the run now (another worker's, one that ended, none) or the run's owner holds no grant on
-    the project any more."""
+    at writer; a question run's reader, up to the level of the project's default label). On a shared worker the owner
+    of the run may be another member than the worker's. HTTPException 403 when that worker does not hold the run now
+    (another worker's, one that ended, none) or the run's owner holds no grant on the project any more."""
     row = (await conn.execute(_held_run(user.token_id, run_id))).first()
     if row is None or row.state not in HELD_STATES:
         raise HTTPException(403, NOT_HELD.format(run=run_id))
-    _, project, role, max_level, kind, owner_id, owner = row
+    project, role, max_level, kind = row.name, row.role, row.max_level, row.kind
     if role is None:
         raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
-    scope = RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level, kind)
-    return replace(user, user_id=owner_id, login=owner, admin=False, scope=scope)
+    role = "writer" if has_role(role, "writer") else role
+    if kind == "question":  # its answer leaves the hub: it reads, up to the label the answer carries
+        role, max_level = "reader", question_runs.lowered_level(row.levels, max_level, row.default_label)
+    scope = RunScope(run_id, project, role, max_level, kind)
+    return replace(user, user_id=row.dispatched_by, login=row.login, admin=False, scope=scope)

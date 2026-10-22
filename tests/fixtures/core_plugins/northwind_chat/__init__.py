@@ -3,12 +3,13 @@
 (``evo_agents.hub.server.core_plugin_api``), as a plugin of another repository would be.
 
 Its entry point names ``manifest``, which asks for the version of the API it was written for: a hub that serves
-another leaves the plugin out with that reason. ``server`` holds its channel, its routes and its event.
+another leaves the plugin out with that reason. ``server`` holds its channel, its routes and its events; its agent
+type helpdesk answers the questions a chat user asks with ``/ask``.
 """
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 1)  # the version of the API this plugin is written for
+API = (1, 2)  # the version of the API this plugin is written for
 SERVER = "northwind_chat.server"
 KIND = "northwind"
 
@@ -44,7 +45,24 @@ MANIFEST = {
     "contributes": {
         "channels": [{"name": KIND, "title": "Northwind Chat", "python": f"{SERVER}:NorthwindChannel"}],
         "routes": [{"name": "hooks", "title": "Linking and the webhook", "python": f"{SERVER}:router", "prefix": ""}],
-        "events": [{"name": "replies", "on": ["chat.message"], "python": f"{SERVER}:on_chat_message"}],
+        "events": [
+            {"name": "replies", "on": ["chat.message"], "python": f"{SERVER}:on_chat_message"},
+            {"name": "answers", "on": ["agent.answer"], "python": f"{SERVER}:on_agent_answer"},
+        ],
+        "agent_types": [
+            {
+                "name": "helpdesk",
+                "title": "Help desk",
+                "description": "Answers the questions of Northwind Chat's users about a project",
+                "profile": {
+                    "handle": "helpdesk",
+                    "name": "Help desk",
+                    "description": "Answers a user's question from the project's repos and the hub",
+                    "instructions": "Answer in a few plain sentences.",
+                },
+                "events": ["answers"],
+            }
+        ],
     },
 }
 

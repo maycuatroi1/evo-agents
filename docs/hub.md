@@ -985,8 +985,8 @@ work item's last run stands for after its third failure, and `notifications.noti
 notice of a tripped breaker of the Loop; going back to 0094 deletes those decisions and notices and keeps the notice
 kinds of 0090. Schema 0099 adds the org chart, `org_units`, `org_seats` and `autonomy_ceilings`, with the
 root and a seat there for every user (`docs/org-chart.md`, Schema); going back to 0098 drops the three tables. Schema
-0100 adds `autonomy_prefs`, each person's own autonomy preference in revisions, and the class overrides, environments
-and workers of a ceiling (`docs/autonomy-levels.md`); going back to 0099 drops the table and the three columns.
+0101 adds `autonomy_prefs`, each person's own autonomy preference in revisions, and the class overrides, environments
+and workers of a ceiling (`docs/autonomy-levels.md`); going back to 0100 drops the table and the three columns.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

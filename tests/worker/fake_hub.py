@@ -530,6 +530,17 @@ class FakeHub:
         spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
         return run_id
 
+    def queue_question_run(
+        self, repos: list[str], prompt: str = "You are @helper. Answer the question.", *, runtime: str = "claude-code"
+    ) -> int:
+        """A question run over ``repos`` on no branch, with one attempt, as the hub hands it when a core plugin asks an
+        agent type of its own (``question_dispatch``)."""
+        run_id = self.queue_task_run(repos, prompt, runtime=runtime)
+        spec = self.runs[run_id]["spec"]
+        spec.update(kind="question", title="question to agent type helper", max_attempts=1, branch=None)
+        spec["repos"] = [{"repo": name} for name in repos]
+        return run_id
+
     def queue_release_run(
         self, repo: str, start: str, prompt: str = "Cut the next release.", *, runtime: str = "claude-code"
     ) -> int:
@@ -760,7 +771,23 @@ class FakeHub:
         run_id, run = self._run(request)
         body = await request.json()
         state, new = run["state"], body["state"]
-        for name in ("session_id", "summary", "diffstat", "usage", "error", "commit_sha", "verify", "failure_cause"):
+        question = run["spec"]["kind"] == "question" and new == "done"
+        if body.get("answer") is not None and not question:  # as runs.service.reports._check_answer
+            return _error(422, "invalid", f"run {run_id}: only the report of done of a question run carries an answer")
+        if question and not str(body.get("answer") or "").strip():
+            return _error(422, "invalid", f"run {run_id} is a question run: report done with its answer")
+        fields = (
+            "session_id",
+            "summary",
+            "diffstat",
+            "usage",
+            "error",
+            "commit_sha",
+            "verify",
+            "failure_cause",
+            "answer",
+        )
+        for name in fields:
             if body.get(name) is not None:
                 run[name] = body[name]
         if state == new:
