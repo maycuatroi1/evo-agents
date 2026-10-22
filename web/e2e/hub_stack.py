@@ -19,7 +19,8 @@ the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of 
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
 (``kg_seed.py``). POST /merge-queue/seed writes a project's merge queue on GitLab as the hub's job would leave it
 (``merge_seed.py``), since no GitLab answers the stack. POST /loop/seed writes the work items a project's Loop would
-leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no worker to tick it. POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+leave after a few weeks of a goal (``loop_seed.py``), since the stack runs no worker to tick it. POST /plugin-notice/seed writes the Inbox notice an isolated plugin sends
+(``plugin_notice_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
 self_update_hours, features} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it
 reports, the commit its install was built from and what it says of updating itself, which the hub has kept for
 ``self_update_hours``, and the features it says), without the worker's token the heartbeat route needs.
@@ -115,6 +116,7 @@ from fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from kg_seed import KgSeeder  # noqa: E402
 from loop_seed import seed as seed_loop  # noqa: E402
 from merge_seed import seed as seed_merge_queue  # noqa: E402
+from plugin_notice_seed import seed as seed_plugin_notice  # noqa: E402
 from release_seed import seed_release  # noqa: E402
 
 from tests.hub import pg  # noqa: E402
@@ -749,6 +751,11 @@ def control_server(
             elif self.path == "/merge-queue/seed":
                 try:
                     self._reply(200, seed_merge_queue(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/plugin-notice/seed":
+                try:
+                    self._reply(200, seed_plugin_notice(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/loop/seed":
