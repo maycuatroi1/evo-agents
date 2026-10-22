@@ -115,7 +115,8 @@ POST_COMMAND = "evo-agents worker chat post"
 REACT_COMMAND = "evo-agents worker chat react"
 MENTION_COMMAND = "evo-agents worker chat mention"
 CREATE_COMMAND = "evo-agents worker chat create"
-COMMANDS = ("post", "react", "create", "mention", "read")  # under `evo-agents worker chat`
+FILE_COMMAND = "evo-agents worker chat file"  # saves a file a person attached to a message, for the agent to read
+COMMANDS = ("post", "react", "create", "mention", "read", "file")  # under `evo-agents worker chat`
 COMMAND_KINDS = ("step", "plan", "author", "chat")  # the kinds of run whose agent uses them
 
 # What the agent is told when people wrote to it in the thread while its turn was on: their messages follow.
@@ -224,10 +225,33 @@ def _when(value) -> str:
     return str(value or "")
 
 
+def file_fact(file_id: int, name: str, media_type: str, size: int) -> dict:
+    """A file a person attached to a message, as ``render_message`` takes it."""
+    return {"id": file_id, "name": name, "media_type": media_type, "size": size}
+
+
+def _size(size: int) -> str:
+    if size < 1024:
+        return f"{size} bytes"
+    return f"{size / 1024:.1f} KiB" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} MiB"
+
+
+def file_lines(files: list[dict]) -> list[str]:
+    """The lines that name the files a message carries (``file_fact``), each with FILE_COMMAND, which saves it."""
+    lines = []
+    for item in files or []:
+        name = " ".join(str(item.get("name") or "file").split())
+        what = f"{item.get('media_type')}, {_size(int(item.get('size') or 0))}"
+        lines.append(f"[attached file {item.get('id')}: {name!r} ({what}); `{FILE_COMMAND} {item.get('id')}` saves it]")
+    return lines
+
+
 def render_message(message: dict, limit: int = SNAPSHOT_MESSAGE_BYTES) -> str:
-    """One message of the chat as the prompt shows it: its id, author, time and body, the body within ``limit``."""
+    """One message of the chat as the prompt shows it: its id, author, time and body, the body within ``limit``, and
+    a line for each file a person attached to it (``file_lines``)."""
     head = f"[#{message.get('id')}] {message.get('author') or 'hub'}, {_when(message.get('at'))}:"
-    return head + "\n" + clip(str(message.get("body") or "").strip(), limit)
+    body, files = clip(str(message.get("body") or "").strip(), limit), file_lines(message.get("files") or [])
+    return "\n".join([head, *([body] if body or not files else []), *files])
 
 
 def snapshot(

@@ -112,6 +112,8 @@ CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"
+# A member uploaded a file to attach to a message: "chat:<id> file:<id> sha256:<the first 16 of its SHA-256>".
+CHAT_FILE = "chat.file"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
 # "plugin:<name>@<version>", never a manifest, a bundle or a signature.
 PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds

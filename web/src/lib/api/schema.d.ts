@@ -6071,6 +6071,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload File
+         * @description Upload a file to attach to a message of the chat: the request's body is the file. The message that names it in
+         *     ``file_ids`` carries it.
+         */
+        post: operations["upload_file_v1_chats__chat_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/files/{file_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * File Content
+         * @description The bytes of a file a message of the chat carries, for a member who reads that message.
+         */
+        get: operations["file_content_v1_chats__chat_id__files__file_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -6250,6 +6291,27 @@ export interface paths {
          * @description A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).
          */
         post: operations["read_chat_v1_worker_runs__run_id__chat_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File Link
+         * @description A presigned GET of a file a person attached to a chat message, for the agent of the run when it may read that
+         *     message (as ``read`` rules), behind ``evo-agents worker chat file``.
+         */
+        post: operations["file_link_v1_worker_runs__run_id__chat_files__file_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8096,6 +8158,33 @@ export interface components {
              * @description 409 unless the profile is at this version now
              */
             if_version?: number | null;
+        };
+        /** AgentFileLink */
+        AgentFileLink: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /** Message Id */
+            message_id: number;
+            /** Name */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /** Size */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Url
+             * @description a presigned GET of the bytes, working until expires_at
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** AgentHanded */
         AgentHanded: {
@@ -10842,6 +10931,49 @@ export interface components {
              */
             progress?: components["schemas"]["ChatProgress"][] | null;
         };
+        /** ChatFile */
+        ChatFile: {
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description the file's name, as its uploader's browser named it
+             */
+            name: string;
+            /**
+             * Media Type
+             * @description type/subtype, as the uploader's browser named it
+             */
+            media_type: string;
+            /**
+             * Viewer
+             * @description what the web opens it with; none offers a download only
+             * @enum {string}
+             */
+            viewer: "image" | "video" | "audio" | "pdf" | "text" | "html" | "none";
+            /**
+             * Size
+             * @description bytes
+             */
+            size: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Uploaded By
+             * @description the login of the member who uploaded it; null once they are gone
+             */
+            uploaded_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Url
+             * @description where this hub answers its bytes to the chat's members; ?download=true to save it
+             */
+            url: string;
+        };
         /** ChatImageChange */
         ChatImageChange: {
             /**
@@ -10962,7 +11094,8 @@ export interface components {
         ChatMessageIn: {
             /**
              * Body
-             * @description at most 16384 bytes of UTF-8
+             * @description at most 16384 bytes of UTF-8; blank only with files
+             * @default
              */
             body: string;
             /**
@@ -10970,6 +11103,11 @@ export interface components {
              * @description the message it answers: it goes in its thread
              */
             reply_to?: number | null;
+            /**
+             * File Ids
+             * @description the files it carries, each uploaded to the chat by the sender (POST .../files) and not sent yet
+             */
+            file_ids?: number[];
         };
         /** ChatPage */
         ChatPage: {
@@ -12812,6 +12950,11 @@ export interface components {
              * @description the files of its run it carries, oldest first, each with the chat's URL of its bytes
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /**
+             * Files
+             * @description the files its person attached, in the order they were uploaded, each with the chat's URL of its bytes
+             */
+            files?: components["schemas"]["ChatFile"][];
         };
         /** GroupSample */
         GroupSample: {
@@ -18709,6 +18852,13 @@ export interface components {
             sent_at: string;
             /** Body */
             body: string;
+            /**
+             * Files
+             * @description the files its person attached: id, name, media_type and size of each
+             */
+            files?: {
+                [key: string]: unknown;
+            }[];
         };
         /** ReadRequest */
         ReadRequest: {
@@ -49100,6 +49250,189 @@ export interface operations {
             };
         };
     };
+    upload_file_v1_chats__chat_id__files_post: {
+        parameters: {
+            query: {
+                /** @description the file's name */
+                name: string;
+            };
+            header?: {
+                /** @description the file's media type */
+                "content-type"?: string | null;
+                /** @description the file's size in bytes */
+                "content-length"?: string | null;
+            };
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFile"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    file_content_v1_chats__chat_id__files__file_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_events_v1_chats__chat_id__events_get: {
         parameters: {
             query?: {
@@ -49633,6 +49966,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatReading"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_link_v1_worker_runs__run_id__chat_files__file_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentFileLink"];
                 };
             };
             /** @description Unauthorized */

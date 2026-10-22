@@ -3,7 +3,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import { chatKeys } from "@/lib/chat-keys";
-import type { Chat, ChatCandidate, ChatCreate, ChatEvents, ChatPage, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatCandidate, ChatCreate, ChatEvents, ChatFile, ChatPage, GroupMessage } from "@/lib/chats";
 import type { ApiSource } from "@/lib/queries";
 
 export { chatComposeHref, chatKeys, chatQuery, chatsQuery, COMPOSE_PARAM, LIST_IDLE_MS, LIST_LIVE_MS, openDirectChat } from "@/lib/chat-keys";
@@ -89,10 +89,22 @@ export async function removeChatImage(api: ApiClient, id: number): Promise<Chat>
   return call(api.DELETE("/v1/chats/{chat_id}/image", { params: { path: { chat_id: id } }, headers }));
 }
 
-/** Send a message, in the thread of `replyTo` when given. */
-export async function sendChatMessage(api: ApiClient, id: number, body: string, replyTo: number | null): Promise<GroupMessage> {
+/**
+ * Upload a file to attach to a message of the chat: the request's body is the file's bytes, its Content-Type the
+ * file's media type (`application/octet-stream` when the browser names none). The hub answers the file, which no
+ * message carries until one names it in `file_ids` (`sendChatMessage`).
+ */
+export async function uploadChatFile(api: ApiClient, id: number, file: File, signal?: AbortSignal): Promise<ChatFile> {
   const headers = await csrfHeaders(api);
-  const payload = replyTo ? { body, reply_to: replyTo } : { body };
+  const params = { path: { chat_id: id }, query: { name: file.name }, header: { "content-type": file.type || "application/octet-stream" } };
+  // The route reads the raw body, so the API document gives it no request body: the file goes as it is, not as JSON.
+  return call(api.POST("/v1/chats/{chat_id}/files", { params, headers, body: file as never, bodySerializer: (body: unknown) => body, signal }));
+}
+
+/** Send a message, in the thread of `replyTo` when given, carrying the files uploaded as `fileIds`. */
+export async function sendChatMessage(api: ApiClient, id: number, body: string, replyTo: number | null, fileIds: readonly number[] = []): Promise<GroupMessage> {
+  const headers = await csrfHeaders(api);
+  const payload = { body, ...(replyTo ? { reply_to: replyTo } : {}), ...(fileIds.length ? { file_ids: [...fileIds] } : {}) };
   return call(api.POST("/v1/chats/{chat_id}/messages", { params: { path: { chat_id: id } }, body: payload, headers }));
 }
 

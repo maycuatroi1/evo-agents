@@ -94,3 +94,8 @@ export function preview(markdown: string, max = QUOTE_CHARS): string {
     .trim();
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
 }
+
+/** One line of a message as `preview` makes it, or the names of the files it carries when it has no words. */
+export function messagePreview(message: Pick<GroupMessage, "body" | "files">, max = QUOTE_CHARS): string {
+  return preview(message.body, max) || preview((message.files ?? []).map((file) => file.name).join(", "), max);
+}

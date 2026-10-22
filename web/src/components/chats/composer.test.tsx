@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "@/lib/api/client";
-import type { Chat, ChatAgent, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatAgent, ChatFile, GroupMessage } from "@/lib/chats";
 import { renderVi } from "@/test/render";
 
 import { ChatComposer } from "./composer";
@@ -124,7 +124,7 @@ describe("ChatComposer", () => {
     api.answer = () => Response.json(sent, { status: 201 });
     const { user, box, onSent } = setup();
     await user.click(screen.getByTestId("chat-composer-send"));
-    expect(screen.getByTestId("chat-composer-problem")).toHaveTextContent("Hãy viết gì đó trước.");
+    expect(screen.getByTestId("chat-composer-problem")).toHaveTextContent("Hãy viết gì đó hoặc đính kèm file trước.");
     await user.type(box, "@reviewer xem giúp");
     await user.keyboard("{Escape}{Control>}{Enter}{/Control}");
     await waitFor(() => expect(onSent).toHaveBeenCalledWith(sent));
@@ -162,7 +162,7 @@ describe("ChatComposer keys", () => {
   it("refuses a blank message on Enter instead of sending it", async () => {
     const { user, box } = setup();
     await user.type(box, "   {Enter}");
-    expect(screen.getByTestId("chat-composer-problem")).toHaveTextContent("Hãy viết gì đó trước.");
+    expect(screen.getByTestId("chat-composer-problem")).toHaveTextContent("Hãy viết gì đó hoặc đính kèm file trước.");
     expect(posts()).toEqual([]);
   });
 
@@ -218,6 +218,112 @@ describe("ChatComposer answering one message", () => {
     await user.click(screen.getByRole("button", { name: "Huỷ trả lời" }));
     expect(onCancel).toHaveBeenCalledTimes(2);
     expect(box).toHaveFocus();
+  });
+});
+
+function chatFile(id: number, name: string, mediaType = "image/png", size = 4): ChatFile {
+  return { id, name, media_type: mediaType, viewer: mediaType.startsWith("image/") ? "image" : "none", size, sha256: "a".repeat(64), uploaded_by: "octo", created_at: "2026-10-14T09:03:00Z", url: `/v1/chats/7/files/${id}/content` };
+}
+
+/** A file whose size says `size` without holding that many bytes. */
+function sized(name: string, size: number, type = "application/pdf"): File {
+  const file = new File(["%PDF"], name, { type });
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+}
+
+const uploads = () => api.seen.filter((call) => call.method === "POST" && call.url.includes("/files"));
+const messagePosts = () => api.seen.filter((call) => call.method === "POST" && call.url.endsWith("/messages")).map((call) => JSON.parse(call.body));
+
+describe("ChatComposer files", () => {
+  it("uploads each file picked at once, shows it as a chip, and sends it with no text", async () => {
+    let next = 30;
+    const finish: (() => void)[] = [];
+    api.answer = async (request) => {
+      if (request.url.includes("/files?")) {
+        const name = new URL(request.url).searchParams.get("name") ?? "";
+        const id = next++;
+        await new Promise<void>((resolve) => finish.push(resolve));
+        return Response.json(chatFile(id, name, request.headers.get("content-type") ?? ""), { status: 201 });
+      }
+      return Response.json({ ...message(""), files: [chatFile(30, "shot.png")] }, { status: 201 });
+    };
+    const { user, box, onSent } = setup();
+    await user.upload(screen.getByTestId("chat-composer-file-input"), [new File(["png!"], "shot.png", { type: "image/png" }), new File(["x"], "notes")]);
+    await waitFor(() => expect(uploads()).toHaveLength(2));
+    const [image, plain] = uploads();
+    expect(image.url).toBe("http://hub.test/v1/chats/7/files?name=shot.png");
+    expect(image.headers.get("content-type")).toBe("image/png");
+    expect(image.headers.get("X-Evo-CSRF")).toBe("csrf-1");
+    expect(image.body).toBe("png!");
+    expect(plain.headers.get("content-type")).toBe("application/octet-stream");
+
+    const chips = screen.getAllByTestId("chat-composer-file");
+    expect(chips.map((chip) => chip.getAttribute("data-state"))).toEqual(["uploading", "uploading"]);
+    expect(within(screen.getByRole("list", { name: "File sẽ gửi" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent("shot.png");
+    expect(screen.getByTestId("chat-composer-send")).toBeDisabled();
+    await user.click(box);
+    await user.keyboard("{Enter}");
+    expect(messagePosts()).toEqual([]);
+
+    finish.forEach((resolve) => resolve());
+    await waitFor(() => expect(screen.getAllByTestId("chat-composer-file").map((chip) => chip.getAttribute("data-state"))).toEqual(["uploaded", "uploaded"]));
+    await user.click(screen.getByTestId("chat-composer-send"));
+    await waitFor(() => expect(onSent).toHaveBeenCalledTimes(1));
+    expect(messagePosts()).toEqual([{ body: "", file_ids: [30, 31] }]);
+    expect(screen.queryByTestId("chat-composer-file")).toBeNull();
+  });
+
+  it("refuses a file over 25 MiB, an empty one and the files past ten, with the reason", async () => {
+    let next = 1;
+    api.answer = (request) => Response.json(chatFile(next++, new URL(request.url).searchParams.get("name") ?? ""), { status: 201 });
+    const { user } = setup();
+    const input = screen.getByTestId("chat-composer-file-input");
+    await user.upload(input, [sized("video.mp4", 25 * 1024 * 1024 + 1), sized("empty.txt", 0), sized("ok.pdf", 25 * 1024 * 1024)]);
+    expect(screen.getByTestId("chat-composer-files-problem")).toHaveTextContent("video.mp4: mỗi file tối đa 25 MB. empty.txt: file rỗng.");
+    await waitFor(() => expect(uploads()).toHaveLength(1));
+    await user.upload(input, Array.from({ length: 11 }, (_, index) => new File(["x"], `f${index}.txt`, { type: "text/plain" })));
+    expect(screen.getByTestId("chat-composer-files-problem")).toHaveTextContent("Một tin mang tối đa 10 file: 2 file không được đính kèm.");
+    await waitFor(() => expect(uploads()).toHaveLength(10));
+    expect(screen.getAllByTestId("chat-composer-file")).toHaveLength(10);
+  });
+
+  it("shows an upload the hub refused on its chip, holds Send until it is removed", async () => {
+    api.answer = (request) =>
+      request.url.includes("/files?")
+        ? Response.json({ error: "too_large", message: "the file is too big", request_id: "req-2" }, { status: 413 })
+        : Response.json(message("xem file"), { status: 201 });
+    const { user, box, onSent } = setup();
+    await user.upload(screen.getByTestId("chat-composer-file-input"), new File(["x"], "big.zip", { type: "application/zip" }));
+    await waitFor(() => expect(screen.getByTestId("chat-composer-file")).toHaveAttribute("data-state", "failed"));
+    expect(screen.getByTestId("chat-composer-file-error")).toHaveTextContent("Quá 25 MB");
+    await user.type(box, "xem file");
+    await user.click(screen.getByTestId("chat-composer-send"));
+    expect(screen.getByTestId("chat-composer-problem")).toHaveTextContent("Có file chưa tải lên được");
+    expect(messagePosts()).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Bỏ big.zip" }));
+    expect(screen.queryByTestId("chat-composer-file")).toBeNull();
+    await user.click(screen.getByTestId("chat-composer-send"));
+    await waitFor(() => expect(onSent).toHaveBeenCalledTimes(1));
+    expect(messagePosts()).toEqual([{ body: "xem file" }]);
+  });
+
+  it("attaches the files of a paste and of a drop on the box", async () => {
+    let next = 50;
+    api.answer = (request) => Response.json(chatFile(next++, new URL(request.url).searchParams.get("name") ?? ""), { status: 201 });
+    const { box } = setup();
+    const pasted = new File(["png"], "paste.png", { type: "image/png" });
+    fireEvent.paste(box, { clipboardData: { files: [pasted], types: ["Files"] } });
+    await waitFor(() => expect(screen.getAllByTestId("chat-composer-file")).toHaveLength(1));
+    const dropped = new File(["pdf"], "drop.pdf", { type: "application/pdf" });
+    const zone = box.parentElement as HTMLElement;
+    fireEvent.dragOver(zone, { dataTransfer: { types: ["Files"], files: [], dropEffect: "none" } });
+    expect(zone).toHaveAttribute("data-dragging", "true");
+    fireEvent.drop(zone, { dataTransfer: { types: ["Files"], files: [dropped] } });
+    expect(zone).not.toHaveAttribute("data-dragging");
+    await waitFor(() => expect(screen.getAllByTestId("chat-composer-file").map((chip) => chip.getAttribute("data-state"))).toEqual(["uploaded", "uploaded"]));
+    expect(uploads().map((call) => new URL(call.url).searchParams.get("name"))).toEqual(["paste.png", "drop.pdf"]);
   });
 });
 

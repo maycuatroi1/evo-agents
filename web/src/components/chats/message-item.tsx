@@ -7,7 +7,7 @@ import type { ReactNode, Ref } from "react";
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
 import { Button } from "@/components/ui/button";
-import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
+import { type Chat, type ChatAuthor, chatFileOutput, type GroupMessage, isMine } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
 import { AuthorAvatar } from "./faces";
@@ -64,8 +64,9 @@ const ACTIONS = {
 /**
  * One message of a chat as a chat app draws it (web/DESIGN.md, Chats): the visitor's own on the right in a `brand-soft`
  * bubble with no face; anyone else's on the left in a `muted` bubble after their face and name, shown once for messages
- * that run on. The text is Markdown that is never HTML; under the bubble, the files of its run it carries (an agent's,
- * as chips that open the viewer, the bytes served to who reads the message), where it leads (the agent's run, the runs
+ * that run on. The text is Markdown that is never HTML, and a message of files only has no bubble; under it, the files
+ * its person attached and those of its run it carries (an agent's), as chips that open the viewer (an image as its
+ * thumbnail), the bytes served to who reads the message, then where it leads (the agent's run, the runs
  * its mentions handed work to, its pull requests), how far each run it handed work to is (`message-progress.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
  * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React and
@@ -82,6 +83,8 @@ export function MessageItem(props: Props) {
   const toggle = (emoji: string, on: boolean) => onReact(message, emoji, on);
   const replies = thread?.count ?? 0;
   const id = domId ?? `message-${message.id}`;
+  const attached = (message.files ?? []).map(chatFileOutput);
+  const bubble = message.body.trim() !== "" || attached.length === 0;
   const reply = onReply
     ? { label: t("replyDirect"), icon: <Reply aria-hidden="true" />, act: () => onReply(message) }
     : onThread && thread !== undefined
@@ -109,23 +112,26 @@ export function MessageItem(props: Props) {
       <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} onShow={onQuote} /> : null}
-        <div
-          className={cn(
-            "max-w-full min-w-0 rounded-lg px-3 py-2 transition-shadow",
-            mine ? "bg-brand-soft" : "bg-muted",
-            !runOn && (mine ? "rounded-tr-xs" : "rounded-tl-xs"),
-            highlighted && "ring-2 ring-brand",
-          )}
-          title={runOn ? format.dateTime(new Date(message.created_at), { dateStyle: "medium", timeStyle: "short" }) : undefined}
-          data-testid="message-bubble"
-        >
-          <SafeMarkdown
-            className="leading-6 [&_:not(pre)>code]:bg-card [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:bg-card"
-            testId="message-body"
+        {bubble ? (
+          <div
+            className={cn(
+              "max-w-full min-w-0 rounded-lg px-3 py-2 transition-shadow",
+              mine ? "bg-brand-soft" : "bg-muted",
+              !runOn && (mine ? "rounded-tr-xs" : "rounded-tl-xs"),
+              highlighted && "ring-2 ring-brand",
+            )}
+            title={runOn ? format.dateTime(new Date(message.created_at), { dateStyle: "medium", timeStyle: "short" }) : undefined}
+            data-testid="message-bubble"
           >
-            {message.body}
-          </SafeMarkdown>
-        </div>
+            <SafeMarkdown
+              className="leading-6 [&_:not(pre)>code]:bg-card [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:bg-card"
+              testId="message-body"
+            >
+              {message.body}
+            </SafeMarkdown>
+          </div>
+        ) : null}
+        <OutputStrip outputs={attached} label={tFiles("attached")} className={cn(mine && "justify-end", !bubble && highlighted && "rounded-sm ring-2 ring-brand")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <MessageLinks message={message} chat={chat} />
         <MessageProgress progress={message.progress} />

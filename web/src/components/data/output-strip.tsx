@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 
-import type { RunOutput } from "@/lib/outputs";
+import type { ShownFile } from "@/lib/outputs";
 import { cn } from "@/lib/utils";
 
 import { OutputChip } from "./output-tile";
@@ -17,7 +17,7 @@ const LazyViewer = dynamic(() => import("./output-viewer").then((module) => modu
  * Which output the viewer shows (null: closed), and the viewer itself once one was opened, kept mounted afterwards so
  * it closes as a dialog does and gives focus back to the button that opened it.
  */
-export function useOutputViewer(outputs: readonly RunOutput[], actions?: OutputViewerProps["actions"]) {
+export function useOutputViewer<T extends ShownFile>(outputs: readonly T[], actions?: (output: T, show: (id: number | null) => void) => ReactNode) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   if (openId !== null && !loaded) setLoaded(true);
@@ -29,7 +29,9 @@ export function useOutputViewer(outputs: readonly RunOutput[], actions?: OutputV
     setOpenId(id);
   }, []);
   const returnFocus = useCallback(() => opener.current, []);
-  const viewer = loaded ? <LazyViewer outputs={outputs} openId={openId} onOpenChange={open} actions={actions} returnFocus={returnFocus} /> : null;
+  // The viewer hands `actions` only the outputs it was given, which are all T.
+  const viewerActions = actions as OutputViewerProps["actions"];
+  const viewer = loaded ? <LazyViewer outputs={outputs} openId={openId} onOpenChange={open} actions={viewerActions} returnFocus={returnFocus} /> : null;
   return { openId, open, viewer };
 }
 
@@ -37,28 +39,28 @@ export function useOutputViewer(outputs: readonly RunOutput[], actions?: OutputV
 const SHOWN = 8;
 
 /**
- * The files a trace row, a question, a chat message or a notice carries, as a list of chips (an image as its
- * thumbnail, any other file as its icon, name and size) that open the viewer over all of them. `onOpen` lets a page
- * hold one viewer for its strips (the run page); without it the strip holds its own.
+ * The files a trace row, a question, a chat message (its run's, or those its person attached) or a notice carries, as
+ * a list of chips (an image as its thumbnail, any other file as its icon, name and size) that open the viewer over all
+ * of them. `onOpen` lets a page hold one viewer for its strips (the run page); without it the strip holds its own.
  */
-export function OutputStrip({
+export function OutputStrip<T extends ShownFile>({
   outputs,
   label,
   onOpen,
   className,
   testId = "output-strip",
 }: {
-  outputs: readonly RunOutput[];
+  outputs: readonly T[];
   /** The list's accessible name: "Files of this question". */
   label: string;
-  onOpen?: (output: RunOutput, list: readonly RunOutput[]) => void;
+  onOpen?: (output: T, list: readonly T[]) => void;
   className?: string;
   testId?: string;
 }): ReactNode {
   const t = useTranslations("outputs");
   const own = useOutputViewer(outputs);
   if (outputs.length === 0) return null;
-  const open = (output: RunOutput) => (onOpen ? onOpen(output, outputs) : own.open(output.id));
+  const open = (output: T) => (onOpen ? onOpen(output, outputs) : own.open(output.id));
   const shown = outputs.slice(0, SHOWN);
   const rest = outputs.length - shown.length;
   return (

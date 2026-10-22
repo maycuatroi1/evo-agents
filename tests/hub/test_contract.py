@@ -179,6 +179,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert sorted(key for key in printed if not key.startswith("hub ")) == [
         "worker ask",
         "worker chat create",
+        "worker chat file",
         "worker chat mention",
         "worker chat post",
         "worker chat react",

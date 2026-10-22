@@ -2,11 +2,11 @@
 
 A blob is referred to by a ``blobs`` row of any holder, a skill or plugin version, a kg build's artifact, the log
 of an ingested or pending kg run, a part of a session's transcript, a group chat's image (``chats.image_sha256``), or
-an output of a run (``run_outputs.sha256``). Whoever drops references (the retention of built graphs,
+an output of a run (``run_outputs.sha256``), or a file a person attached to a chat message (``chat_files.sha256``).
+Whoever drops references (the retention of built graphs,
 ``evo_agents.hub.kg_prune``; the deletion of transcripts, ``evo_agents.hub.server.transcripts``; a chat's image
 replaced or taken off, ``evo_agents.hub.server.chat_images``; an output deleted, or dropped with its run's events,
-``evo_agents.hub.output_prune``)
-does it in a transaction holding the blob lock exclusively, and in that same transaction ``forget`` records in
+``evo_agents.hub.output_prune``; a chat file never attached, ``evo_agents.hub.server.chat_files``) does it in a transaction holding the blob lock exclusively, and in that same transaction ``forget`` records in
 ``blob_deletions`` each blob it left without any reference. ``delete_pending`` then deletes their objects in a
 second transaction holding the lock exclusively, and marks the rows deleted. A deletion that fails rolls back: the
 rows stay pending and the next run tries again, which deleting an object that is already gone does not mind.
@@ -49,7 +49,7 @@ def hashes_in(sha256, hashes: list[str]):
 
 def _referenced(hashes: list[str]):
     """The hashes of ``hashes`` that a blobs row, a skill or plugin version, a kg build's artifact, the log of an
-    ingested or pending kg run, a part of a transcript, a chat's image or an output of a run refers to."""
+    ingested or pending kg run, a part of a transcript, a chat's image, an output of a run or a chat file refers to."""
     h = func.unnest(literal(hashes, ARRAY(Text))).table_valued(column("sha256", Text)).render_derived(name="h")
     references = (
         tables.blobs.c.sha256,
@@ -61,6 +61,7 @@ def _referenced(hashes: list[str]):
         tables.transcript_parts.c.sha256,
         tables.chats.c.image_sha256,
         tables.run_outputs.c.sha256,
+        tables.chat_files.c.sha256,
     )
     return select(h.c.sha256).where(or_(*(exists().where(sha256 == h.c.sha256) for sha256 in references)))
 

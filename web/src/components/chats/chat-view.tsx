@@ -25,7 +25,7 @@ import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
-import { preview, type Quote } from "./line-model";
+import { messagePreview, type Quote } from "./line-model";
 import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
 import { useAuthorLabel } from "./message-parts";
@@ -231,7 +231,7 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
               hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
               testId="chat-composer"
               focusKey={replying ? `reply-${replyFocus}` : compose}
-              replying={replying ? { name: authorLabel(replying.author, me), text: preview(replying.body), onCancel: () => setReplying(null) } : null}
+              replying={replying ? { name: authorLabel(replying.author, me), text: messagePreview(replying), onCancel: () => setReplying(null) } : null}
             />
           </div>
         )}

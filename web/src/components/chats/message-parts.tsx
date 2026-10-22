@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { AuthorName } from "./author";
 import { AuthorAvatar } from "./faces";
-import { authorKey, preview, type Quote } from "./line-model";
+import { authorKey, messagePreview, type Quote } from "./line-model";
 
 /**
  * What heads a message (web/DESIGN.md, Chats), named by the message's `aria-labelledby`: another's name and the time,
@@ -64,7 +64,7 @@ export function ReplyQuote({ quote, me, onShow }: { quote: Quote; me: string | n
   const label = useAuthorLabel();
   const answered = quote.message;
   const name = answered ? label(answered.author, me) : null;
-  const text = answered ? preview(answered.body) : null;
+  const text = answered ? messagePreview(answered) : null;
   return (
     <button
       type="button"
