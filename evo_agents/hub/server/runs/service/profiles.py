@@ -20,7 +20,9 @@ that needs it, when its daemon says it applies profiles, and for one that attach
 builds them (``runs.AGENT_PACKS``) and its owner accepted each pack's plugin. A run asking for any runtime gets the first of the worker's
 runtimes of the core that the profile allows (``pick_runtime``); a run of a plugin's runtime keeps the one it asked
 for. Its environment is the first of the axis's allowlist the worker takes (``plugin_environments.pick``), the host
-for an axis that allows all. The claimed run carries the
+for an axis that allows all. A run under a profile that is not its project's default that would run on Claude Code
+there goes only to a daemon that gives its agent a config dir of its own (``runs.AGENT_HOME``), and its claim says so
+(``own_home``). The claimed run carries the
 profile at its version (``run_profile``) for its worker. A run without a profile, one from before schema 0030, is
 claimed as before.
 """
@@ -316,7 +318,39 @@ def claim_clause(
     if runs.AGENT_PROFILES not in (features or ()):
         conditions += [_all(permissions, axis) for axis in ("tool", "skill", "model")]
         conditions.append(func.coalesce(v.c.body["instructions"].astext, "") == "")
+    if runs.AGENT_HOME not in (features or ()):
+        conditions.append(_default_or_not_claude(permissions, runtimes))
     return or_(r.c.profile_id.is_(None), exists().where(*conditions))
+
+
+CLAUDE = "claude-code"
+
+
+def _default_or_not_claude(permissions, runtimes: list[str]):
+    """Whether a worker whose daemon gives no agent a config dir of its own (``runs.AGENT_HOME``) may take the run
+    being claimed (correlated): one under its project's default profile, or one that does not run on Claude Code here,
+    neither asking for it nor, asking for any, getting it from ``pick_runtime`` among the worker's ``runtimes``."""
+    r, ap = tables.runs, tables.agent_profiles
+    default = select(ap.c.is_default).where(ap.c.id == r.c.profile_id).correlate(r).scalar_subquery()
+    allow = permissions["runtime"]["allow"]
+    if CLAUDE not in runtimes:
+        picks_claude = literal(False)
+    else:
+        before = runtimes[: runtimes.index(CLAUDE)]
+        allows_claude = or_(_all(permissions, "runtime"), allow.has_any(literal([CLAUDE], ARRAY(Text))))
+        picks_claude = (
+            allows_claude
+            if not before
+            else and_(
+                ~_all(permissions, "runtime"),
+                allow.has_any(literal([CLAUDE], ARRAY(Text))),
+                ~allow.has_any(literal(before, ARRAY(Text))),
+            )
+        )
+    return or_(
+        func.coalesce(default, False),
+        and_(r.c.runtime != CLAUDE, or_(r.c.runtime != "any", ~picks_claude)),
+    )
 
 
 def runtime_rule(axis: str = "runtime"):
@@ -349,6 +383,15 @@ def pick_runtime(asked: str, runtimes: list[str], rule: dict | None) -> str:
         return asked
     allow = profiles.allowed({"runtime": rule}, "runtime") if rule else None
     return next(name for name in runtimes if allow is None or name in allow)
+
+
+async def own_home(conn: AsyncConnection, run_id: int) -> bool:
+    """Whether run ``run_id`` went under a profile that is not its project's default, whose claude-code agent gets a
+    config dir of its own (``runs.AGENT_HOME``); False for a run without a profile."""
+    r, ap = tables.runs, tables.agent_profiles
+    query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
+    default = (await conn.execute(query)).scalar_one_or_none()
+    return default is False
 
 
 async def run_profile(conn: AsyncConnection, run_id: int) -> RunProfile | None:
