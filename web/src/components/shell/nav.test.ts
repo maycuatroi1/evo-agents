@@ -38,7 +38,7 @@ describe("nav", () => {
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
+    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "org", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
     expect(HUB_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([["chats", "unreadChats"]]);
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
   });

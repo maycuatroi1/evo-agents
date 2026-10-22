@@ -1,7 +1,8 @@
 """Dispatching: the runs of a plan's steps (POST /v1/projects/{p}/runs), a plan run (POST .../plan-runs) and an author
 run (POST .../author-runs), and what each refuses: a caller without writer, a worker not the caller's or one that could
 never claim the run, a repo without an origin, a step not ready, a plan the Curator made, and what the agent profile
-the dispatch names (the project's default without one) does not allow (``service.profiles``). The night shift queues
+the dispatch names (the project's default without one) does not allow (``service.profiles``), and a caller whose
+primary seat in the org chart ended (``check_seat``). The night shift queues
 its runs through ``insert_run`` and ``unfit`` too (``evo_agents.hub.server.curator``, ``collect``, ``changes``):
 ``insert_run`` gives a run whose values name no profile the project's default."""
 
@@ -22,6 +23,7 @@ from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -54,6 +56,13 @@ def check_dispatcher(access: ProjectAccess) -> None:
         raise HTTPException(
             403, f"dispatching runs in project {access.name} needs the writer role on it; you hold {held}"
         )
+
+
+async def check_seat(conn: AsyncConnection, user: Principal, what: str = "dispatching a run") -> None:
+    """403 when the caller's primary seat in the org chart ended, naming its unit and the day (plan org-chart, a5)."""
+    reason = await ended_refusal(conn, user.user_id, user.login, what=what)
+    if reason is not None:
+        raise HTTPException(403, reason)
 
 
 @dataclass(frozen=True)
@@ -348,6 +357,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
@@ -436,6 +446,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
@@ -544,6 +555,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         check_dispatcher(access)
+        await check_seat(conn, user)
         problem = author.request_problem(body.request) or author.runtime_problem(body.runtime)
         if problem:
             raise HTTPException(422, f"{problem}; nothing was dispatched")

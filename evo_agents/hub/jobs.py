@@ -57,6 +57,7 @@ RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of 
 LOOP_TICKS = "hub.loop_ticks"  # every 5 minutes: a tick of the Loop of each project that has it on
 LOOP_TICK = "hub.loop_tick"  # one tick of a project's Loop, under its lock; also queued by each of its events
 LOOP_NOTICES = "hub.loop_notices"  # every 5 minutes: the month's review of goals and the Loop's brief, when due
+EXPIRE_SEATS = "hub.expire_seats"  # hourly: org seats past their end date ended, the leases of people at A0 back
 
 
 def kg_lock(project: str) -> str:

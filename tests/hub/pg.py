@@ -167,6 +167,8 @@ GOAL_TABLES = frozenset({"goals", "goal_revisions"})
 LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 # migration 0097: the keys of the notices an isolated plugin sends
 PLUGIN_NOTICE_TABLES = frozenset({"plugin_notice_keys"})
+# migration 0099: the org chart, its units, the seats in them and the revisions of their autonomy ceilings
+ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
