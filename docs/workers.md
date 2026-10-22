@@ -2726,10 +2726,12 @@ request as `update_now` (`requested_at`, `ended_at`, `outcome`, `reason`) and th
 
 The update, once decided:
 
-1. `uv tool install` of `evo-ak[<extras>] @ git+https://github.com/maycuatroi1/evo-agents@nightly`, with the extras of
-   the install, into `~/.evo/installs/<install>/staging`. The staged install must start (`python -c 'import
-   evo_agents.cli, evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure
-   here leaves the install as it was.
+1. `uv tool install` of `evo-ak[<extras>] @ git+https://github.com/maycuatroi1/evo-agents@nightly`, with the extras
+   uv's receipt lists and always `worker`, into `~/.evo/installs/<install>/staging`. A receipt can lack `worker` when
+   evo-ak was installed again without it under a running daemon (seen 2026-10-22); nightly without it has no aiohttp,
+   and `worker run` would not start. The staged install must start (`python -c 'import evo_agents.cli,
+   evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure here leaves the
+   install as it was.
 2. A copy of the install's environment and of its commands (the `evo-agents` symlink or file in `~/.local/bin`) into
    `~/.evo/installs/<install>/backup`, symlinks kept as symlinks. When the copy cannot be made (a full disk), the update
    stops here and the install stays as it was.

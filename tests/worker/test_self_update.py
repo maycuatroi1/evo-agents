@@ -595,6 +595,29 @@ def test_an_idle_unlocked_daemon_installs_nightly_and_exits_for_its_manager_to_r
     assert records(caplog, "self-update: updating")
 
 
+@pytest.mark.parametrize(
+    ("listed", "wanted"),
+    [((), "evo-ak[worker]"), (("graphify",), "evo-ak[graphify,worker]")],
+    ids=["no-extras", "graphify-only"],
+)
+def test_a_daemon_whose_receipt_lacks_the_worker_extra_installs_nightly_with_it(machine, fake, listed, wanted):  # noqa: F811
+    """evo-ak installed again without the worker extra under a running daemon leaves a receipt that lists none (seen
+    2026-10-22): the daemon's update installs it anyway, with the receipt's other extras, and so does the requirement
+    that would put the old version back."""
+    fake.prefix = write_install(fake.tools, fake.bin, version="0.22.0", commit=OLD, extras=listed)
+    assert fake.install().extras == listed
+    assert fake.installer().previous() == f"{wanted} @ git+https://github.com/maycuatroi1/evo-agents@{OLD}"
+
+    async def body(hub, daemon, task):
+        assert await ended(task) == EXIT_UPDATED
+
+    assert run_daemon(machine, body, updater=fake.updater) == EXIT_UPDATED
+    staged, real = fake.calls()
+    assert staged["argv"][-1] == real["argv"][-1] == f"{wanted} @ git+https://github.com/maycuatroi1/evo-agents@nightly"
+    install = fake.install()
+    assert install.commit == NEW and "worker" in install.extras, "the receipt uv wrote names the worker extra again"
+
+
 def test_a_locked_worker_stays_on_its_version_until_its_owner_unlocks_it(machine, fake):  # noqa: F811
     async def body(hub, daemon, task):
         report = await until_heartbeat(hub, lambda found: found.get("state") == "locked", "the state locked")
