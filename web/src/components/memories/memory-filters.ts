@@ -1,12 +1,17 @@
+import { HANDLE } from "@/lib/agent-rules";
+
 import { isMemoryType, type MemoryType } from "./memory-meta";
 
 /**
- * The facets of a memory list, kept in the URL (?q=, ?location=, ?type=) so a filtered view can be shared and
- * survives a reload. They narrow what the API returned; they never decide what the visitor may see.
+ * The facets of a memory list, kept in the URL (?q=, ?location=, ?type=, ?agent=) so a filtered view can be shared and
+ * survives a reload. They narrow what the API returned; they never decide what the visitor may see. `agent` is the
+ * handle of the agent whose memories to list, which the API is asked for (it lists an agent's memories only when one
+ * is named); null lists the project's shared memories.
  */
-export type MemoryFilters = { q: string; location: string | null; type: MemoryType | null };
+export type MemoryFilters = { q: string; location: string | null; type: MemoryType | null; agent: string | null };
 
-export const NO_FILTERS: MemoryFilters = { q: "", location: null, type: null };
+export const NO_FILTERS: MemoryFilters = { q: "", location: null, type: null, agent: null };
+
 export const MAX_QUERY = 500; // the API's bound on q
 
 type Params = { get(name: string): string | null };
@@ -15,10 +20,12 @@ export function readFilters(params: Params): MemoryFilters {
   const q = (params.get("q") ?? "").trim().slice(0, MAX_QUERY);
   const location = params.get("location")?.trim() || null;
   const type = params.get("type");
+  const agent = params.get("agent")?.trim().replace(/^@/, "").toLowerCase() || null;
   return {
     q,
     location: location && location.length <= 255 ? location : null,
     type: type && isMemoryType(type) ? type : null,
+    agent: agent && HANDLE.test(agent) ? agent : null,
   };
 }
 
@@ -40,12 +47,13 @@ export function filtersQuery(filters: MemoryFilters): string {
   if (filters.q.trim()) params.set("q", filters.q.trim());
   if (filters.location) params.set("location", filters.location);
   if (filters.type) params.set("type", filters.type);
+  if (filters.agent) params.set("agent", filters.agent);
   const text = params.toString();
   return text ? `?${text}` : "";
 }
 
 export function isFiltered(filters: MemoryFilters): boolean {
-  return Boolean(filters.q || filters.location || filters.type);
+  return Boolean(filters.q || filters.location || filters.type || filters.agent);
 }
 
 type Faceted = { location: string; type: string };

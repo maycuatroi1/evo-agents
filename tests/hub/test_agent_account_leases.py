@@ -17,7 +17,7 @@ if not pg.DSN:
 
 from sqlalchemy import select, update
 
-from evo_agents.hub import tables
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server.agent_account_mask import mask_values
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql, table_dump
@@ -32,8 +32,9 @@ from tests.hub.test_credentials_api import (
     env_secret,
     leased,
     sample,
-    worker_of,
 )
+from tests.hub.test_credentials_api import worker_of as plain_worker
+from tests.hub.test_profile_runs import beat
 from tests.hub.test_runs import report
 from tests.hub.test_shared_workers import share
 
@@ -55,6 +56,14 @@ def hub(client, github) -> dict:
     )
     assert made.status_code == 201, made.text
     return headers
+
+
+def worker_of(client, headers, name: str) -> dict:
+    """A worker whose daemon gives the claude-code agent of a run under @auditor a config dir of its own
+    (``runs.AGENT_HOME``), which such a run needs (``tests.hub.test_claim_agent_home``)."""
+    worker = plain_worker(client, headers, name)
+    beat(client, worker, features=[runs.AGENT_HOME])
+    return worker
 
 
 def run_under(client, headers, worker: dict, handle: str | None = "auditor", repo: str = "evo-agents", **extra) -> int:

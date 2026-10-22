@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { labelNames, memoryTitle, parseFrontmatter } from "./memory-meta";
+import { labelNames, memoryStatus, memoryTitle, parseFrontmatter } from "./memory-meta";
 
 describe("parseFrontmatter", () => {
   it("splits the frontmatter off and reads its plain top-level fields", () => {
@@ -40,5 +40,15 @@ describe("labelNames", () => {
       integrity: "T",
     });
     expect(labelNames({ level: 3, location: "" })).toEqual({ level: null, location: null, integrity: null });
+  });
+});
+
+describe("memoryStatus", () => {
+  it("reads where an agent's memory stands: promoted over archived over stale, else active", () => {
+    const at = "2026-10-01T00:00:00Z";
+    expect(memoryStatus({})).toBe("active");
+    expect(memoryStatus({ stale_at: at })).toBe("stale");
+    expect(memoryStatus({ stale_at: at, archived_at: at })).toBe("archived");
+    expect(memoryStatus({ stale_at: at, archived_at: at, promoted_at: at })).toBe("promoted");
   });
 });

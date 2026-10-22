@@ -130,9 +130,10 @@ export async function reviewVersion(
 const BA_RUN_KINDS = ["step", "plan", "review", "judge", "author", "chat", "task"];
 /**
  * What it says it does (`runs.WORKER_FEATURES`): @ba's runs attach the packs of srs and run in its environment, which the
- * hub hands only a daemon that builds packs and runs environments. Its chat runs start with every repo it has.
+ * hub hands only a daemon that builds packs and runs environments, and gives @ba's Claude Code agent a config dir of its
+ * own (`runs.AGENT_HOME`). Its chat runs start with every repo it has.
  */
-const BA_FEATURES = ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs", "chat_decisions"];
+const BA_FEATURES = ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs", "chat_decisions", "agent_home"];
 
 async function workerPost(live: LiveWorker, path: string, body: unknown): Promise<unknown> {
   const response = await fetch(`${API_URL}${path}`, {

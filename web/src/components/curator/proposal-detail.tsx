@@ -31,6 +31,8 @@ import { useCuratorViewer } from "./hooks";
 import { LedgerCard } from "./ledger";
 import { ReplayCard } from "./replay-card";
 import type { RepoInfo } from "./model";
+import { Promotion } from "./promotion";
+import { promotionView } from "./promotion-model";
 import { TEXT_LINK } from "./parts";
 import { type Change, type Finding, findingQuery, type Proposal, type ProposalAction, proposalHref, proposalQuery } from "./queries";
 
@@ -209,13 +211,14 @@ function ChangeCard({ project, change, repos }: { project: string; change: Chang
 
 /**
  * The body of a proposal, the same on its page and in the Inbox's sheet: its summary, its evidence and the findings
- * it rests on, its draft plan; and beside them from xl (under them below, two by two from md) the answer, the change
- * accepting it made, and why it has its tier. The state and the answer buttons are in the head, so the page reads the
- * proposal first.
+ * it rests on, its draft plan (for a promotion of agents' memories, what it promotes into which shared memory, in its
+ * place); and beside them from xl (under them below, two by two from md) the answer, the change accepting it made, and
+ * why it has its tier. The state and the answer buttons are in the head, so the page reads the proposal first.
  */
 export function ProposalBody({ project, proposal, admin, compact = false }: { project: string; proposal: Proposal; admin: boolean; compact?: boolean }) {
   const t = useTranslations("curator.proposal");
   const repos = useRepos(project);
+  const promotion = promotionView(proposal.promotion);
   return (
     <div className={cn("grid items-start gap-4", !compact && "xl:grid-cols-[minmax(0,1fr)_22rem]")}>
       <div className={cn("flex min-w-0 flex-col gap-4", !compact && "xl:col-start-1 xl:row-start-1")}>
@@ -235,11 +238,17 @@ export function ProposalBody({ project, proposal, admin, compact = false }: { pr
             <Findings project={project} ids={proposal.finding_ids} repos={repos} />
           </div>
         </HomeCard>
-        <HomeCard title={t("draft")} testId="proposal-draft-card">
-          <div className="px-4 py-3">
-            <DraftPlan plan={proposal.plan as Record<string, unknown>} />
-          </div>
-        </HomeCard>
+        {promotion ? (
+          <HomeCard title={t("promotion")} testId="proposal-promotion">
+            <Promotion project={project} promotion={promotion} />
+          </HomeCard>
+        ) : (
+          <HomeCard title={t("draft")} testId="proposal-draft-card">
+            <div className="px-4 py-3">
+              <DraftPlan plan={proposal.plan as Record<string, unknown>} />
+            </div>
+          </HomeCard>
+        )}
       </div>
       <div className={cn("grid min-w-0 items-start gap-4", !compact && "md:grid-cols-2 xl:col-start-2 xl:row-start-1 xl:grid-cols-1")}>
         <AnswerCard project={project} proposal={proposal} admin={admin} />

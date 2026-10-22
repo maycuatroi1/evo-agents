@@ -175,6 +175,7 @@ MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
 CLONES_CHECKOUTS = "clones_checkouts"
+AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -189,6 +190,7 @@ WORKER_FEATURES = (
     UPDATE_NOW,
     MERGE_JUDGE,
     CLONES_CHECKOUTS,
+    AGENT_HOME,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -479,9 +481,8 @@ def _json_size(value) -> int:
 
 
 def _longest_string(value) -> tuple[object, object, int] | None:
-    """(container, key, size) of the string in ``value`` whose JSON is the largest, among those longer than a cut
-    mark; None when there is none. A walk with a stack of its own, so a deeply nested body cannot exhaust the
-    interpreter's."""
+    """(container, key, size) of the string in ``value`` whose JSON is the largest, among those longer than a cut mark;
+    None when there is none. A walk with a stack of its own, so a deeply nested body cannot exhaust the interpreter's."""
     best = None
     stack = [value]
     while stack:
@@ -727,8 +728,7 @@ def _dependencies(plan: dict, step: dict) -> list[str]:
 
 
 def _step_lines(step: dict, key: str) -> list[str]:
-    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has
-    them."""
+    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has them."""
     lines = ["", f"# Step {key}: {_short(step.get('title'), 'untitled')}"]
     for heading, value, budget in (
         ("## What to do", step.get("what"), WHAT_BYTES),
