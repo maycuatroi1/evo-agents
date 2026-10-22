@@ -33,7 +33,8 @@ GET /v1/memories lists what the caller sees in (updated_at, id) order with an op
 request, which is what a sync needs. GET /v1/memories/search ranks the full-text matches of name and body
 (configuration simple, websearch syntax). GET /v1/memories/{id} is one memory. GET /v1/memories/{id}/revisions lists
 its revisions newest first, and GET .../revisions/{revision} is one with its body; a revision whose type and label the
-caller could not read is left out, as the memory itself would be.
+caller could not read is left out, as the memory itself would be. An agent's memory shows its upkeep
+(``memory_state``); POST /v1/memories/{id}/restore brings back one archived (``memory_upkeep``).
 
 Sizes are bounded: a body is at most MAX_BODY bytes of UTF-8, a request at most MAX_REQUEST bytes (read before
 parsing), a page at most MAX_LIMIT memories and about PAGE_BYTES of bodies, and one request examines at most
@@ -90,7 +91,7 @@ from evo_agents.hub.memory import (
     name_problem,
 )
 from evo_agents.hub.profiles import HANDLE_PATTERN
-from evo_agents.hub.server import memory_agents, memory_paging
+from evo_agents.hub.server import memory_agents, memory_paging, memory_state
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.errors import CODES, ErrorBody
@@ -196,7 +197,7 @@ class MemoryIn(BaseModel):
         return self
 
 
-class Memory(BaseModel):
+class Memory(memory_state.MemoryState):
     id: int
     scope: str
     project: str | None
@@ -272,6 +273,7 @@ def _memories(*extra) -> Select:
         m.c.owner_id,
         m.c.project_id,
         m.c.profile_id,
+        *memory_state.columns(),
         *extra,
     ).select_from(
         m.outerjoin(p, p.c.id == m.c.project_id)
@@ -358,6 +360,7 @@ _CHANGED = (
         revision=tables.memories.c.revision + 1,
         updated_at=func.now(),
         updated_by=bindparam("writer_id", type_=BigInteger),
+        **memory_state.FRESH,
     )
     .where(tables.memories.c.id == bindparam("memory_id", type_=BigInteger))
 )
@@ -613,6 +616,7 @@ async def show(request: Request, memory_id: MemoryId, user: CurrentUser, sink: R
         reader = Reader(conn, user)
         row, _ = await _readable(conn, user, memory_id, _through(user, sink), reader=reader)
         await reader.gave([row.memory.label])
+        await memory_state.opened(conn, user, row.profile_id, memory_id)
     return row.memory
 
 

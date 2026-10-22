@@ -600,7 +600,9 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
     """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
     author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
-    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``."""
+    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``. The prompt of a run
+    under an agent profile that is not its project's default ends with the index of its memories
+    (``memory_upkeep.with_index``)."""
     view = await run_view(conn, run_id)
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
@@ -647,6 +649,9 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         prompt = runs.build_prompt(plan, step, {"repo": view.repo, "branch": view.branch})
         title = text_or_none(step.get("title"))
         verify = runs.verify_of(step)
+    from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
+
+    prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
     return RunSpec(
         id=view.id,
         kind=view.kind,

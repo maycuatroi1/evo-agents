@@ -38,6 +38,7 @@ from evo_agents.hub.server.security import Principal, RunScope
 
 MAX_RUN_WRITES = 5  # memories one run writes
 NONE, OWN, BOTH = "none", "own", "both"  # the namespaces a read reaches: no agent's, one agent's, or both
+LIVE = "live"  # what a run's agent reaches naming its own namespace: its memories less those archived
 AGENT_TYPES = ("project", "reference", "feedback")  # what an agent's memory may be
 
 AgentHandle = Annotated[
@@ -104,14 +105,17 @@ async def reach(
         raise _no_agent(agent)
     if scope is not None and found[0] != scope.namespace:
         raise _no_agent(agent)
-    return OWN, found[0], found[1]
+    return (OWN if scope is None else LIVE), found[0], found[1]
 
 
 def namespace_condition(namespace: str):
-    """The condition on memories.profile_id of a listing or a search reaching ``namespace``, :namespace_id bound."""
+    """The condition on memories.profile_id of a listing or a search reaching ``namespace``, :namespace_id bound. The
+    agent of a run (BOTH, LIVE) reaches none of its memories the daily upkeep archived."""
     m = tables.memories
     named = m.c.profile_id == bindparam("namespace_id", type_=BigInteger)
-    return {NONE: m.c.profile_id.is_(None), OWN: named, BOTH: or_(m.c.profile_id.is_(None), named)}[namespace]
+    live = and_(named, m.c.archived_at.is_(None))
+    none = m.c.profile_id.is_(None)
+    return {NONE: none, OWN: named, LIVE: live, BOTH: or_(none, live)}[namespace]
 
 
 def key_condition(kind: str):

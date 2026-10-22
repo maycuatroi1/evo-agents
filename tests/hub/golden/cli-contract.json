@@ -5234,7 +5234,10 @@
           "deleted",
           "created_at",
           "updated_at",
-          "updated_by"
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at"
         ],
         "schema": "Memory"
       }
@@ -5389,6 +5392,51 @@
         ]
       }
     },
+    "hub memory restore": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "scope",
+          "project",
+          "location",
+          "name",
+          "type",
+          "owner",
+          "agent",
+          "label",
+          "body",
+          "revision",
+          "deleted",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at"
+        ],
+        "schema": "Memory"
+      }
+    },
     "hub memory search": {
       "positionals": [
         {
@@ -5454,7 +5502,10 @@
           "deleted",
           "created_at",
           "updated_at",
-          "updated_by"
+          "updated_by",
+          "read_at",
+          "archived_at",
+          "stale_at"
         ],
         "schema": "Memory"
       }
@@ -15081,6 +15132,106 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/memories/{memory_id}/restore": {
+        "post": {
+          "tags": [
+            "memories"
+          ],
+          "summary": "Restore Memory",
+          "description": "Bring back an agent's memory the daily upkeep archived: into the index and the searches of its agent's runs\nagain, as if just opened, with the audit row ``memory.restore``. A writer of its project who reads it, never the\nagent of a run; a memory not archived is left as it is.",
+          "operationId": "restore_memory_v1_memories__memory_id__restore_post",
+          "parameters": [
+            {
+              "name": "memory_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Memory Id"
+              }
+            },
+            {
+              "name": "sink",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+                "description": "the sink reading the memories (read rule)",
+                "default": "claude-code@anthropic",
+                "title": "Sink"
+              },
+              "description": "the sink reading the memories (read rule)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Memory"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -66407,6 +66558,45 @@
         },
         "Found": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -70932,6 +71122,45 @@
         },
         "Memory": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
@@ -96915,6 +97144,45 @@
         },
         "evo_agents__hub__server__memories__Written": {
           "properties": {
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "an agent's memory: when the agent of a run last opened it"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At",
+              "description": "an agent's memory: when the hub archived it, nobody having opened it for 30 days; out of the index and the searches of runs until a writer restores it"
+            },
+            "stale_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stale At",
+              "description": "an agent's memory: since when a path it cites (code:REPO:PATH) is gone from the graph"
+            },
             "id": {
               "type": "integer",
               "title": "Id"
