@@ -10,9 +10,9 @@ word, an install whose code does not import. uv 0.12.24 (evo-worker-01, 2026-10-
 it again on every such install, with the same interpreter and the same commit. Hence the update, which leans on
 neither:
 
-1. ``uv tool install`` of ``evo-ak[<extras>] @ git+<repo>@nightly`` into a staging directory, then the staged install
-   started (``python -c 'import evo_agents.worker.daemon'`` and ``evo-agents --version``) and its commit read. A
-   failure there leaves the install untouched.
+1. ``uv tool install`` of ``evo-ak[<extras>] @ git+<repo>@nightly`` (the receipt's extras and ``worker``) into a
+   staging directory, then the staged install started (``python -c 'import evo_agents.worker.daemon'`` and
+   ``evo-agents --version``) and its commit read. A failure there leaves the install untouched.
 2. A copy of the install and its commands (``backup``). When it cannot be made, the update stops there.
 3. The same install over the install, with ``--python`` its own interpreter and ``--reinstall-package``/
    ``--refresh-package`` so a tag that moved is read again. The install is then started and its commit checked
