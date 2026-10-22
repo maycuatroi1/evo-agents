@@ -9,8 +9,9 @@ agent types and tasks, 404 for any other.
 
 - POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks: hand a task to agent type ``name`` of the plugin. 404
   for a type its installed version does not contribute, or that the project did not enable or turned off; 409 when the
-  type's profile was deleted or its ``run_as`` no longer holds writer on the project; 429 once its task runs cost its
-  cap in the last BUDGET_HOURS (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
+  type's profile was deleted or its ``run_as`` no longer holds writer on the project; 403 when the primary seat of
+  ``run_as`` in the org chart ended; 429 once its task runs cost its cap in the last BUDGET_HOURS
+  (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
   with the credential kind machine, under the type's profile, on the branch ``task/<run>`` of each repo of the project,
   with what is left of the cap as its cost cap (``task_runs.run_budget``), queued for a worker of ``run_as`` the type
   names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor.
@@ -49,6 +50,7 @@ from evo_agents.hub.server.chat_agents import open_draft
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -209,7 +211,8 @@ async def _type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple
             f"agent type {name} runs as {row.run_as}, who holds {role or 'no grant'} on project {enabled.project} now, "
             "not writer: an admin of the project names another member"
         )
-    return None
+    ended = await ended_refusal(conn, row.run_as_id, row.run_as, what=f"a task of agent type {name}")
+    return None if ended is None else (403, ended)
 
 
 def _title(body: TaskIn, name: str) -> str:

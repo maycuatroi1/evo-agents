@@ -7,7 +7,9 @@
 - PUT /v1/org/ceilings: the next ceiling revision of a unit, of a person's primary seat or of a seat.
 
 Who may write what is ``evo_agents.hub.org`` (403 naming why); the writes are ``evo_agents.hub.server.org_writes``,
-each one transaction under the chart's lock with its audit row. The agent of a run never writes the chart.
+each one transaction under the chart's lock with its audit row. The agent of a run never writes the chart. Ending a
+seat, editing one or editing a unit takes back the leases of the people whose primary seat that ended
+(``evo_agents.hub.server.org_expiry``), as the hourly job does for the seats past their end date.
 """
 
 from __future__ import annotations
@@ -18,7 +20,8 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org
-from evo_agents.hub.server import org_writes
+from evo_agents.hub.server import org_expiry, org_writes
+from evo_agents.hub.server.credentials import revoker
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import (
     CeilingSet,
@@ -65,6 +68,17 @@ async def _seat(conn: AsyncConnection, seat_id: int) -> OrgSeatView:
     return seat_view(chart, chart.seats[seat_id], await names(conn, chart), await today(conn))
 
 
+async def _take_back(conn: AsyncConnection, user: Principal) -> list[int]:
+    """After a write that may end a person's primary seat (an end, an end date moved): the leases of the people at A0
+    given back in its transaction (``org_expiry.take_back``)."""
+    return await org_expiry.take_back_now(conn, actor_id=user.user_id, token_id=user.token_id, by=org_expiry.BY_WRITE)
+
+
+async def _revoke(request: Request, run_ids: list[int]) -> None:
+    state = request.app.state
+    await org_expiry.revoke_taken(state.engine, state.sealer, revoker(state), run_ids)
+
+
 @router.get("", response_model=OrgChartView)
 async def show_org(request: Request, user: CurrentUser) -> OrgChartView:
     """The whole org chart, with every ceiling and effective level, and the viewer's own."""
@@ -85,7 +99,10 @@ async def edit_unit(request: Request, slug: UnitSlug, body: UnitEdit, user: Curr
     """Change a unit's name, parent or end date; a field left out keeps its value."""
     async with request.app.state.engine.begin() as conn:
         await org_writes.edit_unit(await _begin(conn, user), slug, body)
-        return await _unit(conn, slug)
+        taken = await _take_back(conn, user)
+        view = await _unit(conn, slug)
+    await _revoke(request, taken)
+    return view
 
 
 @router.post("/units/{slug}/archive", response_model=OrgUnitView, responses=WRITE_REFUSALS)
@@ -109,7 +126,10 @@ async def edit_seat(request: Request, seat_id: SeatId, body: SeatEdit, user: Cur
     """Change a live seat's role, reports_to, sponsor or dates, or make it the person's primary seat."""
     async with request.app.state.engine.begin() as conn:
         await org_writes.edit_seat(await _begin(conn, user), seat_id, body)
-        return await _seat(conn, seat_id)
+        taken = await _take_back(conn, user)
+        view = await _seat(conn, seat_id)
+    await _revoke(request, taken)
+    return view
 
 
 @router.post("/seats/{seat_id}/end", response_model=OrgSeatView, responses=WRITE_REFUSALS)
@@ -117,7 +137,10 @@ async def end_seat(request: Request, seat_id: SeatId, user: CurrentUser) -> OrgS
     """End a seat now."""
     async with request.app.state.engine.begin() as conn:
         await org_writes.end_seat(await _begin(conn, user), seat_id)
-        return await _seat(conn, seat_id)
+        taken = await _take_back(conn, user)
+        view = await _seat(conn, seat_id)
+    await _revoke(request, taken)
+    return view
 
 
 @router.put("/ceilings", response_model=CeilingWritten, responses=WRITE_REFUSALS)
