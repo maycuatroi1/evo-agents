@@ -98,11 +98,14 @@ class Who:
 
 @dataclass(frozen=True)
 class Card:
-    """The card's text, the mode each class acts in for the agent, and the categories its agent may ask."""
+    """The card's text, the mode each class acts in for the agent, the categories its agent may ask, and what set the
+    mode of each class (``Choice.source``: a ceiling, a preference, a policy), which the worker's hook names when it
+    refuses a command."""
 
     text: str
     modes: dict[str, str] = field(default_factory=dict)
     categories: tuple[str, ...] = FREE_CATEGORIES
+    sources: dict[str, str] = field(default_factory=dict)
 
     @property
     def ships(self) -> bool:
@@ -110,7 +113,8 @@ class Card:
 
     def spec(self) -> dict:
         """As the claim gives it to the worker (``RunSpec.autonomy``)."""
-        return {"card": self.text, "modes": dict(self.modes), "categories": list(self.categories)}
+        found = {"card": self.text, "modes": dict(self.modes), "categories": list(self.categories)}
+        return {**found, "sources": dict(self.sources)} if self.sources else found
 
 
 def ships(modes: Mapping[str, str] | None) -> bool:
@@ -150,10 +154,11 @@ def card(snapshot: Mapping, who: Who) -> Card:
     """The card of a run whose autonomy is ``snapshot`` (``autonomy_levels.snapshot``) and whose principal is ``who``."""
     classes = snapshot["classes"]
     modes = {klass: agent_mode(classes[klass]) for klass in CLASSES}
+    sources = {klass: str(classes[klass].get("source") or "") for klass in CLASSES}
     floors = ["Floors for everyone, whatever the level:", *(f"- {floor}" for floor in FLOORS)]
     if snapshot["level"] == HIGHEST and all(mode == AUTO for mode in modes.values()):
         lines = [HEADING, _principal(who, HIGHEST) + " Every class of action is yours to do.", *floors]
-        return Card("\n".join(lines), modes)
+        return Card("\n".join(lines), modes, sources=sources)
     by_mode = {mode: [klass for klass in CLASSES if modes[klass] == mode] for mode in (DENY, ASK, NOTIFY, AUTO)}
     asked = [klass for klass in CLASSES if modes[klass] == ASK]
     asked += [
@@ -174,7 +179,7 @@ def card(snapshot: Mapping, who: Who) -> Card:
     if by_mode[AUTO]:
         lines.append("- Yours to do (auto): " + "; ".join(_named(k, classes[k], AUTO) for k in by_mode[AUTO]) + ".")
     categories = [category for klass in dict.fromkeys(asked) for category in CLASS_CATEGORIES.get(klass, ())]
-    return Card("\n".join([*lines, *floors]), modes, (*categories, *FREE_CATEGORIES))
+    return Card("\n".join([*lines, *floors]), modes, (*categories, *FREE_CATEGORIES), sources)
 
 
 def decision_lines(where: str, autonomy: Mapping | None) -> list[str]:

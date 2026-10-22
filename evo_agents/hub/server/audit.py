@@ -182,6 +182,9 @@ AUTONOMY_PREF_SET = "autonomy.pref_set"
 AUTONOMY_REFUSED = "autonomy.refused"
 AUTONOMY_ASKED = "autonomy.asked"
 AUTONOMY_NOTIFIED = "autonomy.notified"
+# A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
+# run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
+AUTONOMY_BACKUP = "autonomy.backup"
 # The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a

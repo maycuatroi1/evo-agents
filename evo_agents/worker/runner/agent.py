@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import environments, interactive, orphans, packs, venvs
+from evo_agents.worker import autonomy_hook, environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import RunFailed, log
@@ -93,6 +93,7 @@ class Agent:
         self.limits = Limits(run)  # the usage limit of the agent's account, and the move to another one
         self._environment = None  # where the agent runs (``environment``), read from the claim once
         self._packs: tuple | None = None  # the agent packs of the run's profile, built before its first agent
+        self._gate: list = []  # the run's hook of autonomy (``autonomy_hook.for_run``), built for its first agent
 
     # The runtime
 
@@ -349,7 +350,14 @@ class Agent:
             spent_seconds=run.watchdog.spent_before + run.agent_seconds(),
             environment=self.environment,
             packs=self._packs or (),
+            autonomy=self.gate(),
         )
+
+    def gate(self):
+        """The run's hook of autonomy, None for a run without a snapshot: built once a run."""
+        if not self._gate:
+            self._gate.append(autonomy_hook.for_run(self.run))
+        return self._gate[0]
 
     def note_environment(self, cls, context: RunContext) -> None:
         """What the runtime leaves out of the agent's environment because of the run's leases

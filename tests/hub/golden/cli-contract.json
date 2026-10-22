@@ -13902,6 +13902,44 @@
       ],
       "json": null
     },
+    "worker backup": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--target"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--location"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--made-at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--restore"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker chat create": {
       "positionals": [],
       "options": [
@@ -46707,6 +46745,176 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/backups": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Backup",
+          "description": "Record a backup the run's agent made, as the module says.",
+          "operationId": "record_backup_v1_worker_runs__run_id__backups_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BackupOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/autonomy-acts": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Autonomy Act",
+          "description": "The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the\nprincipal told when the mode is notify, as the module says.",
+          "operationId": "autonomy_act_v1_worker_runs__run_id__autonomy_acts_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyActIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AutonomyActOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents": {
         "get": {
           "tags": [
@@ -60994,6 +61202,88 @@
           ],
           "title": "AuthoredPlan"
         },
+        "AutonomyActIn": {
+          "properties": {
+            "klass": {
+              "type": "string",
+              "enum": [
+                "K5",
+                "K6",
+                "K8",
+                "K9",
+                "K10",
+                "K12"
+              ],
+              "title": "Klass",
+              "description": "the class of the command"
+            },
+            "what": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "What",
+              "description": "the command, cut, never a credential's value"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "for a class in ask: the decision of the run, of the class's category, that the agent asked first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "klass",
+            "what"
+          ],
+          "title": "AutonomyActIn"
+        },
+        "AutonomyActOut": {
+          "properties": {
+            "mode": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "ask",
+                    "notify",
+                    "auto"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode",
+              "description": "the class's mode for the run's principal now, the stricter of its snapshot and the value now; null for a run without a snapshot"
+            },
+            "told": {
+              "type": "boolean",
+              "title": "Told",
+              "description": "whether the hub told the principal (mode notify)"
+            },
+            "answered": {
+              "type": "boolean",
+              "title": "Answered",
+              "description": "whether decision_id is a decision of the run, of the class, answered"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "told",
+            "answered"
+          ],
+          "title": "AutonomyActOut"
+        },
         "AutonomyClass": {
           "properties": {
             "mode": {
@@ -61331,6 +61621,82 @@
             "reported_at"
           ],
           "title": "BackendStatus"
+        },
+        "BackupIn": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Target",
+              "description": "what was backed up: a database, a table, a bucket"
+            },
+            "location": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Location",
+              "description": "where the backup is: a path, a URL, a snapshot id"
+            },
+            "made_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Made At",
+              "description": "when it was made, with its time zone; now when absent"
+            },
+            "restore": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Restore",
+              "description": "the command that restores it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "target",
+            "location"
+          ],
+          "title": "BackupIn"
+        },
+        "BackupOut": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the run event that records the backup"
+            },
+            "made_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Made At"
+            },
+            "fresh": {
+              "type": "boolean",
+              "title": "Fresh",
+              "description": "made within the last 24 hours: it opens the floor S2 of K9"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "made_at",
+            "fresh"
+          ],
+          "title": "BackupOut"
         },
         "Blob": {
           "properties": {
@@ -89145,6 +89511,14 @@
               "type": "array",
               "title": "Categories",
               "description": "the categories of decision its agent may ask"
+            },
+            "sources": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Sources",
+              "description": "K1 to K12, what set the mode of each: a ceiling, a preference, a policy"
             }
           },
           "type": "object",
