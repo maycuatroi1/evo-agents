@@ -40,6 +40,7 @@ from evo_agents.hub import (
     tables_goals,
     tables_kg,
     tables_loop,
+    tables_memory_agents,
     tables_merge,
     tables_outputs,
     tables_plugin_notices,
@@ -209,23 +210,6 @@ memories = Table(
     Index("memories_updated_idx", "updated_at", "id"),
 )
 Index(
-    "memories_shared_key",
-    memories.c.project_id,
-    memories.c.location,
-    memories.c.name,
-    unique=True,
-    postgresql_where=(memories.c.scope == "project") & memories.c.type.in_(("project", "reference")),
-)
-Index(
-    "memories_owned_key",
-    memories.c.owner_id,
-    memories.c.project_id,
-    memories.c.location,
-    memories.c.name,
-    unique=True,
-    postgresql_where=(memories.c.scope == "project") & memories.c.type.in_(("user", "feedback")),
-)
-Index(
     "memories_personal_key",
     memories.c.owner_id,
     memories.c.location,
@@ -249,6 +233,7 @@ memory_revisions = Table(
     ForeignKeyConstraint(["memory_id"], ["memories.id"], ondelete="CASCADE", name="memory_revisions_memory_id_fkey"),
     PrimaryKeyConstraint("memory_id", "revision", name="memory_revisions_pkey"),
 )
+tables_memory_agents.memory_agent_tables(memories, memory_revisions)  # namespaces, provenance (0099)
 
 plans = Table(
     "plans",

@@ -1,9 +1,10 @@
-"""``evo-agents hub memory push|pull|search``: the client commands over ``evo_agents.hub.memory``.
+"""``evo-agents hub memory push|pull|search|list``: the client commands over ``evo_agents.hub.memory``.
 
 ``push`` and ``pull`` take a working directory (default: the current one) or ``--all``, ``--dry-run`` to say what
 would change without writing anything here or on the hub, and ``--prune`` to let deletions cross. They print one
 summary line and the notes that need a person; ``--quiet`` prints nothing but conflicts and errors, on stderr, for
-the hooks that run them at every session. Exit status 1 when a file could not be synced, 0 otherwise, conflicts
+the hooks that run them at every session. ``list --agent H`` shows the memories of agent profile H, which no pull
+brings here. Exit status 1 when a file could not be synced, 0 otherwise, conflicts
 included: a conflict is resolved by keeping both versions. Run inside a Claude Code session (CLAUDE_CODE_SESSION_ID),
 ``push`` sends the audience of the session's label with each file, as the Stop hook does (``evo_agents.hub.hooks``).
 """
@@ -29,6 +30,7 @@ MEMORY_KEYS = (
     "name",
     "type",
     "owner",
+    "agent",
     "label",
     "body",
     "revision",
@@ -122,6 +124,42 @@ def search(hub: Hub, query: str, *, project: str | None = None, limit: int = 10,
     return items
 
 
+def listed(hub: Hub, *, project: str | None = None, agent: str | None = None, limit: int = 100) -> list:
+    """The memories one sees, oldest change first: those of agent profile ``agent`` when named, else of no agent."""
+    params = {"limit": limit, **({"project": project} if project else {}), **({"agent": agent} if agent else {})}
+    found = hub.call("GET", "/v1/memories?" + urlencode(params))
+    items = found.get("items") if isinstance(found, dict) else None
+    if not isinstance(items, list) or not all(well_formed(item) for item in items):
+        raise HubError(f"the hub at {hub.url} answered a listing this client cannot read")
+    return items
+
+
+@_client_command
+def cmd_memory_list(args) -> int:
+    hub, _ = _signed_in()
+    found = listed(hub, project=args.project, agent=args.agent.lstrip("@") if args.agent else None, limit=args.limit)
+    if args.json:
+        _print_json(found)
+        return 0
+    if not found:
+        print("No memory you can see" + (f" of agent {args.agent}." if args.agent else "."))
+        return 0
+    rows = [
+        (
+            m["id"],
+            m["project"] or "(personal)",
+            m["location"],
+            m["name"],
+            m["type"],
+            "@" + m["agent"] if m.get("agent") else "-",
+            _when(m["updated_at"]),
+        )
+        for m in found
+    ]
+    _table(("ID", "PROJECT", "LOCATION", "NAME", "TYPE", "AGENT", "UPDATED (UTC)"), rows)
+    return 0
+
+
 @_client_command
 def cmd_memory_push(args) -> int:
     return _sync(args, "push")
@@ -200,3 +238,14 @@ def register_memory(hsub) -> None:
     json_option(found, returns_array(*MEMORY_KEYS, schema="Memory"))
     found.add_argument("--sink", default=AGENT_SINK, help=sink_help)
     found.set_defaults(func=cmd_memory_search)
+
+    shown = msub.add_parser("list", help="list the memories you see, or those of one agent profile")
+    shown.add_argument("--project", help="only the memories of this hub project")
+    shown.add_argument(
+        "--agent", metavar="HANDLE", help="only the memories of this agent profile (no pull brings them)"
+    )
+    shown.add_argument(
+        "--limit", type=int, default=100, choices=range(1, 501), metavar="N", help="1 to 500 (default 100)"
+    )
+    json_option(shown, returns_array(*MEMORY_KEYS, schema="Memory"))
+    shown.set_defaults(func=cmd_memory_list)
