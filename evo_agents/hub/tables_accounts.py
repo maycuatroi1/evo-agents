@@ -1,4 +1,4 @@
-"""The tables of accounts (0027), of members' emails (0068) and of credential shares (0100), which
+"""The tables of accounts (0027), of members' emails (0068) and of credential shares (0104), which
 ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes (``tables.accounts``,
 ``tables.account_policies``, ``tables.run_accounts``, ``tables.user_emails``, ``tables.credential_shares``,
 ``tables.credential_share_projects``): queries name them there.
@@ -18,7 +18,7 @@ credential_shares holds each share an owner gave of a secret or an account (``ev
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
-made for and the share it came under (0101).
+made for and the share it came under (0105).
 """
 
 from __future__ import annotations
@@ -127,8 +127,8 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
 
 
 def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, Table]:
-    """(credential_shares, credential_share_projects), added to ``metadata`` (0100); the principal and share columns
-    added to ``credential_leases`` (0101)."""
+    """(credential_shares, credential_share_projects), added to ``metadata`` (0104); the principal and share columns
+    added to ``credential_leases`` (0105)."""
 
     def key(table: str, column: str, target: str, ondelete: str) -> ForeignKeyConstraint:
         return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")

@@ -2,7 +2,8 @@
 external-core-plugins name them, through the sample core plugin northwind-chat (``tests/fixtures/core_plugins``),
 which lives outside the package evo_agents, loads through an entry point and reaches the hub through the API alone:
 a member links a chat from a web session, gets a decision with its buttons, answers it with a button or in words,
-answers a proposal, talks to an agent in a direct chat and reads its answer in the chat; and the API refuses what the
+answers a proposal, talks to an agent in a direct chat and reads its answer in the chat, asks the plugin's agent type
+a question for a chat user and gets its answer back; and the API refuses what the
 web routes refuse, a session that ended, a wrong secret, a project kept from the channel's clearance, a project that
 grants no chats:write, another plugin's config, a class of channel that does not load, a webhook under another
 plugin's prefix, and a plugin written for another version of the API.
@@ -51,6 +52,7 @@ from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP, core_plugins
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
+from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_curator import night  # noqa: F401 (a fixture, on this module's web_client)
 from tests.hub.test_decisions import OPTIONS, QUESTION, asked
 from tests.hub.test_plan_runs import started
@@ -60,7 +62,7 @@ from tests.hub.test_review_runs import (
     proposed,
     review,  # noqa: F401 (a fixture)
 )
-from tests.hub.test_runs import OTHER, OWNER, PROJECT, audit_rows, report
+from tests.hub.test_runs import OTHER, OWNER, PROJECT, audit_rows, claim, report
 from tests.plugins.fake_northwind import API_URL, GROUP, SECRET, TOKEN, USER, FakeNorthwind, button, text
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "core_plugins"
@@ -438,6 +440,51 @@ def test_a_member_talks_to_an_agent_in_a_direct_chat_and_reads_its_answer_in_the
     assert items["cursor"]["item"].startswith(f"plugin.{PLUGIN}:message:")
 
 
+def test_a_chat_user_asks_the_plugins_agent_type_and_reads_its_answer_in_the_chat(northwind):
+    """Criteria a2, a3 and a5 of the plan core-plugin-agent-questions: anyone in the chat asks the help desk with
+    /ask, a worker of its run_as answers, and the answer comes back as agent.answer to the chat that asked."""
+    client, db, fake, headers = northwind.client, northwind.db, northwind.fake, northwind.headers
+    stranger = {"group_id": "room-9", "user_id": "guest-3"}  # no member: a person outside the hub
+    assert said(client, text(f"/ask {PROJECT} How do I reset my password?", **stranger)) == "refused"
+    assert "agent type helpdesk of plugin northwind-chat is not enabled" in fake.last(*stranger.values())["text"]
+    body = {"run_as": OTHER, "daily_usd": 5}
+    enabled = client.put(f"/v1/projects/{PROJECT}/agent-types/{PLUGIN}/helpdesk", json=body, headers=headers["owner"])
+    assert enabled.status_code == 200, enabled.text
+    assert said(client, text(f"/ask {PROJECT} How do I reset my password?", **stranger)) == "refused"
+    assert "can take a question run now" in fake.last(*stranger.values())["text"]
+    worker = chat_worker(client, headers["other"], "desk")
+    update = {**text(f"/ask {PROJECT} How do I reset my password?", **stranger), "message_id": "m-41"}
+    assert said(client, update) == "asked"
+    assert said(client, update) == "asked"  # the same message again: the same question, nothing new
+    q = tables.agent_questions
+    ((question_id, run_id, ref, asker),) = sql(db, select(q.c.id, q.c.run_id, q.c.ref, q.c.asker))
+    assert (ref, asker) == ("northwind:room-9:guest-3:m-41", "northwind user guest-3")
+    assert fake.last(*stranger.values())["text"] == f"Asked the help desk of {PROJECT} (question {question_id})."
+    assert audit_rows(db, PLUGIN)[-1][0] == f"{PLUGIN}.ask"
+    spec = claim(client, worker)
+    assert (spec["id"], spec["kind"]) == (run_id, "question") and "How do I reset my password?" in spec["prompt"]
+    for state in ("running", "verifying"):
+        assert report(client, worker, run_id, state).status_code == 200
+    done = report(client, worker, run_id, "done", answer="Settings, then Security, then Reset password.")
+    assert done.status_code == 200, done.text
+    assert deliver_events(client)["delivered"] >= 1
+    assert (
+        fake.last(*stranger.values())["text"] == f"helpdesk of {PROJECT}: Settings, then Security, then Reset password."
+    )
+
+    async def read(conn):
+        return await hub.read_agent_answer(conn, hub.plugin("northwind_chat.server"), question_id)
+
+    found = on_hub(client, read)
+    assert (found.state, found.ref, found.run_id, found.failure_cause) == ("done", ref, run_id, None)
+    assert found.label["projects"] == [PROJECT]
+    with pytest.raises(TypeError):
+        found.label["level"] = "public"  # a plugin reads the label, it does not change it
+    with pytest.raises(hub.Refused) as theirs:
+        on_hub(client, lambda conn: hub.read_agent_answer(conn, hub.plugin("lumen_relay"), question_id))
+    assert theirs.value.status_code == 404
+
+
 def test_a_project_that_does_not_grant_chats_write_takes_no_message(northwind):
     client, db = northwind.client, northwind.db
     pp = tables.project_plugins  # a grant made before the plugin asked for chats:write
@@ -561,12 +608,12 @@ def test_a_plugin_written_for_another_api_version_is_left_out_with_the_reason(mo
     sample = importlib.import_module("northwind_chat")
     installing(monkeypatch, NORTHWIND)
     assert [plugin.manifest.id for plugin in core_plugins()] == [PLUGIN]
-    monkeypatch.setattr(sample, "API", (1, 2))
+    monkeypatch.setattr(sample, "API", (1, 3))
     with caplog.at_level(logging.WARNING, logger=core.__name__):
         assert core_plugins() == []
     (record,) = [record for record in caplog.records if record.getMessage() == "core plugin not loaded"]
     assert record.entry_point == PLUGIN
-    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.2; this hub serves 1.1"
+    assert record.error == "UnsupportedApi: northwind_chat needs core plugin API 1.3; this hub serves 1.2"
     plugin_calls.core_registry.cache_clear()
 
 

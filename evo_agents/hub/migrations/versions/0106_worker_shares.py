@@ -1,7 +1,7 @@
 """Shared workers narrowed to units of the org chart: worker_shares.
 
-Revision ID: 0102
-Revises: 0101
+Revision ID: 0106
+Revises: 0105
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.tables_org`` as of this revision, never imports, so a later change to
@@ -20,8 +20,8 @@ writer once the rows are gone, then drops the table.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0102"
-down_revision = "0101"
+revision = "0106"
+down_revision = "0105"
 branch_labels = None
 depends_on = None
 

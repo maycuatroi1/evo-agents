@@ -442,9 +442,10 @@ async def staged_paths(cwd: Path) -> list[str]:
     return [path for path in out.split("\0") if path]
 
 
-async def commit_run(cwd: Path, message: str) -> Committed:
+async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> Committed:
     """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
-    has them (see the module's docstring), and commit what is left as ``message``."""
+    has them (see the module's docstring), and commit what is left as ``message``, with ``author`` (``Name <email>``)
+    as its author when given; the committer is this machine's git identity either way."""
     await git(cwd, "add", "--all", "--", ".", EXCLUDE_RESULT)
     staged = await staged_paths(cwd)
     left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
@@ -453,7 +454,7 @@ async def commit_run(cwd: Path, message: str) -> Committed:
         await git(cwd, "reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))
     if len(left) == len(staged):
         return Committed(False, tuple(left))
-    await git(cwd, "commit", "--quiet", "-m", message)
+    await git(cwd, "commit", "--quiet", *(("--author", author) if author else ()), "-m", message)
     return Committed(True, tuple(left))
 
 
@@ -521,11 +522,11 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
-    a judge run, an author run, a replay run and a history run push nothing at all, a Builder of the Curator (``kind`` curator) only a
+    a judge run, an author run, a replay run, a history run and a question run push nothing at all, a Builder of the Curator (``kind`` curator) only a
     branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
     task run (``kind`` task) only its branch ``task/<run>``, and a release run (``kind`` release) only a branch
     ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
-    if kind in ("review", "judge", "author", "replay", "history"):
+    if kind in ("review", "judge", "author", "replay", "history", "question"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
     own = _own_branches(kind)
     if own is not None:

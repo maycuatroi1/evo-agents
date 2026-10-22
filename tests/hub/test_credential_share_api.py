@@ -1,5 +1,5 @@
 """Shares of secrets and accounts (``evo_agents.hub.server.credential_shares``), as criteria a1 and a2 of plan
-credential-sharing name them: schema 0100 and its constraints; only the owner shares, the owner or a hub admin
+credential-sharing name them: schema 0104 and its constraints; only the owner shares, the owner or a hub admin
 revokes; a forge secret, a project the secret is not bound to, a missing member and a unit that is not live are
 refused; a personal subscription token is shared only with the acknowledgement of TERMS_WARNING, which the 409 and the
 audit row share.terms_ack hold word for word; GET /v1/secrets and GET /v1/accounts carry the live shares; no answer,
@@ -99,16 +99,16 @@ def test_credential_share_terms_classify_a_claude_token_as_a_subscription_and_ne
     assert terms_refusal().startswith(TERMS_WARNING + " ")
 
 
-# Schema 0100 (criterion a1)
+# Schema 0104 (criterion a1)
 
 
 @needs_pg
 def test_credential_share_model_migration_adds_the_tables_and_going_back_drops_them(hub_db):
     public = select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public")
     assert pg.SHARE_TABLES <= {row[0] for row in sql(hub_db, public)}
-    move_to(hub_db, "0099", down=True)
+    move_to(hub_db, "0103", down=True)
     assert not {row[0] for row in sql(hub_db, public)} & pg.SHARE_TABLES
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0100") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0104") :]
     assert pg.SHARE_TABLES <= {row[0] for row in sql(hub_db, public)}
 
 

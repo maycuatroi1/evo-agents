@@ -4,7 +4,7 @@ all) on a project of the share is leased the shared secret after the member's ow
 ceiling, its most running runs or its budget, or whose account its owner's runs need, lends nothing and the run's
 events say why naming the share by id alone; revoking or ending a share takes back the leases out under it; each lease
 records its principal, and an account's cost splits by principal, which its owner sees whole and a grantee for
-themselves alone. Schema 0101 goes up and down.
+themselves alone. Schema 0105 goes up and down.
 
 Everything but the first tests needs the hub and skips without EVO_HUB_TEST_DSN."""
 
@@ -384,7 +384,7 @@ def test_credential_share_cost_by_principal_the_owner_sees_every_row_a_grantee_t
     assert client.get(f"/v1/accounts/team-key?owner={OWNER}", headers=hub["admin"]).status_code == 404
 
 
-# Schema 0101
+# Schema 0105
 
 
 def test_credential_share_lease_migration_adds_principal_and_share_and_going_back_drops_them(hub_db):
@@ -394,7 +394,7 @@ def test_credential_share_lease_migration_adds_principal_and_share_and_going_bac
         return {row[0] for row in sql(hub_db, query)}
 
     assert {"principal_id", "share_id"} <= columns()
-    move_to(hub_db, "0100", down=True)
+    move_to(hub_db, "0104", down=True)
     assert not {"principal_id", "share_id"} & columns()
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0101") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0105") :]
     assert {"principal_id", "share_id"} <= columns()

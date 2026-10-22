@@ -115,6 +115,8 @@ FAILURE_CAUSES = (
     # the remote declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset),
     # not for its credential nor because the branch moved on: the run's commits are still in its worktree
     "push_declined",
+    "no_worker",  # the hub: no worker claimed a question run in time (question_runs.QUEUE_SECONDS)
+    "no_answer",  # the agent of a question run wrote no answer
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
@@ -129,13 +131,11 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
-# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
-# branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
-# sessions and runs with a cheap model (``evo_agents.hub.history``); a cut or a fix of a project's release cycle
-# (``evo_agents.hub.releases``); a Claude Code session on a member's own machine, which no worker runs (LOCAL_KIND,
-# besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a claim hands
-# out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release")
+# plugin hands an agent type of its own; the replay of a past step (``hub.replay``); the night's reading of sessions and
+# runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
+# an agent type of its own (``hub.question_runs``). A session on a member's own machine, which no worker runs, is
+# LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history", "release", "question")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
@@ -175,6 +175,7 @@ MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
 CLONES_CHECKOUTS = "clones_checkouts"
+AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -189,6 +190,7 @@ WORKER_FEATURES = (
     UPDATE_NOW,
     MERGE_JUDGE,
     CLONES_CHECKOUTS,
+    AGENT_HOME,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -479,9 +481,8 @@ def _json_size(value) -> int:
 
 
 def _longest_string(value) -> tuple[object, object, int] | None:
-    """(container, key, size) of the string in ``value`` whose JSON is the largest, among those longer than a cut
-    mark; None when there is none. A walk with a stack of its own, so a deeply nested body cannot exhaust the
-    interpreter's."""
+    """(container, key, size) of the string in ``value`` whose JSON is the largest, among those longer than a cut mark;
+    None when there is none. A walk with a stack of its own, so a deeply nested body cannot exhaust the interpreter's."""
     best = None
     stack = [value]
     while stack:
@@ -727,8 +728,7 @@ def _dependencies(plan: dict, step: dict) -> list[str]:
 
 
 def _step_lines(step: dict, key: str) -> list[str]:
-    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has
-    them."""
+    """The step's title, what, verify and note, each cut to its own budget, as the prompt of a run of one step has them."""
     lines = ["", f"# Step {key}: {_short(step.get('title'), 'untitled')}"]
     for heading, value, budget in (
         ("## What to do", step.get("what"), WHAT_BYTES),

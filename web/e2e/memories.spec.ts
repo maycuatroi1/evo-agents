@@ -1,8 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { createAgentByApi } from "./support/agents";
+import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { type Account, type HubAdmin, newAccount, uniqueName } from "./support/hub";
-import { apiOf, type Memory, memoryFile, memoryProject, putMemory } from "./support/memories";
+import { setUiLocale } from "./support/locale";
+import { apiOf, markAgentMemory, type Memory, memoryFile, memoryProject, putMemory } from "./support/memories";
+import { toast } from "./support/toast";
 
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
@@ -265,6 +269,58 @@ test("the history lists the revisions the reader may see and opens an older one"
   await page.goto(`/p/${project}/memories/${first.id}?revision=1`);
   await expect(page.locator("#main").getByTestId("state-not-found")).toContainText("Không tìm thấy revision 1");
   await expect(page.locator("#main")).not.toContainText("ACME");
+});
+
+test("the memories filter by agent, an agent's memory names its agent, and a writer restores an archived one", async ({
+  page,
+  admin,
+  signInAs,
+}) => {
+  const { project, author, reader, authorApi } = await seededProject(admin);
+  const owner = newAccount("owner");
+  await admin.grant(project, owner.login, "admin", "secret");
+  const handle = uniqueName("keeper");
+  await createAgentByApi(owner, project, { handle, name: "Keeper" });
+  const ownerApi = await apiOf(owner);
+  await putMemory(authorApi, { project, name: "deploy.md", body: memoryFile("Deploy notes", "How we ship", "Run make release.") });
+  await putMemory(ownerApi, { project, agent: handle, name: "claims.md", body: memoryFile("Claims", "Retries", "Claims retry on a 503.") });
+  const archived = await putMemory(ownerApi, {
+    project,
+    agent: handle,
+    name: "old-deploys.md",
+    body: memoryFile("Old deploys", "Before the registry", "Deploys went through ssh."),
+  });
+  await markAgentMemory(archived.id, { archived: true });
+
+  // A reader reads the archived memory and where it stands, and has no Restore.
+  await signInAs(reader);
+  await page.goto(`/p/${project}/memories/${archived.id}`);
+  const main = page.locator("#main");
+  await expect(main.getByTestId("memory-status")).toHaveText("Đã lưu trữ");
+  await expect(main.getByTestId("memory-archived")).toContainText("Người viết của dự án có thể khôi phục nó.");
+  await expect(main.getByTestId("memory-restore")).toHaveCount(0);
+  await expect(main.getByTestId("memory-agent")).toHaveText(`@${handle}`);
+  await signOut(page); // which clears the cookie of the page's language too
+  await setUiLocale(page.context(), "vi");
+  await signInAs(author);
+  await page.goto(`/p/${project}/memories`);
+  const table = main.getByTestId("memories-table");
+  await expect.poll(() => memoryNames(table)).toEqual(["deploy.md"]); // the shared ones, no agent's
+  const agents = main.getByTestId("facet-agent");
+  await expect(agents.locator('[data-facet-value=""]')).toContainText("Dùng chung");
+  await agents.locator(`[data-facet-value="${handle}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]agent=${handle}`));
+  await expect.poll(() => memoryNames(table)).toEqual(["claims.md", "old-deploys.md"]);
+  await expect(table.getByRole("columnheader", { name: "Trạng thái" })).toBeVisible();
+  const row = table.locator("tbody tr").filter({ has: page.locator('[data-memory-name="old-deploys.md"]') });
+  await expect(row.getByTestId("memory-status")).toHaveAttribute("data-memory-status", "archived");
+
+  await row.getByRole("link", { name: "Old deploys" }).click();
+  await expect(page).toHaveURL(new RegExp(`/p/${project}/memories/${archived.id}$`));
+  await main.getByTestId("memory-restore").click();
+  await expect(toast(page, "Đã khôi phục old-deploys.md")).toBeVisible();
+  await expect(main.getByTestId("memory-status")).toHaveAttribute("data-memory-status", "active");
+  await expect(main.getByTestId("memory-archived")).toHaveCount(0);
 });
 
 test("personal memories are their owner's alone", async ({ page, signInAs }) => {

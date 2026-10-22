@@ -142,6 +142,7 @@ SRS_SETTLE_TABLES = frozenset({"srs_settle_chats"})
 SRS_APPROVAL_TASK_TABLES = frozenset({"srs_approval_tasks"})
 # migration 0098: the reviews of single use cases of a version of a BA document
 SRS_USE_CASE_REVIEW_TABLES = frozenset({"srs_use_case_reviews"})
+AGENT_QUESTION_TABLES = frozenset({"agent_questions"})  # the questions of core plugins to their agent types
 # migration 0073: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
 CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
 # migration 0074: the registry of a project's signal keys, its signals, and the ingest keys services write them with
@@ -176,9 +177,9 @@ LOOP_TABLES = frozenset({"loop_states", "loop_items", "loop_item_events"})
 PLUGIN_NOTICE_TABLES = frozenset({"plugin_notice_keys"})
 # migration 0099: the org chart, its units, the seats in them and the revisions of their autonomy ceilings
 ORG_TABLES = frozenset({"org_units", "org_seats", "autonomy_ceilings"})
-# migration 0100: the shares of secrets and accounts and the projects of each (plan credential-sharing)
+# migration 0104: the shares of secrets and accounts and the projects of each (plan credential-sharing)
 SHARE_TABLES = frozenset({"credential_shares", "credential_share_projects"})
-# migration 0102: the units of the org chart a shared worker is narrowed to (plan credential-sharing)
+# migration 0106: the units of the org chart a shared worker is narrowed to (plan credential-sharing)
 WORKER_SHARE_TABLES = frozenset({"worker_shares"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

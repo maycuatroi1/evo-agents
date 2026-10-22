@@ -1,9 +1,12 @@
 """What the commands of a run's agent read (``evo_agents.worker.cli``): a text from a file or stdin, within a bound,
-an option of a decision, and the evidence specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``).
-A problem is a WorkerStateError, which the command prints as one ``error:`` line."""
+an option of a decision, the evidence specs of a finding or a proposal (``evo_agents.hub.review.parse_evidence``) and
+the code evidence checked against the run's worktrees (``attest``), and the draft plan or the promotion of a proposal
+from a YAML or JSON file (``plan_file``, ``promotion_file``). A problem is a WorkerStateError, which the command prints
+as one ``error:`` line."""
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -46,3 +49,59 @@ def evidence_items(texts: list[str]) -> list[dict]:
         except EvidenceProblem as exc:
             raise WorkerStateError(str(exc)) from None
     return found
+
+
+async def attest(evidence: list[dict], workspaces: dict) -> None:
+    """Check each piece of code evidence against the run's worktree of its repo: the file is there, with the line;
+    and add the commit the worktree is at. The hub checks the rest."""
+    from evo_agents.worker import gitops
+
+    for item in evidence:
+        if item["kind"] != "code":
+            continue
+        workspace = workspaces.get(item["repo"])
+        if workspace is None:
+            raise WorkerStateError(
+                f"code:{item['repo']}:{item['path']}: run works in {', '.join(workspaces) or 'no repo'}, not in "
+                f"{item['repo']}"
+            )
+        path = workspace.worktree / item["path"]
+        if not path.resolve().is_relative_to(workspace.worktree.resolve()) or not path.is_file():
+            raise WorkerStateError(
+                f"code:{item['repo']}:{item['path']}: no such file in the worktree of {item['repo']}"
+            )
+        if item.get("line") is not None:
+            with open(path, "rb") as handle:
+                lines = sum(1 for _ in handle)
+            if item["line"] > lines:
+                raise WorkerStateError(f"code:{item['repo']}:{item['path']}:{item['line']}: the file has {lines} lines")
+        head = await gitops.rev(workspace.worktree, "HEAD")
+        if head:
+            item["commit"] = head
+
+
+def _mapping_file(source: str, what: str, limit: int, holds: str) -> dict:
+    import yaml
+
+    text = read_text(source, what, limit) or ""
+    try:
+        found = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise WorkerStateError(f"{source} is neither YAML nor JSON: {exc}") from None
+    if not isinstance(found, dict):
+        raise WorkerStateError(f"{source} holds no {what}: {holds}")
+    return json.loads(json.dumps(found, default=str))  # dates as text, as the hub keeps JSON
+
+
+def plan_file(source: str) -> dict:
+    """The draft plan of a proposal (``worker propose --plan-file``)."""
+    from evo_agents.hub.review import MAX_DRAFT_BYTES
+
+    return _mapping_file(source, "draft plan", MAX_DRAFT_BYTES, "a draft plan is a mapping with id, goal and steps")
+
+
+def promotion_file(source: str) -> dict:
+    """The promotion of a proposal of kind memory (``worker propose --promote-file``): its target and its body."""
+    from evo_agents.hub.memory import MAX_BODY
+
+    return _mapping_file(source, "promotion", 2 * MAX_BODY, "a promotion is a mapping with target and body")

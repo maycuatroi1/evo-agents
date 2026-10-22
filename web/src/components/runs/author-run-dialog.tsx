@@ -26,7 +26,7 @@ import { accountField, BY_RULES } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
-import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest, workerFitsNow } from "./model";
+import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, pinRefused, readModel, readRequest, workerFitsNow } from "./model";
 import { ModelField } from "./model-field";
 import {
   AUTHOR_RUNTIME,
@@ -135,7 +135,7 @@ function AuthorRunForm({
   const revise = planId !== null;
   const planTitle = (plan.data?.body as { title?: unknown } | undefined)?.title;
   const planName = typeof planTitle === "string" && planTitle.trim() ? planTitle : (planId ?? "");
-  const runnable = workerId !== null && !noHarness && model.problem === null && problems.length === 0;
+  const runnable = workerId !== null && !noHarness && model.problem === null && problems.length === 0 && !pinRefused(outlook);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
