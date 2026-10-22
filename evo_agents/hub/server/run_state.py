@@ -972,9 +972,9 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
     """Delete the events of runs that ended more than ``days`` days ago, once their tool figures are written from them
     (``tool_stats.record``, for a run that ended before the hub wrote them at the end), and the outputs of source tool
     of those runs that nothing carries, with the blobs no output names any longer (``output_prune``, whose objects go
-    from ``store`` now when it is given); and drop the sealed values of the GitHub tokens leased to runs that are past
-    their end (``credentials.drop_expired``)."""
-    from evo_agents.hub import output_prune
+    from ``store`` now when it is given), and the files of the messages to those runs (``attachment_prune``); and drop
+    the sealed values of the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
+    from evo_agents.hub import attachment_prune, output_prune
     from evo_agents.hub.server import credentials, tool_stats
 
     r, e = tables.runs, tables.run_events
@@ -992,4 +992,5 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
         extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},
     )
     pruned = await output_prune.prune_tool_outputs(engine, store, days)
+    pruned |= await attachment_prune.prune_run_files(engine, store, days)  # the files of the runs' messages
     return {"deleted": deleted, "days": days, "tokens_dropped": dropped, **pruned}

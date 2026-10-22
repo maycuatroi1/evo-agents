@@ -6,6 +6,7 @@ import type { ReactNode, Ref } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { OutputStrip } from "@/components/data/output-strip";
+import { linkedFiles } from "@/lib/attachments";
 import { Button } from "@/components/ui/button";
 import { type Chat, type ChatAuthor, type GroupMessage, isMine } from "@/lib/chats";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,8 @@ export function MessageItem(props: Props) {
   const { message, chat, me, thread, runOn = false, quote = null, highlighted = false, domId, onReact, onThread, onReply, onQuote, reacting, under, ref } = props;
   const t = useTranslations("chats.message");
   const tFiles = useTranslations("outputs.strip");
+  const tAttach = useTranslations("attachments");
+  const attached = linkedFiles(message.attachments, message.created_at);
   const format = useFormatter();
   const mine = isMine(message.author, me);
   const side = mine ? "mine" : "theirs";
@@ -109,23 +112,26 @@ export function MessageItem(props: Props) {
       <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side])}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} onShow={onQuote} /> : null}
-        <div
-          className={cn(
-            "max-w-full min-w-0 rounded-lg px-3 py-2 transition-shadow",
-            mine ? "bg-brand-soft" : "bg-muted",
-            !runOn && (mine ? "rounded-tr-xs" : "rounded-tl-xs"),
-            highlighted && "ring-2 ring-brand",
-          )}
-          title={runOn ? format.dateTime(new Date(message.created_at), { dateStyle: "medium", timeStyle: "short" }) : undefined}
-          data-testid="message-bubble"
-        >
-          <SafeMarkdown
-            className="leading-6 [&_:not(pre)>code]:bg-card [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:bg-card"
-            testId="message-body"
+        {message.body || !attached.length ? (
+          <div
+            className={cn(
+              "max-w-full min-w-0 rounded-lg px-3 py-2 transition-shadow",
+              mine ? "bg-brand-soft" : "bg-muted",
+              !runOn && (mine ? "rounded-tr-xs" : "rounded-tl-xs"),
+              highlighted && "ring-2 ring-brand",
+            )}
+            title={runOn ? format.dateTime(new Date(message.created_at), { dateStyle: "medium", timeStyle: "short" }) : undefined}
+            data-testid="message-bubble"
           >
-            {message.body}
-          </SafeMarkdown>
-        </div>
+            <SafeMarkdown
+              className="leading-6 [&_:not(pre)>code]:bg-card [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:bg-card"
+              testId="message-body"
+            >
+              {message.body}
+            </SafeMarkdown>
+          </div>
+        ) : null}
+        <OutputStrip outputs={attached} label={tAttach("files")} className={cn(mine && "justify-end")} testId="message-attachments" />
         <OutputStrip outputs={message.outputs ?? []} label={tFiles("message")} className={cn(mine && "justify-end")} testId="message-files" />
         <MessageLinks message={message} chat={chat} />
         <MessageProgress progress={message.progress} />
