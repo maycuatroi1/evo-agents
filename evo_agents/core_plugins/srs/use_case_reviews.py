@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from sqlalchemy import insert, select
@@ -148,6 +148,24 @@ async def authors_since(conn: AsyncConnection, doc: DocumentRow, number: int) ->
     return set((await conn.execute(query)).scalars())
 
 
+async def _approved_before(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) -> int | None:
+    """The version approved before ``held`` when it was approved, as its event ``srs.version.approved`` says; None
+    when none was, or the event is not there."""
+    e = tables.hub_events
+    query = (
+        select(e.c.payload["previous"].astext)
+        .where(
+            e.c.kind == "srs.version.approved",
+            e.c.payload["document_id"].astext == str(doc.id),
+            e.c.payload["version"].astext == str(held.number),
+        )
+        .order_by(e.c.id.desc())
+        .limit(1)
+    )
+    found = (await conn.execute(query)).scalar()
+    return int(found) if found and found.isdigit() else None
+
+
 async def _rows(conn: AsyncConnection, doc: DocumentRow, number: int) -> list[tuple[str, CaseReview]]:
     """(key of the use case, review) recorded on the versions after the one approved last, up to ``number``, oldest
     first."""
@@ -207,8 +225,11 @@ async def states(
 ) -> list[CaseState]:
     """The use cases version ``held`` of ``doc`` (whose content is ``new``) needs reviewed, each with its state and the
     reviews that count; ``version_wide`` are the version-wide approvals that count for each. Empty for a version that
-    is neither a draft nor in review, or has no use case to review."""
-    if held.state not in REVIEWED_STATES or held.number <= (doc.approved_version or 0):
+    is neither a draft, in review nor the version approved last, or has no use case to review; the last one is read
+    against the version approved before it."""
+    if held.state == "approved" and held.number == doc.approved_version:
+        doc = replace(doc, approved_version=await _approved_before(conn, doc, held))  # what it was approved against
+    elif held.state not in REVIEWED_STATES or held.number <= (doc.approved_version or 0):
         return []
     old = (
         (await store.snapshot(conn, await store.version(conn, doc, doc.approved_version))).doc

@@ -183,7 +183,8 @@ curl -X POST "$HUB/v1/x/srs/evo-agents/documents/orders/versions/2/items/UC%20OR
 - A review carries to a later version while the use case reads the same there (title, fields, body and the business
   rules under it; not its position), it was recorded on a version after the one approved last, and its reviewer may
   still review. A version answers `use_cases` (`code`, `key`, `title`, `change`, `state` and the counted `reviews`, each
-  with the version it was recorded on) while it is a draft or in review; the review route answers the same.
+  with the version it was recorded on) while it is a draft or in review, and as the version approved last (read against
+  the version approved before it, as its event says); the review route answers the same.
 - The Loop does not hand a use case again when only one use case is change-requested: it is handed use cases through
   the event `srs.version.approved` (section Tasks when a version is approved), which a use case review emits only when
   it approves the whole version, so a request for changes on one use case hands nothing.
