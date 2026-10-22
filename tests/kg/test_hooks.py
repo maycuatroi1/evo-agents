@@ -718,15 +718,17 @@ def test_kg_hooks_skip_the_parsers_of_every_other_command(linked, tmp_path, monk
 
 
 def test_the_plugin_adds_after_grep_and_never_before():
+    from tests.hub.test_hooks import hook_runs
+
     hooks = json.loads((Path(__file__).parents[2] / "plugins/evo-kg/hooks/hooks.json").read_text("utf-8"))["hooks"]
     assert "PreToolUse" not in hooks
     after = {group.get("matcher"): group["hooks"] for group in hooks["PostToolUse"]}
     assert sorted(after) == ["Bash", "Grep", "mcp__plugin_evo-kg_evo-kg__.*"]
     (grep,) = after["Grep"]
-    assert grep["command"].endswith(" evo-agents kg hook post-search || true")
-    assert {(h["if"], h["command"].rsplit(" post-search ", 1)[1]) for h in after["Bash"]} == {
-        ("Bash(rg *)", "--only rg || true"),
-        ("Bash(grep *)", "--only grep || true"),
+    assert hook_runs(grep["command"]) == "kg hook post-search"
+    assert {(h["if"], hook_runs(h["command"])) for h in after["Bash"]} == {
+        ("Bash(rg *)", "kg hook post-search --only rg"),
+        ("Bash(grep *)", "kg hook post-search --only grep"),
     }
     commands = [h["command"] for group in hooks.values() for g in group for h in g["hooks"]]
     assert not any("pre-search" in c or "Glob" in c for c in commands)
