@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
@@ -2123,6 +2123,26 @@ audience (Projects and who sees what, Audience). A reader who does not hold ever
 of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
 answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
 those totals count messages most members may not read.
+
+**Dropping a source.** To drop a source from knowledge.yaml once the hub holds runs of it, run `evo-agents hub kg
+forget-source --project demo --source old-repo` first (the writer role; `--source` repeats), then remove the source
+from knowledge.yaml and push as usual (`evo-agents kg sync --push`). In the other order the push is refused: a source
+the config does not declare takes the highest label, the hub sink does not clear it, and the hub holds runs of it, so
+`PUT /v1/kg/{project}/config` answers 422 naming this command for each dropped source, and `kg sync --push` and `hub
+kg push` print it. `DELETE /v1/kg/{project}/sources/{source}` takes the source's runs off the hub in one transaction
+holding the blob lock. It deletes the source's ingested and pending runs and the project's rows of their logs, writes
+an audit row `kg.forget` (`<project> source=<id> runs=<n>`) and queues a build; the next hourly prune deletes the log
+objects from the bucket. The blobs the
+runs referred to stay the project's, as those of superseded runs do; `evo-agents hub kg scrub --purge` deletes those
+holding a secret. The worker's build cache cannot take a merged run back, so a build that finds a run the hub no
+longer lists starts its cache again and fetches what it needs (`evo_agents/hub/kg_build.py`). A source the hub
+config still declares comes back with the next push of a machine that holds its runs; `forget-source` warns when that
+is the case. Taking off a source the hub holds no run of changes nothing.
+
+```sh
+evo-agents hub kg forget-source --project demo --source old-repo  # asks first at a terminal; --yes does not
+evo-agents kg sync --push                                         # then: knowledge.yaml without old-repo
+```
 
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
