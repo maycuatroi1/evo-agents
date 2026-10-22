@@ -531,12 +531,12 @@ def test_a_second_refusal_is_not_tried_again_and_an_origin_without_a_lease_is_no
 
 @needs_worker
 def test_a_repo_the_hub_leased_nothing_for_keeps_the_machines_credentials_though_a_lease_covers_its_owner(machine):
-    """Run 14 of evo-lms: the hub leased github-app:maycuatroi1, whose token GitHub made for the run's nine repos the
+    """Run 14 of fabrikam-lms: the hub leased github-app:maycuatroi1, whose token GitHub made for the run's nine repos the
     project lists, and named evo-agents missing, which the project did not list. The lease's prefix is the whole owner,
     so it covers evo-agents too; git handed its token for evo-agents got 403."""
     token = sample("ghs_")
-    reason = "project evo-lms lists no origin for evo-agents"
-    harness = "https://github.com/maycuatroi1/evo-lms-harness.git"
+    reason = "project fabrikam-lms lists no origin for evo-agents"
+    harness = "https://github.com/maycuatroi1/fabrikam-lms-harness.git"
     agents = "https://github.com/maycuatroi1/evo-agents.git"
     hub = StubHub(
         {
@@ -547,12 +547,12 @@ def test_a_repo_the_hub_leased_nothing_for_keeps_the_machines_credentials_though
 
     async def go():
         leases = machine.leases()
-        await leases.take(hub, {"evo-lms-harness": [harness], "evo-agents": [agents]})
+        await leases.take(hub, {"fabrikam-lms-harness": [harness], "evo-agents": [agents]})
         env = {**machine.env, **leases.git_vars}
         leased = await run(["git", "credential", "fill"], env, machine.tmp, fill(harness))
         called_before = machine.called.exists()
         unleased = await run(["git", "credential", "fill"], env, machine.tmp, fill(agents))
-        covers = (leases.covers("evo-lms-harness"), leases.covers("evo-agents"))
+        covers = (leases.covers("fabrikam-lms-harness"), leases.covers("evo-agents"))
         keys = [value for key, value in leases.git_vars.items() if key.startswith("GIT_CONFIG_KEY_")]
         await leases.release()
         return leased, called_before, unleased, covers, keys
@@ -571,7 +571,7 @@ def test_a_push_of_a_repo_the_hub_leased_nothing_for_asks_the_hub_again_once(mac
     from evo_agents.worker import gitops
 
     token = sample("ghs_")
-    reason = "project evo-lms lists no origin for repo"
+    reason = "project fabrikam-lms lists no origin for repo"
     served, checkout = served_checkout(machine)
     with GitHttp(served, "oauth2", token) as server:
         machine.env.update(server.env)

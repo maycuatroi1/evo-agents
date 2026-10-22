@@ -316,9 +316,9 @@ def hub_project(name="demo", cluster="demo", workspace="~/ws", path="demo-harnes
 FOREIGN = [
     {
         "name": "lms",
-        "root": "/Users/someone/github/evo-lms-harness",
+        "root": "/Users/someone/github/fabrikam-lms-harness",
         "workspace": "/Users/someone/github",
-        "repos": ["/Users/someone/github/evo-lms-django", "/Users/someone/github/evo-harness"],
+        "repos": ["/Users/someone/github/fabrikam-lms-django", "/Users/someone/github/evo-harness"],
         "registered_at": "2026-07-11T17:11:26+07:00",
     },
     {"name": "ghi-chú", "root": "/Users/someone/ghi chú", "note": "tiếng Việt có dấu", "weights": [1.5, 2e-3]},
