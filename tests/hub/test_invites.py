@@ -4,7 +4,9 @@ accepts it once, the second of two accepts at once finding it accepted; a link a
 bound to another login gives nothing; a register link's right makes its holder the admin of the one project they
 register; the token is shown once and stored nowhere; each of create, accept and revoke writes one audit row without
 it; a holder sees nothing of another project; the web's sign-in comes back to a relative path of the hub alone;
-migration 0104 goes up and down; and ``evo-agents hub admin invite create|list|revoke`` drives it all.
+migration 0104 goes up and down; ``evo-agents hub admin invite create|list|revoke`` drives it all; and (criterion a2)
+the holder of a register link who runs ``evo-agents harness init`` and then ``evo-agents hub project register`` in a
+directory of repos becomes the admin of that one project.
 
 The parsing and the return path run without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
 
@@ -444,7 +446,7 @@ def test_a_revoked_register_invite_right_registers_nothing(client, github, hub_d
 
 
 @needs_pg
-def test_an_invite_holder_sees_nothing_of_another_project(client, github, hub_db, admin):
+def test_project_isolation_an_invite_holder_sees_nothing_of_another_project(client, github, hub_db, admin):
     from tests.hub.test_plans import registration as plans_registration
     from tests.hub.test_runs import PLAN, PROJECT, plan_body
 
@@ -609,3 +611,63 @@ def test_hub_admin_invite_create_list_and_revoke_from_the_command_line(hub, monk
         (False,),
         (True,),
     ]
+
+
+@needs_pg
+def test_harness_init_then_project_register_makes_a_register_invite_holder_its_admin(
+    hub, github, monkeypatch, capsys, tmp_path, hub_db
+):
+    """The path of a newcomer, end to end: `harness init` in a directory of repos, a register link accepted, and
+    `hub project register` of what init wrote makes them the admin of that one project and of no other."""
+    from evo_agents.hub.registration import registration as harness_registration
+    from tests.harness.test_harness_init import git_repo
+
+    signed_in = live.sign_in(hub.client, github, "founder", 911)["token"]
+    founder = write_credentials(tmp_path / "founder", hub.url, "founder", signed_in)
+
+    def run(home, *args: str):
+        return run_cli(monkeypatch, capsys, home, *args)
+
+    def harness(name: str, *project: str):
+        workspace = tmp_path / name
+        git_repo(workspace / "api", "main", f"https://github.com/acme/{name}-api.git", origin_head="main")
+        git_repo(workspace / "web", "trunk")
+        ok(run(founder, "harness", "init", str(workspace), *project))
+        ok(run(founder, "harness", "validate", str(workspace)))
+        return workspace
+
+    workspace = harness("acme-tools")
+    before = run(founder, "hub", "project", "register", str(workspace))
+    assert before.code == 1 and "needs a hub admin" in before.err  # no right yet
+
+    right = as_json(
+        run(hub.homes[ADMIN], "hub", "admin", "invite", "create", "--register", "--for", "founder", "--json")
+    )
+    assert hub.client.post(ACCEPT, json={"token": right["token"]}, headers=bearer(signed_in)).status_code == 200
+    # a name the hub has already is still refused, and leaves the right unused
+    named_demo = harness("acme-demo", "--project", "demo")
+    refused = run(founder, "hub", "project", "register", str(named_demo))
+    assert refused.code == 1 and "admin role on project demo" in refused.err
+
+    registered = ok(run(founder, "hub", "project", "register", str(workspace)))
+    assert "Registered project acme-tools" in registered.out and "note:" not in registered.out
+    listed = as_json(run(founder, "hub", "project", "list", "--json"))
+    assert [(p["name"], p["role"], p["max_level"]) for p in listed] == [("acme-tools", "admin", LEVELS[-1])]
+    assert [(r["name"], r["origin"], r["default_branch"]) for r in listed[0]["repos"]] == [
+        ("api", "https://github.com/acme/acme-tools-api.git", "main"),
+        ("web", None, "trunk"),
+    ]
+    assert listed[0]["harness"]["name"] == "acme-tools"
+
+    # the right is spent: a second new project is refused, by the command line and by the API alike
+    other = harness("acme-other")
+    again = run(founder, "hub", "project", "register", str(other))
+    assert again.code == 1 and "needs a hub admin" in again.err
+    body = harness_registration(other).body
+    assert hub.client.put("/v1/projects/acme-other", json=body, headers=bearer(signed_in)).status_code == 403
+    assert sql(hub_db, select(tables.projects.c.name).order_by(tables.projects.c.name)) == [
+        ("acme-tools",),
+        ("demo",),
+    ]
+    # and the founder sees nothing of the project they were not given
+    assert hub.client.get("/v1/projects/demo", headers=bearer(signed_in)).status_code == 404

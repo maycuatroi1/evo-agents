@@ -339,6 +339,15 @@ project, grants its holder the `admin` role at the project's highest level, and 
 project's name. Registering a project that exists already, or a second new one, takes the right no longer, and a
 member without one gets 403 as before. Holding a link or a right shows nothing of any other project.
 
+A newcomer without a harness starts one with `evo-agents harness init` in the directory of their repos (README, Quick
+start): it writes `harness.yaml` and `knowledge.yaml`, with the project named after the directory unless `--project`
+names it, and `evo-agents hub project register` run there then spends the right.
+
+```sh
+evo-agents harness init ~/code/acme-tools     # the repos in acme-tools/ (or acme-tools itself), project acme-tools
+evo-agents hub project register ~/code/acme-tools
+```
+
 `invite list` shows each link's status: `open`, `accepted`, `revoked` or `expired`. `invite revoke` closes an open
 link, or the unused right of an accepted register link; it takes back no grant (that is `hub admin revoke`). Making,
 accepting and revoking a link each write one audit row, `invite.create`, `invite.accept` and `invite.revoke`, naming

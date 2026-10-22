@@ -34,6 +34,21 @@ executable when it starts with `#!`, since Windows keeps no execute bit.
 
 ## Quick start
 
+`evo-agents harness init` starts a harness. Run in a repo's directory, or in a directory whose direct subdirectories
+are repos, it writes a minimal `harness.yaml` and `knowledge.yaml` for those repos, with the origin (without the
+password an https URL may carry) and the default branch git has for each. The project takes the directory's name,
+unless `--project NAME` gives another. Each repo gets a git source and the harness a source of its own, all labelled
+`internal`, with a Claude Code sink and a hub sink that clear `internal`. It overwrites nothing: when either file is
+there already, it writes neither and says which is there. `evo-agents harness validate` accepts what it writes, and
+`evo-agents hub project register` sends it to a hub (docs/hub.md, Invite links, for a first project of your own).
+
+```sh
+cd ~/code/acme-tools                 # api/ and web/ are git checkouts
+evo-agents harness init              # or: evo-agents harness init ~/code/acme-tools --project acme
+evo-agents harness validate
+evo-agents hub project register      # as a hub admin, or with the right of a register invite link
+```
+
 A harness opts in with a `knowledge.yaml` next to its `harness.yaml`:
 
 ```yaml
