@@ -407,6 +407,10 @@ class Corpus:
             out.append(entry)
         return out
 
+    def hub_run_ids(self) -> set[str]:
+        """The ids of the runs merged from the hub: those whose detail names a hub."""
+        return {row[0] for row in self.db.execute("SELECT run_id FROM runs WHERE json_extract(detail, '$.hub')")}
+
     def run_ids(self) -> set[str]:
         """The ids of the runs the runs table records."""
         return {row[0] for row in self.db.execute("SELECT run_id FROM runs")}

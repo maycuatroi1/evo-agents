@@ -25,6 +25,8 @@ from sqlalchemy import func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import hub_events, tables
+from evo_agents.hub.server.loop import texts
+from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.server.loop.tick import tick
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
@@ -47,6 +49,7 @@ from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_loop_admission import enable_strategist, waits
 from tests.hub.test_loop_tick import (  # noqa: F401 (client, hub and loop_core are fixtures)
     FRAME,
+    POLICY,
     client,
     harness_listed,
     hub,
@@ -399,3 +402,31 @@ def test_loop_dispatch_a_claim_validated_makes_no_build_and_a_card_past_its_dead
     d = tables.decisions
     assert sql(hub_db, select(func.count()).where(d.c.category == "loop"))[0][0] == 0
     assert tasks(hub_db) == []
+
+
+def test_loop_dispatch_the_author_request_says_what_the_merge_queue_asks_of_the_plan(client, hub, hub_db):
+    """A repo of the project in merge mode auto: the author run is told that the queue opens the merge request, runs
+    its pipeline and merges it, that each step ends at a pushed branch with its local tests passing, and that a change
+    of CI configuration waits at gate 3 for a person. A project whose queue merges nothing is told nothing of it."""
+    work = ItemView(41, "build", "build:srs:demo-shop:1:UC ORD-9", "queued", None, None)
+    pid = project_id(hub_db)
+
+    async def request() -> str:
+        async with client.app.state.engine.begin() as conn:
+            return await texts.author_request(conn, pid, PROJECT, work)
+
+    assert "merge queue" not in client.portal.call(request)
+    body = {"policy": {"repos": {"lumen-kb-docs": {"mode": "auto", "target_branch": "dev"}}}}
+    assert client.put(POLICY, json=body, headers=hub["owner"]).status_code == 200
+    said = client.portal.call(request)
+    assert "\n".join(texts.merge_queue_lines(["lumen-kb-docs"])) in said
+    for words in (
+        "The hub's merge queue merges the merge requests of lumen-kb-docs (merge mode auto)",
+        "the queue opens its merge request, runs its pipeline and merges it",
+        "Each step ends at its branch pushed with its local tests passing",
+        "No step opens a merge request, merges one, or waits for a pipeline",
+        "No step edits CI configuration (.gitlab-ci.yml, .github/workflows) unless the goal is about CI",
+        "gate 3 (score hacking) for a person",
+    ):
+        assert words in said, said
+    assert said.index("merge queue") < said.index("It serves no goal")  # before the parts members wrote

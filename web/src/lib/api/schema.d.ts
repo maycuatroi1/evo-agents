@@ -7304,6 +7304,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/merge-queue/{queue_id}/pass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pass Hold
+         * @description An admin of the project passes the hold of a merge request at a gate that holds it for a person (gate 3, score
+         *     hacking), with a reason: it is gated again at the same head, and the queue goes on from that gate; the later gates,
+         *     the Judges, its turn and its pipeline still apply, and a new push takes the pass back.
+         */
+        post: operations["pass_hold_v1_projects__project__merge_queue__queue_id__pass_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/merge-queue/repos/{repo}/resume": {
         parameters: {
             query?: never;
@@ -13064,6 +13086,14 @@ export interface components {
              * @description smaller clusters, which stay out of them
              */
             hidden: number;
+        };
+        /** HoldPass */
+        HoldPass: {
+            /**
+             * Reason
+             * @description why the hold may go on: the ledger and the audit keep it with the admin's login
+             */
+            reason: string;
         };
         /** Inbox */
         Inbox: {
@@ -52496,6 +52526,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedMergeRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pass_hold_v1_projects__project__merge_queue__queue_id__pass_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                queue_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HoldPass"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
