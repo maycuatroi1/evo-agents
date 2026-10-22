@@ -1,19 +1,21 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { agentPath, createAgentByApi, putAgentAccountByApi } from "./support/agents";
 import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
-import { PROTOCOL_HEADER } from "./support/workers";
+import { PROTOCOL_HEADER, registerWorker } from "./support/workers";
 
 /**
  * The Accounts page and the accounts of a run against the real API (docs/credentials.md, section "Accounts"): a
  * member's env secrets for the same variable, each with its state, its usage limits as a bar per window, its runs and
  * their cost, and the runs holding it; Pause, Resume and Edit on each, and the rotation policy of each project; the run page names the
- * account the run took and each usage limit it hit. No value is ever sent to the browser. Pages render in English.
+ * account the run took and each usage limit it hit; a third group lists the accounts of the agents of the visitor's
+ * projects. No value is ever sent to the browser. Pages render in English.
  */
 test.skip(isDeployed, "writes accounts through the local stack");
 
@@ -395,4 +397,47 @@ test("a hub with model accounts only says there is no service credential, and th
     await expect(row(page, "claude-a").getByTestId("account-target")).toContainText("weight 1, priority 0");
     expect(await overflow(page)).toBe(0);
   }
+});
+
+test("the accounts of the agents of the visitor's projects are a third group, each row with its agent, project and page", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("keys");
+  await createAgentByApi(me, project, { handle, name: "Key holder", permissions: {} });
+  const gpu = await registerWorker(me, { name: uniqueName("gpu"), projects: [project] });
+  const value = secretValue("agent");
+  await putAgentAccountByApi(me, project, handle, "openai-agent", { env_var: "OPENAI_API_KEY", value, workers: [gpu.name] });
+
+  // No account of their own: the empty state, then the agents' accounts.
+  await page.goto("/accounts");
+  await expect(main(page).getByTestId("state-empty")).toBeVisible();
+  const agents = main(page).getByTestId("accounts-group-agent");
+  await expect(agents.getByRole("heading", { level: 2, name: "Agent accounts" })).toBeVisible();
+  await expect(agents.getByTestId("accounts-group-agent-count")).toHaveText("1");
+
+  // With accounts of their own, it comes after Model accounts and Service credentials.
+  await putSecretByApi(me, "claude-a", { kind: "env", env_var: VAR, projects: [project], value: secretValue("a") });
+  await putSecretByApi(me, "gitlab-token", { kind: "env", env_var: "GITLAB_TOKEN", projects: [project], value: secretValue("gl") });
+  await page.reload();
+  for (const id of ["model", "service", "agent"]) await expect(main(page).getByTestId(`accounts-group-${id}-count`)).toHaveText("1");
+  const titles = main(page).locator("section[aria-labelledby^='accounts-group-'] h2");
+  await expect(titles).toHaveText(["Model accounts", "Service credentials", "Agent accounts"]);
+  const agentRow = agents.locator("tbody").filter({ has: page.locator('[data-account-name="openai-agent"]') });
+  await expect(agentRow.getByTestId("agent-account-project")).toHaveText(project);
+  await expect(agentRow.getByTestId("agent-avatar")).toHaveAttribute("data-avatar", "initial");
+  await expect(agentRow.getByTestId("account-target")).toContainText("OPENAI_API_KEY");
+  await expect(agentRow.getByTestId("account-cost-label")).toHaveText("Cost");
+  expect(await page.content()).not.toContain(value);
+  for (const width of [375, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(agents.getByTestId("accounts-group-agent-count")).toHaveText("1");
+    expect(await overflow(page)).toBe(0);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const link = agentRow.getByTestId("agent-account-agent");
+  await expect(link).toHaveText(`@${handle}`);
+  await expect(link).toHaveAttribute("href", agentPath(project, handle));
+  await link.click();
+  await page.waitForURL(`**${agentPath(project, handle)}`);
+  await expect(main(page).getByTestId("agent-accounts").locator('[data-account-name="openai-agent"]')).toBeVisible();
 });

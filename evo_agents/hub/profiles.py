@@ -5,7 +5,10 @@ A profile belongs to a project, whose admins manage it; every member of the proj
 the hub and never equal to the name of a project, except for the project's default profile, whose handle is the
 project's name (``@<project>``): every project has one, with every permission and no instructions, and a run whose
 dispatch names no profile runs under it, as runs ran before profiles existed. A profile only narrows what the member
-who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+who dispatches a run has (their workers, their secrets, the projects they write to), with one exception: the accounts
+of the agent itself (``evo_agents.hub.server.agent_accounts``), env secrets the profile owns, which its runs are leased
+on the workers they are bound to in place of the dispatcher's secrets for the same variables, whatever the
+credential axis says.
 
 Each axis is ``{"mode": "all"}`` or ``{"mode": "allowlist", "allow": [...]}``; ``all`` is the default, and an
 allowlist never grows by itself when a secret, a skill or a worker is added. What an allowlist names, by axis:

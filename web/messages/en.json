@@ -3263,13 +3263,103 @@
         "title": "Service credentials",
         "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
         "none": "No service credential. Add one as a secret bound to a project."
+      },
+      "agent": {
+        "title": "Agent accounts",
+        "description": "Secrets an agent owns in the projects you belong to. Its admins change them on the agent's page.",
+        "none": "No agent has an account of its own.",
+        "agent": "Agent",
+        "projectTitle": "Project {project}",
+        "open": "Open @{handle} of {project}",
+        "loadFailed": "The agents' accounts could not be loaded."
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
     "variablesLabel": "Variables of {provider}",
     "apiValue": "API value",
     "costLabel": "Cost",
-    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run."
+    "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run.",
+    "agent": {
+      "title": "Accounts",
+      "description": "Secrets this agent owns. A run under @{handle} takes them on the workers each one is bound to.",
+      "readOnly": "Secrets this agent owns. Only an admin of {project} adds or changes them.",
+      "add": "Add account",
+      "full": "An agent has at most {max} accounts.",
+      "empty": "@{handle} has no account of its own.",
+      "emptyAdmin": "@{handle} has no account of its own. Add one to give its runs a key that is not yours.",
+      "renew": "Renew",
+      "renewLabel": "Renew {name}",
+      "editLabel": "Edit {name}",
+      "delete": "Delete",
+      "deleteLabel": "Delete {name}",
+      "deleteTitle": "Delete account {name}?",
+      "deleteText": "Runs under @{handle} no longer get {variable} from it, and a run holding it now loses it. Its value is gone for good.",
+      "deleteConfirm": "Delete account",
+      "deleting": "Deleting",
+      "deleted": "Account {name} deleted",
+      "deletedText": "Runs under @{handle} no longer take it.",
+      "form": {
+        "saving": "Saving",
+        "cancel": "Cancel",
+        "name": "Name",
+        "nameHint": "Lowercase letters, digits, dot, dash and underscore.",
+        "envVar": "Variable",
+        "envVarHint": "The environment variable a run gets, such as OPENAI_API_KEY.",
+        "value": "Value",
+        "valueHint": "Sealed when you save. Nobody sees it again, you included.",
+        "workers": "Workers",
+        "workersHint": "Runs under this agent take the account only on these workers. You can bind your own workers and shared ones that serve {project}.",
+        "workersFailed": "The workers could not be loaded.",
+        "noWorkers": "No worker of yours or shared one serves {project}.",
+        "expires": "Ends on (optional)",
+        "expiresHint": "From 00:00 UTC of this day no run takes it. Leave empty for no end.",
+        "expiresRenewHint": "Leave empty to keep its end.",
+        "weight": "Weight",
+        "weightHint": "0 to {max}.",
+        "priority": "Priority",
+        "priorityHint": "0 to {max}, the lower the sooner.",
+        "add": {
+          "title": "Add an account to @{handle}",
+          "description": "A secret of the agent: its runs get it as an environment variable on the workers you pick.",
+          "save": "Add account",
+          "done": "Account {name} added",
+          "doneText": "The next run under @{handle} can take it."
+        },
+        "edit": {
+          "title": "Edit account {name}",
+          "description": "Its workers, its end, and how a pool of the same variable picks it.",
+          "save": "Save",
+          "done": "Account {name} changed",
+          "doneText": "The next run under @{handle} reads it."
+        },
+        "renew": {
+          "title": "Renew account {name}",
+          "description": "A new value replaces the old one. Its workers, weight and priority stay.",
+          "save": "Renew",
+          "done": "Account {name} renewed",
+          "doneText": "The next run under @{handle} gets the new value."
+        },
+        "problems": {
+          "nameRequired": "Enter a name.",
+          "nameInvalid": "Use up to {chars} lowercase letters, digits, dots, dashes or underscores, starting with a letter or digit.",
+          "nameTaken": "This agent has an account of that name.",
+          "envVarRequired": "Enter a variable.",
+          "envVarInvalid": "Use capital letters, digits and underscores, not starting with a digit, up to {max} characters.",
+          "envVarDenied": "A run sets this variable itself. Pick another.",
+          "valueRequired": "Enter the value.",
+          "valueTooLong": "The value is longer than {bytes} bytes.",
+          "workersRequired": "Pick at least one worker.",
+          "expiresInvalid": "Enter a day.",
+          "expiresPast": "Pick a day after today.",
+          "whole": "Enter a whole number.",
+          "range": "Enter a number from {min} to {max}."
+        }
+      },
+      "errors": {
+        "forbidden": "The hub refused: only an admin of the project changes its agents' accounts.",
+        "conflict": "The hub refused: the agent keeps as many accounts as it may. Delete one first."
+      }
+    }
   },
   "runs": {
     "title": "Runs",

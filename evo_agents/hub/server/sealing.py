@@ -2,8 +2,9 @@
 
 A sealed value is the ciphertext with its 16-byte tag, the 12 random bytes of nonce drawn for it, and the key_id of
 the key that sealed it: the first 8 hex digits of the key's SHA-256, which names the key without giving it away. The
-associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{kind}`` for a member's secret and
-``lease:{id}`` for a token the hub leased, and ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
+associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{kind}`` for a member's secret,
+``agent-secret:{profile_id}:{name}`` for an env secret an agent profile owns (never of the member form, so a sealed
+value copied between the two kinds of row does not open) and ``lease:{id}`` for a token the hub leased, and ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
 secret field of a plugin's config, so a sealed value copied into another row does not open there. The key
 is 32 bytes in base64url, read by ``evo_agents.hub.config``; it never reaches the database, a log line or an error.
 
@@ -57,6 +58,12 @@ def new_key() -> str:
 def secret_aad(owner_id: int, name: str, kind: str) -> bytes:
     """The associated data of a member's secret: its value opens only as this owner's secret of this name and kind."""
     return f"secret:{owner_id}:{name}:{kind}".encode()
+
+
+def agent_secret_aad(profile_id: int, name: str) -> bytes:
+    """The associated data of an env secret an agent profile owns: it opens only as that profile's secret of this name,
+    and never as a member's, whose form is ``secret:{owner_id}:{name}:{kind}``."""
+    return f"agent-secret:{profile_id}:{name}".encode()
 
 
 def lease_aad(lease_id: int) -> bytes:

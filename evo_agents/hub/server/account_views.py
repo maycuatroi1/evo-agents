@@ -1,5 +1,6 @@
 """What a member reads of their accounts at work (``docs/credentials.md``, section "Accounts"): the figures GET
-/v1/accounts adds to each account, and GET /v1/projects/{project}/runs/{run_id}/accounts, the accounts a run took.
+/v1/accounts adds to each account (and the agent-account routes to each account of an agent,
+``agent_account_figures``), and GET /v1/projects/{project}/runs/{run_id}/accounts, the accounts a run took.
 
 The figures of an account: the last usage a run's CLI reported for it (``accounts.last_usage``, kept by
 ``rate_limits``), how many runs took it and what they cost in the last 24 hours and 7 days, and the runs that hold it
@@ -106,18 +107,19 @@ def usage_cost(usage):
     )
 
 
-def _owned(owner_id: int, secret_ids: list[int] | None):
+def _owned(owner, secret_ids: list[int] | None):
+    """The ids of the live env secrets ``owner`` (a condition on secrets: a member's, or agent profiles') says."""
     s = tables.secrets
-    found = select(s.c.id).where(s.c.owner_id == owner_id, s.c.kind == "env", s.c.deleted_at.is_(None))
+    found = select(s.c.id).where(owner, s.c.kind == "env", s.c.deleted_at.is_(None))
     return found if secret_ids is None else found.where(s.c.id.in_(secret_ids))
 
 
-def _taken(owner_id: int, secret_ids: list[int] | None):
+def _taken(owned):
     """Per account, the runs that took it in the last 7 days and what they cost, in the last 24 hours too."""
     cl, r = tables.credential_leases, tables.runs
     took = (
         select(cl.c.secret_id, cl.c.run_id, func.min(cl.c.issued_at).label("at"))
-        .where(cl.c.provider == "secret", cl.c.secret_id.in_(_owned(owner_id, secret_ids)))
+        .where(cl.c.provider == "secret", cl.c.secret_id.in_(owned))
         .group_by(cl.c.secret_id, cl.c.run_id)
         .having(func.min(cl.c.issued_at) >= func.now() - WEEK)
         .subquery()
@@ -137,13 +139,13 @@ def _taken(owner_id: int, secret_ids: list[int] | None):
     )
 
 
-def _held(owner_id: int, secret_ids: list[int] | None):
+def _held(owned):
     ra, r, projects = tables.run_accounts, tables.runs, tables.projects
     return (
         select(ra.c.secret_id, r.c.id, projects.c.name, r.c.state)
         .join_from(ra, r, r.c.id == ra.c.run_id)
         .join(projects, projects.c.id == r.c.project_id)
-        .where(ra.c.secret_id.in_(_owned(owner_id, secret_ids)), r.c.state.in_(runs.HELD_STATES))
+        .where(ra.c.secret_id.in_(owned), r.c.state.in_(runs.HELD_STATES))
         .order_by(r.c.id)
     )
 
@@ -157,26 +159,46 @@ def _usage(stored) -> AccountUsage | None:
         return None
 
 
+async def _figures(conn: AsyncConnection, owned) -> dict[int, Figures]:
+    a = tables.accounts
+    found: dict[int, Figures] = {}
+    usage = select(a.c.secret_id, a.c.last_usage, a.c.last_usage_at).where(
+        a.c.secret_id.in_(owned), a.c.last_usage_at.is_not(None)
+    )
+    for row in await conn.execute(usage):
+        found[row.secret_id] = Figures(last_usage=_usage(row.last_usage), last_usage_at=row.last_usage_at)
+    for row in await conn.execute(_taken(owned)):
+        figures = found.setdefault(row.secret_id, Figures())
+        figures.runs_24h, figures.runs_7d = row.runs_24h, row.runs_7d
+        figures.cost_24h_usd, figures.cost_7d_usd = round(float(row.cost_24h), 6), round(float(row.cost_7d), 6)
+    for row in await conn.execute(_held(owned)):
+        held = HeldBy(run_id=row.id, project=row.name, state=row.state)
+        found.setdefault(row.secret_id, Figures()).held_by.append(held)
+    return found
+
+
 async def account_figures(
     conn: AsyncConnection, owner_id: int, secret_ids: list[int] | None = None
 ) -> dict[int, Figures]:
     """The figures of ``owner_id``'s accounts (``secret_ids`` alone, when given), by secret id; an account no run
     took has none, so ``Figures()``."""
-    a = tables.accounts
-    found: dict[int, Figures] = {}
-    usage = select(a.c.secret_id, a.c.last_usage, a.c.last_usage_at).where(
-        a.c.secret_id.in_(_owned(owner_id, secret_ids)), a.c.last_usage_at.is_not(None)
-    )
-    for row in await conn.execute(usage):
-        found[row.secret_id] = Figures(last_usage=_usage(row.last_usage), last_usage_at=row.last_usage_at)
-    for row in await conn.execute(_taken(owner_id, secret_ids)):
-        figures = found.setdefault(row.secret_id, Figures())
-        figures.runs_24h, figures.runs_7d = row.runs_24h, row.runs_7d
-        figures.cost_24h_usd, figures.cost_7d_usd = round(float(row.cost_24h), 6), round(float(row.cost_7d), 6)
-    for row in await conn.execute(_held(owner_id, secret_ids)):
-        held = HeldBy(run_id=row.id, project=row.name, state=row.state)
-        found.setdefault(row.secret_id, Figures()).held_by.append(held)
-    return found
+    return await _figures(conn, _owned(tables.secrets.c.owner_id == owner_id, secret_ids))
+
+
+async def agent_account_figures(
+    conn: AsyncConnection, profile_ids: list[int], secret_ids: list[int] | None = None
+) -> dict[int, Figures]:
+    """The figures of the accounts the agent profiles ``profile_ids`` own, read as a member's are."""
+    return await _figures(conn, _owned(tables.secrets.c.profile_id.in_(profile_ids), secret_ids))
+
+
+def figured(figures: Figures | None, category: str) -> dict:
+    """The figures of an account as its view gives them: no cost for a service account, whose runs' cost is one number
+    kept by their model account (``account_providers``)."""
+    values = vars(figures or Figures()).copy()
+    if category == "service":
+        values |= {"cost_24h_usd": None, "cost_7d_usd": None}
+    return values
 
 
 # The accounts of a run
