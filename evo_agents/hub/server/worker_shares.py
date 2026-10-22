@@ -4,7 +4,8 @@
   the units it is narrowed to and what the newest report of its doctor found (null until its daemon sends one).
 - PUT /v1/org/workers/{worker_id}/units/{slug}: narrow the worker to unit ``slug``, which must be live (422 otherwise,
   ``credential_shares.live_unit``), and make it shared when it was not. A unit it is narrowed to already changes
-  nothing and is not audited.
+  nothing and is not audited. 409 with the reason when its newest doctor report is older than 48 hours, missing or
+  has a high finding (``evo_agents.hub.server.worker_doctor``).
 - DELETE /v1/org/workers/{worker_id}/units/{slug}: take the unit back (404 when the worker is not narrowed to it).
   Taking back its last unit also turns sharing off, so narrowing a worker never ends with it shared with every writer.
 
@@ -34,6 +35,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.credential_shares import live_unit
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.worker_doctor import doctor_fresh, share_refusal
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +74,9 @@ def _listed(*where):
             users.c.login.label("owner"),
             w.c.shared,
             func.array(units.scalar_subquery(), type_=ARRAY(Text)).label("units"),
+            w.c.doctor_at,
+            w.c.doctor_high,
+            w.c.doctor_medium,
         )
         .join_from(w, users, users.c.id == w.c.owner_id)
         .where(w.c.revoked_at.is_(None), *where)
@@ -90,11 +95,12 @@ def _writer(user: Principal) -> None:
 
 
 async def _worker(conn: AsyncConnection, user: Principal, worker_id: int):
-    """The worker's (owner_id, owner login, name, shared), locked: one of the caller's, or any for a hub admin; 404
-    otherwise, 409 when it is revoked."""
+    """The worker's (owner_id, owner login, name, shared, its newest doctor report), locked: one of the caller's, or any
+    for a hub admin; 404 otherwise, 409 when it is revoked."""
     w, users = tables.workers, tables.users
+    fresh = doctor_fresh(w.c.doctor_at).label("doctor_fresh")
     query = (
-        select(w.c.owner_id, users.c.login, w.c.name, w.c.shared, w.c.revoked_at)
+        select(w.c.owner_id, users.c.login, w.c.name, w.c.shared, w.c.revoked_at, w.c.doctor_at, w.c.doctor_high, fresh)
         .join_from(w, users, users.c.id == w.c.owner_id)
         .where(w.c.id == worker_id)
         .with_for_update(of=w)
@@ -129,6 +135,9 @@ async def share_worker(request: Request, worker_id: WorkerId, slug: UnitSlug, us
     async with request.app.state.engine.begin() as conn:
         row = await _worker(conn, user, worker_id)
         unit_id = await live_unit(conn, slug)
+        refusal = share_refusal(row.doctor_at, row.doctor_high, row.doctor_fresh)
+        if refusal is not None:
+            raise HTTPException(409, f"worker {row.name} of {row.login} is not shared with unit {slug}: {refusal}")
         added = await conn.execute(
             insert(ws)
             .values(worker_id=worker_id, unit_id=unit_id, created_by=user.user_id)

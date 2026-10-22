@@ -36928,6 +36928,68 @@
           }
         }
       },
+      "/v1/worker/doctor": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Doctor",
+          "description": "Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a\nhigh finding stops it taking the runs of the units it is shared with.",
+          "operationId": "report_doctor_v1_worker_doctor_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DoctorAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/x/builder/{project}/proposals": {
         "get": {
           "tags": [
@@ -68130,6 +68192,85 @@
           ],
           "title": "DispatchFrom"
         },
+        "DoctorAnswer": {
+          "properties": {
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id"
+            },
+            "doctor_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Doctor At",
+              "description": "when the hub took the report"
+            },
+            "doctor_high": {
+              "type": "integer",
+              "title": "Doctor High"
+            },
+            "doctor_medium": {
+              "type": "integer",
+              "title": "Doctor Medium"
+            }
+          },
+          "type": "object",
+          "required": [
+            "worker_id",
+            "doctor_at",
+            "doctor_high",
+            "doctor_medium"
+          ],
+          "title": "DoctorAnswer"
+        },
+        "DoctorFinding": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Code",
+              "description": "what the doctor found, as `worker doctor --json` names it"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Severity"
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Detail",
+              "description": "what it found, as the doctor prints it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "severity",
+            "detail"
+          ],
+          "title": "DoctorFinding"
+        },
+        "DoctorReport": {
+          "properties": {
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/DoctorFinding"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Findings"
+            }
+          },
+          "type": "object",
+          "required": [
+            "findings"
+          ],
+          "title": "DoctorReport"
+        },
         "EarlierFinding": {
           "properties": {
             "id": {
@@ -75767,7 +75908,8 @@
                     "loop_paused",
                     "goal_review",
                     "loop_brief",
-                    "plugin_notice"
+                    "plugin_notice",
+                    "worker_doctor"
                   ]
                 },
                 {

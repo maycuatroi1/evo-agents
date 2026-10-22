@@ -86,7 +86,17 @@ def seat(client, hub, slug: str, login: str = OTHER) -> None:
     assert response.status_code in (200, 201), response.text
 
 
+def doctor(client, worker: dict, *findings: dict) -> dict:
+    """The worker's daemon sends a doctor report with ``findings`` (none: a clean one)."""
+    response = client.post("/v1/worker/doctor", json={"findings": list(findings)}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def narrow(client, headers, worker: dict, slug: str, status: int = 200) -> dict:
+    """Narrow ``worker`` to unit ``slug``, after a clean doctor report of its daemon, which narrowing needs."""
+    if status == 200:
+        doctor(client, worker)
     response = client.put(f"/v1/org/workers/{worker['id']}/units/{slug}", headers=headers)
     assert response.status_code == status, response.text
     return response.json()
@@ -135,7 +145,7 @@ def test_worker_share_access_owner_and_admin_narrow_and_take_back_each_audited(c
     made = narrow(client, hub["owner"], lab, "lab")
     assert list(made) == KEYS
     assert (made["worker"], made["owner"], made["shared"], made["units"]) == ("lab", OWNER, True, ["lab"])
-    assert (made["doctor_at"], made["doctor_high"], made["doctor_medium"]) == (None, None, None)
+    assert made["doctor_at"] is not None and (made["doctor_high"], made["doctor_medium"]) == (0, 0)
     assert narrow(client, hub["owner"], lab, "lab")["units"] == ["lab"]  # already: nothing changes, nothing audited
     assert narrow(client, hub["admin"], lab, "ops")["units"] == ["lab", "ops"]
     for who, status in (("other", 404), ("reader", 404), ("stranger", 404)):

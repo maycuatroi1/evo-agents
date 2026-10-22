@@ -47,15 +47,18 @@ def _seat_chains():
 def unit_admits(worker_id, principal_id):
     """Whether the units worker ``worker_id`` is narrowed to (``tables.worker_shares``) let it take a run of member
     ``principal_id`` (each a value or a column): it has none, or the member's live primary seat is in one of them or
-    below one, with no unit above the seat archived nor a cohort above it ended (``org.Chart.ended``)."""
+    below one, with no unit above the seat archived nor a cohort above it ended (``org.Chart.ended``), and the newest
+    doctor report of the worker has no high finding (``evo_agents.hub.server.worker_doctor``)."""
     ws, u, chain = tables.worker_shares, tables.org_units, _seat_chains()
+    doctored = tables.workers.alias("doctored")
+    clear = exists().where(doctored.c.id == worker_id, doctored.c.doctor_high == 0)
     narrowed = exists().where(ws.c.worker_id == worker_id)
     seated = exists().where(
         ws.c.worker_id == worker_id, chain.c.user_id == principal_id, chain.c.unit_id == ws.c.unit_id
     )
     ended_unit = or_(u.c.archived_at.is_not(None), and_(u.c.kind == org.COHORT, u.c.ends_on < func.current_date()))
     ended = exists().where(chain.c.user_id == principal_id, chain.c.unit_id == u.c.id, ended_unit)
-    return or_(~narrowed, and_(seated, ~ended))
+    return or_(~narrowed, and_(seated, ~ended, clear))
 
 
 def shared_in(project_id, principal_id):

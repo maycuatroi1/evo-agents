@@ -22,6 +22,7 @@ import {
   PowerOff,
   Rocket,
   Send,
+  ShieldAlert,
   Sunrise,
   Tags,
   Target,
@@ -90,6 +91,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   goal_review: { icon: Goal },
   loop_brief: { icon: IterationCw },
   plugin_notice: { icon: Puzzle },
+  worker_doctor: { icon: ShieldAlert },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
