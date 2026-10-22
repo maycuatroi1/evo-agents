@@ -14,6 +14,8 @@ become those they give now, written only when something changed. Each run in ``k
 is fetched (its log, checked against its SHA-256), merged with the corpus's own merge, and listed; the merge is
 order-independent, so the runs of several machines in any order give one state; the cursor a run ended with is kept
 unless a later run's is, so a git source's coverage names the commit its newest run read (``evo_agents.kg.freshness``).
+A merge cannot be undone, so a corpus holding a run merged from the hub that kg_ingests no longer lists (its source
+was taken off the hub) is started again first, its blobs kept (``drop_forgotten``).
 Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
 built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces graph.sqlite in one rename: a
 single file, the artifact. Anything that fails marks the build failed with a message naming no content, and the worker
@@ -212,6 +214,28 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
         )
 
 
+def drop_forgotten(project: Project, ingests: list[Ingest]) -> int:
+    """Start the cached corpus of ``project`` again when it holds a run merged from the hub that ``ingests`` no longer
+    lists (a source taken off the hub, ``evo-agents hub kg forget-source``): the merge cannot take a run back, and
+    the items of a source the config still declares would stay in every build. The blobs stay; the next steps write
+    the plugins' sources and fetch the logs again. How many such runs there were."""
+    corpus = project.corpus()
+    try:
+        merged = {row[0] for row in corpus.db.execute("SELECT run_id FROM runs WHERE json_extract(detail, '$.hub')")}
+    finally:
+        corpus.close()
+    forgotten = merged - {ingest.run_id for ingest in ingests}
+    if forgotten:
+        for suffix in ("", "-wal", "-shm"):
+            Path(f"{corpus.db_path}{suffix}").unlink(missing_ok=True)
+        for path in corpus.log_dir.iterdir():
+            path.unlink(missing_ok=True)
+        log.info(
+            "kg cache started again: runs taken off the hub", extra={"project": project.name, "runs": len(forgotten)}
+        )
+    return len(forgotten)
+
+
 def prepare_corpus(store: BlobStore, project: Project, ingests: list[Ingest]) -> int:
     """Bring the cached corpus of ``project`` up to ``ingests``; how many runs were merged now."""
     corpus = project.corpus()
@@ -297,6 +321,7 @@ def build_in_cache(
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
+    drop_forgotten(project, ingests)
     kg_sources.keep_sources(project, sources)
     merged = prepare_corpus(store, project, ingests)
     path, report = build_graph(project)
