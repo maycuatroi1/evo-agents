@@ -900,8 +900,8 @@ export interface paths {
         };
         /**
          * List Skills
-         * @description The skills the caller sees, each with its latest version: the global ones and those of every project the
-         *     caller has a grant on.
+         * @description The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
+         *     those of every project the caller has a grant on.
          */
         get: operations["list_skills_v1_skills_get"];
         put?: never;
@@ -986,6 +986,27 @@ export interface paths {
          * @description A new version of a skill of a project from a bundle the project committed.
          */
         post: operations["publish_project_v1_skills_projects__project___name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skills/global/{name}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Audience
+         * @description Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
+         *     audit row; the audience it has already changes nothing.
+         */
+        put: operations["set_audience_v1_skills_global__name__audience_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8483,6 +8504,15 @@ export interface components {
             agent_error?: string | null;
             /** Session Id */
             session_id?: string | null;
+        };
+        /** AudienceChange */
+        AudienceChange: {
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** AudienceIn */
         AudienceIn: {
@@ -18701,6 +18731,11 @@ export interface components {
              * @description hex, abbreviated or whole
              */
             source_commit?: string | null;
+            /**
+             * Audience
+             * @description a global skill's audience: default everyone for a new skill, unchanged for one that exists
+             */
+            audience?: ("everyone" | "admins") | null;
         };
         /** Published */
         Published: {
@@ -18719,6 +18754,12 @@ export interface components {
              */
             created: boolean;
             latest: components["schemas"]["Version"];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** Queued */
         Queued: {
@@ -22422,6 +22463,28 @@ export interface components {
              * Format: date-time
              */
             published_at: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+        };
+        /** SkillAudience */
+        SkillAudience: {
+            /** Name */
+            name: string;
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
+            /**
+             * Changed
+             * @description false when the skill had this audience already
+             */
+            changed: boolean;
         };
         /** SkillCount */
         SkillCount: {
@@ -22501,6 +22564,12 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+            /**
+             * Audience
+             * @description who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's
+             * @enum {string}
+             */
+            audience: "everyone" | "admins";
         };
         /** SkillStat */
         SkillStat: {
@@ -29768,6 +29837,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_audience_v1_skills_global__name__audience_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the skill's name, its directory in every runtime */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillAudience"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

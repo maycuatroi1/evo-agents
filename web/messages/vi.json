@@ -807,7 +807,8 @@
         "plan_put": "Ghi plan",
         "plan_patch": "Sửa plan",
         "plan_complete": "Hoàn tất plan",
-        "skill_publish": "Phát hành skill"
+        "skill_publish": "Phát hành skill",
+        "skill_audience": "Đổi ai thấy skill"
       }
     },
     "branding": {
@@ -1412,6 +1413,17 @@
     "onGitHub": "(mở commit trên GitHub trong thẻ mới)",
     "scopeGlobal": "Dùng chung",
     "scopeProject": "Dự án {project}",
+    "audience": {
+      "admins": "Chỉ quản trị viên hub",
+      "adminsHint": "Chỉ quản trị viên hub thấy, tải về và đồng bộ skill này",
+      "title": "Ai thấy skill này",
+      "description": "Skill dùng chung là của mọi thành viên đã đăng nhập: họ thấy nó ở đây, tải về và đồng bộ về máy. Bạn có thể giữ nó cho riêng quản trị viên hub. Chỉ quản trị viên hub thấy thẻ này.",
+      "adminsOnly": "Chỉ quản trị viên hub",
+      "adminsOnlyHint": "Bật: thành viên không còn thấy, tải về hay đồng bộ skill này, và lần đồng bộ sau gỡ nó khỏi máy họ sau khi sao lưu. Tắt: mọi thành viên đã đăng nhập lại có nó. Mỗi lần đổi được ghi vào audit.",
+      "nowAdmins": "{name} giờ chỉ dành cho quản trị viên hub",
+      "nowEveryone": "{name} giờ dành cho mọi thành viên đã đăng nhập",
+      "failed": "Không đổi được ai thấy {name}"
+    },
     "by": "bởi {login}",
     "columns": {
       "name": "Tên",

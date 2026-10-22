@@ -11406,6 +11406,47 @@
         "schema": "SignalBatchResult"
       }
     },
+    "hub skills audience": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "audience",
+          "metavar": "AUDIENCE",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "everyone",
+            "admins"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "audience",
+          "changed"
+        ],
+        "schema": "SkillAudience"
+      }
+    },
     "hub skills list": {
       "positionals": [],
       "options": [
@@ -11439,7 +11480,8 @@
           "source_repo",
           "source_commit",
           "published_by",
-          "published_at"
+          "published_at",
+          "audience"
         ],
         "schema": "Skill"
       }
@@ -11482,6 +11524,18 @@
         },
         {
           "flags": [
+            "--audience"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "everyone",
+            "admins"
+          ]
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -11497,6 +11551,7 @@
           "name",
           "created",
           "latest",
+          "audience",
           "bundle"
         ],
         "schema": "Published"
@@ -18765,7 +18820,7 @@
             "skills"
           ],
           "summary": "List Skills",
-          "description": "The skills the caller sees, each with its latest version: the global ones and those of every project the\ncaller has a grant on.",
+          "description": "The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and\nthose of every project the caller has a grant on.",
           "operationId": "list_skills_v1_skills_get",
           "parameters": [
             {
@@ -19241,6 +19296,92 @@
                 }
               },
               "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/skills/global/{name}/audience": {
+        "put": {
+          "tags": [
+            "skills"
+          ],
+          "summary": "Set Audience",
+          "description": "Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one\naudit row; the audience it has already changes nothing.",
+          "operationId": "set_audience_v1_skills_global__name__audience_put",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "description": "the skill's name, its directory in every runtime",
+                "title": "Name"
+              },
+              "description": "the skill's name, its directory in every runtime"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SkillAudience"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -58994,6 +59135,24 @@
           "title": "ArmResult",
           "description": "What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took."
         },
+        "AudienceChange": {
+          "properties": {
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "audience"
+          ],
+          "title": "AudienceChange"
+        },
         "AudienceIn": {
           "properties": {
             "audience": {
@@ -82861,6 +83020,22 @@
               ],
               "title": "Source Commit",
               "description": "hex, abbreviated or whole"
+            },
+            "audience": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "everyone",
+                    "admins"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience",
+              "description": "a global skill's audience: default everyone for a new skill, unchanged for one that exists"
             }
           },
           "type": "object",
@@ -82902,6 +83077,15 @@
             },
             "latest": {
               "$ref": "#/components/schemas/Version"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -82910,7 +83094,8 @@
             "project",
             "name",
             "created",
-            "latest"
+            "latest",
+            "audience"
           ],
           "title": "Published"
         },
@@ -91482,6 +91667,15 @@
               "type": "string",
               "format": "date-time",
               "title": "Published At"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -91496,10 +91690,40 @@
             "source_repo",
             "source_commit",
             "published_by",
-            "published_at"
+            "published_at",
+            "audience"
           ],
           "title": "Skill",
           "description": "A skill with its latest version."
+        },
+        "SkillAudience": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the skill had this audience already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "audience",
+            "changed"
+          ],
+          "title": "SkillAudience"
         },
         "SkillCount": {
           "properties": {
@@ -91623,6 +91847,15 @@
               "type": "array",
               "title": "Versions",
               "description": "the latest first"
+            },
+            "audience": {
+              "type": "string",
+              "enum": [
+                "everyone",
+                "admins"
+              ],
+              "title": "Audience",
+              "description": "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
             }
           },
           "type": "object",
@@ -91631,7 +91864,8 @@
             "project",
             "name",
             "created_at",
-            "versions"
+            "versions",
+            "audience"
           ],
           "title": "SkillHistory"
         },

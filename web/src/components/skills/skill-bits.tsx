@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, ExternalLink, FolderGit2, GitCommitHorizontal, Globe } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderGit2, GitCommitHorizontal, Globe, ShieldCheck } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useRef } from "react";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { shortHash, sizeParts } from "./format";
+import type { Audience } from "./queries";
 import { githubCommitUrl, type RepoOrigin } from "./source";
 
 export function ByteSize({ bytes }: { bytes: number }) {
@@ -115,6 +116,18 @@ export function ScopeBadge({ project }: { project: string | null }) {
     <Tag>
       <FolderGit2 aria-hidden="true" />
       {t("scopeProject", { project })}
+    </Tag>
+  );
+}
+
+/** A global skill for hub admins alone, the Hub admin tag's icon beside the word; a skill for every member has none. */
+export function AudienceBadge({ audience }: { audience: Audience }) {
+  const t = useTranslations("skills.audience");
+  if (audience !== "admins") return null;
+  return (
+    <Tag title={t("adminsHint")} data-testid="skill-audience-admins">
+      <ShieldCheck aria-hidden="true" />
+      {t("admins")}
     </Tag>
   );
 }

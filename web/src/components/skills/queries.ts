@@ -2,20 +2,24 @@ import { queryOptions } from "@tanstack/react-query";
 import type { Route } from "next";
 
 import { projectHref } from "@/components/shell/nav";
-import { call } from "@/lib/api/client";
+import { type ApiClient, call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
 /**
- * The reads of the skills pages. Global skills are every signed-in member's; a project's are its members' (the API
- * answers 403 to anyone else, the same whether the project exists or not). Skills carry no label: the grant alone
- * decides.
+ * The reads of the skills pages, and the one write a hub admin makes there. A global skill is for every signed-in
+ * member or, its audience `admins`, for hub admins alone: the API leaves it out of anyone else's list and answers 404
+ * for it, as for a skill that does not exist. A project's skills are its members' (the API answers 403 to anyone
+ * else, the same whether the project exists or not). Skills carry no label: the grant and the audience alone decide.
  */
 type Schemas = components["schemas"];
 export type Skill = Schemas["Skill"];
 export type SkillHistory = Schemas["SkillHistory"];
 export type SkillVersion = Schemas["Version"];
 export type BundleTicket = Schemas["BundleTicket"];
+export type Audience = Skill["audience"];
+export type SkillAudience = Schemas["SkillAudience"];
 
 /** Where skills live: the hub's global ones, or one project's. */
 export type SkillPlace = { kind: "global" } | { kind: "project"; project: string };
@@ -64,6 +68,12 @@ export function bundleTicket(api: ApiSource, place: SkillPlace, name: string, ve
         }),
       )
     : call(api().GET("/v1/skills/global/{name}/bundle", { params: { path: { name }, query } }));
+}
+
+/** Who reads a global skill from now on; a hub admin only (403 for anyone else), one audit row per change. */
+export async function setSkillAudience(api: ApiClient, name: string, audience: Audience): Promise<SkillAudience> {
+  const headers = await csrfHeaders(api);
+  return call(api.PUT("/v1/skills/global/{name}/audience", { params: { path: { name } }, body: { audience }, headers }));
 }
 
 export type BlobStoreState = "ok" | "unavailable" | "unconfigured" | "unknown";
