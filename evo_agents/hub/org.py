@@ -427,6 +427,29 @@ def view_refusal(chart: Chart, actor: Actor, user_id: int, login: str, today: da
     )
 
 
+def stop_refusal(chart: Chart, actor: Actor, today: date, *, user_id=None, login=None, unit=None) -> str | None:
+    """Why ``actor`` may not stop, or lift the stop of, autonomy S4 for the person ``user_id`` (``login``), for
+    ``unit`` and every unit below it, or for the whole hub (neither): a person their own runs, a lead those of the units
+    they lead and below (a person's primary seat decides, the root's without one), a hub admin anyone and the hub;
+    None when they may."""
+    if actor.admin or (user_id is not None and actor.user_id == user_id):
+        return None
+    led = _led(chart, actor, today)
+    if user_id is not None:
+        seat = chart.primary_seat(user_id, today)
+        top = chart.root.id if seat is None else seat.unit_id
+        if any(chart.within(top, held.id) for held in led):
+            return None
+        return f"stopping {login} needs {login}, a lead of a unit above them or a hub admin; {actor.login} is none"
+    if unit is not None:
+        if any(chart.within(unit.id, held.id) for held in led):
+            return None
+        return (
+            f"stopping unit {unit.slug} needs a lead of it or of a unit above it, or a hub admin; {actor.login} is none"
+        )
+    return f"stopping the whole hub needs a hub admin; {actor.login} is not one"
+
+
 def class_refusal(chart: Chart, actor: Actor, level: str, overrides: dict[str, str], today: date) -> str | None:
     """Why ``actor`` may not set a ceiling of ``level`` with ``overrides``: a class it allows lies above the mode the
     actor's own ceilings and the instance give them on that class (the rule without escalation, by class)."""

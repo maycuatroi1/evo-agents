@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, run_autonomy
+from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
 from evo_agents.hub.server.loop import caps, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker
 from evo_agents.hub.server.loop.model import BRAINSTORM, BUILD, DELIVER, USE_CASE, ItemView, View
@@ -91,6 +91,8 @@ async def _insert(conn: AsyncConnection, values: dict, item: ItemView) -> tuple[
         run_id = await insert_run(conn, values, who)
     except IntegrityError as exc:
         return None, f"the hub refused the run: {type(exc.orig).__name__}"
+    except autonomy_hold.Stopped as exc:
+        return None, f"the hub refused the run: {exc.detail}"
     await notify_queued(conn, run_id)
     return run_id, None
 

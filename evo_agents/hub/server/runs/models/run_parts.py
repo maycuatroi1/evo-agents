@@ -188,3 +188,6 @@ class RunCard(BaseModel):
     sources: dict[str, str] = Field(
         default_factory=dict, description="K1 to K12, what set the mode of each: a ceiling, a preference, a policy"
     )
+    principal: str | None = Field(
+        None, description="the login of the run's principal, which its commits name in the trailer Evo-Principal"
+    )

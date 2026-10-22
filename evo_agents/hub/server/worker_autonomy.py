@@ -8,7 +8,8 @@ made, and the commands of a class in notify its PreToolUse hook let through (``e
   notify, or one in ask whose decision the agent names); the hub answers the class's mode now, the stricter of the
   run's snapshot and the value now (``run_autonomy.recheck``), and whether the decision is one of the run, of a
   category of the class, answered; it tells the run's principal (and the person an intern reports to) when ``klass``
-  is notify for them now (``autonomy_gates.tell_after``, audited ``autonomy.notified``).
+  is notify for them now (``autonomy_gates.tell_after``, audited ``autonomy.notified``). The decision goes to the
+  ledger S1 (``autonomy_ledger``).
 
 Both take the token of the worker that claimed the run, of any kind.
 """
@@ -24,8 +25,8 @@ from sqlalchemy import select
 
 from evo_agents.hub import tables
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
-from evo_agents.hub.autonomy_levels import NOTIFY
-from evo_agents.hub.server import audit, autonomy_gates, run_autonomy
+from evo_agents.hub.autonomy_levels import ACTING, ASK, NOTIFY
+from evo_agents.hub.server import audit, autonomy_gates, autonomy_ledger, run_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.run_state import write_event
@@ -126,6 +127,9 @@ async def autonomy_act(request: Request, run_id: RunId, act: AutonomyActIn, user
         if found is None:
             return AutonomyActOut(mode=None, told=False, answered=answered)
         mode = autonomy_gates.mode_of(found.classes[act.klass], act.klass, False)
+        passes = mode in ACTING or (mode == ASK and answered)
+        result = autonomy_ledger.ALLOWED if passes else autonomy_ledger.REFUSED
+        await autonomy_ledger.record(conn, run_id, act.klass, mode, result, f"hook {act.what[:200]}")
         if mode == NOTIFY:
             title = f"{act.klass}: the agent of run {run_id} ran {act.what}"
             await autonomy_gates.tell_after(conn, run_id, act.klass, key=f"hook {act.what[:200]}", title=title)

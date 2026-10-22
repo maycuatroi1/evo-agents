@@ -50,7 +50,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy, judge, merge_gate, runs, tables, task_runs
-from evo_agents.hub.server import audit, autonomy_gates, change_tiers
+from evo_agents.hub.server import audit, autonomy_gates, change_tiers, pull_trailers
 from evo_agents.hub.server.autonomy_policies import project_repos
 from evo_agents.hub.server.forge import forge_token, has_forge
 from evo_agents.hub.server.gitlab import GitLab, GitLabRefused, GitLabUnavailable, MergeRequest, project_of
@@ -536,6 +536,8 @@ class RepoPass:
             return
         async with self.engine.begin() as conn:
             candidates = await self._plan_candidates(conn, since) + await self._task_candidates(conn, since)
+            for candidate in candidates:
+                candidate.description += await pull_trailers.block(conn, candidate.run_id)
         by_branch = {mr.source_branch: mr for mr in listed.values()}
         for candidate in candidates:
             mr, opened, problem = by_branch.get(candidate.branch), False, None

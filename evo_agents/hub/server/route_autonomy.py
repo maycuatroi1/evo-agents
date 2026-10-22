@@ -8,7 +8,8 @@ stricter of the run's snapshot and the value now (``run_autonomy.recheck``).
 - notify and auto: the route goes on and its own rules hold, as before; so does a run without a snapshot.
 
 A caller that is no run's agent, a member or an admin, is never held here: K8 and K12 are what a run may do for its
-principal. Every refusal writes the audit row ``autonomy.refused``. Each guard is a dependency of the routes, so it
+principal. Every refusal writes the audit row ``autonomy.refused``, and every decision the ledger S1's
+(``autonomy_ledger``). Each guard is a dependency of the routes, so it
 holds whichever way the route is reached; a read (GET, HEAD, OPTIONS) is never held.
 """
 
@@ -17,7 +18,8 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Request
 
 from evo_agents.hub.autonomy_levels import ACTING, ASK, refusal
-from evo_agents.hub.server import audit, run_autonomy
+from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
+from evo_agents.hub.server.autonomy_ledger import ALLOWED, REFUSED
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 READS = ("GET", "HEAD", "OPTIONS")
@@ -33,7 +35,12 @@ async def held(request: Request, user: Principal, klass: str) -> None:
     async with engine.begin() as conn:  # the audit row stays: the refusal is raised once it is written
         found = await run_autonomy.recheck(conn, user.scope.run_id)
         choice = None if found is None else found.classes[klass]
-        if choice is None or choice.mode in ACTING:
+        if choice is None:
+            return
+        act = f"{request.method} {route}"
+        result = ALLOWED if choice.mode in ACTING else REFUSED
+        await autonomy_ledger.record(conn, user.scope.run_id, klass, choice.mode, result, act, token_id=user.token_id)
+        if choice.mode in ACTING:
             return
         await audit.record(
             conn,

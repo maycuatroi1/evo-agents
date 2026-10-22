@@ -17,7 +17,8 @@ release; the gate acts as before. A run without a snapshot (a local run, one que
 too, and so does a principal at A5.
 
 Every refusal names the class, the mode and its source, and writes the audit row ``autonomy.refused`` once for each
-act refused; the ask writes ``autonomy.asked``, the notice ``autonomy.notified``.
+act refused; the ask writes ``autonomy.asked``, the notice ``autonomy.notified``. Every verdict, whatever it is, goes
+to the ledger S1 (``autonomy_ledger``).
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ from evo_agents.hub.autonomy_levels import (
     Choice,
     refusal,
 )
-from evo_agents.hub.server import audit, principals, run_autonomy
+from evo_agents.hub.server import audit, autonomy_ledger, principals, run_autonomy
+from evo_agents.hub.server.autonomy_ledger import ACTED, ASKED, REFUSED
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
 
 APPROVE, REFUSE = "approve", "refuse"
@@ -92,10 +94,14 @@ async def check(
     mode = mode_of(choice, klass, risk)
     said = Verdict(True, mode, None, False, row.principal_id, row.project_id, run_id, klass)
     if mode in ACTING:
-        return said
-    if mode == DENY:
-        return await _refuse(conn, said, f"{what}: {refusal(klass, mode, choice)}", key)
-    return await _ask(conn, said, choice, key, what)
+        verdict = said
+    elif mode == DENY:
+        verdict = await _refuse(conn, said, f"{what}: {refusal(klass, mode, choice)}", key)
+    else:
+        verdict = await _ask(conn, said, choice, key, what)
+    result = ACTED if verdict.act else ASKED if verdict.waits else REFUSED
+    await autonomy_ledger.record(conn, run_id, klass, mode, result, key)
+    return verdict
 
 
 async def _refuse(conn: AsyncConnection, said: Verdict, reason: str, key: str) -> Verdict:

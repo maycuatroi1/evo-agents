@@ -187,7 +187,15 @@ def test_autonomy_level_deny_refuses_naming_class_mode_and_source(tmp_path):
     )
     assert recorder.acts == [], "a deny needs no word of the hub"
     ((text, body),) = recorder.events
-    assert body == {"class": "K5", "mode": "deny", "what": "gh pr merge 12", "verdict": "refused"}
+    assert body == {
+        "class": "K5",
+        "mode": "deny",
+        "what": "gh pr merge 12",
+        "verdict": "refused",
+        "run": None,
+        "principal": None,
+        "agent": None,
+    }
     assert text.startswith("Autonomy hook refused a command of K5 (deny)")
 
 

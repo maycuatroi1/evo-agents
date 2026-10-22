@@ -30,7 +30,7 @@ async def commit(run: Run, path: Path, repo: str | None = None) -> bool:
     its agent's work has the agent as author and the run's origin as co-author (``authorship``)."""
     message = f"run #{run.id}: {run.title}"
     author = authorship.agent_author(run.spec, authorship.hub_url(run))
-    full = authorship.commit_message(run.spec, message) if author else message
+    full = authorship.commit_message(run.spec, message)  # the co-author when the agent is author; the run's trailers
     committed = await gitops.commit_run(path, full, author=author.flag if author else None)
     extra = {"repo": repo} if repo else {}
     where = f" in {repo}" if repo else ""

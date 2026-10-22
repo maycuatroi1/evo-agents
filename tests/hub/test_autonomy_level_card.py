@@ -44,6 +44,7 @@ def test_autonomy_level_card_of_an_intern_names_their_mentor_and_each_class_in_d
     assert made.categories == ("deploy", "external_send", "merge", *FREE_CATEGORIES)
     assert not made.ships, "K5 notify and K6 ask: merging and deploying are not the agent's alone"
     spec = {"card": text, "modes": made.modes, "categories": list(made.categories), "sources": made.sources}
+    spec["principal"] = "ivan"
     assert made.spec() == spec and set(made.sources) == set(autonomy_levels.CLASSES)
 
 
