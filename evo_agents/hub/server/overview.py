@@ -470,6 +470,20 @@ def _project_counts(visible, granted: ColumnElement[bool]):
     return select(projects.c.id, repo_count.label("repos"), plan_count.label("plans")).where(granted)
 
 
+def _running_by_member(visible):
+    """The visible runs in RUNNING_STATES, counted by the login of their owner and their project."""
+    runs_, users, projects = tables.runs, tables.users, tables.projects
+    return (
+        select(users.c.login, projects.c.name.label("project"), func.count().label("running"))
+        .join_from(runs_, visible, _of_visible(visible, runs_), isouter=True)
+        .join(users, users.c.id == runs_.c.dispatched_by)
+        .join(projects, projects.c.id == runs_.c.project_id)
+        .where(_shown_run(visible, bindparam("user_id")), one_of(runs_.c.state, RUNNING_STATES))
+        .group_by(users.c.login, projects.c.name)
+        .order_by(users.c.login, projects.c.name)
+    )
+
+
 # Built once with bind parameters: an overview runs them all, and building them on each request cost more than
 # their round trips (docs/hub.md, Data access). Each takes the parameters of ``_bound``.
 _VISIBLE = _visible()
@@ -482,6 +496,7 @@ _UNPLANNED = one_of(tables.decisions.c.project_id, name="unplanned")
 _OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"), _UNPLANNED)
 _DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"), _UNPLANNED)
 _PROJECT_COUNTS = _project_counts(_VISIBLE, one_of(tables.projects.c.id, name="granted"))
+_RUNNING_BY_MEMBER = _running_by_member(_VISIBLE)
 _AUTHOR_WAITING = _author_waiting(_VISIBLE, bindparam("user_id"), one_of(tables.runs.c.project_id, name="granted"))
 
 
@@ -512,6 +527,30 @@ async def _granted_access(conn: AsyncConnection, user) -> list[ProjectAccess]:
         except HTTPException:
             continue
     return [access for access in accesses if access.role is not None]
+
+
+async def _scope(
+    conn: AsyncConnection, user
+) -> tuple[list[ProjectAccess], list[tuple[int, str]], list[int], list[int]]:
+    """What the caller sees: their access to each project they hold a grant on, the visible (project_id, plan_id)
+    pairs, the projects granted and those whose runs on no plan they see; the parameters ``_bound`` takes."""
+    accesses = await _granted_access(conn, user)
+    pairs = []
+    for access in accesses:
+        pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
+    granted = [access.project_id for access in accesses]
+    unplanned = [access.project_id for access in accesses if sees_unplanned(access, None)]
+    return accesses, pairs, granted, unplanned
+
+
+async def running_by_member(conn: AsyncConnection, user) -> list[tuple[str, str, int]]:
+    """The runs whose agent works now (RUNNING_STATES) that the caller sees, as the overview counts them, over the
+    projects they hold a grant on: (login of the owner, project, runs), by login and project. The org chart's page
+    shows them on each person's seat (GET /v1/org/runs)."""
+    _, pairs, granted, unplanned = await _scope(conn, user)
+    bound = _bound(user.user_id, pairs, granted, unplanned, datetime.now(UTC))
+    rows = (await conn.execute(_RUNNING_BY_MEMBER, bound)).all()
+    return [(row.login, row.project, row.running) for row in rows]
 
 
 def _run(row) -> OverviewRun:
@@ -545,13 +584,8 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
     wait = timedelta(seconds=request.app.state.config.decision_wait_seconds)
     async with request.app.state.engine.begin() as conn:
         today: date = (await conn.execute(_TODAY)).scalar_one()
-        accesses = await _granted_access(conn, user)
-        pairs = []
-        for access in accesses:
-            pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
+        accesses, pairs, granted, unplanned = await _scope(conn, user)
         since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=UTC)
-        granted = [access.project_id for access in accesses]
-        unplanned = [access.project_id for access in accesses if sees_unplanned(access, None)]
         bound = _bound(user.user_id, pairs, granted, unplanned, since)
         counted = (await conn.execute(_RUN_COUNTS, bound)).all()
         active = (await conn.execute(_ACTIVE_RUNS, bound)).all()
