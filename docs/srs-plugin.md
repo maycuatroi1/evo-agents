@@ -383,6 +383,8 @@ evo-agents hub srs show orders --project evo-agents --item "UC ORD-1" # one item
 evo-agents hub srs submit orders 2 --project evo-agents               # a draft to review
 evo-agents hub srs approve orders 2 --project evo-agents --role qa
 evo-agents hub srs approve orders 2 --project evo-agents --request-changes --comment "UC ORD-2 has no actor"
+evo-agents hub srs approve orders 2 --project evo-agents --item "UC ORD-1" --item "UC ORD-2"  # use cases one by one
+evo-agents hub srs reviews orders 2 --project evo-agents              # the use cases to review and their state
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # out of review for good
 evo-agents hub srs findings orders --project evo-agents --status open # the conflicts @ba found
 evo-agents hub srs waive orders 12 --project evo-agents --reason "Kept on purpose" # an admin, an open finding
