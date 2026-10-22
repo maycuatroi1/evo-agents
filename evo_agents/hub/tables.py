@@ -1,9 +1,8 @@
 """The hub's tables as SQLAlchemy Core metadata, which queries are written on and Alembic autogenerates the next
-migration from (``migrations/env.py``); the modules ``tables_<area>`` imported below hold them by area, and
-``tables.srs``, ``tables.tasks`` and ``tables.canvas`` are core plugins'. The migrations make the schema and this
-module describes it; ``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server
-defaults, identities, keys and indexes, named as the migrations name them (CHECK constraints and triggers live in the
-migrations only). A table is an attribute of its name."""
+migration from (``migrations/env.py``); modules ``tables_<area>`` hold them by area, and ``tables.srs``, ``.tasks`` and
+``.canvas`` are core plugins'. The migrations make the schema and this module describes it; the test
+``tests/hub/test_schema_metadata.py`` keeps the two equal: columns, types, nullability, server defaults, identities,
+keys and indexes as the migrations name them (CHECK constraints and triggers are the migrations' alone)."""
 
 from __future__ import annotations
 
@@ -994,6 +993,7 @@ merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_ta
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
 org_units, org_seats, autonomy_ceilings = tables_org.org_tables(metadata)  # the org chart (0099)
+credential_shares, credential_share_projects = tables_accounts.share_tables(metadata)  # 0100
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

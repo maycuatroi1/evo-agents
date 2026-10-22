@@ -52,7 +52,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
-from evo_agents.hub import claude_oauth, setup_token
+from evo_agents.hub import claude_oauth, cli_shares, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
@@ -82,6 +82,7 @@ SECRET_KEYS = (
     "expires_at",
     "created_at",
     "updated_at",
+    "shares",
 )
 
 
@@ -318,6 +319,7 @@ def register_secrets(hsub) -> None:
     )
     delete.add_argument("name", metavar="NAME")
     delete.set_defaults(func=cmd_delete)
+    cli_shares.register_share_commands(ssub, "secret")
 
     register_accounts(hsub)
 
@@ -349,6 +351,7 @@ ACCOUNT_KEYS = (
     "cost_24h_usd",
     "cost_7d_usd",
     "held_by",
+    "shares",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -920,6 +923,7 @@ def register_accounts(hsub) -> None:
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
     _register_login(asub)
     _register_oauth_login(asub)
+    cli_shares.register_share_commands(asub, "account")
 
     policy = asub.add_parser(
         "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"

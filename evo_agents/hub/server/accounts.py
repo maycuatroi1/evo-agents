@@ -5,7 +5,7 @@ An account is one of the caller's env secrets (``evo_agents.hub.server.secrets``
 several for the same variable. GET /v1/accounts lists the caller's own, live: name, variable, bindings, weight,
 priority, when it was paused, until when it cools down and why, when a run last took it, its end, its state
 (``accounts.ACCOUNT_STATES``) and its figures (``account_views``: its last usage, its runs and their cost over 24
-hours and 7 days, the runs holding it); never a value. GET /v1/accounts/{name} gives one of them. PATCH
+hours and 7 days, the runs holding it) and its shares not revoked (``share_views``); never a value. GET /v1/accounts/{name} gives one of them. PATCH
 /v1/accounts/{name} changes its weight or priority, or pauses (``paused: true``) or resumes it; a name that is not one
 of the caller's live env secrets is 404, whoever's it is.
 
@@ -58,6 +58,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.secrets import audit_target, bound_names
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.share_views import CredentialShare, shares_of
 
 log = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class Account(BaseModel):
         description="what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
     )
     held_by: list[HeldBy] = Field(description="the runs a worker holds now with it")
+    shares: list[CredentialShare] = Field(description="its shares not revoked, newest first")
 
 
 class AccountChange(BaseModel):
@@ -165,7 +167,7 @@ def _accounts(owner_id: int, name: str | None = None):
     return statement if name is None else statement.where(s.c.name == name)
 
 
-def _account(row, figures: Figures | None = None) -> Account:
+def _account(row, figures: Figures | None = None, shares: list[CredentialShare] | None = None) -> Account:
     values = dict(row._mapping)
     del values["id"]
     now = values.pop("now")
@@ -179,7 +181,7 @@ def _account(row, figures: Figures | None = None) -> Account:
     figured = vars(figures or Figures())
     if category == "service":  # a run's cost is one number for the run, kept by its model account
         figured |= {"cost_24h_usd": None, "cost_7d_usd": None}
-    return Account(**values, provider=provider, category=category, state=state, **figured)
+    return Account(**values, provider=provider, category=category, state=state, shares=shares or [], **figured)
 
 
 @router.get("/accounts", response_model=list[Account])
@@ -189,8 +191,9 @@ async def list_accounts(request: Request, user: CurrentUser, response: Response)
     async with request.app.state.engine.begin() as conn:
         rows = (await conn.execute(_accounts(user.user_id))).all()
         figures = await account_figures(conn, user.user_id)
+        shares = await shares_of(conn, [row.id for row in rows])
     response.headers.update(NO_STORE)
-    return [_account(row, figures.get(row.id)) for row in rows]
+    return [_account(row, figures.get(row.id), shares.get(row.id)) for row in rows]
 
 
 @router.get("/accounts/{name}", response_model=Account, responses=REFUSALS)
@@ -201,8 +204,9 @@ async def get_account(request: Request, name: AccountName, user: CurrentUser, re
         if row is None:
             raise HTTPException(404, NO_ACCOUNT.format(name=name))
         figures = await account_figures(conn, user.user_id, [row.id])
+        shares = await shares_of(conn, [row.id])
     response.headers.update(NO_STORE)
-    return _account(row, figures.get(row.id))
+    return _account(row, figures.get(row.id), shares.get(row.id))
 
 
 def _paused(change: AccountChange, kept):
@@ -224,7 +228,10 @@ async def change_account(
         changed = {**values, **_paused(body, a.c.paused_at), "updated_at": func.now()}
         await conn.execute(made.on_conflict_do_update(index_elements=[a.c.secret_id], set_=changed))
         figures = await account_figures(conn, user.user_id, [row.id])
-        found = _account((await conn.execute(_accounts(user.user_id, name))).one(), figures.get(row.id))
+        shares = await shares_of(conn, [row.id])
+        found = _account(
+            (await conn.execute(_accounts(user.user_id, name))).one(), figures.get(row.id), shares.get(row.id)
+        )
         paused = "yes" if found.paused_at is not None else "no"
         target = f"{audit_target(row.id)} weight={found.weight} priority={found.priority} paused={paused}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.ACCOUNT_SET, target=target)
