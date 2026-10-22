@@ -20039,6 +20039,23 @@ export interface components {
              */
             size_mb?: number | null;
         };
+        /**
+         * RunOrigin
+         * @description The person at the origin of a claimed run, who dispatched it (for a chat run, the person whose message began
+         *     the chain of agents): the worker names them as the co-author of the commits of a run its agent authors.
+         */
+        RunOrigin: {
+            /**
+             * Login
+             * @description the person's GitHub login
+             */
+            login: string;
+            /**
+             * Github Id
+             * @description the person's GitHub user id; null for a user the hub never saw on GitHub
+             */
+            github_id: number | null;
+        };
         /** RunOutput */
         RunOutput: {
             /** Id */
@@ -20441,6 +20458,8 @@ export interface components {
              * @default false
              */
             own_home: boolean;
+            /** @description the person who dispatched the run, whom the worker names as co-author of the commits of a chat run and of a run under a profile that is not its project's default; null from a hub that does not send it */
+            origin?: components["schemas"]["RunOrigin"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
             plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
             /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */

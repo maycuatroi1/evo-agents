@@ -2,7 +2,8 @@
 
 The daemon commits what the agent left uncommitted as ``run #N: <title>``, leaving out ``.evo-run/``, what hooks wrote
 (``gitops.RUN_COMMIT_EXCLUDES``) and copies of hub plans as the hub wrote them, which a ``system`` event names
-(``gitops.commit_run``). Each push is never forced and never merged; ``gitops.push`` refuses a default branch the plan
+(``gitops.commit_run``). A run that is its agent's work names the agent as the author of that commit and the person who
+dispatched it as co-author (``authorship``). Each push is never forced and never merged; ``gitops.push`` refuses a default branch the plan
 does not name before every push.
 """
 
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, log, wait_or
 
 if TYPE_CHECKING:
@@ -24,9 +26,12 @@ MAX_LEFT_OUT_LISTED = 200  # and lists in its body
 
 async def commit(run: Run, path: Path, repo: str | None = None) -> bool:
     """Commit what the agent left in the work tree at ``path`` as ``run #N: <title>``, and say in the run's log
-    which files the commit leaves out (``gitops.commit_run``); whether a commit was made."""
+    which files the commit leaves out (``gitops.commit_run``); whether a commit was made. The commit of a run that is
+    its agent's work has the agent as author and the run's origin as co-author (``authorship``)."""
     message = f"run #{run.id}: {run.title}"
-    committed = await gitops.commit_run(path, message)
+    author = authorship.agent_author(run.spec, authorship.hub_url(run))
+    full = authorship.commit_message(run.spec, message) if author else message
+    committed = await gitops.commit_run(path, full, author=author.flag if author else None)
     extra = {"repo": repo} if repo else {}
     where = f" in {repo}" if repo else ""
     if committed.left_out:

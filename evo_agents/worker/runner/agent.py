@@ -12,6 +12,8 @@ The agent of a run on Claude Code gets the auto-compact window of ``claude_code.
 One under a profile that is not its project's default (the claim's ``own_home``) gets a Claude Code config dir of its
 own in the run's directory (``claude_home``), written before each agent starts, and the run fails with cause
 credentials before the agent starts when this machine has no login to give it (``prepare_home``).
+The agent of a chat run, and of a run under a profile that is not its project's default, gets GIT_AUTHOR_NAME and
+GIT_AUTHOR_EMAIL of its profile, so the commits it makes itself name it as their author (``authorship``).
 A run under an agent profile that limits tool, skill or model, or has instructions, fails before any of its work when
 the runtime's adapter cannot apply the profile (``Adapter.profile_refusal``), or when the adapter finds so as it starts
 the agent (``ProfileRefused``), with cause ``runtime``; such a run is never handed to a person in a terminal UI, which
@@ -49,6 +51,7 @@ from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import environments, interactive, orphans, packs, venvs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
+from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
@@ -240,6 +243,7 @@ class Agent:
             env.pop(API_KEY, None)
         if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
+        env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
         if claude_home.wanted(run.spec, run.runtime) and run.worktree is not None:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
         if run.venvs:  # the .venv/bin of each repo whose environment the worker made, first (runner.venv)
