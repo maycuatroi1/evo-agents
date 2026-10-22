@@ -5178,6 +5178,67 @@
       ],
       "json": null
     },
+    "hub memory list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "scope",
+          "project",
+          "location",
+          "name",
+          "type",
+          "owner",
+          "agent",
+          "label",
+          "body",
+          "revision",
+          "deleted",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "Memory"
+      }
+    },
     "hub memory pull": {
       "positionals": [
         {
@@ -5386,6 +5447,7 @@
           "name",
           "type",
           "owner",
+          "agent",
           "label",
           "body",
           "revision",
@@ -16457,6 +16519,25 @@
                 "title": "Sink"
               },
               "description": "the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent",
+                "title": "Agent"
+              },
+              "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent"
             }
           ],
           "responses": {
@@ -16497,7 +16578,7 @@
             "memories"
           ],
           "summary": "Put",
-          "description": "Create or change the memory at the key ``body`` names.",
+          "description": "Create or change the memory at the key ``body`` names, in the namespace of ``body.agent`` or the run's.",
           "operationId": "put_v1_memories_put",
           "parameters": [
             {
@@ -16709,6 +16790,25 @@
                 "title": "Sink"
               },
               "description": "the sink reading the memories (read rule); left out, claude-code@anthropic for a machine token and none for a web session, which reads by its grant alone"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent",
+                "title": "Agent"
+              },
+              "description": "only the memories of this agent profile (its handle, @ left out); left out, those of no agent"
             }
           ],
           "responses": {
@@ -66334,6 +66434,18 @@
               "title": "Owner",
               "description": "the login of the person who created it"
             },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
+            },
             "label": {
               "additionalProperties": true,
               "type": "object",
@@ -70847,6 +70959,18 @@
               "title": "Owner",
               "description": "the login of the person who created it"
             },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
+            },
             "label": {
               "additionalProperties": true,
               "type": "object",
@@ -70994,6 +71118,19 @@
               ],
               "title": "Audience",
               "description": "what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "scope project only: the agent profile whose memory it is"
             }
           },
           "type": "object",
@@ -71040,6 +71177,17 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "provenance": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Provenance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the run whose agent wrote it; null for no run"
             },
             "memory_id": {
               "type": "integer",
@@ -79210,6 +79358,99 @@
           ],
           "title": "Protection"
         },
+        "Provenance": {
+          "properties": {
+            "run": {
+              "type": "integer",
+              "title": "Run",
+              "description": "the run whose agent wrote it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the profile the run ran under"
+            },
+            "agent_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Version",
+              "description": "the version of that profile"
+            },
+            "origin": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin",
+              "description": "the login of the person at the run's origin, who dispatched it"
+            },
+            "hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hop",
+              "description": "the run's hop in its chat: 1 for a person's mention, more agent to agent"
+            },
+            "chat": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat",
+              "description": "the chat of the run"
+            },
+            "chat_message": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Message",
+              "description": "the chat message that started the run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run",
+            "agent",
+            "agent_version",
+            "origin",
+            "hop",
+            "chat",
+            "chat_message"
+          ],
+          "title": "Provenance",
+          "description": "Where a revision came from, when the agent of a run wrote it."
+        },
         "PruneRequest": {
           "properties": {
             "project": {
@@ -82389,6 +82630,17 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "provenance": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Provenance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the run whose agent wrote it; null for no run"
             }
           },
           "type": "object",
@@ -96644,6 +96896,18 @@
               "type": "string",
               "title": "Owner",
               "description": "the login of the person who created it"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile whose memory it is; else null"
             },
             "label": {
               "additionalProperties": true,
