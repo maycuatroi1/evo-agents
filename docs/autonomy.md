@@ -2,8 +2,10 @@
 
 The hub sorts what a run may do into twelve classes of action, gives each class a mode, and bundles the modes into
 six levels, A0 to A5. A person picks the level they prefer; the org chart's ceilings (`docs/org-chart.md`), the
-project policy and the agent profile's seat bound it. The catalog is `evo_agents.hub.autonomy_levels`, standard
-library only.
+project policy, the agent profile's seat and a shared credential bound it. The hub holds the classes at its gates
+(the lease, the merge, the deploy, the routes), the worker's hook catches the plain commands early, the card tells the
+agent where it stands, and five floors and a stop hold whatever the level. The catalog is
+`evo_agents.hub.autonomy_levels`, standard library only.
 
 ## Classes, modes and levels
 
@@ -50,7 +52,9 @@ Each class takes the strictest mode of seven sources, and the hub names the sour
 4. the project policy of the repo, when one is named (`policy:<project>/<repo>`): `mode: off` caps K5 at ask,
    `prod_release: manual` caps K6 at ask;
 5. the seat of the agent profile and its units, when one is named;
-6. the credential shared with the run (`credential_share`), which limits nothing yet;
+6. the credentials shared with the run (`credential_share`): the lowest `level` among the credential shares
+   (`docs/credentials.md`) of the run's live leases, and of the share a lease is about to lend from; a share without a
+   level limits nothing (`run_autonomy.share_levels`);
 7. the instance (`instance`), which limits no class; the floors S1 to S5 hold whatever the mode, and K9 waits for a
    backup made within 24 hours.
 
@@ -81,6 +85,11 @@ policy aside), `also` (logins whose autonomy bounds it besides the principal) an
 resumed run copy both. A gate takes the stricter of the snapshot and the value now (`run_autonomy.recheck`, which the
 claim calls), and writes a stricter one back with `tightened_at`: a lower level reaches a running run at its next gate, a
 higher one only the runs queued after it.
+
+Source 6 joins at the lease: a run is queued before it holds any lease, so its snapshot starts without the share, and
+the lease that lends a shared credential rechecks the run with that share's level, which only ever lowers it. Every
+lease records the run's principal (`credential_leases.principal_id`), the dispatcher for a run queued before schema
+0111, and a credential share is matched against that principal.
 
 A worker claims a run only when its name is among the snapshot's workers and the host or an environment it takes is
 among its environments; a restricted run goes only to a daemon that reports the feature `autonomy`, on claude-code.
@@ -165,6 +174,47 @@ which answers the commit alone. The refusal names the commit, never the value.
 or through a tool other than Bash gets past it, and only Claude Code runs it so far. The hub's gates (the lease, the
 merge, the deploy, the routes) are what hold; the hook catches the plain cases early and leaves a trace of them.
 
+## The card and the routing of decisions
+
+The hub builds the run's card from its snapshot when a worker claims it (`evo_agents/hub/autonomy_card.py`), and the
+prompt of every run with an agent opens with it: the principal, their role and unit, the person they report to when
+they are an intern, the effective level, the classes in deny, those in ask with the category to ask each in, and those
+in notify. A run at A5 gets the floors S2 and S3 alone. Each class that takes ask has one category of decision: K5
+`merge`, K6 `deploy`, K8 `credential`, K9 `delete_data` and `live_migration`, K10 `external_send`, K11 `spend_money`,
+K12 `access`; `architecture` and `scope` belong to no class. A plan run's prompt says that merging, deploying and
+releasing are the agent's only when K5 and K6 are auto. A run without a snapshot gets the fixed list of categories, as
+before.
+
+A decision goes to one person (`decisions.asked_of`): for a run whose principal is an intern, the person their seat
+reports to, and the leads of their unit too once it has been open 24 hours; for a run the hub makes on its own, the
+sponsor of its agent; for any other run, its principal. An intern never answers a decision of their own run (403). A
+notice of a class in notify goes to the principal, and to the person they report to when they are an intern. The
+Inbox, Telegram and the decision board name the person asked (`docs/notifications.md`).
+
+## The floors S1 to S5
+
+The floors hold for every principal, at A5 too, and no mode lifts them.
+
+| Floor | What holds |
+|---|---|
+| S1, the ledger | every decision of a gate of the hub writes the audit row `autonomy.decided` with the run, its principal, its agent, the class, the mode and the result (`server/autonomy_ledger.py`); the hook writes its own as run events with the same fields. A run's commits carry the trailers `Evo-Principal: <login>` and `Evo-Agent: <handle>`, and a pull or merge request a run or the hub opens names both, never a runtime or a model |
+| S2, the backup | a command of K9 runs only after a backup made within 24 hours (`evo-agents worker backup`, above) |
+| S3, no leaked lease | the worker refuses a push whose new commits hold a lease's value, and the hub masks the values of the run's leases in the events, transcripts, outputs and chat messages it stores (`server/run_events.py`, `server/agent_account_mask.py`) |
+| S4, the stop | below |
+| S5, no borrowed level | a run never acts above its principal: an agent type's run_as bounds it and never raises it, a run one agent asks of another stays within the asking run's snapshot, a shared worker gives the run its principal's autonomy and not its owner's, and a shared credential (source 6) only lowers it |
+
+## The stop S4
+
+`evo-agents hub stop (--login L | --unit SLUG | --all) [--reason TEXT]` stops a person, everyone with a live seat in
+a unit or a unit below it, or the whole hub. A person stops their own runs, a lead those of the units they lead and
+below, a hub admin anyone and the hub; the agent of a run never does. The stop cancels every run of those principals
+that has not ended, as `hub run cancel` does (a held run stops at its worker's next heartbeat), takes back their leases,
+and holds every new run of theirs until it is lifted: a dispatch, the Loop, the Curator's night shift and a release get
+403 naming the stop (`server/autonomy_hold.py`). `hub stop ... --lift` lifts it, for the same people. Each writes the
+audit row `autonomy.stop` or `autonomy.stop.lift` and sends the people stopped the notice `autonomy`. A second stop of
+the same scope while one holds is 409. A local run is only recorded by the hub, which neither cancels nor holds it.
+The web's `/org` page has Stop and Lift buttons, with a confirmation that counts the runs a stop would cancel.
+
 ## Commands
 
 | Command | What it does |
@@ -172,6 +222,7 @@ merge, the deploy, the routes) are what hold; the hook catches the plain cases e
 | `evo-agents hub autonomy show [--login L] [--agent H --project P] [--repo R] [--json]` | the effective level and each class with its mode and source; `--json` prints principal, project, agent, level, classes, environments, workers |
 | `evo-agents hub autonomy set --level A2 [--class K6=deny]... [--reset]` | your own preference; class overrides merge onto those before, `--reset` drops them (A5 unless `--level`) |
 | `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision, whole: what it leaves out it drops |
+| `evo-agents hub stop (--login L \| --unit SLUG \| --all) [--reason TEXT] [--lift] [--json]` | the stop S4 of a scope, or `--lift` to lift it |
 | `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | inside a run: records a backup (floor S2); the run's log, the audit row `autonomy.backup` and the run's `backups.jsonl` |
 
 A person sees their own autonomy, a lead those of the people in the units they lead, a hub admin everyone's; anyone
@@ -183,8 +234,11 @@ ceiling.
 `GET /v1/autonomy?login=&project=&agent=&repo=` answers the effective autonomy, `PUT /v1/autonomy/prefs` writes the
 caller's preference, and `PUT /v1/org/ceilings` takes `classes`, `environments` and `workers`. Schema 0110 adds the
 table `autonomy_prefs` (one row per revision of a person's preference) and the columns `overrides`, `environments` and
-`workers` of `autonomy_ceilings`. Schema 0111 adds `principal_id` and `autonomy` to `runs`. Schema 0112 adds `secrets.environment`, the decision category
-`autonomy` and the notice kind `autonomy`.
+`workers` of `autonomy_ceilings`. Schema 0111 adds `principal_id` and `autonomy` to `runs`. Schema 0112 adds
+`secrets.environment`, the decision category `autonomy` and the notice kind `autonomy`. Schema 0113 adds the decision
+categories `merge`, `credential` and `access`, and `decisions.asked_of`. Schema 0114 adds `autonomy_stops`, every stop
+with who lifted it and when, never deleted. `POST /v1/autonomy/stops` and `POST /v1/autonomy/stops/lift` stop and
+lift, and `GET /v1/autonomy/stops/preview` answers what a stop would cancel, writing nothing.
 
 The worker's routes, with the token of the worker that claimed the run: `POST /v1/worker/runs/{id}/backups` records a
 backup (201: `seq`, `made_at`, `fresh`; 422 for a time in the future), and `POST /v1/worker/runs/{id}/autonomy-acts`

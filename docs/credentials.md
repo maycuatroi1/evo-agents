@@ -131,7 +131,7 @@ evo-agents hub secret delete gitlab-docs
 `secret set NAME (--kind env --env-var VAR [--environment test] | --kind git --url-prefix URL [--username U] | --kind
 forge --url-prefix URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the
 value. `--environment test` labels an env secret for tests: a run whose principal's K7 is `auto:test_secrets` is leased
-those alone, besides its runtime's sign-in (`docs/autonomy-levels.md`). It reads the value from stdin when stdin is not
+those alone, besides its runtime's sign-in (`docs/autonomy.md`). It reads the value from stdin when stdin is not
 a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
 arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
@@ -169,11 +169,15 @@ pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https
 
 ## Which leases a run gets
 
-K7 of the run's principal narrows what follows (`docs/autonomy-levels.md`, `server/lease_autonomy.py`): under
+K7 of the run's principal narrows what follows (`docs/autonomy.md`, `server/lease_autonomy.py`): under
 `auto:run_branch`, `auto:test_secrets` or deny a run gets a GitHub token that writes only for a repo whose ruleset keeps
 the App off its default branch, a token that reads for that repo alone elsewhere, a git secret only for an origin whose
 default branch on GitLab no one may push to, and no env secret but its runtime's (and those labelled test under
-`auto:test_secrets`). A run without an autonomy snapshot, or at auto or notify, gets what follows unchanged.
+`auto:test_secrets`). A run without an autonomy snapshot, or at auto or notify, gets what follows unchanged. A lease
+that held anything back writes the audit row `autonomy.refused` with the class, the mode and the source; every K7
+decision at a lease also writes `autonomy.decided` (the floor S1). An env secret carries an environment label
+(`secrets.environment`, schema 0112): none, or `test` with `hub secret set --environment test`; `hub secret list`
+shows it.
 
 `evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
 protocol header, for a run the worker holds: one of the held states, `waiting` of a plan run among them. Any other run,
@@ -636,8 +640,9 @@ it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` h
 
 #### Leasing under a share
 
-A run's principal is the member who dispatched it; each lease records it (`credential_leases.principal_id`, migration
-0106). A share covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
+A run's principal is the person it acts for (`runs.principal_id`, `docs/autonomy.md`), the member who dispatched it
+for a run queued before schema 0111; each lease records it (`credential_leases.principal_id`, migration 0106). A share
+covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
 principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
 must still be bound to the project; a run of the Curator and a release run never take one
 (`evo_agents/hub/server/share_leases.py`).
@@ -658,7 +663,9 @@ Revoking a share ends the leases out under it at once; a share that ended or no 
 run's next ask and on every pass of the reaper. `hub account show NAME --json` carries `cost_by_principal`: per
 member, runs and cost over 24 hours, 7 days and this month. The owner sees every row; a member it was shared with
 reads it with `--owner LOGIN` (`GET /v1/accounts/{name}?owner=LOGIN`) and sees their own row, runs and holders alone.
-The share's `level` is stored only, until the autonomy levels apply it.
+The share's `level` is source 6 of the autonomy levels (`docs/autonomy.md`): from the lease that lends it, a run
+under the share acts at most at that level, the lowest level among its shares when it holds several
+(`run_autonomy.share_levels`); a share without a level limits nothing, and a level never raises a run.
 
 ## Plugins
 

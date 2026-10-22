@@ -974,8 +974,10 @@ heartbeat answer and carries out an owner's Update now ([Update now](#update-now
 that clones each repo of a run it has no checkout of ([Repos a run clones](#repos-a-run-clones)), which the hub then
 hands a run whatever checkouts it reports; and `agent_home`, a daemon that gives a claude-code agent of a profile
 that is not its project's default a config dir of its own ([The config dir of an agent's run](#the-config-dir-of-an-agents-run)),
-without which the hub hands such a run, one asking claude-code or one whose claim would pick it, to no daemon. This
-daemon sends every kind of `runs.RUN_KINDS` and
+without which the hub hands such a run, one asking claude-code or one whose claim would pick it, to no daemon; and
+`autonomy`, a daemon that reads the snapshot of autonomy the claim carries and runs the hook of autonomy on a
+claude-code run ([The hook of autonomy](#the-hook-of-autonomy)), without which the hub hands it no run whose principal
+has a class below auto. This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -1545,7 +1547,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker step KEY STATUS [--repo R] [--evidence TEXT] [--verify CMD ...] [--wait SECONDS]` | for the agent of a plan run: reports a step `in_progress`, `done` or `pending`; `verify` runs the verify commands as a job of the worker and waits on it; `done` reuses a job that passed with the same commands on the same tree or runs one, refuses on a non-zero exit, commits what is left there, pushes the repo's branch and reports the commit (see [A plan run on the machine](#a-plan-run-on-the-machine)) |
 | `evo-agents worker ask --category C --question Q [--context-file F] --option KEY=LABEL[:DESCRIPTION] ... [--recommended KEY] [--step KEY] [--attach FILE]` | for the agent of a plan run or an author run: asks the run's owner a decision, 2 to 6 options, and prints its id; each `--attach` file (at most 20) goes to the run's outputs first and with the question (`output_ids`); refuses in a step, review or judge run |
 | `evo-agents worker output FILE ... [--caption TEXT]` | for the agent of any run: sends files to the run's outputs on the hub, in the background (see [Outputs of a run on the machine](#outputs-of-a-run-on-the-machine)) |
-| `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | for the agent of any run: records a backup it made before deleting or overwriting data, on the hub (the run's log and the audit row `autonomy.backup`) and in the run's `backups.jsonl`; a command that deletes data for good (K9) runs only after one made within the last 24 hours (see [The hook of autonomy on the worker](autonomy-levels.md#the-hook-of-autonomy-on-the-worker)) |
+| `evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` | for the agent of any run: records a backup it made before deleting or overwriting data, on the hub (the run's log and the audit row `autonomy.backup`) and in the run's `backups.jsonl`; a command that deletes data for good (K9) runs only after one made within the last 24 hours (see [The hook of autonomy on the worker](autonomy.md#the-hook-of-autonomy-on-the-worker)) |
 | `evo-agents worker notify --kind push_default_branch\|merge_default_branch --title T [--body B] [--repo R] [--branch B] [--commit SHA ...]` | for the agent of a plan run: sends the run's owner a notice of a push or merge into a default branch |
 | `evo-agents worker plan [--json]` | for the agent of a plan run: prints the run's plan as the hub holds it now |
 | `evo-agents worker git-credential --run N get\|store\|erase` | git's credential helper for run N, named by the run's git configuration: `get` answers from the run's leases through its socket, `store` and `erase` do nothing (see [docs/credentials.md](credentials.md)) |
@@ -1939,6 +1941,30 @@ author, its name with the email `<handle>@<host of the hub>`, and ends with the 
 such a run gets `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`, so the commits it makes itself name it too. Any other run
 under the default profile commits and starts its agent exactly as before. The daemon never rewrites a commit that is
 already there and never force-pushes.
+
+A run with a snapshot of autonomy also commits through hooks that add the trailers `Evo-Principal: <login>` and
+`Evo-Agent: <handle>` to each of its commits, the agent's own included, and never a runtime's or a model's name
+(the floor S1 of [autonomy](autonomy.md)).
+
+### The hook of autonomy
+
+The claim of a run with a snapshot of autonomy carries its card (`autonomy`: each class with its mode and
+source). For every claude-code run that has one, under any profile and still under bypassPermissions, the daemon adds a
+second PreToolUse hook (`evo_agents/worker/autonomy_hook.py`) beside the refusal of `claude` calls. It sorts each Bash
+command into a class by the patterns of `evo_agents/worker/command_classes.py` (a forced push, `DROP TABLE` through an
+SQL client, `rm -rf` outside the worktree, `terraform destroy` are K9; `gh pr merge` and a push to a default branch K5;
+a tag `v*` and `gh release create` K6; ...) and acts on the class's mode: deny refuses with the class, the mode and the
+source; ask refuses and tells the agent to run `evo-agents worker ask --category <category>` and then the command again
+as `EVO_DECISION=<id> <command>`; notify and auto let it run, notify after the hub sends the principal a notice. Each
+decision is a run event. A command of K9 also waits for a backup made within 24 hours, which the agent records with
+`evo-agents worker backup --target WHAT --location WHERE [--made-at ISO] [--restore COMMAND]` (the floor S2), at A5
+too.
+
+The hook is a second layer. It reads the command's text, so a command in base64, in a subshell or in a script the agent
+wrote gets past it, as does any tool other than Bash and any runtime other than Claude Code. What holds is what the hub
+gives and refuses: the credentials of the lease, the environments and workers the run may use, and its gates at the
+merge, the deploy and the routes ([autonomy](autonomy.md)). Every push of the daemon also refuses new commits that hold
+the value of one of the run's leases, naming the commit and never the value (the floor S3).
 
 ### Agent packs
 

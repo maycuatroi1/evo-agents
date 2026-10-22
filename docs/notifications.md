@@ -44,6 +44,10 @@ the decision board, `hub decision list` and `hub decision show` name that person
 Telegram sends as it is, ends with "asked of <login>". A notice of a class in notify reaches the principal, and the
 person they report to when they are an intern.
 
+The hub asks decisions of its own too. A gate of autonomy whose class is in ask, before a merge (K5), a deploy or a
+release (K6), opens one of the category `autonomy` (schema 0112, `runs.AUTONOMY_DECISION_CATEGORY`) to the run's
+principal, and acts once they approve; only that principal answers it (`docs/autonomy.md`).
+
 | Category | What it covers |
 | --- | --- |
 | `deploy` | deploying or releasing anything to any environment, a checkpoint step that deploys included |
@@ -185,6 +189,7 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
 | `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 | `run_outputs` | a run's agent sent files, or left them in its outputs directory (`docs/hub.md`, "Outputs of runs"), to the run's owner, gathered a minute a run (below) | the run, the files' names, sizes and captions; `details.outputs` their ids, and the Inbox lists them as `outputs` |
+| `autonomy` | a class in notify acted for a run (the hub's gate, or the worker's hook through `POST /v1/worker/runs/{id}/autonomy-acts`), to the run's principal and to the person they report to when they are an intern; and a stop of autonomy S4 cancelled the member's runs, or was lifted (`docs/autonomy.md`) | the class, the act, the run and its agent; a stop's scope, reason and the runs it cancelled; never a credential |
 | `worker_doctor` | the doctor report of a worker shared with units of the org chart has a high finding and the one before had none (`docs/workers.md`, Shared workers), to the worker's owner; the worker takes no run of those units' members until a report has none | the worker, the codes of the high findings, and a link to the worker's page; never a credential |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
@@ -304,7 +309,7 @@ For members, with a web session or a machine token:
 | --- | --- | --- |
 | `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
 | `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
-| `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
+| `POST /v1/projects/{p}/decisions/{id}/answer` | the person it is asked of (`asked_of`, above), else the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
