@@ -25,7 +25,7 @@ import { FieldLabel } from "./field-label";
 import { StepPicker } from "./dispatch-step-picker";
 import { readySelection, selectedRepos } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, outlookFine, runtimeCount } from "./model";
+import { chosenWorker, dispatchOutlook, dispatchWorkers, fitWorker, outlookFine, pinRefused, runtimeCount } from "./model";
 import {
   type Approval,
   APPROVALS,
@@ -324,7 +324,7 @@ function DispatchForm({
           <Button
             type="submit"
             size="lg"
-            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0}
+            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0 || pinRefused(outlook)}
             busy={pending}
             data-testid="dispatch-submit"
           >
