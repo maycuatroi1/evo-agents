@@ -356,7 +356,8 @@ def memory_state(dsn: str, body: dict) -> dict:
         row = conn.execute(MEMORY_STATE, params).fetchone()
     if row is None:
         raise LookupError(f"no agent's memory {body['memory_id']}")
-    return {"memory_id": row[0], **{k: v.isoformat() if v else None for k, v in zip(("archived_at", "stale_at", "read_at"), row[1:])}}
+    marks = zip(("archived_at", "stale_at", "read_at"), row[1:], strict=True)
+    return {"memory_id": row[0], **{k: v.isoformat() if v else None for k, v in marks}}
 
 
 def idle_token(dsn: str, body: dict) -> dict:
