@@ -125,9 +125,25 @@ def usable_runtimes(row, profile) -> list[str]:
     return [name for name in usable if allow is None or name in allow]
 
 
-def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
-    """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` now,
-    each reason once, in the order they are checked; none when it can."""
+CLAUDE = "claude-code"
+
+
+def lacks_agent_home(row, profile, runtime: str = "any") -> bool:
+    """Whether the claim would refuse worker ``row`` a run of ``profile`` asking for ``runtime``, as
+    ``profiles.claim_clause`` does: a profile that is not its project's default whose run goes to Claude Code there
+    (asked for, or ``any`` and Claude Code the first runtime the worker has that the profile allows) needs a daemon
+    that gives the agent a config dir of its own (``runs.AGENT_HOME``)."""
+    if profile.is_default or runs.AGENT_HOME in (row.features or ()):
+        return False
+    if runtime != "any":
+        return runtime == CLAUDE
+    usable = usable_runtimes(row, profile)
+    return bool(usable) and usable[0] == CLAUDE
+
+
+def worker_problems(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> list[str]:
+    """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` and
+    asking for ``runtime`` now, each reason once, in the order they are checked; none when it can."""
     packs = profiles.packs_unfit(
         profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
     )
@@ -150,10 +166,15 @@ def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
             "has a daemon that does not apply agent profiles",
         ),
         (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
+        (
+            lacks_agent_home(row, profile, runtime),
+            f"runs evo-agents {row.agent_version or '?'}, which gives no Claude Code agent of @{profile.handle} a "
+            "config dir of its own (feature agent_home): update its daemon",
+        ),
     )
     return [why for failed, why in checks if failed]
 
 
-def unfit_worker(row, profile, via: str, kind: str = "chat") -> str | None:
+def unfit_worker(row, profile, via: str, kind: str = "chat", runtime: str = "any") -> str | None:
     """The first of ``worker_problems``, or None when worker ``row`` can take the run."""
-    return next(iter(worker_problems(row, profile, via, kind)), None)
+    return next(iter(worker_problems(row, profile, via, kind, runtime)), None)

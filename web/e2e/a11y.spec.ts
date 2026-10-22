@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAvatarByApi } from "./support/agents";
+import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAgentAccountByApi, putAvatarByApi } from "./support/agents";
 import {
   baselinePath,
   canvasesPath,
@@ -217,8 +217,8 @@ async function seedAccounts(me: Member) {
 
 /**
  * Agents of the first project of `me`, made its admin: one that limits five axes (credentials to none), with an
- * avatar, instructions and a run under it, which a worker of `me` carrying the label it allows makes possible, and one
- * deleted; returns the first's handle.
+ * avatar, instructions, an account of its own and a run under it, which a worker of `me` carrying the label it allows
+ * makes possible, and one deleted; returns the first's handle.
  */
 async function seedAgents(me: Member) {
   const project = me.projects[0];
@@ -243,7 +243,8 @@ async function seedAgents(me: Member) {
   await createAgentByApi(me, project, { handle: gone, name: "Old helper", color: "#0891b2" });
   const api = await apiOf(me);
   await api.DELETE("/v1/projects/{project}/agents/{handle}", { params: { path: { project, handle: gone } } });
-  await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  const gpu = await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  await putAgentAccountByApi(me, project, handle, "openai-key", { env_var: "OPENAI_API_KEY", value: secretValue("a11y"), workers: [gpu.name] });
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"], { profile: handle, runtime: "claude-code" });
   return handle;
@@ -1000,6 +1001,37 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("agent-version-row")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("agent-runs-table")).toBeVisible();
       await expect(page.locator("#main").getByTestId("agents-read-only")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agent-accounts-table")).toBeVisible();
+    },
+  },
+  {
+    name: "agent page's accounts with the add form and its errors, then the delete confirmation, for an admin",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentPath(project, handle));
+      const card = page.locator("#main").getByTestId("agent-accounts");
+      await expect(card.getByTestId("agent-accounts-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "agent page with its accounts");
+      await card.getByTestId("agent-account-add").click();
+      const dialog = page.getByTestId("agent-account-dialog");
+      await dialog.getByTestId("agent-account-dialog-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("agent-account-name-error")).toBeVisible();
+      await expect(dialog.getByTestId("agent-account-workers")).toBeVisible();
+      await expectNoSeriousViolations(page, "add agent account form");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await card.getByTestId("agent-account-delete").click();
+      await expect(page.getByTestId("agent-account-delete-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "accounts with the agents' accounts group",
+    open: async ({ page, me }) => {
+      await seedAccounts(me);
+      await seedAgents(me);
+      await page.goto("/accounts");
+      await expect(page.locator("#main").getByTestId("accounts-group-agent").getByTestId("agent-account-agent")).toBeVisible();
     },
   },
   {

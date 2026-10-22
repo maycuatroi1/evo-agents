@@ -41,6 +41,7 @@ from evo_agents.hub import (
     tables_loop,
     tables_memory_agents,
     tables_merge,
+    tables_night,
     tables_org,
     tables_outputs,
     tables_plugin_notices,
@@ -699,7 +700,7 @@ secrets = Table(
     "secrets",
     metadata,
     _id(),
-    Column("owner_id", BigInteger, nullable=False),
+    Column("owner_id", BigInteger),  # a member's secret; null for one an agent profile owns (0104)
     Column("name", Text, nullable=False),
     Column("kind", Text, nullable=False),
     Column("env_var", Text),
@@ -712,12 +713,21 @@ secrets = Table(
     _stamp("updated_at"),
     _when("expires_at"),
     _when("deleted_at"),
+    Column("profile_id", BigInteger),  # 0104: the agent profile that owns it, null for a member's
     ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="secrets_owner_id_fkey"),
+    ForeignKeyConstraint(["profile_id"], ["agent_profiles.id"], ondelete="RESTRICT", name="secrets_profile_id_fkey"),
     PrimaryKeyConstraint("id", name="secrets_pkey"),
 )
 Index(
     "secrets_name_key",
     secrets.c.owner_id,
+    secrets.c.name,
+    unique=True,
+    postgresql_where=secrets.c.deleted_at.is_(None),
+)
+Index(  # 0104: an agent's secret is unique by (profile, name) among the live ones
+    "secrets_profile_name_key",
+    secrets.c.profile_id,
     secrets.c.name,
     unique=True,
     postgresql_where=secrets.c.deleted_at.is_(None),
@@ -785,43 +795,7 @@ Index(
     postgresql_where=credential_leases.c.sealed_value.is_not(None),
 )
 
-# The night shift (0012)
-
-charters = Table(
-    "charters",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("revision", Integer, nullable=False),
-    Column("body", JSONB, nullable=False),
-    Column("worker_id", BigInteger, nullable=False),
-    Column("created_by", BigInteger, nullable=False),
-    _stamp("created_at"),
-    ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="charters_created_by_fkey"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="charters_project_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="charters_worker_id_fkey"),
-    PrimaryKeyConstraint("project_id", "revision", name="charters_pkey"),
-)
-
-schedules = Table(
-    "schedules",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("kind", Text, nullable=False),
-    Column("owner_id", BigInteger, nullable=False),
-    Column("worker_id", BigInteger, nullable=False),
-    _stamp("created_at"),
-    _stamp("updated_at"),
-    _when("paused_at"),
-    Column("paused_by", BigInteger),
-    Column("pause_reason", Text),  # why the hub paused it, its circuit breaker; NULL when a member did (0018)
-    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="schedules_owner_id_fkey"),
-    ForeignKeyConstraint(["paused_by"], ["users.id"], ondelete="RESTRICT", name="schedules_paused_by_fkey"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="schedules_project_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="RESTRICT", name="schedules_worker_id_fkey"),
-    PrimaryKeyConstraint("id", name="schedules_pkey"),
-    UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
-)
+charters, schedules = tables_night.night_tables(metadata)  # the night shift (0012)
 
 # The tool figures of runs (0013, and the skills of 0087); the session digests are in tables_sessions
 
@@ -978,8 +952,8 @@ curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metad
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 pm_sends = tables_pm.pm_tables(metadata)  # 0086
 plugin_notice_keys = tables_plugin_notices.plugin_notice_tables(metadata)  # 0097
-org_units, org_seats, autonomy_ceilings, worker_shares = tables_org.org_tables(metadata)  # 0099, 0106
-credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0104
+org_units, org_seats, autonomy_ceilings, worker_shares = tables_org.org_tables(metadata)  # 0099, 0107
+credential_shares, credential_share_projects = tables_accounts.share_tables(metadata, credential_leases)  # 0105
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

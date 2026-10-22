@@ -32,6 +32,7 @@ from evo_agents.hub import claude_plugins
 from evo_agents.hub.mcp_tools import SERVER_NAME
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.environments import Container
+from evo_agents.worker.runtimes import claude_home, profiles
 
 SERVER = SERVER_NAME  # evo-hub, as the plugin names its server
 PLUGIN = "evo-hub"
@@ -86,6 +87,15 @@ def home_server(context: RunContext, profile=None) -> dict | None:
         return None
     command, *args = COMMAND
     return {"type": "stdio", "command": command, "args": args, "env": _env(context)}
+
+
+def tui_args(context: RunContext, runtime: str) -> list[str]:
+    """The arguments of the ``claude`` TUI of the run of ``context``: when its agent has a config dir of its own
+    (``claude_home.isolated``), SERVER alone (``claude_home.mcp_config``), else none."""
+    if not claude_home.isolated(context.run, runtime, context.env, context.worktree):
+        return []
+    hub = home_server(context, profiles.profile_of(context))
+    return claude_home.mcp_config({SERVER: hub} if hub else {})
 
 
 def codex_servers(context: RunContext, configured: Iterable[str], profile=None) -> dict:

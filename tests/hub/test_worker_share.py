@@ -1,5 +1,5 @@
 """Shared workers narrowed to units of the org chart (``evo_agents.hub.server.worker_shares``), as criterion a5 of plan
-credential-sharing names them: schema 0106 and going back; the owner and a hub admin narrow a worker to a unit and
+credential-sharing names them: schema 0107 and going back; the owner and a hub admin narrow a worker to a unit and
 take it back, each change audited worker.share or worker.unshare; a narrowed worker takes the runs of its owner and of
 a member whose live primary seat is in one of its units or below one, and no other member's, at claim, at dispatch,
 in the worker lists and in the candidates of a rerun; a shared worker with no unit keeps taking every writer's runs,
@@ -127,12 +127,12 @@ def test_worker_share_migration_adds_the_table_and_going_back_unshares_narrowed_
     lab, open_one = add_worker(client, hub["owner"], "lab"), add_worker(client, hub["owner"], "open")
     narrow(client, hub["owner"], lab, "lab")
     patch_shared(client, hub["owner"], open_one, True)
-    move_to(hub_db, "0105", down=True)
+    move_to(hub_db, "0106", down=True)
     assert not {row[0] for row in sql(hub_db, public)} & pg.WORKER_SHARE_TABLES
     w = tables.workers
     shared = dict(sql(hub_db, select(w.c.name, w.c.shared)))
     assert shared == {"lab": False, "open": True}  # narrowed: never shared with every writer once the rows are gone
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0106") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0107") :]
     assert pg.WORKER_SHARE_TABLES <= {row[0] for row in sql(hub_db, public)}
 
 

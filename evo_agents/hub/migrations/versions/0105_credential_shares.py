@@ -1,7 +1,7 @@
 """Credential sharing: credential_shares and credential_share_projects.
 
-Revision ID: 0104
-Revises: 0103
+Revision ID: 0105
+Revises: 0104
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.credential_shares`` and ``evo_agents.hub.tables_accounts`` as of this
@@ -23,8 +23,8 @@ Going back drops the two tables; the shares are lost.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0104"
-down_revision = "0103"
+revision = "0105"
+down_revision = "0104"
 branch_labels = None
 depends_on = None
 

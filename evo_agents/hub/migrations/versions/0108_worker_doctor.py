@@ -1,7 +1,7 @@
 """The newest doctor report of each worker, and the notice worker_doctor.
 
-Revision ID: 0107
-Revises: 0106
+Revision ID: 0108
+Revises: 0107
 Create Date: 2026-10-22
 
 The names below are copies of ``evo_agents.hub.tables_workers`` and ``evo_agents.hub.runs`` as of this revision, never
@@ -22,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0107"
-down_revision = "0106"
+revision = "0108"
+down_revision = "0107"
 branch_labels = None
 depends_on = None
 

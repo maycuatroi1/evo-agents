@@ -4,7 +4,7 @@ decides.
 A daemon that says the feature ``runs.DOCTOR_REPORT`` runs ``evo-agents worker doctor`` when it starts and every 24
 hours (``evo_agents.worker.doctor_report``) and sends its findings: for each, the code, the severity and the detail as
 the doctor prints them, never a credential (the daemon redacts each detail, and the hub does again). The hub keeps the
-newest report of each worker on its row (schema 0107): when it took it, how many findings are high and medium, and the
+newest report of each worker on its row (schema 0108): when it took it, how many findings are high and medium, and the
 findings. ``GET /v1/org/workers`` and ``hub org worker list`` show the first three.
 
 What a report decides:

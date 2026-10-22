@@ -1,5 +1,5 @@
 """The doctor reports of workers (``evo_agents.hub.server.worker_doctor``), as criterion a6 of plan credential-sharing
-names them: schema 0107 and going back; POST /v1/worker/doctor keeps the newest report of the worker whose token sent
+names them: schema 0108 and going back; POST /v1/worker/doctor keeps the newest report of the worker whose token sent
 it, redacted, and the list of workers shows it; narrowing a worker to a unit answers 409 with the reason without a
 report, with one older than 48 hours or with a high finding; a report with a high finding stops a narrowed worker
 taking the runs of its units' members, never its owner's, and tells the owner once with the notice worker_doctor.
@@ -77,13 +77,13 @@ def test_doctor_report_migration_adds_the_columns_and_the_notice_and_going_back_
     owner_id = sql(hub_db, select(users.c.id).where(users.c.login == OWNER))[0][0]
     notice = {"user_id": owner_id, "kind": "notice", "notice_kind": "worker_doctor", "title": "Worker lab"}
     sql(hub_db, insert(tables.notifications).values(**notice))
-    move_to(hub_db, "0106", down=True)
+    move_to(hub_db, "0107", down=True)
     assert not DOCTOR_COLUMNS & columns(hub_db, "workers")
     n = tables.notifications
     assert sql(hub_db, select(func.count()).select_from(n).where(n.c.notice_kind == "worker_doctor")) == [(0,)]
     with pytest.raises(psycopg.errors.CheckViolation, match="notifications_notice_kind_check"):
         sql(hub_db, insert(n).values(**notice))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0107") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0108") :]
     assert DOCTOR_COLUMNS <= columns(hub_db, "workers")
 
 
