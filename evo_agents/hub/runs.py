@@ -336,6 +336,7 @@ NOTICE_KINDS = (
     "loop_paused",
     "goal_review",
     "loop_brief",
+    "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
 )
 MUTABLE_NOTICE_KINDS = (OUTPUT_NOTICE,)  # the notices a member may turn off, and still get every other notification
 OUTPUT_NOTICE_SECONDS = 60  # a notice of a run's files waits this long for more before any channel sends it

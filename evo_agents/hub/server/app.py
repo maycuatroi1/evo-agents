@@ -362,6 +362,7 @@ def create_app(config: HubConfig) -> FastAPI:
         merge_judge,
         merge_view,
         plugin_host,
+        plugin_notify,
         plugin_ui,
         plugins,
         project_plugins,
@@ -386,6 +387,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_packs.router,
         agent_types.router,
         task_dispatch.router,
+        plugin_notify.router,
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,

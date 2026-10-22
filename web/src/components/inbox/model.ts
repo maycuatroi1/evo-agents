@@ -147,6 +147,14 @@ export function isBranchNotice(notification: Pick<Notification, "notice_kind">):
   );
 }
 
+export type PluginFacts = { plugin: string | null; topic: string | null };
+
+/** The plugin that sent a notice and its topic, from `details`, keeping only text. */
+export function pluginFacts(details: Notification["details"]): PluginFacts {
+  const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : null);
+  return { plugin: text(details?.plugin), topic: text(details?.topic) };
+}
+
 /** Commits a notice lists before the rest fold under "and N more". */
 export const COMMITS_SHOWN = 5;
 
